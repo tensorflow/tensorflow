@@ -35,6 +35,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import io_wrapper
 from tensorflow.tensorboard.backend import handler
+from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
 # How many elements to store per tag, by tag type
 TENSORBOARD_SIZE_GUIDANCE = {
@@ -69,7 +70,7 @@ def ParseEventFilesSpec(logdir):
   if logdir is None:
     return files
   # Make sure keeping consistent with ParseURI in core/lib/io/path.cc
-  uri_pattern = re.compile("[a-zA-Z][0-9a-zA-Z.]://.*")
+  uri_pattern = re.compile("[a-zA-Z][0-9a-zA-Z.]*://.*")
   for specification in logdir.split(','):
     # Check if the spec contains group. A spec start with xyz:// is regarded as
     # URI path spec instead of group spec. If the spec looks like /foo:bar/baz,
@@ -149,9 +150,10 @@ def BuildServer(multiplexer, host, port, logdir):
     host: The host name.
     port: The port number to bind to, or 0 to pick one automatically.
     logdir: The logdir argument string that tensorboard started up with.
-
   Returns:
     A `BaseHTTPServer.HTTPServer`.
   """
-  factory = functools.partial(handler.TensorboardHandler, multiplexer, logdir)
+  names_to_plugins = {'projector': projector_plugin.ProjectorPlugin()}
+  factory = functools.partial(handler.TensorboardHandler, multiplexer,
+                              names_to_plugins, logdir)
   return ThreadedHTTPServer((host, port), factory)

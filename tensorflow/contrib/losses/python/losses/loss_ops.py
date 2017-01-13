@@ -21,14 +21,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
-
+from tensorflow.python.util.deprecation import deprecated
 
 __all__ = ["absolute_difference",
            "add_loss",
@@ -44,35 +43,6 @@ __all__ = ["absolute_difference",
            "sigmoid_cross_entropy",
            "softmax_cross_entropy",
            "sparse_softmax_cross_entropy"]
-
-
-# TODO(b/32171727): Remove when deprecated `targets` is removed.
-def _labels(labels, targets):
-  if labels is None:
-    labels = targets
-  elif targets is not None:
-    raise ValueError("Can not specify both `labels` and `targets`.")
-  if labels is None:
-    raise ValueError("Must provide 1 of `labels` and `targets`.")
-  return labels
-
-
-# TODO(b/32171727): Remove when deprecated `weight` is removed.
-_WEIGHT_SENTINEL = object()
-
-
-# TODO(b/32171727): Remove when deprecated `weight` is removed. Also, restore
-# weights=1.0 as default in all calling fns.
-def _weights(weights, weight):
-  if weights is _WEIGHT_SENTINEL:
-    weights = weight
-  elif weight is not _WEIGHT_SENTINEL:
-    raise ValueError("Can not specify both `weights` and `weight`.")
-  if weights is None:
-    raise ValueError("`weights` cannot be None.")
-  if weights is _WEIGHT_SENTINEL:
-    weights = 1.0
-  return weights
 
 
 def _scale_losses(losses, weights):
@@ -97,7 +67,7 @@ def _scale_losses(losses, weights):
   reduction_indices = list(range(start_index, losses.get_shape().ndims))
   reduced_losses = math_ops.reduce_sum(losses,
                                        reduction_indices=reduction_indices)
-  reduced_losses = math_ops.mul(reduced_losses, weights)
+  reduced_losses = math_ops.multiply(reduced_losses, weights)
   return math_ops.reduce_sum(reduced_losses)
 
 
@@ -117,9 +87,9 @@ def _safe_div(numerator, denominator, name="value"):
   Returns:
     The element-wise value of the numerator divided by the denominator.
   """
-  return math_ops.select(
+  return array_ops.where(
       math_ops.greater(denominator, 0),
-      math_ops.div(numerator, math_ops.select(
+      math_ops.div(numerator, array_ops.where(
           math_ops.equal(denominator, 0),
           array_ops.ones_like(denominator), denominator)),
       array_ops.zeros_like(numerator),
@@ -141,16 +111,14 @@ def _safe_mean(losses, num_present):
   return _safe_div(total_loss, num_present)
 
 
-@deprecated_args(
-    "2016-11-25", "`weight` is being deprecated, use `weights`.", "weight")
-def compute_weighted_loss(
-    losses, weights=_WEIGHT_SENTINEL, weight=_WEIGHT_SENTINEL):
+@deprecated("2016-12-30", "Use tf.losses.compute_weighted_loss instead.")
+def compute_weighted_loss(losses, weights=1.0, scope=None):
   """Computes the weighted loss.
 
   Args:
     losses: A tensor of size [batch_size, d1, ... dN].
     weights: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
-    weight: Deprecated alias for `weights`.
+    scope: the scope for the operations performed in computing the loss.
 
   Returns:
     A scalar `Tensor` that returns the weighted loss.
@@ -160,28 +128,28 @@ def compute_weighted_loss(
       `losses`, or if the number of dimensions (rank) of either `losses` or
       `weights` is missing.
   """
-  weights = _weights(weights, weight)
-  losses = ops.convert_to_tensor(losses)
-  input_dtype = losses.dtype
-  losses = math_ops.to_float(losses)
-  weights = math_ops.to_float(ops.convert_to_tensor(weights))
+  with ops.name_scope(scope, "weighted_loss", [losses, weights]):
+    losses = ops.convert_to_tensor(losses)
+    input_dtype = losses.dtype
+    losses = math_ops.to_float(losses)
+    weights = math_ops.to_float(ops.convert_to_tensor(weights))
 
-  if losses.get_shape().ndims is None:
-    raise ValueError("losses.get_shape().ndims cannot be None")
-  weights_shape = weights.get_shape()
-  if weights_shape.ndims is None:
-    raise ValueError("weight.get_shape().ndims cannot be None")
+    if losses.get_shape().ndims is None:
+      raise ValueError("losses.get_shape().ndims cannot be None")
+    weights_shape = weights.get_shape()
+    if weights_shape.ndims is None:
+      raise ValueError("weights.get_shape().ndims cannot be None")
 
-  if weights_shape.ndims > 1 and weights_shape.dims[-1].is_compatible_with(1):
-    weights = array_ops.squeeze(weights, [-1])
+    if weights_shape.ndims > 1 and weights_shape.dims[-1].is_compatible_with(1):
+      weights = array_ops.squeeze(weights, [-1])
 
-  total_loss = _scale_losses(losses, weights)
-  num_present = _num_present(losses, weights)
-  mean_loss = _safe_mean(total_loss, num_present)
-  # convert the result back to the input type
-  mean_loss = math_ops.cast(mean_loss, input_dtype)
-  add_loss(mean_loss)
-  return mean_loss
+    total_loss = _scale_losses(losses, weights)
+    num_present = _num_present(losses, weights)
+    mean_loss = _safe_mean(total_loss, num_present)
+    # convert the result back to the input type
+    mean_loss = math_ops.cast(mean_loss, input_dtype)
+    add_loss(mean_loss)
+    return mean_loss
 
 
 def _num_present(losses, weights, per_batch=False):
@@ -211,9 +179,9 @@ def _num_present(losses, weights, per_batch=False):
                                                    [0], [1]), [])
     num_per_batch = math_ops.div(math_ops.to_float(array_ops.size(losses)),
                                  math_ops.to_float(batch_size))
-    num_per_batch = math_ops.select(math_ops.equal(weights, 0),
+    num_per_batch = array_ops.where(math_ops.equal(weights, 0),
                                     0.0, num_per_batch)
-    num_per_batch = math_ops.mul(array_ops.ones(
+    num_per_batch = math_ops.multiply(array_ops.ones(
         array_ops.reshape(batch_size, [1])), num_per_batch)
     return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
 
@@ -224,15 +192,16 @@ def _num_present(losses, weights, per_batch=False):
         math_ops.to_float(math_ops.not_equal(weights, 0)),
         reduction_indices=reduction_indices)
 
-  # Next, determine the number of elements that weight would broadcast to:
+  # Next, determine the number of elements that weights would broadcast to:
   broadcast_dims = array_ops.slice(array_ops.shape(losses),
                                    [weights.get_shape().ndims], [-1])
   num_to_broadcast = math_ops.to_float(math_ops.reduce_prod(broadcast_dims))
 
-  num_per_batch = math_ops.mul(num_nonzero_per_batch, num_to_broadcast)
+  num_per_batch = math_ops.multiply(num_nonzero_per_batch, num_to_broadcast)
   return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
 
 
+@deprecated("2016-12-30", "Use tf.losses.add_loss instead.")
 @add_arg_scope
 def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
   """Adds a externally defined loss to the collection of losses.
@@ -245,6 +214,7 @@ def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
     ops.add_to_collection(loss_collection, loss)
 
 
+@deprecated("2016-12-30", "Use tf.losses.get_losses instead.")
 def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   """Gets the list of losses from the loss_collection.
 
@@ -258,6 +228,7 @@ def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   return ops.get_collection(loss_collection, scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.get_regularization_losses instead.")
 def get_regularization_losses(scope=None):
   """Gets the regularization losses.
 
@@ -270,6 +241,7 @@ def get_regularization_losses(scope=None):
   return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
 
 
+@deprecated("2016-12-30", "Use tf.losses.get_total_loss instead.")
 def get_total_loss(add_regularization_losses=True, name="total_loss"):
   """Returns a tensor whose value represents the total loss.
 
@@ -292,23 +264,17 @@ def get_total_loss(add_regularization_losses=True, name="total_loss"):
   return math_ops.add_n(losses, name=name)
 
 
-@deprecated_args(
-    "2016-11-25",
-    "`targets` is being deprecated, use `labels`."
-    " `weight` is being deprecated, use `weights`.",
-    "targets", "weight")
-def absolute_difference(
-    predictions, labels=None, weights=_WEIGHT_SENTINEL, scope=None,
-    targets=None, weight=_WEIGHT_SENTINEL):
+@deprecated("2016-12-30", "Use tf.losses.absolute_difference instead.")
+def absolute_difference(predictions, labels=None, weights=1.0, scope=None):
   """Adds an Absolute Difference loss to the training procedure.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
-  loss is simply scaled by the given value. If `weight` is a tensor of size
+  `weights` acts as a coefficient for the loss. If a scalar is provided, then
+  the loss is simply scaled by the given value. If `weights` is a tensor of size
   [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weight` vector. If the shape of
-  `weight` matches the shape of `predictions`, then the loss of each
+  by the corresponding element in the `weights` vector. If the shape of
+  `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
-  `weight`.
+  `weights`.
 
   Args:
     predictions: The predicted outputs.
@@ -316,36 +282,30 @@ def absolute_difference(
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
-    targets: Deprecated alias for `labels`.
-    weight: Deprecated alias for `weights`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weight` is invalid.
+      if the shape of `weights` is invalid.
   """
-  labels = _labels(labels, targets)
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "absolute_difference",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
-    losses = math_ops.abs(math_ops.sub(predictions, labels))
-    return compute_weighted_loss(losses, weights)
+    losses = math_ops.abs(math_ops.subtract(predictions, labels))
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated_args(
-    "2016-11-25", "`weight` is being deprecated, use `weights`", "weight")
+@deprecated("2016-12-30", "Use tf.losses.sigmoid_cross_entropy instead.")
 def sigmoid_cross_entropy(
-    logits, multi_class_labels, weights=_WEIGHT_SENTINEL, label_smoothing=0,
-    scope=None, weight=_WEIGHT_SENTINEL):
+    logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided,
-  then the loss is simply scaled by the given value. If `weight` is a
+  `weights` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weights` is a
   tensor of size [`batch_size`], then the loss weights apply to each
   corresponding sample.
 
@@ -356,24 +316,22 @@ def sigmoid_cross_entropy(
 
   Args:
     logits: [batch_size, num_classes] logits outputs of the network .
-    multi_class_labels: [batch_size, num_classes] target labels in (0, 1).
+    multi_class_labels: [batch_size, num_classes] labels in (0, 1).
     weights: Coefficients for the loss. The tensor must be a scalar, a tensor of
       shape [batch_size] or shape [batch_size, num_classes].
     label_smoothing: If greater than 0 then smooth the labels.
     scope: The scope for the operations performed in computing the loss.
-    weight: Deprecated alias for `weights`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of
-      `multi_class_labels` or if the shape of `weight` is invalid, or if
-      `weight` is None.
+      `multi_class_labels` or if the shape of `weights` is invalid, or if
+      `weights` is None.
   """
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
-                      [logits, multi_class_labels, weights]):
+                      [logits, multi_class_labels, weights]) as scope:
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
@@ -382,20 +340,19 @@ def sigmoid_cross_entropy(
       multi_class_labels = (multi_class_labels * (1 - label_smoothing) +
                             0.5 * label_smoothing)
 
-    losses = nn.sigmoid_cross_entropy_with_logits(logits, multi_class_labels,
+    losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
+                                                  logits=logits,
                                                   name="xentropy")
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated_args(
-    "2016-11-25", "`weight` is being deprecated, use `weights`", "weight")
+@deprecated("2016-12-30", "Use tf.losses.softmax_cross_entropy instead.")
 def softmax_cross_entropy(
-    logits, onehot_labels, weights=_WEIGHT_SENTINEL, label_smoothing=0,
-    scope=None, weight=_WEIGHT_SENTINEL):
+    logits, onehot_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided,
-  then the loss is simply scaled by the given value. If `weight` is a
+  `weights` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weights` is a
   tensor of size [`batch_size`], then the loss weights apply to each
   corresponding sample.
 
@@ -405,23 +362,21 @@ def softmax_cross_entropy(
 
   Args:
     logits: [batch_size, num_classes] logits outputs of the network .
-    onehot_labels: [batch_size, num_classes] target one_hot_encoded labels.
+    onehot_labels: [batch_size, num_classes] one-hot-encoded labels.
     weights: Coefficients for the loss. The tensor must be a scalar or a tensor
       of shape [batch_size].
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
-    weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Tensor` representing the loss value.
+    A scalar `Tensor` representing the mean loss value.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
-      or if the shape of `weight` is invalid or if `weight` is None.
+      or if the shape of `weights` is invalid or if `weights` is None.
   """
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
-                      [logits, onehot_labels, weights]):
+                      [logits, onehot_labels, weights]) as scope:
     logits.get_shape().assert_is_compatible_with(onehot_labels.get_shape())
 
     onehot_labels = math_ops.cast(onehot_labels, logits.dtype)
@@ -433,67 +388,58 @@ def softmax_cross_entropy(
       smooth_negatives = label_smoothing / num_classes
       onehot_labels = onehot_labels * smooth_positives + smooth_negatives
 
-    losses = nn.softmax_cross_entropy_with_logits(logits, onehot_labels,
+    losses = nn.softmax_cross_entropy_with_logits(labels=onehot_labels,
+                                                  logits=logits,
                                                   name="xentropy")
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated_args(
-    "2016-11-25", "`weight` is being deprecated, use `weights`", "weight")
-def sparse_softmax_cross_entropy(
-    logits, labels, weights=_WEIGHT_SENTINEL, scope=None,
-    weight=_WEIGHT_SENTINEL):
+@deprecated("2016-12-30", "Use tf.losses.sparse_softmax_cross_entropy instead.")
+def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
   """Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided,
-  then the loss is simply scaled by the given value. If `weight` is a
+  `weights` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weights` is a
   tensor of size [`batch_size`], then the loss weights apply to each
   corresponding sample.
 
   Args:
     logits: [batch_size, num_classes] logits outputs of the network .
-    labels: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
-      `int64` in the range `[0, num_classes)`.
+    labels: [batch_size, 1] or [batch_size] labels of dtype `int32` or `int64`
+      in the range `[0, num_classes)`.
     weights: Coefficients for the loss. The tensor must be a scalar or a tensor
       of shape [batch_size] or [batch_size, 1].
     scope: the scope for the operations performed in computing the loss.
-    weight: Deprecated alias for `weights`.
 
   Returns:
-    A scalar `Tensor` representing the loss value.
+    A scalar `Tensor` representing the mean loss value.
 
   Raises:
-    ValueError: If the shapes of logits, labels, and weight are incompatible, or
-      if `weight` is None.
+    ValueError: If the shapes of `logits`, `labels`, and `weights` are
+      incompatible, or if `weights` is None.
   """
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
-                      [logits, labels, weights]):
+                      [logits, labels, weights]) as scope:
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
     weights = array_ops.squeeze(weights)
 
-    losses = nn.sparse_softmax_cross_entropy_with_logits(logits, labels,
+    losses = nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                         logits=logits,
                                                          name="xentropy")
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated_args(
-    "2016-11-25",
-    "`targets` is being deprecated, use `labels`."
-    " `weight` is being deprecated, use `weights`.",
-    "targets", "weight")
-def log_loss(
-    predictions, labels=None, weights=_WEIGHT_SENTINEL, epsilon=1e-7,
-    scope=None, targets=None, weight=_WEIGHT_SENTINEL):
+@deprecated("2016-12-30", "Use tf.losses.log_loss instead.")
+def log_loss(predictions, labels=None, weights=1.0, epsilon=1e-7, scope=None):
   """Adds a Log Loss term to the training procedure.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
-  loss is simply scaled by the given value. If `weight` is a tensor of size
+  `weights` acts as a coefficient for the loss. If a scalar is provided, then
+  the loss is simply scaled by the given value. If `weights` is a tensor of size
   [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weight` vector. If the shape of
-  `weight` matches the shape of `predictions`, then the loss of each
+  by the corresponding element in the `weights` vector. If the shape of
+  `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
-  `weight`.
+  `weights`.
 
   Args:
     predictions: The predicted outputs.
@@ -502,33 +448,28 @@ def log_loss(
       [batch_size] or a tensor whose shape matches `predictions`.
     epsilon: A small increment to add to avoid taking a log of zero.
     scope: The scope for the operations performed in computing the loss.
-    targets: Deprecated alias for `labels`.
-    weight: Deprecated alias for `weights`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weight` is invalid.
+      if the shape of `weights` is invalid.
   """
-  labels = _labels(labels, targets)
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "log_loss",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
-    losses = -math_ops.mul(
+    losses = -math_ops.multiply(
         labels,
-        math_ops.log(predictions + epsilon)) - math_ops.mul(
+        math_ops.log(predictions + epsilon)) - math_ops.multiply(
             (1 - labels), math_ops.log(1 - predictions + epsilon))
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated_args(
-    "2016-11-25", "`target` is being deprecated, use `labels`.", "target")
-def hinge_loss(logits, labels=None, scope=None, target=None):
+@deprecated("2016-12-30", "Use tf.losses.hinge_loss instead.")
+def hinge_loss(logits, labels=None, scope=None):
   """Method that returns the loss tensor for hinge loss.
 
   Args:
@@ -536,42 +477,35 @@ def hinge_loss(logits, labels=None, scope=None, target=None):
     labels: The ground truth output tensor. Its shape should match the shape of
       logits. The values of the tensor are expected to be 0.0 or 1.0.
     scope: The scope for the operations performed in computing the loss.
-    target: Deprecated alias for `labels`.
 
   Returns:
-    A `Tensor` of same shape as logits and target representing the loss values
-      across the batch.
+    A `Tensor` of same shape as `logits` and `labels` representing the loss
+      values across the batch.
 
   Raises:
     ValueError: If the shapes of `logits` and `labels` don't match.
   """
-  labels = _labels(labels, target)
   with ops.name_scope(scope, "hinge_loss", [logits, labels]) as scope:
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
     # We first need to convert binary labels to -1/1 labels (as floats).
     labels = math_ops.to_float(labels)
     all_ones = array_ops.ones_like(labels)
-    labels = math_ops.sub(2 * labels, all_ones)
-    return nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
+    labels = math_ops.subtract(2 * labels, all_ones)
+    return nn_ops.relu(
+        math_ops.subtract(all_ones, math_ops.multiply(labels, logits)))
 
 
-@deprecated_args(
-    "2016-11-25",
-    "`targets` is being deprecated, use `labels`."
-    " `weight` is being deprecated, use `weights`.",
-    "targets", "weight")
-def mean_squared_error(
-    predictions, labels=None, weights=_WEIGHT_SENTINEL, scope=None,
-    targets=None, weight=_WEIGHT_SENTINEL):
+@deprecated("2016-12-30", "Use tf.losses.mean_squared_error instead.")
+def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
   """Adds a Sum-of-Squares loss to the training procedure.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
-  loss is simply scaled by the given value. If `weight` is a tensor of size
+  `weights` acts as a coefficient for the loss. If a scalar is provided, then
+  the loss is simply scaled by the given value. If `weights` is a tensor of size
   [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weight` vector. If the shape of
-  `weight` matches the shape of `predictions`, then the loss of each
+  by the corresponding element in the `weights` vector. If the shape of
+  `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
-  `weight`.
+  `weights`.
 
   Args:
     predictions: The predicted outputs.
@@ -579,35 +513,26 @@ def mean_squared_error(
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
-    targets: Deprecated alias for `labels`.
-    weight: Deprecated alias for `weights`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weight` is invalid.
+      if the shape of `weights` is invalid.
   """
-  labels = _labels(labels, targets)
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "mean_squared_error",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
-    losses = math_ops.square(math_ops.sub(predictions, labels))
-    return compute_weighted_loss(losses, weights)
+    losses = math_ops.square(math_ops.subtract(predictions, labels))
+    return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated_args(
-    "2016-11-25",
-    "`targets` is being deprecated, use `labels`."
-    " `weight` is being deprecated, use `weights`.",
-    "targets", "weight")
+@deprecated("2016-12-30", "Use tf.losses.mean_pairwise_squared_error instead.")
 def mean_pairwise_squared_error(
-    predictions, labels=None, weights=_WEIGHT_SENTINEL, scope=None,
-    targets=None, weight=_WEIGHT_SENTINEL):
+    predictions, labels=None, weights=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.
 
   Unlike `mean_squared_error`, which is a measure of the differences between
@@ -625,10 +550,10 @@ def mean_pairwise_squared_error(
   16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
   is drawn from each image, but not across images.
 
-  `weight` acts as a coefficient for the loss. If a scalar is provided, then the
-  loss is simply scaled by the given value. If `weight` is a tensor of size
+  `weights` acts as a coefficient for the loss. If a scalar is provided, then
+  the loss is simply scaled by the given value. If `weights` is a tensor of size
   [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weight` vector.
+  by the corresponding element in the `weights` vector.
 
   Args:
     predictions: The predicted outputs, a tensor of size [batch_size, d0, .. dN]
@@ -638,18 +563,14 @@ def mean_pairwise_squared_error(
     weights: Coefficients for the loss a scalar, a tensor of shape [batch_size]
       or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
-    targets: Deprecated alias for `labels`.
-    weight: Deprecated alias for `weights`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weight` is invalid.
+      if the shape of `weights` is invalid.
   """
-  labels = _labels(labels, targets)
-  weights = _weights(weights, weight)
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -657,7 +578,7 @@ def mean_pairwise_squared_error(
     labels = math_ops.to_float(labels)
     weights = math_ops.to_float(ops.convert_to_tensor(weights))
 
-    diffs = math_ops.sub(predictions, labels)
+    diffs = math_ops.subtract(predictions, labels)
 
     # Need to verify here since the function doesn't use compute_weighted_loss
     if diffs.get_shape().ndims is None:
@@ -681,7 +602,7 @@ def mean_pairwise_squared_error(
 
     loss = _scale_losses(term1 - term2, weights)
 
-    mean_loss = math_ops.select(math_ops.reduce_sum(num_present_per_batch) > 0,
+    mean_loss = array_ops.where(math_ops.reduce_sum(num_present_per_batch) > 0,
                                 loss,
                                 array_ops.zeros_like(loss),
                                 name="value")
@@ -689,14 +610,9 @@ def mean_pairwise_squared_error(
     return mean_loss
 
 
-@deprecated_args(
-    "2016-11-25",
-    "`targets` is being deprecated, use `labels`."
-    " `weight` is being deprecated, use `weights`.",
-    "targets", "weight")
+@deprecated("2016-12-30", "Use tf.losses.cosine_distance instead.")
 def cosine_distance(
-    predictions, labels=None, dim=None, weights=_WEIGHT_SENTINEL, scope=None,
-    targets=None, weight=_WEIGHT_SENTINEL):
+    predictions, labels=None, dim=None, weights=1.0, scope=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -709,8 +625,6 @@ def cosine_distance(
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
-    targets: Deprecated alias for `labels`.
-    weight: Deprecated alias for `weights`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
@@ -719,8 +633,6 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `weights` is `None`.
   """
-  labels = _labels(labels, targets)
-  weights = _weights(weights, weight)
   if dim is None:
     raise ValueError("`dim` cannot be None.")
   with ops.name_scope(scope, "cosine_distance_loss",
@@ -730,6 +642,6 @@ def cosine_distance(
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
 
-    radial_diffs = math_ops.mul(predictions, labels)
+    radial_diffs = math_ops.multiply(predictions, labels)
     losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
-    return compute_weighted_loss(losses, weights)
+    return compute_weighted_loss(losses, weights, scope=scope)

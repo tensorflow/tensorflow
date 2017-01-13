@@ -111,5 +111,7 @@ class TextLineReaderOp : public ReaderOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("TextLineReader").Device(DEVICE_CPU),
                         TextLineReaderOp);
+REGISTER_KERNEL_BUILDER(Name("TextLineReaderV2").Device(DEVICE_CPU),
+                        TextLineReaderOp);
 
 }  // namespace tensorflow

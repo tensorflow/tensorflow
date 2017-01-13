@@ -39,6 +39,7 @@ from tensorflow.python.ops.check_ops import *
 from tensorflow.python.ops.clip_ops import *
 from tensorflow.python.ops.special_math_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
+from tensorflow.python.ops.confusion_matrix import confusion_matrix
 from tensorflow.python.ops.control_flow_ops import Assert
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
@@ -53,7 +54,8 @@ from tensorflow.python.ops.histogram_ops import *
 from tensorflow.python.ops.init_ops import *
 from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
-from tensorflow.python.ops.logging_ops import *
+from tensorflow.python.ops.logging_ops import Print
+from tensorflow.python.ops.logging_ops import get_summary_op
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
@@ -90,6 +92,7 @@ from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import check_ops as _check_ops
 from tensorflow.python.ops import clip_ops as _clip_ops
+from tensorflow.python.ops import confusion_matrix as _confusion_matrix
 from tensorflow.python.ops import control_flow_ops as _control_flow_ops
 from tensorflow.python.ops import data_flow_ops as _data_flow_ops
 from tensorflow.python.ops import functional_ops as _functional_ops
@@ -165,19 +168,20 @@ _allowed_symbols_array_ops = [
     ##  documentation section to reference.
     ## For re-exporting to tf.*:
     "constant",
-    "edit_distance",   # to-doc
+    "edit_distance",  # to-doc
     # From gen_array_ops:
-    "copy_host",       # to-doc
+    "copy_host",  # to-doc
     "immutable_const",  # to-doc
     "invert_permutation",  # to-doc
     "quantize_and_dequantize",  # to-doc
 
     # TODO(drpng): legacy symbols to be removed.
-    "list_diff",   # Use tf.listdiff instead.
+    "list_diff",  # Use tf.listdiff instead.
     "batch_matrix_diag",
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
     "batch_matrix_set_diag",
+    "concat_v2",  # Use tf.concat instead.
 ]
 
 _allowed_symbols_partitioned_variables = [
@@ -243,6 +247,7 @@ _allowed_symbols_misc = [
     "parse_single_sequence_example",
     "serialize_many_sparse",
     "serialize_sparse",
+    "confusion_matrix",
 ]
 
 _allowed_symbols = (_allowed_symbols_array_ops +
@@ -261,6 +266,7 @@ remove_undocumented(__name__, _allowed_symbols,
                      _array_ops,
                      _check_ops,
                      _clip_ops,
+                     _confusion_matrix,
                      _control_flow_ops,
                      _constant_op,
                      _data_flow_ops,

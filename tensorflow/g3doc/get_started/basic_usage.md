@@ -26,7 +26,7 @@ C++.
 
 ## The computation graph
 
-TensorFlow programs are usually structured into a construction phase, that
+TensorFlow programs are usually structured into a construction phase that
 assembles a graph, and an execution phase that uses a session to execute ops in
 the graph.
 
@@ -42,14 +42,14 @@ The session libraries have equivalent functionalities for the three languages.
 
 ### Building the graph
 
-To build a graph start with ops that do not need any input (source ops), such as
-`Constant`, and pass their output to other ops that do computation.
+To build a graph, start by defining ops that do not need any input, such as
+`constant`, and pass their output to other ops that do computation.
 
-The ops constructors in the Python library return objects that stand for the
-output of the constructed ops.  You can pass these to other ops constructors to
-use as inputs.
+The op constructors in the Python library return objects that represent the
+output of the constructed ops.  You can pass these as inputs to other op
+constructors.
 
-The TensorFlow Python library has a *default graph* to which ops constructors
+The TensorFlow Python library has a *default graph* to which op constructors
 add nodes.  The default graph is sufficient for many applications.  See the
 [Graph class](../api_docs/python/framework.md#Graph) documentation for how
 to explicitly manage multiple graphs.
@@ -57,33 +57,33 @@ to explicitly manage multiple graphs.
 ```python
 import tensorflow as tf
 
-# Create a Constant op that produces a 1x2 matrix.  The op is
+# Create a constant op that produces a 1x2 matrix.  The op is
 # added as a node to the default graph.
 #
 # The value returned by the constructor represents the output
-# of the Constant op.
+# of the constant op.
 matrix1 = tf.constant([[3., 3.]])
 
-# Create another Constant that produces a 2x1 matrix.
+# Create another constant that produces a 2x1 matrix.
 matrix2 = tf.constant([[2.],[2.]])
 
-# Create a Matmul op that takes 'matrix1' and 'matrix2' as inputs.
+# Create a matmul op that takes 'matrix1' and 'matrix2' as inputs.
 # The returned value, 'product', represents the result of the matrix
 # multiplication.
 product = tf.matmul(matrix1, matrix2)
 ```
 
-The default graph now has three nodes: two `constant()` ops and one `matmul()`
-op. To actually multiply the matrices, and get the result of the multiplication,
-you must launch the graph in a session.
+The default graph now has three nodes: two `constant` ops and one `matmul`
+op. To actually multiply the matrices and get the result of the multiplication,
+you must *launch* the graph in a `Session`.
 
 ### Launching the graph in a session
 
-Launching follows construction.  To launch a graph, create a `Session` object.
-Without arguments the session constructor launches the default graph.
-
-See the [Session class](../api_docs/python/client.md#session-management) for
-the complete session API.
+After constructing a graph, you can launch it by creating a `Session` object.
+The `Session` launches the default graph, unless a different graph is specified
+in the constructor.  See the
+[Session class](../api_docs/python/client.md#session-management) for
+the complete API.
 
 ```python
 # Launch the default graph.
@@ -108,9 +108,9 @@ print(result)
 sess.close()
 ```
 
-Sessions should be closed to release resources. You can also enter a `Session`
-with a "with" block. The `Session` closes automatically at the end of the
-`with` block.
+Sessions should be closed to release resources.  To manage resources more
+easily, use a `with` statement. Each `Session` implements a context manager that
+calls `close()` when exiting the block.
 
 ```python
 with tf.Session() as sess:
@@ -201,7 +201,7 @@ a = tf.constant([3.0, 3.0])
 x.initializer.run()
 
 # Add an op to subtract 'a' from 'x'.  Run it and print the result
-sub = tf.sub(x, a)
+sub = tf.subtract(x, a)
 print(sub.eval())
 # ==> [-2. -1.]
 
@@ -278,7 +278,7 @@ input1 = tf.constant([3.0])
 input2 = tf.constant([2.0])
 input3 = tf.constant([5.0])
 intermed = tf.add(input2, input3)
-mul = tf.mul(input1, intermed)
+mul = tf.multiply(input1, intermed)
 
 with tf.Session() as sess:
   result = sess.run([mul, intermed])
@@ -307,7 +307,7 @@ tf.placeholder() to create them:
 
 input1 = tf.placeholder(tf.float32)
 input2 = tf.placeholder(tf.float32)
-output = tf.mul(input1, input2)
+output = input1 * input2
 
 with tf.Session() as sess:
   print(sess.run([output], feed_dict={input1:[7.], input2:[2.]}))

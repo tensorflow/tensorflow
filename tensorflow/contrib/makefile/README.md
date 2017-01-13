@@ -142,10 +142,11 @@ xcode-select --install
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
 
-Then install [automake](https://en.wikipedia.org/wiki/Automake):
+Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
 
 ```bash
 brew install automake
+brew install libtool
 ```
 
 Also, download the graph if you haven't already:

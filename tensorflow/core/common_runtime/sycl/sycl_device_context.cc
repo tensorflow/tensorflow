@@ -15,13 +15,10 @@ limitations under the License.
 
 #if TENSORFLOW_USE_SYCL
 
-#define EIGEN_USE_SYCL
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-
-#define EIGEN_USE_SYCL
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -98,6 +95,7 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor *cpu_tensor,
       assert(false && "unsupported type");
     }
   }
+  device->eigen_sycl_device()->synchronize();
   done(Status::OK());
 }
 
@@ -108,7 +106,6 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
                                               StatusCallback done) {
   const int64 total_bytes = device_tensor->TotalBytes();
   if (total_bytes > 0) {
-    device->eigen_sycl_device()->deallocate_all();
     const void* src_ptr = DMAHelper::base(device_tensor);
     void* dst_ptr = DMAHelper::base(cpu_tensor);
     switch (device_tensor->dtype()) {
@@ -176,6 +173,7 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
       assert(false && "unsupported type");
     }
   }
+  device->eigen_sycl_device()->synchronize();
   done(Status::OK());
 }
 

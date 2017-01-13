@@ -1,4 +1,4 @@
-Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
+Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
 
 `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -8,7 +8,7 @@ Examples:
 
 ```python
 bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x^T
+# Result: [[1, 1], [1, 5]], i.e., x x.T
 
 bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
 # Result: [[1, 0], [2, 1]], i.e., chol(y).
@@ -157,6 +157,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.graph_parents` {#CholeskyOuterProduct.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse(y, name='inverse', **condition_kwargs)` {#CholeskyOuterProduct.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -280,13 +287,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.parameters` {#CholeskyOuterProduct.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

@@ -43,12 +43,13 @@ namespace serving {
 namespace {
 
 auto* load_attempt_count = monitoring::Counter<2>::New(
-    "/tensorflow/contrib/session_bundle/load_attempt_count", "model_path",
-    "status",
-    "The number of times a SessionBundle was requested to be loaded.");
+    "/tensorflow/contrib/session_bundle/load_attempt_count",
+    "The number of times a SessionBundle was requested to be loaded.",
+    "model_path", "status");
 auto* load_latency = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_latency", "model_path",
-    "Latency in microseconds for SessionBundles that were succesfully loaded.");
+    "/tensorflow/contrib/session_bundle/load_latency",
+    "Latency in microseconds for SessionBundles that were successfully loaded.",
+    "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 

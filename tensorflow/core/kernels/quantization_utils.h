@@ -25,6 +25,7 @@ limitations under the License.
 // to avoid a dependency on floating-point hardware.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -112,10 +113,9 @@ void QuantizationRangeForMultiplication(float min_a, float max_a, float min_b,
 // input_array is an eigen Tensor.  q2f is a QuantizedToFloatStruct.
 // This evaluates to an eigen tensor expression, to be used like:
 // auto tensor = DEQUANTIZE_WITH_EIGEN(input_tensor, q2f);
-#define DEQUANTIZE_WITH_EIGEN(input_array, q2f)                       \
-  (q2f.range_min +                                                    \
-   (((input_array.template cast<float>() - q2f.lowest_quantized())) * \
-    q2f.range_scale));
+#define DEQUANTIZE_WITH_EIGEN(input_array, q2f)                 \
+  ((q2f.range_min - q2f.lowest_quantized() * q2f.range_scale) + \
+   input_array.template cast<float>() * q2f.range_scale)
 
 // input_array is an eigen Tensor.  f2q is a FloatToQuantizedStruct.
 // OutputType is the type of output (e.g. quint8).

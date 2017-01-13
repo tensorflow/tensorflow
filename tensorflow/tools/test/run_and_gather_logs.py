@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Test runner for TensorFlow tests."""
 
 from __future__ import absolute_import
@@ -23,7 +22,14 @@ import os
 import shlex
 import sys
 
-import tensorflow as tf
+from google.protobuf import text_format
+from tensorflow.core.util import test_log_pb2
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+from tensorflow.tools.test import run_and_gather_logs_lib
 
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-bad-import-order
@@ -34,32 +40,23 @@ try:
   import cpuinfo
   import psutil
 except ImportError as e:
-  tf.logging.error("\n\n\nERROR: Unable to import necessary library: {}.  "
+  tf_logging.error("\n\n\nERROR: Unable to import necessary library: {}.  "
                    "Issuing a soft exit.\n\n\n".format(e))
   sys.exit(0)
 # pylint: enable=g-bad-import-order
 # pylint: enable=unused-import
 
-from google.protobuf import text_format
-from tensorflow.core.util import test_log_pb2
-from tensorflow.tools.test import run_and_gather_logs_lib
+FLAGS = flags.FLAGS
 
-
-FLAGS = tf.app.flags.FLAGS
-
-tf.app.flags.DEFINE_string("name", "", """Benchmark target identifier.""")
-tf.app.flags.DEFINE_string("test_name", "", """Test target to run.""")
-tf.app.flags.DEFINE_string(
-    "test_args", "", """Test arguments, space separated.""")
-tf.app.flags.DEFINE_string(
-    "test_log_output", "", """Filename to write logs.""")
-tf.app.flags.DEFINE_bool(
-    "test_log_output_use_tmpdir", False,
-    """Store the log output into tmpdir?.""")
-tf.app.flags.DEFINE_string(
-    "compilation_mode", "", """Mode used during this build (e.g. opt, dbg).""")
-tf.app.flags.DEFINE_string(
-    "cc_flags", "", """CC flags used during this build.""")
+flags.DEFINE_string("name", "", """Benchmark target identifier.""")
+flags.DEFINE_string("test_name", "", """Test target to run.""")
+flags.DEFINE_string("test_args", "", """Test arguments, space separated.""")
+flags.DEFINE_string("test_log_output", "", """Filename to write logs.""")
+flags.DEFINE_bool("test_log_output_use_tmpdir", False,
+                  """Store the log output into tmpdir?.""")
+flags.DEFINE_string("compilation_mode", "",
+                    """Mode used during this build (e.g. opt, dbg).""")
+flags.DEFINE_string("cc_flags", "", """CC flags used during this build.""")
 
 
 def gather_build_configuration():
@@ -67,8 +64,8 @@ def gather_build_configuration():
   build_config.mode = FLAGS.compilation_mode
   # Include all flags except includes
   cc_flags = [
-      flag for flag in shlex.split(FLAGS.cc_flags)
-      if not flag.startswith("-i")]
+      flag for flag in shlex.split(FLAGS.cc_flags) if not flag.startswith("-i")
+  ]
   build_config.cc_flags.extend(cc_flags)
   return build_config
 
@@ -77,8 +74,8 @@ def main(unused_args):
   name = FLAGS.name
   test_name = FLAGS.test_name
   test_args = FLAGS.test_args
-  test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(
-      name, test_name, test_args)
+  test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(name, test_name,
+                                                                test_args)
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())
@@ -90,13 +87,13 @@ def main(unused_args):
     return
 
   if FLAGS.test_log_output_use_tmpdir:
-    tmpdir = tf.test.get_temp_dir()
+    tmpdir = test.get_temp_dir()
     output_path = os.path.join(tmpdir, FLAGS.test_log_output)
   else:
     output_path = os.path.abspath(FLAGS.test_log_output)
-  tf.gfile.GFile(output_path, "w").write(serialized_test_results)
-  tf.logging.info("Test results written to: %s" % output_path)
+  gfile.GFile(output_path, "w").write(serialized_test_results)
+  tf_logging.info("Test results written to: %s" % output_path)
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  app.run()

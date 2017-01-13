@@ -19,11 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
-
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 _empty_shape = np.array([], dtype=np.int32)
 
@@ -40,12 +41,12 @@ def _constant(x):
   return tensor_util.constant_value(x)
 
 
-class DistributionShapeTest(tf.test.TestCase):
+class DistributionShapeTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState(42)
 
-  def _random_sample(self, sample_shape, dtype=tf.float64):
+  def _random_sample(self, sample_shape, dtype=dtypes.float64):
     return self._rng.random_sample(sample_shape).astype(dtype.as_numpy_dtype())
 
   def _assertNdArrayEqual(self, expected, actual):
@@ -60,9 +61,9 @@ class DistributionShapeTest(tf.test.TestCase):
     """
     expected = np.asarray(expected)
     actual = np.asarray(actual)
-    self.assertEqual(
-        expected.shape, actual.shape,
-        "Shape mismatch: expected %s, got %s." % (expected.shape, actual.shape))
+    self.assertEqual(expected.shape, actual.shape,
+                     "Shape mismatch: expected %s, got %s." %
+                     (expected.shape, actual.shape))
     actual_item = actual.flat
     for expected_item in expected.flat:
       self.assertAllEqual(expected_item, next(actual_item))
@@ -89,7 +90,7 @@ class DistributionShapeTest(tf.test.TestCase):
       self.assertEqual(1, shaper.event_ndims.eval())
 
       # Test ndims functions work, even despite unfed Tensors.
-      y = tf.placeholder(tf.float32, shape=(1024, None, 1024))
+      y = array_ops.placeholder(dtypes.float32, shape=(1024, None, 1024))
       self.assertEqual(3, shaper.get_ndims(y).eval())
       self.assertEqual(1, shaper.get_sample_ndims(y).eval())
       self.assertEqual(1, shaper.batch_ndims.eval())
@@ -97,15 +98,14 @@ class DistributionShapeTest(tf.test.TestCase):
 
   def testDistributionShapeGetNdimsDynamic(self):
     with self.test_session() as sess:
-      batch_ndims = tf.placeholder(tf.int32)
-      event_ndims = tf.placeholder(tf.int32)
-      shaper = _DistributionShape(batch_ndims=batch_ndims,
-                                  event_ndims=event_ndims)
-      y = tf.placeholder(tf.float32)
+      batch_ndims = array_ops.placeholder(dtypes.int32)
+      event_ndims = array_ops.placeholder(dtypes.int32)
+      shaper = _DistributionShape(
+          batch_ndims=batch_ndims, event_ndims=event_ndims)
+      y = array_ops.placeholder(dtypes.float32)
       y_value = np.ones((4, 2), dtype=y.dtype.as_numpy_dtype())
       feed_dict = {y: y_value, batch_ndims: 1, event_ndims: 1}
-      self.assertEqual(2, sess.run(shaper.get_ndims(y),
-                                   feed_dict=feed_dict))
+      self.assertEqual(2, sess.run(shaper.get_ndims(y), feed_dict=feed_dict))
 
   def testDistributionShapeGetDimsStatic(self):
     with self.test_session():
@@ -116,32 +116,29 @@ class DistributionShapeTest(tf.test.TestCase):
                           _constant(shaper.get_dims(x)))
       shaper = _DistributionShape(batch_ndims=1, event_ndims=2)
       x += self._random_sample((1, 1, 2, 2))
-      self._assertNdArrayEqual(
-          ([0], [1], [2, 3]),
-          _constant(shaper.get_dims(x)))
+      self._assertNdArrayEqual(([0], [1], [2, 3]),
+                               _constant(shaper.get_dims(x)))
       x += x
-      self._assertNdArrayEqual(
-          ([0], [1], [2, 3]),
-          _constant(shaper.get_dims(x)))
+      self._assertNdArrayEqual(([0], [1], [2, 3]),
+                               _constant(shaper.get_dims(x)))
 
   def testDistributionShapeGetDimsDynamic(self):
     with self.test_session() as sess:
       # Works for static {batch,event}_ndims despite unfed input.
       shaper = _DistributionShape(batch_ndims=1, event_ndims=2)
-      y = tf.placeholder(tf.float32, shape=(10, None, 5, 5))
+      y = array_ops.placeholder(dtypes.float32, shape=(10, None, 5, 5))
       self._assertNdArrayEqual([[0], [1], [2, 3]], _eval(shaper.get_dims(y)))
 
       # Works for deferred {batch,event}_ndims.
-      batch_ndims = tf.placeholder(tf.int32)
-      event_ndims = tf.placeholder(tf.int32)
-      shaper = _DistributionShape(batch_ndims=batch_ndims,
-                                  event_ndims=event_ndims)
-      y = tf.placeholder(tf.float32)
+      batch_ndims = array_ops.placeholder(dtypes.int32)
+      event_ndims = array_ops.placeholder(dtypes.int32)
+      shaper = _DistributionShape(
+          batch_ndims=batch_ndims, event_ndims=event_ndims)
+      y = array_ops.placeholder(dtypes.float32)
       y_value = self._random_sample((10, 3, 5, 5), dtype=y.dtype)
       feed_dict = {y: y_value, batch_ndims: 1, event_ndims: 2}
       self._assertNdArrayEqual(
-          ([0], [1], [2, 3]),
-          sess.run(shaper.get_dims(y), feed_dict=feed_dict))
+          ([0], [1], [2, 3]), sess.run(shaper.get_dims(y), feed_dict=feed_dict))
 
   def testDistributionShapeGetShapeStatic(self):
     with self.test_session():
@@ -189,30 +186,29 @@ class DistributionShapeTest(tf.test.TestCase):
     with self.test_session() as sess:
       # Works for static ndims despite unknown static shape.
       shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      y = tf.placeholder(tf.int32, shape=(None, None, 2))
+      y = array_ops.placeholder(dtypes.int32, shape=(None, None, 2))
       y_value = np.ones((3, 4, 2), dtype=y.dtype.as_numpy_dtype())
       self._assertNdArrayEqual(
           ([3], [4], [2]),
           sess.run(shaper.get_shape(y), feed_dict={y: y_value}))
 
       shaper = _DistributionShape(batch_ndims=0, event_ndims=1)
-      y = tf.placeholder(tf.int32, shape=(None, None))
+      y = array_ops.placeholder(dtypes.int32, shape=(None, None))
       y_value = np.ones((3, 2), dtype=y.dtype.as_numpy_dtype())
       self._assertNdArrayEqual(
           ([3], _empty_shape, [2]),
           sess.run(shaper.get_shape(y), feed_dict={y: y_value}))
 
       # Works for deferred {batch,event}_ndims.
-      batch_ndims = tf.placeholder(tf.int32)
-      event_ndims = tf.placeholder(tf.int32)
-      shaper = _DistributionShape(batch_ndims=batch_ndims,
-                                  event_ndims=event_ndims)
-      y = tf.placeholder(tf.float32)
+      batch_ndims = array_ops.placeholder(dtypes.int32)
+      event_ndims = array_ops.placeholder(dtypes.int32)
+      shaper = _DistributionShape(
+          batch_ndims=batch_ndims, event_ndims=event_ndims)
+      y = array_ops.placeholder(dtypes.float32)
       y_value = self._random_sample((3, 4, 2), dtype=y.dtype)
       feed_dict = {y: y_value, batch_ndims: 1, event_ndims: 1}
       self._assertNdArrayEqual(
-          ([3], [4], [2]),
-          sess.run(shaper.get_shape(y), feed_dict=feed_dict))
+          ([3], [4], [2]), sess.run(shaper.get_shape(y), feed_dict=feed_dict))
 
       y_value = self._random_sample((3, 2), dtype=y.dtype)
       feed_dict = {y: y_value, batch_ndims: 0, event_ndims: 1}
@@ -220,6 +216,8 @@ class DistributionShapeTest(tf.test.TestCase):
           ([3], _empty_shape, [2]),
           sess.run(shaper.get_shape(y), feed_dict=feed_dict))
 
+  # TODO(jvdillon): Delete this test once we make expand_batch_dim=False
+  # the unalterable default.
   def testDistributionShapeMakeBatchReadyStatic(self):
     with self.test_session() as sess:
       x = self._random_sample((1, 2, 3))
@@ -232,132 +230,262 @@ class DistributionShapeTest(tf.test.TestCase):
       self.assertAllEqual(x, should_be_x_value.eval())
 
       shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      x = tf.placeholder(tf.float32)
+      x = array_ops.placeholder(dtypes.float32)
       x_value = self._random_sample((3, 4, 2), dtype=x.dtype)
       feed_dict = {x: x_value}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual(
-          (3,),
-          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
       self.assertAllClose(
           np.transpose(np.reshape(x_value, (-1, 4, 2)), (1, 2, 0)),
           sess.run(y, feed_dict=feed_dict),
           rtol=1e-3)
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
       shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
-      x = tf.placeholder(tf.float32)
+      x = array_ops.placeholder(dtypes.float32)
       x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
       feed_dict = {x: x_value}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual(
-          (3,),
-          sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
       # The following check shows we don't need to manually set_shape in the
       # ShapeUtil.
       self.assertAllEqual((1, 1, None),
                           y.get_shape().ndims and y.get_shape().as_list())
       self.assertAllEqual(
-          np.ones((1, 1, 3), dtype=x.dtype.as_numpy_dtype()),
+          np.ones(
+              (1, 1, 3), dtype=x.dtype.as_numpy_dtype()),
           sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
+  def testDistributionShapeMakeBatchReadyStaticNoExpand(self):
+    with self.test_session() as sess:
+      x = self._random_sample((1, 2, 3))
+      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual(np.transpose(x, axes=(1, 2, 0)), y.eval())
+      self.assertAllEqual((1,), sample_shape.eval())
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(x, should_be_x_value.eval())
+
+      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
+      x = array_ops.placeholder(dtypes.float32)
+      x_value = self._random_sample((3, 4, 2), dtype=x.dtype)
+      feed_dict = {x: x_value}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllClose(
+          np.transpose(np.reshape(x_value, (-1, 4, 2)), (1, 2, 0)),
+          sess.run(y, feed_dict=feed_dict),
+          rtol=1e-3)
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+      shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
+      x = array_ops.placeholder(dtypes.float32)
+      x_value = np.ones([3], dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual([3], sess.run(sample_shape, feed_dict=feed_dict))
+      # The following check shows we don't need to manually set_shape in the
+      # ShapeUtil.
+      self.assertAllEqual([1, None],
+                          y.get_shape().ndims and y.get_shape().as_list())
+      self.assertAllEqual(
+          np.ones(
+              [1, 3], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+  # TODO(jvdillon): Delete this test once we make expand_batch_dim=False
+  # the unalterable default.
   def testDistributionShapeMakeBatchReadyDynamic(self):
     with self.test_session() as sess:
       shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      x = tf.placeholder(tf.float32, shape=(1, 2, 3))
+      x = array_ops.placeholder(dtypes.float32, shape=(1, 2, 3))
       x_value = self._random_sample(x.get_shape().as_list(), dtype=x.dtype)
-      y, sample_shape = sess.run(
-          shaper.make_batch_of_event_sample_matrices(x),
-          feed_dict={x: x_value})
+      y, sample_shape = sess.run(shaper.make_batch_of_event_sample_matrices(x),
+                                 feed_dict={x: x_value})
       self.assertAllEqual(np.transpose(x_value, (1, 2, 0)), y)
       self.assertAllEqual((1,), sample_shape)
 
       feed_dict = {x: x_value}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
+      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
       self.assertAllEqual(
-          (1,),
-          sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.transpose(x_value, (1, 2, 0)),
-          sess.run(y, feed_dict=feed_dict))
+          np.transpose(x_value, (1, 2, 0)), sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
-      batch_ndims = tf.placeholder(tf.int32)
-      event_ndims = tf.placeholder(tf.int32)
-      shaper = _DistributionShape(batch_ndims=batch_ndims,
-                                  event_ndims=event_ndims)
+      batch_ndims = array_ops.placeholder(dtypes.int32)
+      event_ndims = array_ops.placeholder(dtypes.int32)
+      shaper = _DistributionShape(
+          batch_ndims=batch_ndims, event_ndims=event_ndims)
 
       # batch_ndims = 1, event_ndims = 1.
-      x = tf.placeholder(tf.float32)
+      x = array_ops.placeholder(dtypes.float32)
       x_value = np.ones((3, 4, 2), dtype=x.dtype.as_numpy_dtype())
       feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 1}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
+      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
       self.assertAllEqual(
-          (3,),
-          sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones((4, 2, 3), dtype=x.dtype.as_numpy_dtype()),
+          np.ones(
+              (4, 2, 3), dtype=x.dtype.as_numpy_dtype()),
           sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
       # batch_ndims = 0, event_ndims = 0.
       x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
       feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 0}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
+      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
       self.assertAllEqual(
-          (3,),
-          sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones((1, 1, 3), dtype=x.dtype.as_numpy_dtype()),
+          np.ones(
+              (1, 1, 3), dtype=x.dtype.as_numpy_dtype()),
           sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
       # batch_ndims = 0, event_ndims = 1.
-      x_value = np.ones((1, 2,), dtype=x.dtype.as_numpy_dtype())
+      x_value = np.ones(
+          (
+              1,
+              2,), dtype=x.dtype.as_numpy_dtype())
       feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 1}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
+      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
       self.assertAllEqual(
-          (1,),
-          sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones((1, 2, 1), dtype=x.dtype.as_numpy_dtype()),
+          np.ones(
+              (1, 2, 1), dtype=x.dtype.as_numpy_dtype()),
           sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
       # batch_ndims = 1, event_ndims = 0.
       x_value = np.ones((1, 2), dtype=x.dtype.as_numpy_dtype())
       feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 0}
       y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
+      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
       self.assertAllEqual(
-          (1,),
-          sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones((2, 1, 1), dtype=x.dtype.as_numpy_dtype()),
+          np.ones(
+              (2, 1, 1), dtype=x.dtype.as_numpy_dtype()),
           sess.run(y, feed_dict=feed_dict))
       should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape)
-      self.assertAllEqual(x_value, sess.run(should_be_x_value,
-                                            feed_dict=feed_dict))
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+  def testDistributionShapeMakeBatchReadyDynamicNoExpand(self):
+    with self.test_session() as sess:
+      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
+      x = array_ops.placeholder(dtypes.float32, shape=(1, 2, 3))
+      x_value = self._random_sample(x.get_shape().as_list(), dtype=x.dtype)
+      y, sample_shape = sess.run(shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False),
+                                 feed_dict={x: x_value})
+      self.assertAllEqual(np.transpose(x_value, (1, 2, 0)), y)
+      self.assertAllEqual((1,), sample_shape)
+
+      feed_dict = {x: x_value}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.transpose(x_value, (1, 2, 0)), sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+      batch_ndims = array_ops.placeholder(dtypes.int32)
+      event_ndims = array_ops.placeholder(dtypes.int32)
+      shaper = _DistributionShape(
+          batch_ndims=batch_ndims, event_ndims=event_ndims)
+
+      # batch_ndims = 1, event_ndims = 1.
+      x = array_ops.placeholder(dtypes.float32)
+      x_value = np.ones((3, 4, 2), dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 1}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual([3], sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones(
+              [4, 2, 3], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+      # batch_ndims = 0, event_ndims = 0.
+      x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 0}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual([3], sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones(
+              [1, 3], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+      # batch_ndims = 0, event_ndims = 1.
+      x_value = np.ones([2], dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 1}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual([], sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones(
+              [2, 1], dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
+
+      # batch_ndims = 1, event_ndims = 0.
+      x_value = np.ones((1, 2), dtype=x.dtype.as_numpy_dtype())
+      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 0}
+      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+          x, expand_batch_dim=False)
+      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
+      self.assertAllEqual(
+          np.ones(
+              (2, 1, 1), dtype=x.dtype.as_numpy_dtype()),
+          sess.run(y, feed_dict=feed_dict))
+      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+          y, sample_shape, expand_batch_dim=False)
+      self.assertAllEqual(
+          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

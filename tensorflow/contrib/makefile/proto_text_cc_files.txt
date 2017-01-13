@@ -40,6 +40,7 @@ tensorflow/core/lib/io/iterator.cc
 tensorflow/core/lib/io/inputstream_interface.cc
 tensorflow/core/lib/io/inputbuffer.cc
 tensorflow/core/lib/io/format.cc
+tensorflow/core/lib/io/compression.cc
 tensorflow/core/lib/io/buffered_inputstream.cc
 tensorflow/core/lib/io/block_builder.cc
 tensorflow/core/lib/io/block.cc

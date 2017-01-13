@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """SequenceQueueingStateSaver and wrappers.
 
 Please see the reading data how-to for context.
@@ -27,7 +26,6 @@ import numbers
 
 import six
 
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -38,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 
@@ -73,12 +72,10 @@ class _SequenceInputWrapper(object):
         raise TypeError("context key must be string: %s" % k)
       if ":" in k:
         raise ValueError("context key may not have a colon: '%s'" % k)
-    sequences = dict(
-        (k, ops.convert_to_tensor(v, name="sequence_%s" % k))
-        for k, v in sequences.items())
-    context = dict(
-        (k, ops.convert_to_tensor(v, name="context_%s" % k))
-        for k, v in context.items())
+    sequences = dict((k, ops.convert_to_tensor(
+        v, name="sequence_%s" % k)) for k, v in sequences.items())
+    context = dict((k, ops.convert_to_tensor(
+        v, name="context_%s" % k)) for k, v in context.items())
     self._length = length
     self._key = key
     self._sequences = sequences
@@ -117,15 +114,16 @@ def _check_multiple_of(value, multiple_of):
       control_flow_ops.Assert(
           math_ops.logical_and(
               math_ops.equal(math_ops.mod(value, multiple_of), 0),
-              math_ops.not_equal(value, 0)),
-          [string_ops.string_join(
-              ["Tensor %s should be a multiple of: " % value.name,
-               string_ops.as_string(multiple_of),
-               ", but saw value: ",
-               string_ops.as_string(value),
-               ". Consider setting pad=True."])])]):
-    new_value = array_ops.identity(
-        value, name="multiple_of_checked")
+              math_ops.not_equal(value, 0)), [
+                  string_ops.string_join([
+                      "Tensor %s should be a multiple of: " % value.name,
+                      string_ops.as_string(multiple_of), ", but saw value: ",
+                      string_ops.as_string(value),
+                      ". Consider setting pad=True."
+                  ])
+              ])
+  ]):
+    new_value = array_ops.identity(value, name="multiple_of_checked")
     return new_value
 
 
@@ -148,12 +146,13 @@ def _check_rank(value, expected_rank):
   assert isinstance(value, ops.Tensor)
   with ops.control_dependencies([
       control_flow_ops.Assert(
-          math_ops.equal(expected_rank, array_ops.rank(value)),
-          [string_ops.string_join(
-              ["Rank of tensor %s should be: " % value.name,
-               string_ops.as_string(expected_rank),
-               ", shape received:"]),
-           array_ops.shape(value)])]):
+          math_ops.equal(expected_rank, array_ops.rank(value)), [
+              string_ops.string_join([
+                  "Rank of tensor %s should be: " % value.name,
+                  string_ops.as_string(expected_rank), ", shape received:"
+              ]), array_ops.shape(value)
+          ])
+  ]):
     new_value = array_ops.identity(value, name="rank_checked")
     if isinstance(expected_rank, ops.Tensor):
       expected_rank_value = tensor_util.constant_value(expected_rank)
@@ -163,8 +162,7 @@ def _check_rank(value, expected_rank):
       try:
         new_value.set_shape(new_value.get_shape().with_rank(expected_rank))
       except ValueError as e:
-        raise ValueError("Rank check failed for %s: %s"
-                         % (value.name, str(e)))
+        raise ValueError("Rank check failed for %s: %s" % (value.name, str(e)))
     return new_value
 
 
@@ -197,20 +195,22 @@ def _check_shape(value, expected_shape):
     value = _check_rank(value, len(expected_shape))
   with ops.control_dependencies([
       control_flow_ops.Assert(
-          math_ops.reduce_all(math_ops.equal(expected_shape, array_ops.shape(
-              value))), [string_ops.string_join([
-                  "Shape of tensor %s should be: " % value.name,
-                  string_ops.as_string(expected_shape), ", shape received: ",
-                  string_ops.as_string(array_ops.shape(value))
-              ])])
+          math_ops.reduce_all(
+              math_ops.equal(expected_shape, array_ops.shape(value))), [
+                  string_ops.string_join([
+                      "Shape of tensor %s should be: " % value.name,
+                      string_ops.as_string(expected_shape),
+                      ", shape received: ",
+                      string_ops.as_string(array_ops.shape(value))
+                  ])
+              ])
   ]):
     new_value = array_ops.identity(value, name="shape_checked")
     if not isinstance(expected_shape, ops.Tensor):
       try:
         new_value.set_shape(new_value.get_shape().merge_with(expected_shape))
       except ValueError as e:
-        raise ValueError("Shape check failed for %s: %s"
-                         % (value.name, str(e)))
+        raise ValueError("Shape check failed for %s: %s" % (value.name, str(e)))
     return new_value
 
 
@@ -254,14 +254,13 @@ def _check_dimensions(value, dimensions, expected_sizes, debug_prefix):
   value_shape = value.get_shape()
   if not isinstance(expected_sizes, ops.Tensor):
     if len(dimensions) != len(expected_sizes):
-      raise ValueError("len(dimensions) != len(expected_sizes): %d vs. %d" % (
-          len(dimensions), len(expected_sizes)))
+      raise ValueError("len(dimensions) != len(expected_sizes): %d vs. %d" %
+                       (len(dimensions), len(expected_sizes)))
     if value_shape.ndims is not None:
       if value_shape.ndims <= max(dimensions):
         raise ValueError(
             "%s: rank of input is not greater than max(dimensions): "
-            "%d vs. %d" % (debug_prefix,
-                           value.get_shape().ndims,
+            "%d vs. %d" % (debug_prefix, value.get_shape().ndims,
                            max(dimensions)))
       value_dims = value_shape.as_list()
       for d, s in zip(dimensions, expected_sizes):
@@ -270,18 +269,19 @@ def _check_dimensions(value, dimensions, expected_sizes, debug_prefix):
       try:
         value.set_shape(value.get_shape().merge_with(value_dims))
       except ValueError as e:
-        raise ValueError("Dimensions check failed for %s: %s"
-                         % (debug_prefix, str(e)))
+        raise ValueError("Dimensions check failed for %s: %s" %
+                         (debug_prefix, str(e)))
   with ops.control_dependencies([
       control_flow_ops.Assert(
-          math_ops.equal(expected_size, array_ops.shape(value)[dimension]),
-          [string_ops.string_join(
-              ["Dimension %d of tensor labeled %s should be: "
-               % (dimension, debug_prefix),
-               string_ops.as_string(expected_size),
-               ", shape received: ",
-               string_ops.as_string(array_ops.shape(value))])])
-      for (dimension, expected_size) in zip(dimensions, expected_sizes)]):
+          math_ops.equal(expected_size, array_ops.shape(value)[dimension]), [
+              string_ops.string_join([
+                  "Dimension %d of tensor labeled %s should be: " %
+                  (dimension, debug_prefix),
+                  string_ops.as_string(expected_size), ", shape received: ",
+                  string_ops.as_string(array_ops.shape(value))
+              ])
+          ]) for (dimension, expected_size) in zip(dimensions, expected_sizes)
+  ]):
     new_value = array_ops.identity(value, name="dims_checked_%s" % debug_prefix)
     return new_value
 
@@ -305,19 +305,16 @@ def _prepare_sequence_inputs(inputs, states):
     TypeError: if the dtype of length is not int32.
   """
   # Convert state initial values to tensors
-  states = dict((k, ops.convert_to_tensor(v, name="state_%s" % k))
-                for k, v in states.items())
+  states = dict((k, ops.convert_to_tensor(
+      v, name="state_%s" % k)) for k, v in states.items())
 
   def _assert_fully_defined(label, dict_, ignore_first_dimension=False):
     start_dimension = 1 if ignore_first_dimension else 0
     for k, v in dict_.items():
       if not v.get_shape()[start_dimension:].is_fully_defined():
-        raise ValueError(
-            "Shape for %s %s is not fully defined %s: %s"
-            % (label,
-               k,
-               "(ignoring first dimension)" if ignore_first_dimension else "",
-               v.get_shape()))
+        raise ValueError("Shape for %s %s is not fully defined %s: %s" %
+                         (label, k, "(ignoring first dimension)" if
+                          ignore_first_dimension else "", v.get_shape()))
 
   _assert_fully_defined("state", states)
   _assert_fully_defined("context", inputs.context)
@@ -328,8 +325,8 @@ def _prepare_sequence_inputs(inputs, states):
   # Get dictionaries' dtypes ordered by name - ordering is important
   # when switching between dicts and tuples for passing to Barrier.
   def _sort_by_name(d):
-    return collections.OrderedDict(
-        sorted(d.items(), key=lambda k_v: k_v[0]))
+    return collections.OrderedDict(sorted(d.items(), key=lambda k_v: k_v[0]))
+
   sorted_sequences = _sort_by_name(inputs.sequences)
   sorted_context = _sort_by_name(inputs.context)
   sorted_states = _sort_by_name(states)
@@ -338,11 +335,10 @@ def _prepare_sequence_inputs(inputs, states):
   key = _check_rank(inputs.key, 0)
 
   if length.dtype != dtypes.int32:
-    raise TypeError("length dtype must be int32, but recieved: %s"
-                    % length.dtype)
+    raise TypeError("length dtype must be int32, but recieved: %s" %
+                    length.dtype)
   if key.dtype != dtypes.string:
-    raise TypeError("key dtype must be string, but received: %s"
-                    % key.dtype)
+    raise TypeError("key dtype must be string, but received: %s" % key.dtype)
 
   return (length, key, sorted_states, sorted_sequences, sorted_context)
 
@@ -588,18 +584,24 @@ class NextQueuedSequenceBatch(object):
       # (reshape, shape, range, ...) would be placed on GPUs if available,
       # unless we explicitly tie them to CPU.
       with ops.colocate_with(self._state_saver._capacity_queue.queue_ref):
-        indices_where_not_done = array_ops.reshape(array_ops.where(
-            math_ops.logical_not(self._state_saver._sequence_is_done)), [-1])
+        indices_where_not_done = array_ops.reshape(
+            array_ops.where(
+                math_ops.logical_not(self._state_saver._sequence_is_done)),
+            [-1])
         keeping_next_key = array_ops.gather(
             self._state_saver._received_next_key, indices_where_not_done)
         value = _check_shape(
-            array_ops.identity(value, name="convert_%s" % state_name),
+            array_ops.identity(
+                value, name="convert_%s" % state_name),
             array_ops.shape(self._state_saver._received_states[state_name]))
         keeping_state = array_ops.gather(value, indices_where_not_done)
         return self._state_saver._barrier.insert_many(
             self._state_saver._get_barrier_index("state", state_name),
-            keeping_next_key, keeping_state,
+            keeping_next_key,
+            keeping_state,
             name="BarrierInsertState_%s" % state_name)
+
+
 # pylint: enable=protected-access
 
 
@@ -662,7 +664,7 @@ class SequenceQueueingStateSaver(object):
   batch_size = 32
   num_unroll = 20
   lstm_size = 8
-  cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+  cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
   initial_state_values = tf.zeros(cell.state_size, dtype=tf.float32)
 
   raw_data = get_single_input_from_input_reader()
@@ -681,10 +683,10 @@ class SequenceQueueingStateSaver(object):
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
-  lstm_output, _ = tf.nn.state_saving_rnn(
+  lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
     cell,
     inputs_by_time,
     state_saver=batch,
@@ -795,9 +797,8 @@ class SequenceQueueingStateSaver(object):
     # store one token (its value doesn't matter) for each input example, and
     # dequeue a token for each completed example. Since the capacity of this
     # queue is limited the enqueue operation will block if capacity is reached.
-    self._capacity_queue = data_flow_ops.FIFOQueue(capacity=capacity,
-                                                   dtypes=[dtypes.int32],
-                                                   shapes=[[]])
+    self._capacity_queue = data_flow_ops.FIFOQueue(
+        capacity=capacity, dtypes=[dtypes.int32], shapes=[[]])
     # Place all operations on the CPU. Barriers and queues are only implemented
     # for CPU, but all the other book-keeping operations
     # (reshape, shape, range, ...) would be placed on GPUs if available,
@@ -816,12 +817,11 @@ class SequenceQueueingStateSaver(object):
         if ":" in k:
           raise ValueError("state name may not have a colon: '%s'" % k)
 
-      op_vars = ([input_length, input_key]
-                 + list(input_sequences.values())
-                 + list(input_context.values()))
+      op_vars = ([input_length, input_key] + list(input_sequences.values()) +
+                 list(input_context.values()))
       with ops.name_scope(name, "InputQueueingStateSaver", op_vars) as scope:
-        inputs = _SequenceInputWrapper(
-            input_length, input_key, input_sequences, input_context)
+        inputs = _SequenceInputWrapper(input_length, input_key, input_sequences,
+                                       input_context)
         self._batch_size = batch_size
         self._num_unroll = num_unroll
         self._name = scope
@@ -833,29 +833,32 @@ class SequenceQueueingStateSaver(object):
          self._sorted_context) = _prepare_sequence_inputs(inputs,
                                                           initial_states)
         self._padded_length = array_ops.identity(
-            array_ops.shape(
-                six.next(six.itervalues(self._sorted_sequences)))[0],
+            array_ops.shape(six.next(six.itervalues(self._sorted_sequences)))[
+                0],
             name="padded_length")  # The name is useful for debugging
-        self._padded_length = _check_multiple_of(
-            self._padded_length, self._num_unroll)
+        self._padded_length = _check_multiple_of(self._padded_length,
+                                                 self._num_unroll)
 
         # sequences should have length == all matching
         self._sorted_sequences = collections.OrderedDict(
-            (k, _check_dimensions(v, [0], [self._padded_length],
-                                  debug_prefix="sorted_sequences_%s" % k))
+            (k, _check_dimensions(
+                v, [0], [self._padded_length],
+                debug_prefix="sorted_sequences_%s" % k))
             for k, v in self._sorted_sequences.items())
         self._uninitialized_states = self._sorted_states
 
         # Once this is set, self._get_barrier_*_index are available for use.
-        self._store_index_maps(
-            self._sorted_sequences, self._sorted_context, self._sorted_states)
+        self._store_index_maps(self._sorted_sequences, self._sorted_context,
+                               self._sorted_states)
 
         # Make sure that the length is <= the padded_length
         with ops.control_dependencies([
             control_flow_ops.Assert(
-                math_ops.less_equal(self._length, self._padded_length),
-                ["Input length should be <= than length from sequences:",
-                 self._length, " vs. ", self._padded_length])]):
+                math_ops.less_equal(self._length, self._padded_length), [
+                    "Input length should be <= than length from sequences:",
+                    self._length, " vs. ", self._padded_length
+                ])
+        ]):
           self._length = array_ops.identity(self._length)
 
         # Only create barrier; enqueu and dequeue operations happen when you
@@ -951,10 +954,10 @@ class SequenceQueueingStateSaver(object):
       The operation that closes the barrier and the FIFOQueue.
     """
     with ops.name_scope(name, "SQSSClose", [self._prefetch_op]) as name:
-      barrier_close = self.barrier.close(
-          cancel_pending_enqueues, "BarrierClose")
-      fifo_queue_close = self._capacity_queue.close(
-          cancel_pending_enqueues, "FIFOClose")
+      barrier_close = self.barrier.close(cancel_pending_enqueues,
+                                         "BarrierClose")
+      fifo_queue_close = self._capacity_queue.close(cancel_pending_enqueues,
+                                                    "FIFOClose")
       return control_flow_ops.group(barrier_close, fifo_queue_close, name=name)
 
   def _store_index_maps(self, sequences, context, states):
@@ -970,15 +973,19 @@ class SequenceQueueingStateSaver(object):
     assert isinstance(sequences, dict)
     assert isinstance(context, dict)
     assert isinstance(states, dict)
-    self._name_to_index = dict((name, ix) for (ix, name) in enumerate(
-        ["__length", "__total_length", "__next_key",
-         "__sequence", "__sequence_count"]
-        + ["__sequence__%s" % k for k in sequences.keys()]
-        + ["__context__%s" % k for k in context.keys()]
-        + ["__state__%s" % k for k in states.keys()]))
+    self._name_to_index = dict(
+        (name, ix)
+        for (ix, name) in enumerate([
+            "__length", "__total_length", "__next_key", "__sequence",
+            "__sequence_count"
+        ] + ["__sequence__%s" % k for k in sequences.keys()] + [
+            "__context__%s" % k for k in context.keys()
+        ] + ["__state__%s" % k for k in states.keys()]))
     self._index_to_name = [
-        name for (name, _) in sorted(
-            self._name_to_index.items(), key=lambda n_ix: n_ix[1])]
+        name
+        for (name, _) in sorted(
+            self._name_to_index.items(), key=lambda n_ix: n_ix[1])
+    ]
 
   def _get_barrier_length_index(self):
     return self._name_to_index["__length"]
@@ -1011,26 +1018,33 @@ class SequenceQueueingStateSaver(object):
     sequence_dtypes = [v.dtype for k, v in self._sorted_sequences.items()]
     context_dtypes = [v.dtype for k, v in self._sorted_context.items()]
     state_dtypes = [v.dtype for k, v in self._sorted_states.items()]
-    types = ([dtypes.int32,   # length
-              dtypes.int32,   # total_length
-              dtypes.string,  # next_keys
-              dtypes.int32,   # sequence
-              dtypes.int32]   # expanded_sequence_count
+    types = ([
+        dtypes.int32,  # length
+        dtypes.int32,  # total_length
+        dtypes.string,  # next_keys
+        dtypes.int32,  # sequence
+        dtypes.int32
+    ]  # expanded_sequence_count
              + sequence_dtypes + context_dtypes + state_dtypes)
     sequence_shapes = [
         [self._num_unroll] + self._sorted_sequences[k].get_shape().as_list()[1:]
-        for k in self._sorted_sequences.keys()]
+        for k in self._sorted_sequences.keys()
+    ]
     context_shapes = [
         self._sorted_context[k].get_shape().as_list()
-        for k in self._sorted_context.keys()]
+        for k in self._sorted_context.keys()
+    ]
     state_shapes = [
         self._sorted_states[k].get_shape().as_list()
-        for k in self._sorted_states.keys()]
-    shapes = ([(),  # length
-               (),  # total_length
-               (),  # next_keys
-               (),  # sequence
-               ()]  # expanded_sequence_count
+        for k in self._sorted_states.keys()
+    ]
+    shapes = ([
+        (),  # length
+        (),  # total_length
+        (),  # next_keys
+        (),  # sequence
+        ()
+    ]  # expanded_sequence_count
               + sequence_shapes + context_shapes + state_shapes)
 
     self._barrier = data_flow_ops.Barrier(types=types, shapes=shapes)
@@ -1059,44 +1073,58 @@ class SequenceQueueingStateSaver(object):
     expanded_total_length = self._length * ones
     expanded_sequence_count = sequence_count * ones
     current_keys = string_ops.string_join(
-        [string_ops.as_string(sequence, width=5, fill="0"),
-         "_of_",
-         string_ops.as_string(sequence_count, width=5, fill="0"),
-         ":",
-         self._key],
+        [
+            string_ops.as_string(
+                sequence, width=5, fill="0"), "_of_", string_ops.as_string(
+                    sequence_count, width=5, fill="0"), ":", self._key
+        ],
         name="StringJoinCurrentKeys")
     next_keys = array_ops.concat(
-        0, [array_ops.slice(current_keys, [1], [-1]),
-            array_ops.expand_dims(string_ops.string_join(
-                ["STOP:", self._key], name="StringJoinStop"), 0)],
+        [
+            array_ops.slice(current_keys, [1], [-1]), array_ops.expand_dims(
+                string_ops.string_join(
+                    ["STOP:", self._key], name="StringJoinStop"),
+                0)
+        ],
+        0,
         name="concat_next_keys")
-    reshaped_sequences = collections.OrderedDict(
-        (k, _check_dimensions(
+    reshaped_sequences = collections.OrderedDict((
+        k,
+        _check_dimensions(
             # Reshape sequences to sequence_count rows
             array_ops.reshape(
-                v, array_ops.concat(
-                    0, [array_ops.expand_dims(sequence_count, 0),
+                v,
+                array_ops.concat(
+                    [
+                        array_ops.expand_dims(sequence_count, 0),
                         array_ops.expand_dims(self._num_unroll, 0),
-                        v.get_shape().as_list()[1:]],
+                        v.get_shape().as_list()[1:]
+                    ],
+                    0,
                     name="concat_sequences_%s" % k),
                 name="reshape_sequences_%s" % k),
             [0, 1] + list(range(2, v.get_shape().ndims + 1)),
             [sequence_count, self._num_unroll] + v.get_shape().as_list()[1:],
-            debug_prefix="reshaped_sequences_%s" % k))
-        for k, v in self._sorted_sequences.items())
+            debug_prefix="reshaped_sequences_%s" %
+            k)) for k, v in self._sorted_sequences.items())
     expanded_context = collections.OrderedDict(
-        (k, _check_dimensions(
-            # Copy context to be sequence_count rows
-            array_ops.tile(
-                array_ops.expand_dims(v, 0),
-                array_ops.concat(
-                    0, [array_ops.expand_dims(sequence_count, 0),
-                        [1] * v.get_shape().ndims],
-                    name="concat_context_%s" % k),
-                name="tile_context_%s" % k),
-            [0] + list(range(1, v.get_shape().ndims + 1)),
-            [sequence_count] + v.get_shape().as_list(),
-            debug_prefix="expanded_context_%s" % k))
+        (
+            k,
+            _check_dimensions(
+                # Copy context to be sequence_count rows
+                array_ops.tile(
+                    array_ops.expand_dims(v, 0),
+                    array_ops.concat(
+                        [
+                            array_ops.expand_dims(sequence_count, 0),
+                            [1] * v.get_shape().ndims
+                        ],
+                        0,
+                        name="concat_context_%s" % k),
+                    name="tile_context_%s" % k),
+                [0] + list(range(1, v.get_shape().ndims + 1)),
+                [sequence_count] + v.get_shape().as_list(),
+                debug_prefix="expanded_context_%s" % k))
         for k, v in self._sorted_context.items())
 
     # Storing into the barrier, for each current_key:
@@ -1106,64 +1134,66 @@ class SequenceQueueingStateSaver(object):
     #   states (using initial_states).
     insert_sequence_op = self._barrier.insert_many(
         self._get_barrier_sequence_index(),
-        current_keys, sequence,
+        current_keys,
+        sequence,
         name="BarrierInsertSequence")
     insert_sequence_count_op = self._barrier.insert_many(
         self._get_barrier_sequence_count_index(),
-        current_keys, expanded_sequence_count,
+        current_keys,
+        expanded_sequence_count,
         name="BarrierInsertSequenceCount")
     insert_next_key_op = self._barrier.insert_many(
         self._get_barrier_next_key_index(),
-        current_keys, next_keys,
+        current_keys,
+        next_keys,
         name="BarrierInsertNextKey")
     insert_length_op = self._barrier.insert_many(
         self._get_barrier_length_index(),
-        current_keys, expanded_length,
+        current_keys,
+        expanded_length,
         name="BarrierInsertLength")
     insert_total_length_op = self._barrier.insert_many(
         self._get_barrier_total_length_index(),
-        current_keys, expanded_total_length,
+        current_keys,
+        expanded_total_length,
         name="BarrierInsertTotalLength")
-    insert_context_ops = dict(
-        (name, self._barrier.insert_many(
-            self._get_barrier_index("context", name),
-            current_keys, value,
-            name="BarrierInsertContext_%s" % name))
-        for (name, value) in expanded_context.items())
-    insert_sequences_ops = dict(
-        (name, self._barrier.insert_many(
-            self._get_barrier_index("sequence", name),
-            current_keys, value,
-            name="BarrierInsertSequences_%s" % name))
-        for (name, value) in reshaped_sequences.items())
+    insert_context_ops = dict((name, self._barrier.insert_many(
+        self._get_barrier_index("context", name),
+        current_keys,
+        value,
+        name="BarrierInsertContext_%s" % name))
+                              for (name, value) in expanded_context.items())
+    insert_sequences_ops = dict((name, self._barrier.insert_many(
+        self._get_barrier_index("sequence", name),
+        current_keys,
+        value,
+        name="BarrierInsertSequences_%s" % name))
+                                for (name, value) in reshaped_sequences.items())
 
     # An op that blocks if we reached capacity in number of active examples.
     TOKEN_WITH_IGNORED_VALUE = 21051976  # pylint: disable=invalid-name
-    insert_capacity_token_op = self._capacity_queue.enqueue((
-        TOKEN_WITH_IGNORED_VALUE,))
+    insert_capacity_token_op = self._capacity_queue.enqueue(
+        (TOKEN_WITH_IGNORED_VALUE,))
 
     # Insert just the initial state.  Specifically force this to run
     # the insert sequence op *first* so that the Barrier receives
     # an insert with *all* the segments and the segments all get the same index.
-    with ops.control_dependencies([insert_sequence_op,
-                                   insert_capacity_token_op]):
+    with ops.control_dependencies(
+        [insert_sequence_op, insert_capacity_token_op]):
       insert_initial_state_ops = dict(
           (name, self._barrier.insert_many(
               self._get_barrier_index("state", name),
-              array_ops.pack([current_keys[0]]), array_ops.pack([value]),
+              array_ops.stack([current_keys[0]]),
+              array_ops.stack([value]),
               name="BarrierInitialInsertState_%s" % name))
           for (name, value) in self._uninitialized_states.items())
 
-    all_inserts = (
-        [insert_capacity_token_op,
-         insert_sequence_op,
-         insert_sequence_count_op,
-         insert_next_key_op,
-         insert_length_op,
-         insert_total_length_op]
-        + list(insert_initial_state_ops.values())
-        + list(insert_context_ops.values())
-        + list(insert_sequences_ops.values()))
+    all_inserts = ([
+        insert_capacity_token_op, insert_sequence_op, insert_sequence_count_op,
+        insert_next_key_op, insert_length_op, insert_total_length_op
+    ] + list(insert_initial_state_ops.values()) +
+                   list(insert_context_ops.values()) +
+                   list(insert_sequences_ops.values()))
 
     self._prefetch_op = control_flow_ops.group(
         *all_inserts, name="StateSaverPrefetchGroup")
@@ -1173,22 +1203,20 @@ class SequenceQueueingStateSaver(object):
     """
     # Ops for reading from the barrier.  These ops must be run in a
     # different thread than the prefetcher op to avoid blocking.
-    received = self._barrier.take_many(self._batch_size,
-                                       self._allow_small_batch,
-                                       name="BarrierTakeMany")
+    received = self._barrier.take_many(
+        self._batch_size, self._allow_small_batch, name="BarrierTakeMany")
 
     self._received_indices = received[0]
     self._received_keys = received[1]
     received_values = received[2]
 
-    self._received_sequence = received_values[
-        self._get_barrier_sequence_index()]
+    self._received_sequence = received_values[self._get_barrier_sequence_index(
+    )]
     self._received_sequence_count = received_values[
         self._get_barrier_sequence_count_index()]
-    self._received_next_key = received_values[
-        self._get_barrier_next_key_index()]
-    self._received_length = received_values[
-        self._get_barrier_length_index()]
+    self._received_next_key = received_values[self._get_barrier_next_key_index(
+    )]
+    self._received_length = received_values[self._get_barrier_length_index()]
     self._received_total_length = received_values[
         self._get_barrier_total_length_index()]
     self._received_context = collections.OrderedDict(
@@ -1198,8 +1226,8 @@ class SequenceQueueingStateSaver(object):
         (name, received_values[self._get_barrier_index("sequence", name)])
         for name in self._sorted_sequences.keys())
 
-    self._received_batch_size = array_ops.squeeze(array_ops.shape(
-        self._received_length))
+    self._received_batch_size = array_ops.squeeze(
+        array_ops.shape(self._received_length))
 
     # Which examples are we done with?
     self._sequence_is_done = (
@@ -1207,24 +1235,32 @@ class SequenceQueueingStateSaver(object):
 
     # Compute the number of finished sequences and dequeue as many tokens from
     # the capacity queue.
-    finished_sequences = (math_ops.reduce_sum(math_ops.cast(
-        self._sequence_is_done, dtypes.int32)))
+    finished_sequences = (math_ops.reduce_sum(
+        math_ops.cast(self._sequence_is_done, dtypes.int32)))
     # TODO(ebrevdo): convert to dequeue_up_to when FIFOQueue supports it.
     dequeue_op = self._capacity_queue.dequeue_many(finished_sequences)
 
     # Tie the dequeue_op to the received_state, such that it is definitely
     # carried out.
     with ops.control_dependencies([dequeue_op]):
-      self._received_states = collections.OrderedDict((
-          name, array_ops.identity(received_values[self._get_barrier_index(
+      self._received_states = collections.OrderedDict(
+          (name, array_ops.identity(received_values[self._get_barrier_index(
               "state", name)])) for name in self._sorted_states.keys())
     self._next_batch = NextQueuedSequenceBatch(self)
 
 
-def batch_sequences_with_states(input_key, input_sequences, input_context,
-                                input_length, initial_states, num_unroll,
-                                batch_size, num_threads=3, capacity=1000,
-                                allow_small_batch=True, pad=True, name=None):
+def batch_sequences_with_states(input_key,
+                                input_sequences,
+                                input_context,
+                                input_length,
+                                initial_states,
+                                num_unroll,
+                                batch_size,
+                                num_threads=3,
+                                capacity=1000,
+                                allow_small_batch=True,
+                                pad=True,
+                                name=None):
   """Creates batches of segments of sequential input.
 
   This method creates a `SequenceQueueingStateSaver` (SQSS) and adds it to
@@ -1267,7 +1303,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   num_unroll = 20
   num_enqueue_threads = 3
   lstm_size = 8
-  cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
+  cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
 
   key, sequences, context = my_parser(raw_data)
   initial_state_values = tf.zeros((state_size,), dtype=tf.float32)
@@ -1285,10 +1321,10 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
   inputs = batch.sequences["input"]
   context_label = batch.context["label"]
 
-  inputs_by_time = tf.split(1, num_unroll, inputs)
+  inputs_by_time = tf.split(value=inputs, num_or_size_splits=num_unroll, axis=1)
   assert len(inputs_by_time) == num_unroll
 
-  lstm_output, _ = tf.nn.state_saving_rnn(
+  lstm_output, _ = tf.contrib.rnn.static_state_saving_rnn(
     cell,
     inputs_by_time,
     state_saver=batch,
@@ -1373,9 +1409,8 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
       not enough shape information is available from inputs to build
       the state saver.
   """
-  tensor_list = (
-      list(input_sequences.values()) + list(input_context.values()) +
-      list(initial_states.values()))
+  tensor_list = (list(input_sequences.values()) + list(input_context.values()) +
+                 list(initial_states.values()))
   with ops.name_scope(name, "batch_sequences_with_states", tensor_list) as name:
     if pad:
       length, input_sequences = _padding(input_sequences, num_unroll)
@@ -1389,19 +1424,22 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
                 math_ops.logical_and(
                     math_ops.equal(value_length % num_unroll, 0),
                     math_ops.not_equal(value_length, 0)),
-                [string_ops.string_join(
-                    ["Tensor %s first dimension should be a multiple of: "
-                     % key,
-                     string_ops.as_string(num_unroll),
-                     ", but saw value: ",
-                     string_ops.as_string(value_length),
-                     ". Consider setting pad=True."])])]):
+                [
+                    string_ops.string_join([
+                        "Tensor %s first dimension should be a multiple of: " %
+                        key, string_ops.as_string(num_unroll),
+                        ", but saw value: ", string_ops.as_string(value_length),
+                        ". Consider setting pad=True."
+                    ])
+                ])
+        ]):
           input_sequences[key] = array_ops.identity(
               value, name="multiple_of_checked")
 
     # setup stateful queue reader
     stateful_reader = SequenceQueueingStateSaver(
-        batch_size, num_unroll,
+        batch_size,
+        num_unroll,
         input_length=input_length,
         input_key=input_key,
         input_sequences=input_sequences,
@@ -1415,7 +1453,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
                    math_ops.cast(barrier.ready_size(), dtypes.float32))
 
     q_runner = queue_runner.QueueRunner(
-        stateful_reader, [stateful_reader.prefetch_op]*num_threads,
+        stateful_reader, [stateful_reader.prefetch_op] * num_threads,
         queue_closed_exception_types=(errors.OutOfRangeError,
                                       errors.CancelledError))
     queue_runner.add_queue_runner(q_runner)
@@ -1457,10 +1495,13 @@ def _padding(sequences, num_unroll):
   length = lengths[0]
   all_lengths_equal = [
       control_flow_ops.Assert(
-          math_ops.equal(l, length), [string_ops.string_join(
-              ["All sequence lengths must match, but received lengths: ",
-               string_ops.as_string(lengths)])])
-      for l in lengths]
+          math_ops.equal(l, length), [
+              string_ops.string_join([
+                  "All sequence lengths must match, but received lengths: ",
+                  string_ops.as_string(lengths)
+              ])
+          ]) for l in lengths
+  ]
 
   length = control_flow_ops.with_dependencies(all_lengths_equal, length)
   unroll = array_ops.constant(num_unroll)
@@ -1474,12 +1515,12 @@ def _padding(sequences, num_unroll):
     # the shape of the paddings that we concat with the original value will be
     # [num_paddings, tf.shape(value)[1], tf.shape(value)[2], ...,
     #  tf.shape(value)[tf.rank(value) - 1])]
-    padding_shape = array_ops.concat(0, (
-        num_paddings, array_ops.shape(value)[1:]))
+    padding_shape = array_ops.concat((num_paddings, array_ops.shape(value)[1:]),
+                                     0)
     # 2. fill padding shape with dummies
-    dummy = array_ops.constant("" if value.dtype == dtypes.string else 0,
-                               dtype=value.dtype)
+    dummy = array_ops.constant(
+        "" if value.dtype == dtypes.string else 0, dtype=value.dtype)
     paddings = array_ops.fill(dims=padding_shape, value=dummy)
     # 3. concat values with paddings
-    padded_sequences[key] = array_ops.concat(0, [value, paddings])
+    padded_sequences[key] = array_ops.concat([value, paddings], 0)
   return length, padded_sequences

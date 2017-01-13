@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-
 """
 
 import ctypes
@@ -30,6 +29,19 @@ import importlib
 import inspect
 import sys
 import traceback
+
+
+# TODO(drpng): write up instructions for editing this file in a doc and point to
+# the doc instead.
+# If you want to edit this file to expose modules in public tensorflow API, you
+# need to follow these steps:
+# 1. Consult with tensorflow team and get approval for adding a new API to the
+#    public interface.
+# 2. Document the module in the gen_docs_combined.py.
+# 3. Import the module in the main tensorflow namespace by adding an import
+#    statement in this file.
+# 4. Sanitize the entry point by making sure that your module does not expose
+#    transitively imported modules used for implementation, such as os, sys.
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
@@ -53,10 +65,10 @@ try:
     # use `dlopen()` for dynamic loading.
     from tensorflow.python import pywrap_tensorflow
 except ImportError:
-  msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
-you should not try to import tensorflow from its source directory;
-please exit the tensorflow source tree, and relaunch your python interpreter
-from there.""" % traceback.format_exc()
+  msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
+See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#import_error\n
+for some common reasons and solutions.  Include the entire stack trace
+above this error message when asking for help.""" % traceback.format_exc()
   raise ImportError(msg)
 
 # Protocol buffers
@@ -64,6 +76,7 @@ from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
+from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
@@ -82,10 +95,15 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
+from tensorflow.python.layers import layers
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops import sets
+from tensorflow.python.saved_model import saved_model
+from tensorflow.python.util import compat
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 from tensorflow.python.summary import summary
@@ -115,12 +133,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
@@ -151,6 +169,7 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
 # The following symbols are kept for compatibility. It is our plan
@@ -162,6 +181,7 @@ _allowed_symbols.extend([
     'neg',  # use tf.negative instead.
     'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
+    'concat_v2',  # use tf.concat instead
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
@@ -174,7 +194,6 @@ _allowed_symbols.extend([
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
-    'platform',  ## This is included by the tf.learn main template.
     'pywrap_tensorflow',
 ])
 
@@ -216,17 +235,21 @@ _allowed_symbols.extend([
     'graph_util',
     'image',
     'logging',
+    'losses',
+    'metrics',
     'newaxis',
     'nn',
     'python_io',
-    'resources',
     'resource_loader',
+    'saved_model',
     'sdca',
+    'sets',
     'summary',
     'sysconfig',
     'test',
     'train',
     'user_ops',
+    'layers',
 ])
 
 # Variables framework.versions:
@@ -240,10 +263,11 @@ _allowed_symbols.extend([
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
-                     compat, constant_op, control_flow_ops, functional_ops,
-                     histogram_ops, io_ops, math_ops, nn, resource_loader,
-                     resources, script_ops, session_ops, sparse_ops, state_ops,
-                     string_ops, summary, tensor_array_ops, train])
+                     compat, constant_op, control_flow_ops, confusion_matrix_m,
+                     functional_ops, histogram_ops, io_ops, losses, math_ops,
+                     metrics, nn, resource_loader, sets, script_ops,
+                     session_ops, sparse_ops, state_ops, string_ops, summary,
+                     tensor_array_ops, train, layers])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

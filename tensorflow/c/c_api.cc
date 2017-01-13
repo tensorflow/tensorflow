@@ -20,6 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#ifndef __ANDROID__
+#include "tensorflow/cc/saved_model/loader.h"
+#endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -79,6 +83,12 @@ extern "C" {
 
 // --------------------------------------------------------------------------
 const char* TF_Version() { return TF_VERSION_STRING; }
+
+// --------------------------------------------------------------------------
+size_t TF_DataTypeSize(TF_DataType dt) {
+  return static_cast<size_t>(
+      tensorflow::DataTypeSize(static_cast<DataType>(dt)));
+}
 
 // --------------------------------------------------------------------------
 struct TF_Status {
@@ -152,11 +162,13 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
   const auto proto_size = in.ByteSize();
-  void* buf = malloc(proto_size);
+  void* buf = tensorflow::port::Malloc(proto_size);
   in.SerializeToArray(buf, proto_size);
   out->data = buf;
   out->length = proto_size;
-  out->data_deallocator = [](void* data, size_t length) { free(data); };
+  out->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
   return Status::OK();
 }
 
@@ -280,13 +292,15 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
 TF_Buffer* TF_NewBuffer() { return new TF_Buffer{nullptr, 0, nullptr}; }
 
 TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
-  void* copy = malloc(proto_len);
+  void* copy = tensorflow::port::Malloc(proto_len);
   memcpy(copy, proto, proto_len);
 
   TF_Buffer* buf = new TF_Buffer;
   buf->data = copy;
   buf->length = proto_len;
-  buf->data_deallocator = [](void* data, size_t length) { free(data); };
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
   return buf;
 }
 
@@ -687,7 +701,7 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
 TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
 void TF_DeleteLibraryHandle(TF_Library* lib_handle) {
-  free(const_cast<void*>(lib_handle->op_list.data));
+  tensorflow::port::Free(const_cast<void*>(lib_handle->op_list.data));
   delete lib_handle;
 }
 
@@ -1337,6 +1351,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
                   metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
                 });
       LIST_CASE(tensor, TF_ATTR_TENSOR);
+      LIST_CASE(tensor, TF_ATTR_FUNC);
 #undef LIST_CASE
       // All lists empty, determine the type from the OpDef.
       if (metadata.list_size == 0) {
@@ -1358,6 +1373,8 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
             metadata.type = TF_ATTR_SHAPE;
           } else if (typestr == "list(tensor)") {
             metadata.type = TF_ATTR_TENSOR;
+          } else if (typestr == "list(func)") {
+            metadata.type = TF_ATTR_FUNC;
           } else {
             status->status = InvalidArgument(
                 "Attribute '", attr_name,
@@ -1650,6 +1667,20 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
   opts->opts.prefix = prefix;
 }
 
+static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
+                                      const TF_ImportGraphDefOptions* opts,
+                                      TF_Status* status)
+    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+  const int last_node_id = graph->graph.num_node_ids();
+  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
+                                              &graph->refiner);
+  if (!status->status.ok()) return;
+  for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
+    auto* node = graph->graph.FindNodeId(i);
+    if (node != nullptr) graph->name_map[node->name()] = node;
+  }
+}
+
 void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
                             const TF_ImportGraphDefOptions* opts,
                             TF_Status* status) {
@@ -1659,14 +1690,7 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
     return;
   }
   mutex_lock l(graph->mu);
-  const int last_node_id = graph->graph.num_node_ids();
-  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
-                                              &graph->refiner);
-  if (!status->status.ok()) return;
-  for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
-    auto* node = graph->graph.FindNodeId(i);
-    if (node != nullptr) graph->name_map[node->name()] = node;
-  }
+  GraphImportGraphDefLocked(graph, def, opts, status);
 }
 
 // TF_Session functions ----------------------------------------------
@@ -1686,6 +1710,62 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     return NULL;
   }
 }
+
+#ifndef __ANDROID__
+TF_Session* TF_LoadSessionFromSavedModel(
+    const TF_SessionOptions* session_options, const TF_Buffer* run_options,
+    const char* export_dir, const char* const* tags, int tags_len,
+    TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status) {
+  mutex_lock l(graph->mu);
+
+  if (!graph->name_map.empty()) {
+    status->status = InvalidArgument("Graph is non-empty.");
+    return nullptr;
+  }
+
+  RunOptions run_options_proto;
+  if (run_options != nullptr &&
+      !run_options_proto.ParseFromArray(run_options->data,
+                                        run_options->length)) {
+    status->status = InvalidArgument("Unparseable RunOptions proto");
+    return nullptr;
+  }
+
+  std::unordered_set<tensorflow::string> tag_set;
+  for (int i = 0; i < tags_len; i++) {
+    tag_set.insert(tensorflow::string(tags[i]));
+  }
+
+  tensorflow::SavedModelBundle bundle;
+  status->status =
+      tensorflow::LoadSavedModel(session_options->options, run_options_proto,
+                                 export_dir, tag_set, &bundle);
+  if (!status->status.ok()) return nullptr;
+
+  // Create a TF_Graph from the MetaGraphDef. This is safe as long as Session
+  // extends using GraphDefs. The Graph instance is different, but equivalent
+  // to the one used to create the session.
+  //
+  // TODO(jhseu): When Session is modified to take Graphs instead of
+  // GraphDefs, return the Graph generated in LoadSavedModel().
+  TF_ImportGraphDefOptions* import_opts = TF_NewImportGraphDefOptions();
+  GraphImportGraphDefLocked(graph, bundle.meta_graph_def.graph_def(),
+                            import_opts, status);
+  TF_DeleteImportGraphDefOptions(import_opts);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  if (meta_graph_def != nullptr) {
+    status->status = MessageToBuffer(bundle.meta_graph_def, meta_graph_def);
+    if (!status->status.ok()) return nullptr;
+  }
+
+  TF_Session* session = new TF_Session(bundle.session.release(), graph);
+
+  graph->num_sessions += 1;
+  session->last_num_graph_nodes = graph->graph.num_node_ids();
+  return session;
+}
+#endif  // __ANDROID__
 
 void TF_CloseSession(TF_Session* s, TF_Status* status) {
   status->status = s->session->Close();

@@ -48,7 +48,6 @@ operators to your graph.
 @@less_equal
 @@greater
 @@greater_equal
-@@select
 @@where
 
 ## Debugging Operations
@@ -115,9 +114,10 @@ def Assert(condition, data, summarize=None, name=None):
   NOTE: To ensure that Assert executes, one usually attaches a dependency:
 
   ```python
-   # Ensure maximum element of x is smaller or equal to 1
+  # Ensure maximum element of x is smaller or equal to 1
   assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  x = tf.with_dependencies([assert_op], x)
+  with tf.control_dependencies([assert_op]):
+    ... code using x ...
   ```
 
   Args:
@@ -175,7 +175,7 @@ def _Identity(data, name=None):
         dense_shape = array_ops.identity(dense_shape, name="dense_shape")
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = array_ops.identity(data.shape, name="dense_shape")
+      dense_shape = array_ops.identity(data.dense_shape, name="dense_shape")
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
@@ -197,7 +197,7 @@ def _NextIteration(data, name=None):
         dense_shape = next_iteration(dense_shape, name="dense_shape")
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = next_iteration(data.shape, name="dense_shape")
+      dense_shape = next_iteration(data.dense_shape, name="dense_shape")
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
@@ -251,10 +251,10 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = enter(data.shape, frame_name, is_constant,
+      dense_shape = enter(data.dense_shape, frame_name, is_constant,
                           parallel_iterations, name="dense_shape")
       if use_input_shape:
-        dense_shape.set_shape(data.shape.get_shape())
+        dense_shape.set_shape(data.dense_shape.get_shape())
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
@@ -287,7 +287,7 @@ def exit(data, name=None):
         dense_shape = gen_control_flow_ops._exit(dense_shape, name)
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = gen_control_flow_ops._exit(data.shape, name)
+      dense_shape = gen_control_flow_ops._exit(data.dense_shape, name)
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
@@ -332,9 +332,9 @@ def switch(data, pred, dtype=None, name=None):
         return (ops.IndexedSlices(val_f, ind_f, dense_shape_f),
                 ops.IndexedSlices(val_t, ind_t, dense_shape_t))
       else:
-        dense_shape = data.shape
+        dense_shape = data.dense_shape
         dense_shape_f, dense_shape_t = gen_control_flow_ops._switch(
-            data.shape, pred, name="dense_shape")
+            data.dense_shape, pred, name="dense_shape")
         return (sparse_tensor.SparseTensor(ind_f, val_f, dense_shape_f),
                 sparse_tensor.SparseTensor(ind_t, val_t, dense_shape_t))
 
@@ -424,7 +424,7 @@ def merge(inputs, name=None):
       indices, chosen_index = gen_control_flow_ops._merge(
           [inp.indices for inp in inputs], name="indices")
       dense_shape, _ = gen_control_flow_ops._merge(
-          [inp.shape for inp in inputs], name="dense_shape")
+          [inp.dense_shape for inp in inputs], name="dense_shape")
       return (sparse_tensor.SparseTensor(indices, values, dense_shape),
               chosen_index)
     else:
@@ -455,7 +455,7 @@ def _make_tensor_array(ta, t_or_flow):
   new_ta = tensor_array_ops.TensorArray(
       dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
       infer_shape=ta._infer_shape)
-  new_ta._elem_shape = ta._elem_shape
+  new_ta._element_shape = ta._element_shape  # pylint: disable=protected-access
   return new_ta
 
 
@@ -549,16 +549,16 @@ def _SetShapeInvariants(input_vars, enter_vars, shapes):
         if var.dense_shape is not None:
           var.dense_shape.set_shape(tensor_shape.TensorShape([shape.ndims]))
       else:
-        if not _ShapeLessThanOrEqual(inp.shape.get_shape(), shape):
+        if not _ShapeLessThanOrEqual(inp.dense_shape.get_shape(), shape):
           raise ValueError(
               "The shape invariant specified for %s is not compatible with "
               "the initial shape of the shape tensor of this SparseTensor. "
               "It enters the loop with shape %s, but the specified shape "
               "invariant is %s."
-              % (inp.shape.name, inp.shape.get_shape(), shape))
+              % (inp.dense_shape.name, inp.dense_shape.get_shape(), shape))
         var.values.set_shape(tensor_shape.TensorShape([None]))
         var.indices.set_shape(tensor_shape.TensorShape([None, shape.ndims]))
-        var.shape.set_shape(shape)
+        var.dense_shape.set_shape(shape)
 
 
 def _EnforceShapeInvariant(merge_var, next_var):
@@ -612,10 +612,10 @@ def _EnforceShapeInvariant(merge_var, next_var):
     else:
       m_values_shape = merge_var.values.get_shape()
       m_indices_shape = merge_var.indices.get_shape()
-      m_shape_shape = merge_var.shape.get_shape()
+      m_shape_shape = merge_var.dense_shape.get_shape()
       n_values_shape = next_var.values.get_shape()
       n_indices_shape = next_var.indices.get_shape()
-      n_shape_shape = next_var.shape.get_shape()
+      n_shape_shape = next_var.dense_shape.get_shape()
       if (not _ShapeLessThanOrEqual(n_values_shape, m_values_shape) or
           not _ShapeLessThanOrEqual(n_indices_shape, m_indices_shape) or
           not _ShapeLessThanOrEqual(n_shape_shape, m_shape_shape)):
@@ -653,7 +653,7 @@ def _AddNextAndBackEdge(m, v):
     # pylint: disable=protected-access
     m.values.op._update_input(1, v.values)
     m.indices.op._update_input(1, v.indices)
-    m.shape.op._update_input(1, v.shape)
+    m.dense_shape.op._update_input(1, v.dense_shape)
     # pylint: enable=protected-access
   else:
     raise TypeError("Type %s not supported" % type(m))
@@ -703,6 +703,7 @@ class GradLoopState(object):
     self._switch_map = {}
     self._unused_exits = []
     self._deferred_exits = []
+    self._forward_loop_exits = list(forward_ctxt.loop_exits)
     self._pending_exits_count = len(forward_ctxt.loop_exits)
 
     self._outer_grad_state = outer_grad_state
@@ -819,6 +820,11 @@ class GradLoopState(object):
   def deferred_exits(self):
     """The list of "deferred" exits."""
     return self._deferred_exits
+
+  @property
+  def forward_loop_exits(self):
+    """The list of exits of the forward loop."""
+    return self._forward_loop_exits
 
   @property
   def pending_exits_count(self):
@@ -970,7 +976,7 @@ class GradLoopState(object):
     Returns:
       The same tensor obtained from the saved history.
     """
-    assert value.op.type != "Variable"
+    assert value.op.type not in ["Variable", "VariableV2"]
     real_value = self._history_map.get(value.name)
     if real_value is None:
       cur_value = value
@@ -1059,8 +1065,8 @@ class ControlFlowState(object):
       to backprop.
     """
     loop_exits = []
-    for forward_ctxt, grad_state in self._map.items():
-      for y in forward_ctxt.loop_exits:
+    for _, grad_state in self._map.items():
+      for y in grad_state.forward_loop_exits:
         # pylint: disable=protected-access
         if pending_count[y.op._id] == 0:
           grad_state.pending_exits_count -= 1
@@ -1105,7 +1111,7 @@ class ControlFlowState(object):
       self._map[forward_ctxt] = grad_state
 
       # We need to include all exits of a loop for backprop.
-      for loop_exit in forward_ctxt.loop_exits:
+      for loop_exit in grad_state.forward_loop_exits:
         if not between_ops[loop_exit.op._id]:
           between_ops[loop_exit.op._id] = True
           between_op_list.append(loop_exit.op)
@@ -1447,21 +1453,7 @@ class ControlFlowContext(object):
       outer_ctxt = outer_ctxt.outer_context
     return True
 
-  def _MaybeAddToWhileContext(self, op):
-    """Add a control dependency to the containing WhileContext.
-
-    The added control dependency ensures that the outputs of this op
-    belong to the WhileContext. Do nothing if the op is not contained
-    in a WhileContext.
-
-    Args:
-      op: An operation.
-    """
-    while_ctxt = self.GetWhileContext()
-    if while_ctxt is not None:
-      op._add_control_input(while_ctxt.GetControlPivot().op)
-
-  def _MaybeRemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
     # A control input of `op` is internal if it is in the same while
@@ -1611,6 +1603,7 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
+      result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
@@ -1626,9 +1619,7 @@ class CondContext(ControlFlowContext):
     """Add `op` to the current context."""
     if not op.inputs:
       # Remove any external control dependency on this op
-      self._MaybeRemoveExternalControlEdges(op)
-      # Add this op to the enclosing while context
-      self._MaybeAddToWhileContext(op)
+      self._RemoveExternalControlEdges(op)
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
@@ -1637,19 +1628,11 @@ class CondContext(ControlFlowContext):
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        if x.name not in self._values:
-          self._values.add(x.name)
-          # Add this value to the parent contexts up to the context that
-          # creates this value.
-          real_x = x
-          if self._outer_context:
-            real_x = self._outer_context.AddValue(x)
-            self._values.add(real_x.name)
-          real_x = _SwitchRefOrTensor(real_x, self._pred)[self._branch]
-          self._external_values[x.name] = real_x
-        x = self._external_values.get(x.name)
-        if x is not None:
-          op._update_input(index, x)
+        real_x = self.AddValue(x)
+        if real_x != x:
+          # pylint: disable=protected-access
+          op._update_input(index, real_x)
+          # pylint: enable=protected-access
       for x in op.outputs:
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
@@ -1697,7 +1680,7 @@ class CondContext(ControlFlowContext):
                 dense_shape = self._ProcessOutputTensor(dense_shape)
               real_v = ops.IndexedSlices(values, indices, dense_shape)
             else:
-              dense_shape = self._ProcessOutputTensor(v.shape)
+              dense_shape = self._ProcessOutputTensor(v.dense_shape)
               real_v = sparse_tensor.SparseTensor(indices, values, dense_shape)
           else:
             real_v = self._ProcessOutputTensor(v)
@@ -1715,7 +1698,7 @@ def cond(pred, fn1, fn2, name=None):
   fn1 and fn2. Consider the following simple program:
 
   ```python
-  z = tf.mul(a, b)
+  z = tf.multiply(a, b)
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
@@ -1745,7 +1728,7 @@ def cond(pred, fn1, fn2, name=None):
   ```python
     x = tf.constant(2)
     y = tf.constant(5)
-    def f1(): return tf.mul(x, 17)
+    def f1(): return tf.multiply(x, 17)
     def f2(): return tf.add(y, 23)
     r = tf.cond(tf.less(x, y), f1, f2)
     # r is set to f1().
@@ -2009,6 +1992,8 @@ class WhileContext(ControlFlowContext):
           forward_ctxt = _GetWhileContext(val.op)
           if IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
+            if forward_ctxt:
+              forward_ctxt = forward_ctxt.GetWhileContext()
           if forward_ctxt == grad_ctxt.grad_state.forward_context:
             real_val = grad_ctxt.grad_state.GetRealValue(val)
             self._external_values[val.name] = real_val
@@ -2063,7 +2048,7 @@ class WhileContext(ControlFlowContext):
     """
     if not op.inputs:
       # Remove any external control dependency on this op
-      control_inputs = self._MaybeRemoveExternalControlEdges(op)
+      control_inputs = self._RemoveExternalControlEdges(op)
       # Add a control edge from the control pivot to this op.
       if not control_inputs:
         # pylint: disable=protected-access
@@ -2072,18 +2057,13 @@ class WhileContext(ControlFlowContext):
       for x in op.outputs:
         self._values.add(x.name)
     else:
-      has_internal_data_input = False
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        self.AddValue(x)
-        real_x = self._external_values.get(x.name)
-        if real_x is not None:
+        real_x = self.AddValue(x)
+        if real_x != x:
           op._update_input(index, real_x)
-        else:
-          has_internal_data_input = True
-      if not has_internal_data_input:
-        # Remove any external control dependency on this op
-        self._MaybeRemoveExternalControlEdges(op)
+      # Remove any external control dependency on this op.
+      self._RemoveExternalControlEdges(op)
       # Add a control dependency to prevent loop invariants from
       # enabling ops that should not be executed.
       self._MaybeAddControlDependency(op)
@@ -2145,6 +2125,7 @@ class WhileContext(ControlFlowContext):
     merge_n.op._update_input(1, next_n)
 
     total_iterations = exit(switch_n[0], name="f_count")
+    self.loop_exits.append(total_iterations)
     self.ExitResult([total_iterations])
     self.Exit()
     return total_iterations, next_n
@@ -2179,16 +2160,17 @@ class WhileContext(ControlFlowContext):
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
-    cond = math_ops.greater_equal(merge_count, one)
-    self._pivot = loop_cond(cond, name="b_count")
+    pred = math_ops.greater_equal(merge_count, one)
+    self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
 
-    index = math_ops.sub(switch_count[1], one)
+    index = math_ops.subtract(switch_count[1], one)
     self._pivot_for_body = index
     next_count = _NextIteration(index)
     merge_count.op._update_input(1, next_count)
 
     final_zero = exit(switch_count[0], name="b_count")
+    self.loop_exits.append(final_zero)
     if outer_grad_state is not None:
       # Force the stack pops of i-th execution of an inner loop to be ordered
       # before the pops of (i+1)-th execution of the same inner loop.
@@ -2235,7 +2217,9 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       value = op.inputs[0]
-      if self.outer_context:
+      if (isinstance(self.outer_context, WhileContext) and
+          self.outer_context.grad_state is not None):
+        # We are in a nested while loop.
         forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
@@ -2249,8 +2233,10 @@ class WhileContext(ControlFlowContext):
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
       else:
+        if self.outer_context: self.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
+        if self.outer_context: self.outer_context.Exit()
       acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()
@@ -2266,6 +2252,7 @@ class WhileContext(ControlFlowContext):
     merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
     acc_result = exit(switch_acc_false, name="b_acc")
+    self.loop_exits.append(acc_result)
     self.ExitResult([acc_result])
     return acc_result
 
@@ -2297,7 +2284,7 @@ class WhileContext(ControlFlowContext):
       if self.outer_context: self.outer_context.Exit()
     else:
       values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
-      values_shape = array_ops.concat(0, [[1], values_shape])
+      values_shape = array_ops.concat([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
@@ -2328,8 +2315,10 @@ class WhileContext(ControlFlowContext):
     switch_acc = [switch(x, self._pivot) for x in merge_acc]
 
     # The actual accumulation.
-    acc_indexed_slices = [array_ops.concat(0, [xa[1], xv])
-                          for xa, xv in zip(switch_acc[:2], [indices, values])]
+    acc_indexed_slices = [
+        array_ops.concat([xa[1], xv], 0)
+        for xa, xv in zip(switch_acc[:2], [indices, values])
+    ]
     if shape_acc is not None:
       # For the shape we just keep the maximum
       acc_indexed_slices.append(
@@ -2340,6 +2329,7 @@ class WhileContext(ControlFlowContext):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
     acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.loop_exits.extend(acc_exits)
 
     self.ExitResult(acc_exits)
     return ops.IndexedSlices(
@@ -2358,7 +2348,7 @@ class WhileContext(ControlFlowContext):
         if isinstance(x, ops.IndexedSlices):
           dense_shape = x.dense_shape
         elif isinstance(x, sparse_tensor.SparseTensor):
-          dense_shape = x.shape
+          dense_shape = x.dense_shape
         else:
           raise TypeError("Type %s not supported" % type(x))
         if dense_shape is not None:
@@ -2491,7 +2481,7 @@ class WhileContext(ControlFlowContext):
         if not isinstance(e, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
           raise TypeError("Type %s not supported" % type(e))
         xs = [e.values, e.indices]
-        shape = e.dense_shape if isinstance(e, ops.IndexedSlices) else e.shape
+        shape = e.dense_shape
         if shape is not None:
           xs.append(shape)
       for x in xs:
@@ -2543,7 +2533,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   TensorShape([r]) where r is the rank of the dense tensor represented
   by the sparse tensor. It means the shapes of the three tensors of the
   SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
-  is the shape of the SparseTensor.shape property. It must be the shape of
+  is the shape of the SparseTensor.dense_shape property. It must be the shape of
   a vector.
 
   b) If a loop variable is an IndexedSlices, the shape invariant must be
@@ -2611,10 +2601,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     i0 = tf.constant(0)
     m0 = tf.ones([2, 2])
     c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+    b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
     tf.while_loop(
         c, b, loop_vars=[i0, m0],
-        shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
+        shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
     ```
 
   """
@@ -2689,7 +2679,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   See also `tuple` and `group`.
 
   Args:
-    dependencies: A list of operations to run before this op finishes.
+    dependencies: Iterable of operations to run before this op finishes.
     output_tensor: A `Tensor` or `IndexedSlices` that will be returned.
     name: (Optional) A name for this operation.
 
@@ -2700,7 +2690,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
   with ops.name_scope(name, "control_dependency",
-                      dependencies + [output_tensor]) as name:
+                      list(dependencies) + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
@@ -2987,7 +2977,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       return prev_case
 
     if exclusive:
-      preds_c = array_ops.pack(preds, name="preds_c")
+      preds_c = array_ops.stack(preds, name="preds_c")
       num_true_conditions = math_ops.reduce_sum(
           math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
       at_most_one_true_condition = math_ops.less(

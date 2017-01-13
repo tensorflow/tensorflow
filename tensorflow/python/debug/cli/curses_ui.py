@@ -25,25 +25,43 @@ import sys
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug.cli import base_ui
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 
 
-class CursesUI(object):
+def _get_command_from_line_attr_segs(mouse_x, attr_segs):
+  """Attempt to extract command from the attribute segments of a line.
+
+  Args:
+    mouse_x: (int) x coordinate of the mouse event.
+    attr_segs: (list) The list of attribute segments of a line from a
+      RichTextLines object.
+
+  Returns:
+    (str or None) If a command exists: the command as a str; otherwise, None.
+  """
+
+  for seg in attr_segs:
+    if seg[0] <= mouse_x < seg[1]:
+      attributes = seg[2] if isinstance(seg[2], list) else [seg[2]]
+      for attr in attributes:
+        if isinstance(attr, debugger_cli_common.MenuItem):
+          return attr.content
+
+
+class CursesUI(base_ui.BaseUI):
   """Curses-based Command-line UI.
 
   In this class, the methods with the prefix "_screen_" are the methods that
   interact with the actual terminal using the curses library.
   """
 
-  CLI_PROMPT = "tfdbg> "
-  CLI_EXIT_COMMANDS = ["exit", "quit"]
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
   REGEX_SEARCH_PREFIX = "/"
   TENSOR_INDICES_NAVIGATION_PREFIX = "@"
-  ERROR_MESSAGE_PREFIX = "ERROR: "
 
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
@@ -62,6 +80,7 @@ class CursesUI(object):
       "green": curses.COLOR_GREEN,
       "yellow": curses.COLOR_YELLOW,
       "blue": curses.COLOR_BLUE,
+      "cyan": curses.COLOR_CYAN,
       "magenta": curses.COLOR_MAGENTA,
       "black": curses.COLOR_BLACK,
   }
@@ -74,29 +93,24 @@ class CursesUI(object):
   _SEARCH_HIGHLIGHT_FONT_ATTR = "black_on_white"
   _ARRAY_INDICES_COLOR_PAIR = "black_on_white"
   _ERROR_TOAST_COLOR_PAIR = "red_on_white"
+  _INFO_TOAST_COLOR_PAIR = "blue_on_white"
   _STATUS_BAR_COLOR_PAIR = "black_on_white"
 
-  def __init__(self):
+  def __init__(self, on_ui_exit=None):
+    """Constructor of CursesUI.
+
+    Args:
+      on_ui_exit: (Callable) Callback invoked when the UI exits.
+    """
+
+    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit)
+
     self._screen_init()
     self._screen_refresh_size()
     # TODO(cais): Error out if the size of the screen is too small.
 
     # Initialize some UI component size and locations.
     self._init_layout()
-
-    self._command_handler_registry = (
-        debugger_cli_common.CommandHandlerRegistry())
-
-    # Create tab completion registry and register the empty-str (top-level)
-    # tab-completion context with it.
-    self._tab_completion_registry = debugger_cli_common.TabCompletionRegistry()
-
-    # Create top-level tab-completion context and register the exit and help
-    # commands.
-    self._tab_completion_registry.register_tab_comp_context(
-        [""], self.CLI_EXIT_COMMANDS +
-        [debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND] +
-        debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND_ALIASES)
 
     self._command_history_store = debugger_cli_common.CommandHistory()
 
@@ -125,6 +139,12 @@ class CursesUI(object):
 
     # Register signal handler for SIGINT.
     signal.signal(signal.SIGINT, self._interrupt_handler)
+
+    self.register_command_handler(
+        "mouse",
+        self._mouse_mode_command_handler,
+        "Get or set the mouse mode of this CLI: (on|off)",
+        prefix_aliases=["m"])
 
   def _init_layout(self):
     """Initialize the layout of UI components.
@@ -208,18 +228,24 @@ class CursesUI(object):
 
         self._color_pairs[color_name] = curses.color_pair(color_index)
 
-    # A_BOLD is not really a "color". But place it here for convenience.
+    # A_BOLD or A_BLINK is not really a "color". But place it here for
+    # convenience.
     self._color_pairs["bold"] = curses.A_BOLD
+    self._color_pairs["blink"] = curses.A_BLINK
+    self._color_pairs["underline"] = curses.A_UNDERLINE
 
     # Default color pair to use when a specified color pair does not exist.
     self._default_color_pair = self._color_pairs["white"]
 
-  def _screen_launch(self):
+  def _screen_launch(self, enable_mouse_on_start):
     """Launch the curses screen."""
 
     curses.noecho()
     curses.cbreak()
     self._stdscr.keypad(1)
+
+    self._mouse_enabled = enable_mouse_on_start
+    self._screen_set_mousemask()
 
     self._screen_create_command_window()
 
@@ -246,19 +272,14 @@ class CursesUI(object):
     # Remove SIGINT handler.
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-  def run_ui(self, init_command=None, title=None, title_color=None):
-    """Run the Curses CLI.
+  def run_ui(self,
+             init_command=None,
+             title=None,
+             title_color=None,
+             enable_mouse_on_start=True):
+    """Run the CLI: See the doc of base_ui.BaseUI.run_ui for more details."""
 
-    Args:
-      init_command: (str) Optional command to run on CLI start up.
-      title: (str) Optional title to display in the CLI.
-      title_color: (str) Optional color of the title, e.g., "yellow".
-
-    Returns:
-      An exit token of arbitrary type. Can be None.
-    """
-
-    self._screen_launch()
+    self._screen_launch(enable_mouse_on_start=enable_mouse_on_start)
 
     # Optional initial command.
     if init_command is not None:
@@ -270,51 +291,12 @@ class CursesUI(object):
     # CLI main loop.
     exit_token = self._ui_loop()
 
+    if self._on_ui_exit:
+      self._on_ui_exit()
+
     self._screen_terminate()
 
     return exit_token
-
-  def register_command_handler(self,
-                               prefix,
-                               handler,
-                               help_info,
-                               prefix_aliases=None):
-    """A wrapper around CommandHandlerRegistry.register_command_handler().
-
-    In addition to calling the wrapped register_command_handler() method, this
-    method also registers the top-level tab-completion context based on the
-    command prefixes and their aliases.
-
-    See the doc string of the wrapped method for more details on the args.
-
-    Args:
-      prefix: (str) command prefix.
-      handler: (callable) command handler.
-      help_info: (str) help information.
-      prefix_aliases: (list of str) aliases of the command prefix.
-    """
-
-    self._command_handler_registry.register_command_handler(
-        prefix, handler, help_info, prefix_aliases=prefix_aliases)
-
-    self._tab_completion_registry.extend_comp_items("", [prefix])
-    if prefix_aliases:
-      self._tab_completion_registry.extend_comp_items("", prefix_aliases)
-
-  def register_tab_comp_context(self, *args, **kwargs):
-    """Wrapper around TabCompletionRegistry.register_tab_comp_context()."""
-
-    self._tab_completion_registry.register_tab_comp_context(*args, **kwargs)
-
-  def set_help_intro(self, help_intro):
-    """Set an introductory message to the help output of the command registry.
-
-    Args:
-      help_intro: (list of str) Text lines appended to the beginning of the
-        the output of the command "help", as introductory information.
-    """
-
-    self._command_handler_registry.set_help_intro(help_intro=help_intro)
 
   def get_help(self):
     return self._command_handler_registry.get_help()
@@ -357,8 +339,10 @@ class CursesUI(object):
       self._screen_create_command_textbox(existing_command)
 
       command, terminator, pending_command_changed = self._get_user_command()
+      if not command and terminator != self.CLI_TAB_KEY:
+        continue
 
-      if terminator in self.CLI_CR_KEYS:
+      if terminator in self.CLI_CR_KEYS or terminator == curses.KEY_MOUSE:
         exit_token = self._dispatch_command(command)
         if exit_token is not None:
           return exit_token
@@ -397,6 +381,9 @@ class CursesUI(object):
     return self._command_textbox.edit(validate=self._on_textbox_keypress)
 
   def _strip_terminator(self, command):
+    if not command:
+      return command
+
     for v in self.CLI_CR_KEYS:
       if v < 256:
         command = command.replace(chr(v), "")
@@ -461,7 +448,11 @@ class CursesUI(object):
 
       return
 
-    prefix, args = self._parse_command(command)
+    try:
+      prefix, args, output_file_path = self._parse_command(command)
+    except SyntaxError as e:
+      self._error_toast(str(e))
+      return
 
     if not prefix:
       # Empty command: take no action. Should not exit.
@@ -488,26 +479,15 @@ class CursesUI(object):
       return exit_token
 
     self._display_output(screen_output)
+    if output_file_path:
+      try:
+        screen_output.write_to_file(output_file_path)
+        self._info_toast("Wrote output to %s" % output_file_path)
+      except Exception:  # pylint: disable=broad-except
+        self._error_toast("Failed to write output to %s" % output_file_path)
+
     self._command_pointer = 0
     self._pending_command = ""
-
-  def _parse_command(self, command):
-    """Parse a command string into prefix and arguments.
-
-    Args:
-      command: (str) Command string to be parsed.
-
-    Returns:
-      prefix: (str) The command prefix.
-      args: (list of str) The command arguments (i.e., not including the
-        prefix).
-    """
-    command = command.strip()
-    if not command:
-      return "", []
-
-    command_items = command_parser.parse_command(command)
-    return command_items[0], command_items[1:]
 
   def _screen_gather_textbox_str(self):
     """Gather the text string in the command text box.
@@ -590,14 +570,23 @@ class CursesUI(object):
       self._screen_refresh_size()
       self._init_layout()
       self._screen_create_command_window()
-      if self._curr_unwrapped_output is not None:
-        # Force render screen output again, under new screen size.
-        self._output_pad = self._display_output(
-            self._curr_unwrapped_output, is_refresh=True)
+      self._redraw_output()
 
       # Force return from the textbox edit(), so that the textbox can be
       # redrawn.
       return self.CLI_TERMINATOR_KEY
+    elif x == curses.KEY_MOUSE and self._mouse_enabled:
+      try:
+        _, mouse_x, mouse_y, _, mouse_event_type = self._screen_getmouse()
+      except curses.error:
+        mouse_event_type = None
+
+      if mouse_event_type == curses.BUTTON1_RELEASED:
+        command = self._fetch_hyperlink_command(mouse_x, mouse_y)
+        if command:
+          self._auto_key_in(command)
+          self._textbox_curr_terminator = x
+          return self.CLI_TERMINATOR_KEY
     else:
       # Mark the pending command as modified.
       self._textbox_pending_command_changed = True
@@ -605,6 +594,29 @@ class CursesUI(object):
       self._command_pointer = 0
       self._active_command_history = []
       return x
+
+  def _screen_getmouse(self):
+    return curses.getmouse()
+
+  def _redraw_output(self):
+    if self._curr_unwrapped_output is not None:
+      self._display_main_menu(self._curr_unwrapped_output)
+      self._display_output(self._curr_unwrapped_output, is_refresh=True)
+
+  def _fetch_hyperlink_command(self, mouse_x, mouse_y):
+    output_top = self._output_top_row
+    if self._main_menu_pad:
+      output_top += 1
+
+    if mouse_y == self._output_top_row and self._main_menu_pad:
+      # Click was in the menu bar.
+      return _get_command_from_line_attr_segs(mouse_x,
+                                              self._main_menu.font_attr_segs[0])
+    else:
+      absolute_mouse_y = mouse_y + self._output_pad_row - output_top
+      if absolute_mouse_y in self._curr_wrapped_output.font_attr_segs:
+        return _get_command_from_line_attr_segs(
+            mouse_x, self._curr_wrapped_output.font_attr_segs[absolute_mouse_y])
 
   def _title(self, title, title_color=None):
     """Display title.
@@ -650,10 +662,10 @@ class CursesUI(object):
     if len(line) > self._max_x:
       line = line[:self._max_x]
 
-    if color is None:
-      self._stdscr.addstr(row, 0, line, attr)
-    else:
-      self._stdscr.addstr(row, 0, line, self._color_pairs[color])
+    color_pair = (self._default_color_pair if color is None else
+                  self._color_pairs[color])
+
+    self._stdscr.addstr(row, 0, line, color_pair | attr)
     self._screen_refresh()
 
   def _screen_new_output_pad(self, rows, cols):
@@ -706,6 +718,8 @@ class CursesUI(object):
           (0, len(output.lines[-1]), "magenta")
       ]
 
+    self._display_main_menu(self._curr_wrapped_output)
+
     (self._output_pad, self._output_pad_height,
      self._output_pad_width) = self._display_lines(self._curr_wrapped_output,
                                                    self._output_num_rows)
@@ -734,6 +748,9 @@ class CursesUI(object):
       highlight_regex: (str) Optional string representing the regex used to
         search and highlight in the current screen output.
     """
+
+    if not output:
+      return
 
     if highlight_regex:
       try:
@@ -789,7 +806,7 @@ class CursesUI(object):
       min_num_rows: (int) Minimum number of output rows.
 
     Returns:
-      1) The text pad object used to display the text.
+      1) The text pad object used to display the main text body.
       2) (int) number of rows of the text pad, which may exceed screen size.
       3) (int) number of columns of the text pad.
 
@@ -821,6 +838,36 @@ class CursesUI(object):
         self._screen_add_line_to_output_pad(pad, i, output.lines[i])
 
     return pad, rows, cols
+
+  def _display_main_menu(self, output):
+    """Display main menu associated with screen output, if the menu exists.
+
+    Args:
+      output: (debugger_cli_common.RichTextLines) The RichTextLines output from
+        the annotations field of which the menu will be extracted and used (if
+        the menu exists).
+    """
+
+    if debugger_cli_common.MAIN_MENU_KEY in output.annotations:
+      self._main_menu = output.annotations[
+          debugger_cli_common.MAIN_MENU_KEY].format_as_single_line(
+              prefix="| ", divider=" | ", enabled_item_attrs=["underline"])
+
+      self._main_menu_pad = self._screen_new_output_pad(1, self._max_x - 1)
+
+      # The unwrapped menu line may exceed screen width, in which case it needs
+      # to be cut off.
+      wrapped_menu, _ = debugger_cli_common.wrap_rich_text_lines(
+          self._main_menu, self._max_x - 2)
+      self._screen_add_line_to_output_pad(
+          self._main_menu_pad,
+          0,
+          wrapped_menu.lines[0],
+          color_segments=(wrapped_menu.font_attr_segs[0]
+                          if 0 in wrapped_menu.font_attr_segs else None))
+    else:
+      self._main_menu = None
+      self._main_menu_pad = None
 
   def _screen_add_line_to_output_pad(self, pad, row, txt, color_segments=None):
     """Render a line in a text pad.
@@ -860,12 +907,21 @@ class CursesUI(object):
       all_segments.append((0, color_segments[0][0]))
       all_color_pairs.append(self._default_color_pair)
 
-    for (curr_start, curr_end, curr_color), (next_start, _, _) in zip(
+    for (curr_start, curr_end, curr_attrs), (next_start, _, _) in zip(
         color_segments, color_segments[1:] + [(len(txt), None, None)]):
       all_segments.append((curr_start, curr_end))
 
-      all_color_pairs.append(
-          self._color_pairs.get(curr_color, self._default_color_pair))
+      if not isinstance(curr_attrs, list):
+        curr_attrs = [curr_attrs]
+
+      curses_attr = curses.A_NORMAL
+      for attr in curr_attrs:
+        if (self._mouse_enabled and
+            isinstance(attr, debugger_cli_common.MenuItem)):
+          curses_attr |= curses.A_UNDERLINE
+        else:
+          curses_attr |= self._color_pairs.get(attr, self._default_color_pair)
+      all_color_pairs.append(curses_attr)
 
       if curr_end < next_start:
         # Fill in the gap with the default color.
@@ -874,7 +930,8 @@ class CursesUI(object):
 
     # Finally, draw all the segments.
     for segment, color_pair in zip(all_segments, all_color_pairs):
-      pad.addstr(row, segment[0], txt[segment[0]:segment[1]], color_pair)
+      if segment[1] < self._max_x:
+        pad.addstr(row, segment[0], txt[segment[0]:segment[1]], color_pair)
 
   def _screen_scroll_output_pad(self, pad, viewport_top, viewport_left,
                                 screen_location_top, screen_location_left,
@@ -929,12 +986,39 @@ class CursesUI(object):
       raise ValueError("Unsupported scroll mode: %s" % direction)
 
     # Actually scroll the output pad: refresh with new location.
+    output_pad_top = self._output_pad_screen_location.top
+    if self._main_menu_pad:
+      output_pad_top += 1
     self._screen_scroll_output_pad(self._output_pad, self._output_pad_row, 0,
-                                   self._output_pad_screen_location.top,
+                                   output_pad_top,
                                    self._output_pad_screen_location.left,
                                    self._output_pad_screen_location.bottom,
                                    self._output_pad_screen_location.right)
+    self._screen_render_menu_pad()
 
+    self._scroll_info = self._compile_ui_status_summary()
+    self._screen_draw_text_line(
+        self._output_scroll_row,
+        self._scroll_info,
+        color=self._STATUS_BAR_COLOR_PAIR)
+
+  def _screen_render_menu_pad(self):
+    if self._main_menu_pad:
+      self._main_menu_pad.refresh(0, 0, self._output_pad_screen_location.top, 0,
+                                  self._output_pad_screen_location.top,
+                                  self._max_x)
+
+  def _compile_ui_status_summary(self):
+    """Compile status summary about this Curses UI instance.
+
+    The information includes: scroll status and mouse ON/OFF status.
+
+    Returns:
+      (str) A single text line summarizing the UI status, adapted to the
+        current screen width.
+    """
+
+    info = ""
     if self._output_pad_height > self._output_pad_screen_height + 1:
       # Display information about the scrolling of tall screen output.
       scroll_percentage = 100.0 * (min(
@@ -948,35 +1032,33 @@ class CursesUI(object):
         scroll_directions = " (PgUp)"
       else:
         scroll_directions = " (PgDn/PgUp)"
-      self._scroll_info = "--- Scroll%s: %.2f%% " % (scroll_directions,
-                                                     scroll_percentage)
 
-      self._output_array_pointer_indices = self._show_array_indices()
+      info += "--- Scroll%s: %.2f%% " % (scroll_directions, scroll_percentage)
 
-      # Add array indices information to scroll message.
-      if self._output_array_pointer_indices:
-        if self._output_array_pointer_indices[0]:
-          self._scroll_info += self._format_indices(
-              self._output_array_pointer_indices[0])
-        self._scroll_info += "-"
-        if self._output_array_pointer_indices[-1]:
-          self._scroll_info += self._format_indices(
-              self._output_array_pointer_indices[-1])
-        self._scroll_info += " "
+    self._output_array_pointer_indices = self._show_array_indices()
 
-      if len(self._scroll_info) < self._max_x:
-        self._scroll_info += "-" * (self._max_x - len(self._scroll_info))
-      self._screen_draw_text_line(
-          self._output_scroll_row,
-          self._scroll_info,
-          color=self._STATUS_BAR_COLOR_PAIR)
+    # Add array indices information to scroll message.
+    if self._output_array_pointer_indices:
+      if self._output_array_pointer_indices[0]:
+        info += self._format_indices(self._output_array_pointer_indices[0])
+      info += "-"
+      if self._output_array_pointer_indices[-1]:
+        info += self._format_indices(self._output_array_pointer_indices[-1])
+      info += " "
+
+    # Add mouse mode information.
+    mouse_mode_str = "Mouse: "
+    mouse_mode_str += "ON" if self._mouse_enabled else "OFF"
+
+    if len(info) + len(mouse_mode_str) + 5 < self._max_x:
+      info += "-" * (self._max_x - len(info) - len(mouse_mode_str) - 4)
+      info += " "
+      info += mouse_mode_str
+      info += " ---"
     else:
-      # Screen output is not tall enough to cause scrolling.
-      self._scroll_info = "-" * self._max_x
-      self._screen_draw_text_line(
-          self._output_scroll_row,
-          self._scroll_info,
-          color=self._STATUS_BAR_COLOR_PAIR)
+      info += "-" * (self._max_x - len(info))
+
+    return info
 
   def _format_indices(self, indices):
     # Remove the spaces to make it compact.
@@ -999,8 +1081,11 @@ class CursesUI(object):
 
     indices_top = self._show_array_index_at_line(0)
 
-    bottom_line_index = (self._output_pad_screen_location.bottom -
-                         self._output_pad_screen_location.top - 1)
+    output_top = self._output_top_row
+    if self._main_menu_pad:
+      output_top += 1
+    bottom_line_index = (
+        self._output_pad_screen_location.bottom - output_top - 1)
     indices_bottom = self._show_array_index_at_line(bottom_line_index)
 
     if indices_top or indices_bottom:
@@ -1029,16 +1114,23 @@ class CursesUI(object):
     # Examine whether the index information is available for the specified line
     # number.
     pointer = self._output_pad_row + line_index
-    if pointer in self._curr_wrapped_output.annotations:
+    if (pointer in self._curr_wrapped_output.annotations and
+        "i0" in self._curr_wrapped_output.annotations[pointer]):
       indices = self._curr_wrapped_output.annotations[pointer]["i0"]
 
       array_indices_str = self._format_indices(indices)
       array_indices_info = "@" + array_indices_str
 
+      # TODO(cais): Determine line_index properly given menu pad status.
+      #   Test coverage?
+      output_top = self._output_top_row
+      if self._main_menu_pad:
+        output_top += 1
+
       self._toast(
           array_indices_info,
           color=self._ARRAY_INDICES_COLOR_PAIR,
-          line_index=self._output_pad_screen_location.top + line_index)
+          line_index=output_top + line_index)
 
       return indices
     else:
@@ -1062,24 +1154,8 @@ class CursesUI(object):
       appended by the common prefix of the candidates.
     """
 
-    command_str = command_str.lstrip()
-
-    if not command_str:
-      # Empty (top-level) context.
-      context = ""
-      prefix = ""
-      items = []
-    else:
-      items = command_str.split(" ")
-      if len(items) == 1:
-        # Single word: top-level context.
-        context = ""
-        prefix = items[0]
-      else:
-        # Multiple words.
-        context = items[0]
-        prefix = items[-1]
-
+    context, prefix, except_last_word = self._analyze_tab_complete_input(
+        command_str)
     candidates, common_prefix = self._tab_completion_registry.get_completions(
         context, prefix)
 
@@ -1094,9 +1170,9 @@ class CursesUI(object):
     if common_prefix:
       # Common prefix is not None and non-empty. The completed string will
       # incorporate the common prefix.
-      return " ".join(items[:-1] + [common_prefix])
+      return except_last_word + common_prefix
     else:
-      return " ".join(items)
+      return except_last_word + prefix
 
   def _display_candidates(self, candidates):
     """Show candidates (e.g., tab-completion candidates) on multiple lines.
@@ -1150,8 +1226,7 @@ class CursesUI(object):
 
     pad, _, _ = self._display_lines(
         debugger_cli_common.RichTextLines(
-            message,
-            font_attr_segs={0: [(0, len(message), color or "white")]}),
+            message, font_attr_segs={0: [(0, len(message), color or "white")]}),
         0)
 
     right_end = min(len(message), self._max_x - 1)
@@ -1171,6 +1246,16 @@ class CursesUI(object):
     self._toast(
         self.ERROR_MESSAGE_PREFIX + message, color=self._ERROR_TOAST_COLOR_PAIR)
 
+  def _info_toast(self, message):
+    """Display a one-line informational message on screen.
+
+    Args:
+      message: The informational message.
+    """
+
+    self._toast(
+        self.INFO_MESSAGE_PREFIX + message, color=self._INFO_TOAST_COLOR_PAIR)
+
   def _interrupt_handler(self, signal_num, frame):
     _ = signal_num  # Unused.
     _ = frame  # Unused.
@@ -1178,3 +1263,45 @@ class CursesUI(object):
     self._screen_terminate()
     print("\ntfdbg: caught SIGINT; calling sys.exit(1).", file=sys.stderr)
     sys.exit(1)
+
+  def _mouse_mode_command_handler(self, args, screen_info=None):
+    """Handler for the command prefix 'mouse'.
+
+    Args:
+      args: (list of str) Arguments to the command prefix 'mouse'.
+      screen_info: (dict) Information about the screen, unused by this handler.
+
+    Returns:
+      None, as this command handler does not generate any screen outputs other
+        than toasts.
+    """
+
+    del screen_info
+
+    if not args or len(args) == 1:
+      if args:
+        if args[0].lower() == "on":
+          enabled = True
+        elif args[0].lower() == "off":
+          enabled = False
+        else:
+          self._error_toast("Invalid mouse mode: %s" % args[0])
+          return None
+
+        self._set_mouse_enabled(enabled)
+
+      mode_str = "on" if self._mouse_enabled else "off"
+      self._info_toast("Mouse mode: %s" % mode_str)
+    else:
+      self._error_toast("mouse_mode: syntax error")
+
+    return None
+
+  def _set_mouse_enabled(self, enabled):
+    if self._mouse_enabled != enabled:
+      self._mouse_enabled = enabled
+      self._screen_set_mousemask()
+      self._redraw_output()
+
+  def _screen_set_mousemask(self):
+    curses.mousemask(self._mouse_enabled)

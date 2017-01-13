@@ -61,6 +61,13 @@
 @@variable
 @@VariableDeviceChooser
 @@zero_initializer
+
+## Checkpoint utilities
+
+@@load_checkpoint
+@@list_variables
+@@load_variable
+@@init_from_checkpoint
 """
 
 from __future__ import absolute_import

@@ -519,9 +519,9 @@ static port::Status InternalInit() {
   // called once, but CUDADriver::Init may be called many times.
   static port::Status init_retval;
   static bool set = false;
-  static mutex init_mu(LINKER_INITIALIZED);
+  static mutex *init_mu = new mutex;
 
-  mutex_lock lock(init_mu);
+  mutex_lock lock(*init_mu);
   if (!set) {
     init_retval = InternalInit();
     set = true;

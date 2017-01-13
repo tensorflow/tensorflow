@@ -31,8 +31,8 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_distance`</b>: A tensor representing the current mean, the value of `total`
-    divided by `count`.
+*  <b>`mean_distance`</b>: A `Tensor` representing the current mean, the value of
+    `total` divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately.
 

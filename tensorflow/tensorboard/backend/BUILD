@@ -15,9 +15,8 @@ py_library(
         ":process_graph",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
-        "//tensorflow/python:util",
-        "//tensorflow/tensorboard:plugins",
         "//tensorflow/tensorboard/lib/python:http",
+        "@six_archive//:six",
     ],
 )
 
@@ -37,7 +36,7 @@ py_library(
     srcs = ["process_graph.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [],
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
@@ -48,6 +47,8 @@ py_library(
         ":handler",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
+        "//tensorflow/tensorboard:projector",
+        "@six_archive//:six",
     ],
 )
 
@@ -59,8 +60,18 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":server",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/tensorboard:projector",
+        "//third_party/py/numpy",
     ],
 )
 

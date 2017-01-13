@@ -19,40 +19,44 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.contrib.framework.python.ops import ops as ops_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import test
 
 
-class OpsTest(tf.test.TestCase):
+class OpsTest(test.TestCase):
 
   def testGetGraphFromEmptyInputs(self):
-    with tf.Graph().as_default() as g0:
-      self.assertIs(g0, tf.contrib.framework.get_graph_from_inputs([]))
+    with ops.Graph().as_default() as g0:
+      self.assertIs(g0, ops_lib.get_graph_from_inputs([]))
 
   def testGetGraphFromValidInputs(self):
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      values = [tf.constant(0.0), tf.constant(1.0)]
-    self.assertIs(g0, tf.contrib.framework.get_graph_from_inputs(values))
-    self.assertIs(g0, tf.contrib.framework.get_graph_from_inputs(values, g0))
-    with tf.Graph().as_default():
-      self.assertIs(g0, tf.contrib.framework.get_graph_from_inputs(values))
-      self.assertIs(g0, tf.contrib.framework.get_graph_from_inputs(values, g0))
+      values = [constant_op.constant(0.0), constant_op.constant(1.0)]
+    self.assertIs(g0, ops_lib.get_graph_from_inputs(values))
+    self.assertIs(g0, ops_lib.get_graph_from_inputs(values, g0))
+    with ops.Graph().as_default():
+      self.assertIs(g0, ops_lib.get_graph_from_inputs(values))
+      self.assertIs(g0, ops_lib.get_graph_from_inputs(values, g0))
 
   def testGetGraphFromInvalidInputs(self):
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      values = [tf.constant(0.0), tf.constant(1.0)]
-    g1 = tf.Graph()
+      values = [constant_op.constant(0.0), constant_op.constant(1.0)]
+    g1 = ops.Graph()
     with self.assertRaisesRegexp(ValueError, "not from the passed-in graph"):
-      tf.contrib.framework.get_graph_from_inputs(values, g1)
+      ops_lib.get_graph_from_inputs(values, g1)
     with g1.as_default():
-      values.append(tf.constant(2.0))
+      values.append(constant_op.constant(2.0))
     with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
-      tf.contrib.framework.get_graph_from_inputs(values)
+      ops_lib.get_graph_from_inputs(values)
     with self.assertRaisesRegexp(ValueError, "not from the passed-in graph"):
-      tf.contrib.framework.get_graph_from_inputs(values, g0)
+      ops_lib.get_graph_from_inputs(values, g0)
     with self.assertRaisesRegexp(ValueError, "not from the passed-in graph"):
-      tf.contrib.framework.get_graph_from_inputs(values, g1)
+      ops_lib.get_graph_from_inputs(values, g1)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

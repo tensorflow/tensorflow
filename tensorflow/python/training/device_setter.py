@@ -148,7 +148,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   cluster_spec = {
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
-  with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
+  with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
     # Build your graph
     v1 = tf.Variable(...)  # assigned to /job:ps/task:0
     v2 = tf.Variable(...)  # assigned to /job:ps/task:1
@@ -198,7 +198,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   if ps_ops is None:
     # TODO(sherrym): Variables in the LOCAL_VARIABLES collection should not be
     # placed in the parameter server.
-    ps_ops = ["Variable"]
+    ps_ops = ["Variable", "VariableV2"]
 
   if not merge_devices:
     logging.warning(

@@ -173,7 +173,8 @@ between the target and the softmax activation function applied to the model's
 prediction.  As in the beginners tutorial, we use the stable formulation:
 
 ```python
-cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y, y_))
+cross_entropy = tf.reduce_mean(
+    tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
 ```
 
 Note that `tf.nn.softmax_cross_entropy_with_logits` internally applies the
@@ -394,7 +395,8 @@ Feel free to go ahead and run this code, but it does 20,000 training iterations
 and may take a while (possibly up to half an hour), depending on your processor.
 
 ```python
-cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_conv, y_))
+cross_entropy = tf.reduce_mean(
+    tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))

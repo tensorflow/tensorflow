@@ -26,8 +26,8 @@ should choose depends on (1) the feature type and (2) the model type.
 (1) Feature type:
  * Continuous features can be represented by `real_valued_column`.
  * Categorical features can be represented by any `sparse_column_with_*`
- column (`sparse_column_with_keys`, `sparse_column_with_hash_bucket`,
- `sparse_column_with_integerized_feature`).
+ column (`sparse_column_with_keys`, `sparse_column_with_vocabulary_file`,
+ `sparse_column_with_hash_bucket`, `sparse_column_with_integerized_feature`).
 
 (2) Model type:
  * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
@@ -162,7 +162,7 @@ class _DeepEmbeddingLookupArguments(
                             "combiner",
                             "dimension",
                             "shared_embedding_name",
-                            "hashed",
+                            "hash_key",
                             "max_norm"])):
   """Represents the information needed from a column for embedding lookup.
 
@@ -242,12 +242,14 @@ class _FeatureColumn(object):
   # pylint: disable=unused-argument
   def _wide_embedding_lookup_arguments(self, input_tensor):
     """Returns arguments to look up embeddings for this column."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No wide embedding lookup arguments for column {}.".format(self))
 
   # pylint: disable=unused-argument
   def _to_dense_tensor(self, input_tensor):
     """Returns a dense tensor representing this column's values."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No dense tensor representation for column {}.".format(self))
 
   def _checkpoint_path(self):
     """Returns None, or a (path,tensor_name) to load a checkpoint from."""
@@ -400,7 +402,7 @@ class _SparseColumn(_FeatureColumn,
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.combiner)
 
   def _get_input_sparse_tensor(self, columns_to_tensors):
@@ -456,7 +458,7 @@ class _SparseColumnIntegerized(_SparseColumn):
     sparse_id_values = math_ops.mod(input_tensor.values, self.bucket_size,
                                     name="mod")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_integerized_feature(column_name,
@@ -530,7 +532,7 @@ class _SparseColumnHashed(_SparseColumn):
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         sparse_values, self.bucket_size, name="lookup")
     columns_to_tensors[self] = sparse_tensor_py.SparseTensor(
-        input_tensor.indices, sparse_id_values, input_tensor.shape)
+        input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
@@ -585,15 +587,14 @@ class _SparseColumnKeys(_SparseColumn):
     """Handles sparse column to id conversion."""
     input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
 
-    columns_to_tensors[self] = contrib_lookup_ops.string_to_index(
-        tensor=input_tensor,
+    table = contrib_lookup_ops.string_to_index_table_from_tensor(
         mapping=list(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
         name="lookup")
+    columns_to_tensors[self] = table.lookup(input_tensor)
 
 
-def sparse_column_with_keys(column_name, keys, default_value=-1,
-                            combiner=None):
+def sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None):
   """Creates a _SparseColumn with keys.
 
   Look up logic is as follows:
@@ -621,6 +622,104 @@ def sparse_column_with_keys(column_name, keys, default_value=-1,
     combiner = "sum"
   return _SparseColumnKeys(
       column_name, tuple(keys), default_value=default_value, combiner=combiner)
+
+
+class _SparseColumnVocabulary(_SparseColumn):
+  """See `sparse_column_with_vocabulary_file`."""
+
+  def __new__(cls,
+              column_name,
+              vocabulary_file,
+              num_oov_buckets=0,
+              vocab_size=None,
+              default_value=-1,
+              combiner="sum",
+              dtype=dtypes.string):
+
+    if dtype != dtypes.string and not dtype.is_integer:
+      raise ValueError("dtype must be string or integer. "
+                       "dtype: {}, column_name: {}".format(dtype, column_name))
+
+    return super(_SparseColumnVocabulary, cls).__new__(
+        cls,
+        column_name,
+        combiner=combiner,
+        lookup_config=_SparseIdLookupConfig(
+            vocabulary_file=vocabulary_file,
+            num_oov_buckets=num_oov_buckets,
+            vocab_size=vocab_size,
+            default_value=default_value),
+        dtype=dtype)
+
+  def insert_transformed_feature(self, columns_to_tensors):
+    """Handles sparse column to id conversion."""
+    st = self._get_input_sparse_tensor(columns_to_tensors)
+    if self.dtype.is_integer:
+      sparse_string_values = string_ops.as_string(st.values)
+      sparse_string_tensor = sparse_tensor_py.SparseTensor(st.indices,
+                                                           sparse_string_values,
+                                                           st.dense_shape)
+    else:
+      sparse_string_tensor = st
+
+    table = contrib_lookup_ops.string_to_index_table_from_file(
+        vocabulary_file=self.lookup_config.vocabulary_file,
+        num_oov_buckets=self.lookup_config.num_oov_buckets,
+        vocab_size=self.lookup_config.vocab_size,
+        default_value=self.lookup_config.default_value,
+        name=self.name + "_lookup")
+    columns_to_tensors[self] = table.lookup(sparse_string_tensor)
+
+
+def sparse_column_with_vocabulary_file(column_name,
+                                       vocabulary_file,
+                                       num_oov_buckets=0,
+                                       vocab_size=None,
+                                       default_value=-1,
+                                       combiner="sum",
+                                       dtype=dtypes.string):
+  """Creates a _SparseColumn with vocabulary file configuration.
+
+  Use this when your sparse features are in string or integer format, and you
+  have a vocab file that maps each value to an integer ID.
+  output_id = LookupIdFromVocab(input_feature_string)
+
+  Args:
+    column_name: A string defining sparse column name.
+    vocabulary_file: The vocabulary filename.
+    num_oov_buckets: The number of out-of-vocabulary buckets. If zero all out of
+      vocabulary features will be ignored.
+    vocab_size: Number of the elements in the vocabulary.
+    default_value: The value to use for out-of-vocabulary feature values.
+      Defaults to -1.
+    combiner: A string specifying how to reduce if the sparse column is
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
+      "sum" the default:
+        * "sum": do not normalize features in the column
+        * "mean": do l1 normalization on features in the column
+        * "sqrtn": do l2 normalization on features in the column
+      For more information: `tf.embedding_lookup_sparse`.
+    dtype: The type of features. Only string and integer types are supported.
+
+  Returns:
+    A _SparseColumn with vocabulary file configuration.
+
+  Raises:
+    ValueError: vocab_size is not defined.
+    ValueError: dtype is neither string nor integer.
+  """
+  if vocab_size is None:
+    raise ValueError("vocab_size should be defined. "
+                     "column_name: {}".format(column_name))
+
+  return _SparseColumnVocabulary(
+      column_name,
+      vocabulary_file,
+      num_oov_buckets=num_oov_buckets,
+      vocab_size=vocab_size,
+      default_value=default_value,
+      combiner=combiner,
+      dtype=dtype)
 
 
 class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
@@ -692,7 +791,7 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.sparse_id_column.combiner)
 
 
@@ -718,7 +817,7 @@ def weighted_sparse_column(sparse_id_column,
         is a SparseTensor.
      Following are assumed to be true:
        * sparse_tensor.indices = weights_tensor.indices
-       * sparse_tensor.shape = weights_tensor.shape
+       * sparse_tensor.dense_shape = weights_tensor.dense_shape
 
   Args:
     sparse_id_column: A `_SparseColumn` which is created by
@@ -796,15 +895,18 @@ class _OneHotColumn(_FeatureColumn,
       This is not yet supported.
     """
 
-    if (self.sparse_id_column.weight_tensor(transformed_input_tensor) is
-        not None):
-      raise ValueError("one_hot_column does not yet support "
-                       "weighted_sparse_column. Column: {}".format(self))
-
     # Reshape ID column to `output_rank`.
     sparse_id_column = self.sparse_id_column.id_tensor(transformed_input_tensor)
     # pylint: disable=protected-access
     sparse_id_column = layers._inner_flatten(sparse_id_column, output_rank)
+
+    weight_tensor = self.sparse_id_column.weight_tensor(
+        transformed_input_tensor)
+    if weight_tensor is not None:
+      weighted_column = sparse_ops.sparse_merge(sp_ids=sparse_id_column,
+                                                sp_values=weight_tensor,
+                                                vocab_size=self.length)
+      return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
                                                         default_value=-1)
@@ -850,6 +952,8 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     shared_embedding_name: (Optional). The common name for shared embedding.
     shared_vocab_size: (Optional). The common vocab_size used for shared
       embedding space.
+    max_norm: (Optional). If not None, embedding values are l2-normalized to
+      the value of max_norm.
 
   Raises:
     ValueError: if `initializer` is specified and is not callable. Also,
@@ -925,7 +1029,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
         initializer=self.initializer,
         combiner=self.combiner,
         shared_embedding_name=self.shared_embedding_name,
-        hashed=False,
+        hash_key=None,
         max_norm=self.max_norm)
 
   def _checkpoint_path(self):
@@ -959,7 +1063,8 @@ def embedding_column(sparse_id_column,
                      combiner=None,
                      initializer=None,
                      ckpt_to_load_from=None,
-                     tensor_name_in_ckpt=None):
+                     tensor_name_in_ckpt=None,
+                     max_norm=None):
   """Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
   Args:
@@ -984,6 +1089,8 @@ def embedding_column(sparse_id_column,
     tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
+    max_norm: (Optional). If not None, embedding values are l2-normalized to
+      the value of max_norm.
 
   Returns:
     An `_EmbeddingColumn`.
@@ -993,7 +1100,8 @@ def embedding_column(sparse_id_column,
                  "to \"sqrtn\" after 2016/11/01.")
     combiner = "mean"
   return _EmbeddingColumn(sparse_id_column, dimension, combiner, initializer,
-                          ckpt_to_load_from, tensor_name_in_ckpt)
+                          ckpt_to_load_from, tensor_name_in_ckpt,
+                          max_norm=max_norm)
 
 
 def shared_embedding_columns(sparse_id_columns,
@@ -1002,7 +1110,8 @@ def shared_embedding_columns(sparse_id_columns,
                              shared_embedding_name=None,
                              initializer=None,
                              ckpt_to_load_from=None,
-                             tensor_name_in_ckpt=None):
+                             tensor_name_in_ckpt=None,
+                             max_norm=None):
   """Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
   Args:
@@ -1030,6 +1139,8 @@ def shared_embedding_columns(sparse_id_columns,
     tensor_name_in_ckpt: (Optional). Name of the `Tensor` in the provided
       checkpoint from which to restore the column weights. Required if
       `ckpt_to_load_from` is not None.
+    max_norm: (Optional). If not None, embedding values are l2-normalized to
+      the value of max_norm.
 
   Returns:
     A tuple of `_EmbeddingColumn` with shared embedding space.
@@ -1061,7 +1172,7 @@ def shared_embedding_columns(sparse_id_columns,
     return [
         _EmbeddingColumn(sparse_id_columns[0], dimension, combiner, initializer,
                          ckpt_to_load_from, tensor_name_in_ckpt,
-                         shared_embedding_name)]
+                         shared_embedding_name, max_norm=max_norm)]
   else:
     # check compatibility of sparse_id_columns
     compatible = True
@@ -1081,7 +1192,7 @@ def shared_embedding_columns(sparse_id_columns,
         shared_embedding_name = "_".join([column.name
                                           for column in sorted_columns[0:3]])
         shared_embedding_name += (
-            "_plus_{}_others".format(len(sorted_columns)-3))
+            "_plus_{}_others".format(len(sorted_columns) - 3))
       shared_embedding_name += "_shared_embedding"
     shared_vocab_size = sparse_id_columns[0].length
 
@@ -1090,19 +1201,24 @@ def shared_embedding_columns(sparse_id_columns,
       embedded_columns.append(
           _EmbeddingColumn(column, dimension, combiner, initializer,
                            ckpt_to_load_from, tensor_name_in_ckpt,
-                           shared_embedding_name, shared_vocab_size))
+                           shared_embedding_name, shared_vocab_size,
+                           max_norm=max_norm))
     return tuple(embedded_columns)
 
 
-class _HashedEmbeddingColumn(collections.namedtuple(
-    "_HashedEmbeddingColumn", ["column_name", "size", "dimension", "combiner",
-                               "initializer"]), _EmbeddingColumn):
-  """See `hashed_embedding_column`."""
+class _ScatteredEmbeddingColumn(
+    collections.namedtuple(
+        "_ScatteredEmbeddingColumn",
+        ["column_name", "size", "dimension", "hash_key", "combiner",
+         "initializer"]),
+    _EmbeddingColumn):
+  """See `scattered_embedding_column`."""
 
   def __new__(cls,
               column_name,
               size,
               dimension,
+              hash_key,
               combiner="sqrtn",
               initializer=None):
     if initializer is not None and not callable(initializer):
@@ -1113,13 +1229,14 @@ class _HashedEmbeddingColumn(collections.namedtuple(
       # TODO(b/25671353): Better initial value?
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)
-    return super(_HashedEmbeddingColumn, cls).__new__(cls, column_name, size,
-                                                      dimension, combiner,
-                                                      initializer)
+    return super(_ScatteredEmbeddingColumn, cls).__new__(cls, column_name, size,
+                                                         dimension, hash_key,
+                                                         combiner,
+                                                         initializer)
 
   @property
   def name(self):
-    return "{}_hashed_embedding".format(self.column_name)
+    return "{}_scattered_embedding".format(self.column_name)
 
   @property
   def config(self):
@@ -1137,24 +1254,40 @@ class _HashedEmbeddingColumn(collections.namedtuple(
         combiner=self.combiner,
         dimension=self.dimension,
         shared_embedding_name=None,
-        hashed=True,
+        hash_key=self.hash_key,
         max_norm=None)
 
 
-def hashed_embedding_column(column_name,
-                            size,
-                            dimension,
-                            combiner=None,
-                            initializer=None):
+def scattered_embedding_column(column_name,
+                               size,
+                               dimension,
+                               hash_key,
+                               combiner=None,
+                               initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
   The i-th embedding component of a value v is found by retrieving an
   embedding weight whose index is a fingerprint of the pair (v,i).
 
+  An embedding column with sparse_column_with_hash_bucket such as
+    embedding_column(
+        sparse_column_with_hash_bucket(column_name, bucket_size),
+        dimension)
+
+  could be replaced by
+    scattered_embedding_column(
+        column_name, size=bucket_size * dimension, dimension=dimension,
+        hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
+
+  for the same number of embedding parameters and hopefully reduced impact of
+  collisions with a cost of slowing down training.
+
   Args:
     column_name: A string defining sparse column name.
     size: An integer specifying the number of parameters in the embedding layer.
     dimension: An integer specifying dimension of the embedding.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp.
     combiner: A string specifying how to reduce if there are multiple entries
       in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
       of this can be thought as example level normalizations on the column:
@@ -1167,7 +1300,7 @@ def hashed_embedding_column(column_name,
       `tf.truncated_normal_initializer` with mean 0 and standard deviation 0.1.
 
   Returns:
-    A _HashedEmbeddingColumn.
+    A _ScatteredEmbeddingColumn.
 
   Raises:
     ValueError: if dimension or size is not a positive integer; or if combiner
@@ -1188,8 +1321,8 @@ def hashed_embedding_column(column_name,
                      "combiner: {}, column_name: {}".format(combiner,
                                                             column_name))
 
-  return _HashedEmbeddingColumn(column_name, size, dimension, combiner,
-                                initializer)
+  return _ScatteredEmbeddingColumn(column_name, size, dimension, hash_key,
+                                   combiner, initializer)
 
 
 def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
@@ -1243,12 +1376,16 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
   """Represents a real valued feature column also known as continuous features.
 
-  Instances of this class are immutable. A real valued column means features are
-  dense. It means dictionary returned by InputBuilder contains a
-  ("column_name", Tensor) pair. Tensor shape should be (batch_size, 1).
+  Instances of this class are immutable. A real valued column with a specified
+  dimension means features are dense, otherwise they're sparse.
+  In the dense case, the dictionary returned by InputBuilder contains a
+  ("column_name", Tensor) pair with a Tensor shape of (batch_size, dimension).
+  In the sparse shape, the dictionary contains a ("column_name", SparseTensor)
+  pair instead with shape inferred after parsing.
   """
 
-  def __new__(cls, column_name, dimension, default_value, dtype, normalizer):
+  def __new__(cls, column_name, dimension, default_value,
+              dtype, normalizer):
     if default_value is not None:
       default_value = tuple(default_value)
     return super(_RealValuedColumn, cls).__new__(cls, column_name, dimension,
@@ -1261,12 +1398,15 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
 
   @property
   def config(self):
-    default_value = self.default_value
-    if default_value is not None:
-      default_value = list(default_value)
-    return {self.column_name: parsing_ops.FixedLenFeature([self.dimension],
-                                                          self.dtype,
-                                                          default_value)}
+    if self.dimension is None:
+      return {self.column_name: parsing_ops.VarLenFeature(self.dtype)}
+    else:
+      default_value = self.default_value
+      if default_value is not None:
+        default_value = list(default_value)
+      return {self.column_name: parsing_ops.FixedLenFeature([self.dimension],
+                                                            self.dtype,
+                                                            default_value)}
 
   @property
   def key(self):
@@ -1301,11 +1441,17 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
                           weight_collections=None,
                           trainable=True,
                           output_rank=2):
+    input_tensor = self._to_dense_tensor(input_tensor)
     if input_tensor.dtype != dtypes.float32:
       input_tensor = math_ops.to_float(input_tensor)
     return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):
+    if isinstance(input_tensor, sparse_tensor_py.SparseTensor):
+      default_value = (self.default_value[0] if self.default_value is not None
+                       else 0)
+      return sparse_ops.sparse_tensor_to_dense(
+          input_tensor, default_value=default_value)
     return input_tensor
 
 
@@ -1319,21 +1465,26 @@ def real_valued_column(column_name,
   Args:
     column_name: A string defining real valued column name.
     dimension: An integer specifying dimension of the real valued column.
-      The default is 1. The Tensor representing the _RealValuedColumn
-      will have the shape of [batch_size, dimension].
+      The default is 1. When dimension is not None, the Tensor representing
+      the _RealValuedColumn will have the shape of [batch_size, dimension].
+      A None dimension means the feature column should be treat as variable
+      length and will be parsed as a `SparseTensor`.
     default_value: A single value compatible with dtype or a list of values
       compatible with dtype which the column takes on during tf.Example parsing
-      if data is missing. If None, then tf.parse_example will fail if an example
-      does not contain this column. If a single value is provided, the same
-      value will be applied as the default value for every dimension. If a
-      list of values is provided, the length of the list should be equal to the
-      value of `dimension`.
+      if data is missing. When dimension is not None, a default value of None
+      will cause tf.parse_example to fail if an example does not contain this
+      column. If a single value is provided, the same value will be applied as
+      the default value for every dimension. If a list of values is provided,
+      the length of the list should be equal to the value of `dimension`.
+      Only scalar default value is supported in case dimension is not specified.
     dtype: defines the type of values. Default value is tf.float32. Must be a
       non-quantized, real integer or floating point type.
     normalizer: If not None, a function that can be used to normalize the value
       of the real valued column after default_value is applied for parsing.
       Normalizer function takes the input tensor as its argument, and returns
-      the output tensor. (e.g. lambda x: (x - 3.0) / 4.2).
+      the output tensor. (e.g. lambda x: (x - 3.0) / 4.2). Note that for
+      variable length columns, the normalizer should expect an input_tensor of
+      type `SparseTensor`.
   Returns:
     A _RealValuedColumn.
   Raises:
@@ -1345,15 +1496,15 @@ def real_valued_column(column_name,
     ValueError: if dtype is not convertable to tf.float32.
   """
 
-  if not isinstance(dimension, int):
-    raise TypeError("dimension must be an integer. "
-                    "dimension: {}, column_name: {}".format(dimension,
-                                                            column_name))
-
-  if dimension < 1:
-    raise ValueError("dimension must be greater than 0. "
-                     "dimension: {}, column_name: {}".format(dimension,
-                                                             column_name))
+  if dimension is not None:
+    if not isinstance(dimension, int):
+      raise TypeError("dimension must be an integer. "
+                      "dimension: {}, column_name: {}".format(dimension,
+                                                              column_name))
+    if dimension < 1:
+      raise ValueError("dimension must be greater than 0. "
+                       "dimension: {}, column_name: {}".format(dimension,
+                                                               column_name))
 
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError("dtype must be convertible to float. "
@@ -1365,22 +1516,30 @@ def real_valued_column(column_name,
 
   if isinstance(default_value, int):
     if dtype.is_integer:
-      default_value = [default_value for _ in range(dimension)]
+      default_value = ([default_value for _ in range(dimension)] if dimension
+                       else [default_value])
       return _RealValuedColumn(column_name, dimension, default_value, dtype,
                                normalizer)
     if dtype.is_floating:
       default_value = float(default_value)
-      default_value = [default_value for _ in range(dimension)]
+      default_value = ([default_value for _ in range(dimension)] if dimension
+                       else [default_value])
       return _RealValuedColumn(column_name, dimension, default_value, dtype,
                                normalizer)
 
   if isinstance(default_value, float):
     if dtype.is_floating and (not dtype.is_integer):
-      default_value = [default_value for _ in range(dimension)]
+      default_value = ([default_value for _ in range(dimension)] if dimension
+                       else [default_value])
       return _RealValuedColumn(column_name, dimension, default_value, dtype,
                                normalizer)
 
   if isinstance(default_value, list):
+    if dimension is None:
+      raise ValueError(
+          "Only scalar default value is supported when dimension is None. "
+          "default_value: {}, column_name: {}".format(
+              default_value, column_name))
     if len(default_value) != dimension:
       raise ValueError(
           "The length of default_value must be equal to dimension. "
@@ -1439,6 +1598,10 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
     if not isinstance(source_column, _RealValuedColumn):
       raise TypeError("source_column must be an instance of _RealValuedColumn. "
                       "source_column: {}".format(source_column))
+
+    if source_column.dimension is None:
+      raise ValueError("source_column must have a defined dimension. "
+                       "source_column: {}".format(source_column))
 
     if not isinstance(boundaries, list) or not boundaries:
       raise ValueError("boundaries must be a non-empty list. "
@@ -1530,8 +1693,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       i2 = array_ops.zeros([batch_size], dtype=dtypes.int32, name="zeros")
       bucket_indices = array_ops.reshape(input_tensor, [-1], name="reshape")
 
-    indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
-    shape = math_ops.to_int64(array_ops.pack([batch_size, dimension]))
+    indices = math_ops.to_int64(array_ops.transpose(array_ops.stack((i1, i2))))
+    shape = math_ops.to_int64(array_ops.stack([batch_size, dimension]))
     sparse_id_values = sparse_tensor_py.SparseTensor(
         indices, bucket_indices, shape)
 
@@ -1542,7 +1705,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         input_tensor=self.to_sparse_tensor(input_tensor),
         weight_tensor=None,
         vocab_size=self.length * self.source_column.dimension,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner="sum")
 
 
@@ -1738,7 +1901,7 @@ class _CrossedColumn(_FeatureColumn,
         input_tensor=input_tensor,
         weight_tensor=None,
         vocab_size=self.length,
-        initializer=init_ops.zeros_initializer,
+        initializer=init_ops.zeros_initializer(),
         combiner=self.combiner)
 
 

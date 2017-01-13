@@ -119,7 +119,7 @@ def train():
     # So here we use tf.nn.softmax_cross_entropy_with_logits on the
     # raw outputs of the nn_layer above, and then average across
     # the batch.
-    diff = tf.nn.softmax_cross_entropy_with_logits(y, y_)
+    diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y)
     with tf.name_scope('total'):
       cross_entropy = tf.reduce_mean(diff)
   tf.summary.scalar('cross_entropy', cross_entropy)
@@ -137,9 +137,8 @@ def train():
 
   # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.summary.merge_all()
-  train_writer = tf.train.SummaryWriter(FLAGS.log_dir + '/train',
-                                        sess.graph)
-  test_writer = tf.train.SummaryWriter(FLAGS.log_dir + '/test')
+  train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
+  test_writer = tf.summary.FileWriter(FLAGS.log_dir + '/test')
   tf.global_variables_initializer().run()
 
   # Train the model, and also write summaries.

@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -298,6 +299,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               // array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
+  def testDivideName(self):
+    with self.test_session():
+      op = math_ops.divide(array_ops.constant(3),
+                           array_ops.constant(4), name="my_cool_divide")
+      self.assertEqual(op.name, "my_cool_divide:0")
+
   def testRealDiv(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -305,11 +312,31 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  def testComplexDiv(self):
+    foo = array_ops.constant([1.+3.j])
+    with self.test_session():
+      _ = math_ops.divide(foo, 1.).eval()
+      _ = math_ops.div(foo, 2.).eval()
+
+  def testFloorDivGrad(self):
+    with self.test_session():
+      a = variables.Variable(2.)
+      b = variables.Variable(4.)
+      with self.test_session() as sess:
+        sess.run(variables.initialize_all_variables())
+        c_grad = gradients.gradients(math_ops.divide(a, b), [a, b])
+        self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
+        c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
+        self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
+        c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
+        self.assertAllEqual([None if x is None else x.eval() for x in c_grad],
+                            [None, None])
+
   def testConsistent(self):
     nums, divs = self.intTestData()
     with self.test_session():
       tf_result = (
-          math_ops.floor_div(nums, divs) * divs + math_ops.floor_mod(nums, divs)
+          math_ops.floor_div(nums, divs) * divs + math_ops.floormod(nums, divs)
       ).eval()
       tf_nums = array_ops.constant(nums)
       tf_divs = array_ops.constant(divs)

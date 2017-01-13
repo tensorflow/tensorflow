@@ -75,7 +75,7 @@ inline bool IsGradientNode(const Graph* graph, const Node* node) {
 bool FindType(const Graph* graph, const Node* node, bool* signed_input,
               bool* range_given, float* input_min, float* input_max) {
   const string& src_op = node->type_string();
-  if (src_op == "Const" || src_op == "Variable") {
+  if (src_op == "Const" || src_op == "Variable" || src_op == "VariableV2") {
     *signed_input = true;
     *range_given = false;
   } else if (src_op == "Relu") {

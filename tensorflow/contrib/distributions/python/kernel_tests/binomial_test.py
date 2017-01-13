@@ -18,42 +18,45 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-import tensorflow as tf
+from tensorflow.contrib.distributions.python.ops import binomial
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import test
 
 
-class BinomialTest(tf.test.TestCase):
+class BinomialTest(test.TestCase):
 
   def testSimpleShapes(self):
     with self.test_session():
       p = np.float32(np.random.beta(1, 1))
-      binom = tf.contrib.distributions.Binomial(n=1., p=p)
+      binom = binomial.Binomial(n=1., p=p)
       self.assertAllEqual([], binom.event_shape().eval())
       self.assertAllEqual([], binom.batch_shape().eval())
-      self.assertEqual(tf.TensorShape([]), binom.get_event_shape())
-      self.assertEqual(tf.TensorShape([]), binom.get_batch_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), binom.get_event_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), binom.get_batch_shape())
 
   def testComplexShapes(self):
     with self.test_session():
       p = np.random.beta(1, 1, size=(3, 2)).astype(np.float32)
       n = [[3., 2], [4, 5], [6, 7]]
-      binom = tf.contrib.distributions.Binomial(n=n, p=p)
+      binom = binomial.Binomial(n=n, p=p)
       self.assertAllEqual([], binom.event_shape().eval())
       self.assertAllEqual([3, 2], binom.batch_shape().eval())
-      self.assertEqual(tf.TensorShape([]), binom.get_event_shape())
-      self.assertEqual(tf.TensorShape([3, 2]), binom.get_batch_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), binom.get_event_shape())
+      self.assertEqual(
+          tensor_shape.TensorShape([3, 2]), binom.get_batch_shape())
 
   def testNProperty(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]
     n = [[3.], [4]]
     with self.test_session():
-      binom = tf.contrib.distributions.Binomial(n=n, p=p)
+      binom = binomial.Binomial(n=n, p=p)
       self.assertEqual((2, 1), binom.n.get_shape())
       self.assertAllClose(n, binom.n.eval())
 
   def testPProperty(self):
     p = [[0.1, 0.2, 0.7]]
     with self.test_session():
-      binom = tf.contrib.distributions.Binomial(n=3., p=p)
+      binom = binomial.Binomial(n=3., p=p)
       self.assertEqual((1, 3), binom.p.get_shape())
       self.assertEqual((1, 3), binom.logits.get_shape())
       self.assertAllClose(p, binom.p.eval())
@@ -61,7 +64,7 @@ class BinomialTest(tf.test.TestCase):
   def testLogitsProperty(self):
     logits = [[0., 9., -0.5]]
     with self.test_session():
-      binom = tf.contrib.distributions.Binomial(n=3., logits=logits)
+      binom = binomial.Binomial(n=3., logits=logits)
       self.assertEqual((1, 3), binom.p.get_shape())
       self.assertEqual((1, 3), binom.logits.get_shape())
       self.assertAllClose(logits, binom.logits.eval())
@@ -70,7 +73,7 @@ class BinomialTest(tf.test.TestCase):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
     with self.test_session():
-      binom = tf.contrib.distributions.Binomial(n=n, p=p, validate_args=True)
+      binom = binomial.Binomial(n=n, p=p, validate_args=True)
       binom.pmf([2., 3, 2]).eval()
       binom.pmf([3., 1, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
@@ -83,14 +86,14 @@ class BinomialTest(tf.test.TestCase):
     n = [[5.]]
     with self.test_session():
       # No errors with integer n.
-      binom = tf.contrib.distributions.Binomial(n=n, p=p, validate_args=True)
+      binom = binomial.Binomial(n=n, p=p, validate_args=True)
       binom.pmf([2., 3, 2]).eval()
       binom.pmf([3., 1, 2]).eval()
       # Both equality and integer checking fail.
       with self.assertRaisesOpError("Condition x == y.*"):
         binom.pmf([1.0, 2.5, 1.5]).eval()
 
-      binom = tf.contrib.distributions.Binomial(n=n, p=p, validate_args=False)
+      binom = binomial.Binomial(n=n, p=p, validate_args=False)
       binom.pmf([1., 2., 3.]).eval()
       # Non-integer arguments work.
       binom.pmf([1.0, 2.5, 1.5]).eval()
@@ -100,7 +103,7 @@ class BinomialTest(tf.test.TestCase):
       # Both zero-batches.  No broadcast
       p = 0.5
       counts = 1.
-      pmf = tf.contrib.distributions.Binomial(n=1., p=p).pmf(counts)
+      pmf = binomial.Binomial(n=1., p=p).pmf(counts)
       self.assertAllClose(0.5, pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -109,7 +112,7 @@ class BinomialTest(tf.test.TestCase):
       # Both zero-batches.  No broadcast
       p = 0.1
       counts = 3.
-      binom = tf.contrib.distributions.Binomial(n=5., p=p)
+      binom = binomial.Binomial(n=5., p=p)
       pmf = binom.pmf(counts)
       self.assertAllClose(stats.binom.pmf(counts, n=5., p=p), pmf.eval())
       self.assertEqual((), pmf.get_shape())
@@ -118,7 +121,7 @@ class BinomialTest(tf.test.TestCase):
     with self.test_session():
       p = [[0.1, 0.9]]
       counts = [[1., 2.]]
-      pmf = tf.contrib.distributions.Binomial(n=3., p=p).pmf(counts)
+      pmf = binomial.Binomial(n=3., p=p).pmf(counts)
       self.assertAllClose(stats.binom.pmf(counts, n=3., p=p), pmf.eval())
       self.assertEqual((1, 2), pmf.get_shape())
 
@@ -126,7 +129,7 @@ class BinomialTest(tf.test.TestCase):
     with self.test_session():
       p = [0.1, 0.4]
       counts = [[1.], [0.]]
-      pmf = tf.contrib.distributions.Binomial(n=1., p=p).pmf(counts)
+      pmf = binomial.Binomial(n=1., p=p).pmf(counts)
       self.assertAllClose([[0.1, 0.4], [0.9, 0.6]], pmf.eval())
       self.assertEqual((2, 2), pmf.get_shape())
 
@@ -134,7 +137,7 @@ class BinomialTest(tf.test.TestCase):
     with self.test_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
-      binom = tf.contrib.distributions.Binomial(n=n, p=p)
+      binom = binomial.Binomial(n=n, p=p)
       expected_means = stats.binom.mean(n, p)
       self.assertEqual((3,), binom.mean().get_shape())
       self.assertAllClose(expected_means, binom.mean().eval())
@@ -143,7 +146,7 @@ class BinomialTest(tf.test.TestCase):
     with self.test_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
-      binom = tf.contrib.distributions.Binomial(n=n, p=p)
+      binom = binomial.Binomial(n=n, p=p)
       expected_variances = stats.binom.var(n, p)
       self.assertEqual((3,), binom.variance().get_shape())
       self.assertAllClose(expected_variances, binom.variance().eval())
@@ -152,7 +155,7 @@ class BinomialTest(tf.test.TestCase):
     with self.test_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
-      binom = tf.contrib.distributions.Binomial(n=n, p=p)
+      binom = binomial.Binomial(n=n, p=p)
       expected_modes = [0., 1, 4]
       self.assertEqual((3,), binom.mode().get_shape())
       self.assertAllClose(expected_modes, binom.mode().eval())
@@ -161,7 +164,7 @@ class BinomialTest(tf.test.TestCase):
     with self.test_session():
       n = 9.
       p = [0.1, 0.2, 0.7]
-      binom = tf.contrib.distributions.Binomial(n=n, p=p)
+      binom = binomial.Binomial(n=n, p=p)
       # For the case where (n + 1) * p is an integer, the modes are:
       # (n + 1) * p and (n + 1) * p - 1. In this case, we get back
       # the larger of the two modes.
@@ -169,5 +172,6 @@ class BinomialTest(tf.test.TestCase):
       self.assertEqual((3,), binom.mode().get_shape())
       self.assertAllClose(expected_modes, binom.mode().eval())
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

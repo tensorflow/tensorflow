@@ -7,9 +7,9 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 
 cc_library(
@@ -32,6 +32,19 @@ tf_cuda_library(
     name = "stream_executor",
     deps = [
         "//tensorflow/stream_executor",
+    ] + if_cuda(
+        ["//tensorflow/stream_executor:cuda_platform"],
+    ) + select({
+        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "stream_executor_cuda",
+    deps = [
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:cuda_platform",
     ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
@@ -40,9 +53,6 @@ tf_cuda_library(
 
 cc_library(
     name = "stream_executor_no_cuda",
-    hdrs = [
-        "stream_executor_no_cuda.h",
-    ],
     deps = [
         "//tensorflow/stream_executor",
     ],
@@ -127,7 +137,7 @@ filegroup(
 cc_library(
     name = "cuda",
     data = [
-        "@local_config_cuda//cuda:{}".format(cuda_library_path("cudart")),
+        "@local_config_cuda//cuda:cudart",
     ],
     linkopts = select({
         "@local_config_cuda//cuda:darwin": [

@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -33,14 +33,24 @@ each block, instead of subsampling the input activations in the first residual
 unit of each block. The two implementations give identical results but our
 implementation is more memory efficient.
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
-import tensorflow as tf
 
-slim = tf.contrib.slim
+from tensorflow.contrib import layers as layers_lib
+from tensorflow.contrib.framework.python.ops import add_arg_scope
+from tensorflow.contrib.framework.python.ops import arg_scope
+from tensorflow.contrib.layers.python.layers import initializers
+from tensorflow.contrib.layers.python.layers import layers
+from tensorflow.contrib.layers.python.layers import regularizers
+from tensorflow.contrib.layers.python.layers import utils
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
 
 
 class Block(collections.namedtuple('Block', ['scope', 'unit_fn', 'args'])):
@@ -71,7 +81,7 @@ def subsample(inputs, factor, scope=None):
   if factor == 1:
     return inputs
   else:
-    return slim.max_pool2d(inputs, [1, 1], stride=factor, scope=scope)
+    return layers.max_pool2d(inputs, [1, 1], stride=factor, scope=scope)
 
 
 def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
@@ -86,12 +96,14 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
 
   is equivalent to
 
-     net = slim.conv2d(inputs, num_outputs, 3, stride=1, padding='SAME')
+     net = tf.contrib.layers.conv2d(inputs, num_outputs, 3, stride=1,
+     padding='SAME')
      net = subsample(net, factor=stride)
 
   whereas
 
-     net = slim.conv2d(inputs, num_outputs, 3, stride=stride, padding='SAME')
+     net = tf.contrib.layers.conv2d(inputs, num_outputs, 3, stride=stride,
+     padding='SAME')
 
   is different when the input's height or width is even, which is why we add the
   current function. For more details, see ResnetUtilsTest.testConv2DSameEven().
@@ -109,21 +121,35 @@ def conv2d_same(inputs, num_outputs, kernel_size, stride, rate=1, scope=None):
       the convolution output.
   """
   if stride == 1:
-    return slim.conv2d(inputs, num_outputs, kernel_size, stride=1, rate=rate,
-                       padding='SAME', scope=scope)
+    return layers_lib.conv2d(
+        inputs,
+        num_outputs,
+        kernel_size,
+        stride=1,
+        rate=rate,
+        padding='SAME',
+        scope=scope)
   else:
     kernel_size_effective = kernel_size + (kernel_size - 1) * (rate - 1)
     pad_total = kernel_size_effective - 1
     pad_beg = pad_total // 2
     pad_end = pad_total - pad_beg
-    inputs = tf.pad(inputs,
-                    [[0, 0], [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]])
-    return slim.conv2d(inputs, num_outputs, kernel_size, stride=stride,
-                       rate=rate, padding='VALID', scope=scope)
+    inputs = array_ops.pad(
+        inputs, [[0, 0], [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]])
+    return layers_lib.conv2d(
+        inputs,
+        num_outputs,
+        kernel_size,
+        stride=stride,
+        rate=rate,
+        padding='VALID',
+        scope=scope)
 
 
-@slim.add_arg_scope
-def stack_blocks_dense(net, blocks, output_stride=None,
+@add_arg_scope
+def stack_blocks_dense(net,
+                       blocks,
+                       output_stride=None,
                        outputs_collections=None):
   """Stacks ResNet `Blocks` and controls output feature density.
 
@@ -172,33 +198,35 @@ def stack_blocks_dense(net, blocks, output_stride=None,
   rate = 1
 
   for block in blocks:
-    with tf.variable_scope(block.scope, 'block', [net]) as sc:
+    with variable_scope.variable_scope(block.scope, 'block', [net]) as sc:
       for i, unit in enumerate(block.args):
         if output_stride is not None and current_stride > output_stride:
           raise ValueError('The target output_stride cannot be reached.')
 
-        with tf.variable_scope('unit_%d' % (i + 1), values=[net]):
+        with variable_scope.variable_scope('unit_%d' % (i + 1), values=[net]):
           unit_depth, unit_depth_bottleneck, unit_stride = unit
 
           # If we have reached the target output_stride, then we need to employ
           # atrous convolution with stride=1 and multiply the atrous rate by the
           # current unit's stride for use in subsequent layers.
           if output_stride is not None and current_stride == output_stride:
-            net = block.unit_fn(net,
-                                depth=unit_depth,
-                                depth_bottleneck=unit_depth_bottleneck,
-                                stride=1,
-                                rate=rate)
+            net = block.unit_fn(
+                net,
+                depth=unit_depth,
+                depth_bottleneck=unit_depth_bottleneck,
+                stride=1,
+                rate=rate)
             rate *= unit_stride
 
           else:
-            net = block.unit_fn(net,
-                                depth=unit_depth,
-                                depth_bottleneck=unit_depth_bottleneck,
-                                stride=unit_stride,
-                                rate=1)
+            net = block.unit_fn(
+                net,
+                depth=unit_depth,
+                depth_bottleneck=unit_depth_bottleneck,
+                stride=unit_stride,
+                rate=1)
             current_stride *= unit_stride
-      net = slim.utils.collect_named_outputs(outputs_collections, sc.name, net)
+      net = utils.collect_named_outputs(outputs_collections, sc.name, net)
 
   if output_stride is not None and current_stride != output_stride:
     raise ValueError('The target output_stride cannot be reached.')
@@ -237,22 +265,22 @@ def resnet_arg_scope(is_training=True,
       'decay': batch_norm_decay,
       'epsilon': batch_norm_epsilon,
       'scale': batch_norm_scale,
-      'updates_collections': tf.GraphKeys.UPDATE_OPS,
+      'updates_collections': ops.GraphKeys.UPDATE_OPS,
   }
 
-  with slim.arg_scope(
-      [slim.conv2d],
-      weights_regularizer=slim.l2_regularizer(weight_decay),
-      weights_initializer=slim.variance_scaling_initializer(),
-      activation_fn=tf.nn.relu,
-      normalizer_fn=slim.batch_norm,
+  with arg_scope(
+      [layers_lib.conv2d],
+      weights_regularizer=regularizers.l2_regularizer(weight_decay),
+      weights_initializer=initializers.variance_scaling_initializer(),
+      activation_fn=nn_ops.relu,
+      normalizer_fn=layers.batch_norm,
       normalizer_params=batch_norm_params):
-    with slim.arg_scope([slim.batch_norm], **batch_norm_params):
+    with arg_scope([layers.batch_norm], **batch_norm_params):
       # The following implies padding='SAME' for pool1, which makes feature
       # alignment easier for dense prediction tasks. This is also used in
       # https://github.com/facebook/fb.resnet.torch. However the accompanying
       # code of 'Deep Residual Learning for Image Recognition' uses
       # padding='VALID' for pool1. You can switch to that choice by setting
-      # slim.arg_scope([slim.max_pool2d], padding='VALID').
-      with slim.arg_scope([slim.max_pool2d], padding='SAME') as arg_sc:
+      # tf.contrib.framework.arg_scope([tf.contrib.layers.max_pool2d], padding='VALID').
+      with arg_scope([layers.max_pool2d], padding='SAME') as arg_sc:
         return arg_sc

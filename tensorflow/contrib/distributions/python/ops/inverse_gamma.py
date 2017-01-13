@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -125,11 +124,12 @@ class InverseGamma(distribution.Distribution):
     return self._beta
 
   def _batch_shape(self):
-    return array_ops.shape(self.alpha + self.beta)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.alpha), array_ops.shape(self.beta))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.alpha.get_shape(),
-                                         self.beta.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.alpha.get_shape(), self.beta.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -185,7 +185,7 @@ class InverseGamma(distribution.Distribution):
     mean = self.beta / (self.alpha - 1.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha > 1., mean,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -204,7 +204,7 @@ class InverseGamma(distribution.Distribution):
            (math_ops.square(self.alpha - 1.) * (self.alpha - 2.)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha > 2., var,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -232,8 +232,8 @@ class InverseGammaWithSoftplusAlphaBeta(InverseGamma):
     parameters.pop("self")
     with ops.name_scope(name, values=[alpha, beta]) as ns:
       super(InverseGammaWithSoftplusAlphaBeta, self).__init__(
-          alpha=nn.softplus(alpha),
-          beta=nn.softplus(beta),
+          alpha=nn.softplus(alpha, name="softplus_alpha"),
+          beta=nn.softplus(beta, name="softplus_gamma"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

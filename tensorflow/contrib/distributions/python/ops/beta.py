@@ -252,7 +252,7 @@ class Beta(distribution.Distribution):
     mode = (self.a - 1.)/ (self.a_b_sum - 2.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.logical_and(
               math_ops.greater(self.a, 1.),
               math_ops.greater(self.b, 1.)),
@@ -294,8 +294,8 @@ class BetaWithSoftplusAB(Beta):
     parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       super(BetaWithSoftplusAB, self).__init__(
-          a=nn.softplus(a),
-          b=nn.softplus(b),
+          a=nn.softplus(a, name="softplus_a"),
+          b=nn.softplus(b, name="softplus_b"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

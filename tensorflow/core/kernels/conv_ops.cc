@@ -32,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#ifdef TENSORFLOW_USE_LIBXSMM
+#include "tensorflow/core/kernels/xsmm_conv2d.h"
+#endif
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -157,6 +160,66 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
+#ifdef TENSORFLOW_USE_LIBXSMM
+template <typename Device, typename T>
+class LaunchXsmmConvOp {
+ public:
+  static bool Run(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int batch, int input_rows,
+                  int input_cols, int in_depth, int filter_rows,
+                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
+                  int out_cols, int out_depth, int stride_rows, int stride_cols,
+                  Tensor* output, TensorFormat data_format) {
+    return false;
+  }
+};
+
+template <>
+class LaunchXsmmConvOp<CPUDevice, float> {
+ public:
+  static bool Run(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int batch, int input_rows,
+                  int input_cols, int in_depth, int filter_rows,
+                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
+                  int out_cols, int out_depth, int stride_rows, int stride_cols,
+                  Tensor* output, TensorFormat data_format) {
+    auto num_threads =
+        ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // See libxsmm_dnn.h for this struct definition.
+    libxsmm_dnn_conv_desc desc;
+    desc.N = batch;
+    desc.C = in_depth;
+    desc.H = input_rows;
+    desc.W = input_cols;
+    desc.K = out_depth;
+    desc.R = filter_rows;
+    desc.S = filter_cols;
+    desc.u = stride_rows;
+    desc.v = stride_cols;
+    desc.pad_h_in = pad_rows;  // ignored by libxsmm for now.
+    desc.pad_w_in = pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h_out = 0;
+    desc.pad_w_out = 0;
+    desc.threads = num_threads;
+    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
+    desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_NHWC;
+    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_RSCK;
+    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+
+    auto input_ptr = input.template flat<float>().data();
+    auto filter_ptr = filter.template flat<float>().data();
+    auto output_ptr = output->template flat<float>().data();
+
+    bool success = functor::XsmmFwdConv2D<CPUDevice, float>()(
+        ctx, desc, input_ptr, filter_ptr, output_ptr);
+    return success;
+  }
+};
+#endif
+
 template <typename Device, typename T>
 class Conv2DOp : public BinaryOp<T> {
  public:
@@ -274,6 +337,15 @@ class Conv2DOp : public BinaryOp<T> {
     if (out_shape.num_elements() == 0) {
       return;
     }
+
+#ifdef TENSORFLOW_USE_LIBXSMM
+    if (LaunchXsmmConvOp<Device, T>::Run(
+            context, input, filter, batch, input_rows, input_cols, in_depth,
+            filter_rows, filter_cols, pad_rows, pad_cols, out_rows, out_cols,
+            out_depth, stride_rows, stride_cols, output, data_format_)) {
+      return;
+    }
+#endif
 
     if (LaunchDeepConvOp<Device, T>::Run(
             context, input, filter, batch, input_rows, input_cols, in_depth,
@@ -507,7 +579,8 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
                      transformed_output.template flat<T>().size());
 
   static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
+      // default value is in bytes despite the name of the environment variable
+      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
       );
 
   int device_id = stream->parent()->device_ordinal();

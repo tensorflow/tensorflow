@@ -699,6 +699,10 @@ TEST(CommonShapeFnsTest, Pool3DShapeTest) {
   // 2x3x4 stride, 1x1x1 filter.
   set_op({1, 2, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
   INFER_OK(op, "[1,24,24,24,1]", "[d0_0,12,8,6,d0_4]");
+
+  // Test partially known dimensions
+  set_op({1, 1, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_OK(op, "[1,?,24,24,1]", "[d0_0,?,8,6,d0_4]");
 }
 
 TEST(CommonShapeFnsTest, UnknownShapeTest) {
@@ -777,80 +781,6 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   op.input_tensors[1] = nullptr;
   INFER_OK(op, "[?,?,?];?", "[?,?,?]");
   INFER_OK(op, "[?,?,?];[2]", "[?,?,?]");
-}
-
-TEST(CommonShapeFnsTest, ReduceForReduceJoin_ShapeFn) {
-  ShapeInferenceTestOp op("ReduceJoin");
-  op.input_tensors.resize(2);
-
-  TF_ASSERT_OK(NodeDefBuilder("test", "ReduceJoin")
-                   .Input("input", 0, DT_STRING)
-                   .Input("reduction_indices", 1, DT_INT32)
-                   .Attr("keep_dims", false)
-                   .Finalize(&op.node_def));
-
-  // Reduction indices not available, so output is unknown.
-  INFER_OK(op, "[2,4,5];[2]", "?");
-  INFER_OK(op, "?;[2]", "?");
-
-  Tensor indices = test::AsTensor<int32>({1, 2});
-  op.input_tensors[1] = &indices;
-
-  // Reduction indices available
-  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
-
-  // Wrapped indices
-  indices = test::AsTensor<int32>({-1, -2});
-  op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
-
-  // Scalar
-  indices = test::AsScalar<int32>(0);
-  op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
-
-  indices = test::AsScalar<int32>(-4);
-  op.input_tensors[1] = &indices;
-  INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
-
-  // Empty reduction indices. Unlike Reduce_ShapeFn, this reduces all dims away.
-  indices = test::AsTensor<int32>({});
-  op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[0]", "[]");
-
-  // An empty dimension of the input can't be in reduction_indices.
-  indices = test::AsScalar<int32>(0);
-  op.input_tensors[1] = &indices;
-  INFER_ERROR("Cannot reduce dimension 0 with size 0", op, "[0,4,5];[]");
-
-  // An empty dimension of the input can be outside reduction_indices.
-  indices = test::AsScalar<int32>(1);
-  op.input_tensors[1] = &indices;
-  INFER_OK(op, "[0,4,5];[]", "[d0_0,d0_2]");
-
-  // An empty dimension of input is allowed when reducing all dims.
-  indices = test::AsTensor<int32>({});
-  op.input_tensors[1] = &indices;
-  INFER_OK(op, "[0,4,5];[]", "[]");
-
-  // Keep dims = true
-  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
-                   .Input("input", 0, DT_STRING)
-                   .Input("reduction_indices", 1, DT_INT32)
-                   .Attr("keep_dims", true)
-                   .Finalize(&op.node_def));
-  indices = test::AsTensor<int32>({-1, -2});
-  op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
-
-  // input rank is known, but reduction indices are not (with keep_dim=true).
-  // The output rank is unknown because reduction indices could end up being
-  // empty and cause it all to be reduced.
-  op.input_tensors[1] = nullptr;
-  INFER_OK(op, "[?,?,?];?", "?");
-  // TODO(cwhipkey): in this case, it could output [?,?,?], because the shape of
-  // reduction indices is known to be non-empty.
-  INFER_OK(op, "[?,?,?];[2]", "?");
 }
 
 TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownShapes) {

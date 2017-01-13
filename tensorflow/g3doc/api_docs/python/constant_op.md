@@ -170,7 +170,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 - - -
 
-### `tf.constant(value, dtype=None, shape=None, name='Const')` {#constant}
+### `tf.constant(value, dtype=None, shape=None, name='Const', verify_shape=False)` {#constant}
 
 Creates a constant tensor.
 
@@ -215,6 +215,9 @@ Creates a constant tensor.
 
 
 *  <b>`name`</b>: Optional name for the tensor.
+
+
+*  <b>`verify_shape`</b>: Boolean that enables verification of a shape of values.
 
 ##### Returns:
 
@@ -624,8 +627,8 @@ Example:
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
-    values of type `dtype`.
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
+    with values of type `dtype`.
 
 
 - - -
@@ -706,7 +709,7 @@ tf.set_random_seed(1234)
 a = tf.random_uniform([1])
 b = tf.random_normal([1])
 
-# Repeatedly running this block with the same graph will generate different
+# Repeatedly running this block with the same graph will generate the same
 # sequences of 'a' and 'b'.
 print("Session 1")
 with tf.Session() as sess1:

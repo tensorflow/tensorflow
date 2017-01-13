@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/types.h"
-#define EIGEN_USE_SYCL
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
@@ -36,7 +35,7 @@ public:
   void DeallocateRaw(void *ptr) override;
 
   void EnterLameDuckMode();
-
+  virtual bool ShouldAllocateEmptyTensors() override final { return true; }
 private:
   Eigen::QueueInterface *device_;  // not owned
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);

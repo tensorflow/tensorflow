@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tf.contrib.training.failure_tolerator."""
 
 from __future__ import absolute_import
@@ -21,7 +20,8 @@ from __future__ import print_function
 
 import time
 
-import tensorflow as tf
+from tensorflow.contrib.training.python.training import failure_tolerator
+from tensorflow.python.platform import test
 
 
 class ForgiveMe(Exception):
@@ -32,13 +32,12 @@ class Unforgivable(Exception):
   pass
 
 
-class FailureToleratorTest(tf.test.TestCase):
+class FailureToleratorTest(test.TestCase):
   # Tests for the FailureTolerator helper
 
   def testHandledExceptions(self):
-    tolerator = tf.contrib.training.FailureTolerator(
-        init_delay=0.0,
-        handled_exceptions=[ForgiveMe])
+    tolerator = failure_tolerator.FailureTolerator(
+        init_delay=0.0, handled_exceptions=[ForgiveMe])
 
     with tolerator.forgive():
       raise ForgiveMe()
@@ -48,10 +47,8 @@ class FailureToleratorTest(tf.test.TestCase):
         raise Unforgivable()
 
   def testLimit(self):
-    tolerator = tf.contrib.training.FailureTolerator(
-        init_delay=0.0,
-        limit=3,
-        handled_exceptions=[ForgiveMe])
+    tolerator = failure_tolerator.FailureTolerator(
+        init_delay=0.0, limit=3, handled_exceptions=[ForgiveMe])
 
     with tolerator.forgive():
       raise ForgiveMe()
@@ -64,12 +61,10 @@ class FailureToleratorTest(tf.test.TestCase):
 
   def testDelaysExponentially(self):
     # Tests that delays are appropriate, with exponential backoff.
-    tolerator = tf.contrib.training.FailureTolerator(
-        init_delay=1.0,
-        backoff_factor=1.5,
-        handled_exceptions=[ForgiveMe])
+    tolerator = failure_tolerator.FailureTolerator(
+        init_delay=1.0, backoff_factor=1.5, handled_exceptions=[ForgiveMe])
 
-    with tf.test.mock.patch.object(time, 'sleep') as mock_sleep:
+    with test.mock.patch.object(time, 'sleep') as mock_sleep:
       with tolerator.forgive():
         raise ForgiveMe()
 
@@ -82,15 +77,14 @@ class FailureToleratorTest(tf.test.TestCase):
       with tolerator.forgive():
         raise ForgiveMe()
 
-      mock_sleep.assert_has_calls([
-          tf.test.mock.call(1.0),
-          tf.test.mock.call(1.5),
-          tf.test.mock.call(2.25)], any_order=False)
+      mock_sleep.assert_has_calls(
+          [test.mock.call(1.0), test.mock.call(1.5), test.mock.call(2.25)],
+          any_order=False)
       self.assertEquals(3, mock_sleep.call_count)
 
   def testForgivesSuccessfully(self):
     # Tests that exceptions are forgiven after forgive_after_seconds
-    tolerator = tf.contrib.training.FailureTolerator(
+    tolerator = failure_tolerator.FailureTolerator(
         limit=3,
         init_delay=0.0,
         backoff_factor=1.0,  # no exponential backoff
@@ -99,7 +93,7 @@ class FailureToleratorTest(tf.test.TestCase):
 
     cur_time = 10.0
 
-    with tf.test.mock.patch.object(time, 'time') as mock_time:
+    with test.mock.patch.object(time, 'time') as mock_time:
       mock_time.side_effect = lambda: cur_time
 
       with tolerator.forgive():
@@ -117,10 +111,10 @@ class FailureToleratorTest(tf.test.TestCase):
 
       with self.assertRaises(ForgiveMe):
         with tolerator.forgive():
-          raise ForgiveMe()   # third exception in < 10secs (t=15, 20.1, 24)
+          raise ForgiveMe()  # third exception in < 10secs (t=15, 20.1, 24)
 
   def testForgivesDoesNotCountDelays(self):
-    tolerator = tf.contrib.training.FailureTolerator(
+    tolerator = failure_tolerator.FailureTolerator(
         limit=3,
         init_delay=1.0,
         backoff_factor=1.0,  # no exponential backoff
@@ -132,8 +126,8 @@ class FailureToleratorTest(tf.test.TestCase):
     def _sleep(x):
       cur_time[0] += x
 
-    with tf.test.mock.patch.object(time, 'sleep') as mock_sleep:
-      with tf.test.mock.patch.object(time, 'time') as mock_time:
+    with test.mock.patch.object(time, 'sleep') as mock_sleep:
+      with test.mock.patch.object(time, 'time') as mock_time:
         mock_time.side_effect = lambda: cur_time[0]
         mock_sleep.side_effect = _sleep
 
@@ -155,4 +149,4 @@ class FailureToleratorTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

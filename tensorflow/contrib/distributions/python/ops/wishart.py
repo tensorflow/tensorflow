@@ -180,7 +180,8 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _event_shape(self):
     s = self.scale_operator_pd.shape()
-    return array_ops.slice(s, array_ops.shape(s) - 2, [2])
+    return array_ops.strided_slice(s, array_ops.shape(s) - 2,
+                                   array_ops.shape(s))
 
   def _get_event_shape(self):
     return self.scale_operator_pd.get_shape()[-2:]
@@ -197,7 +198,7 @@ class _WishartOperatorPD(distribution.Distribution):
     batch_ndims = array_ops.shape(batch_shape)[0]
 
     ndims = batch_ndims + 3  # sample_ndims=1, event_ndims=2
-    shape = array_ops.concat(0, ((n,), batch_shape, event_shape))
+    shape = array_ops.concat(((n,), batch_shape, event_shape), 0)
 
     # Complexity: O(nbk^2)
     x = random_ops.random_normal(shape=shape,
@@ -225,9 +226,9 @@ class _WishartOperatorPD(distribution.Distribution):
 
     # Make batch-op ready.
     # Complexity: O(nbk^2)
-    perm = array_ops.concat(0, (math_ops.range(1, ndims), (0,)))
+    perm = array_ops.concat((math_ops.range(1, ndims), (0,)), 0)
     x = array_ops.transpose(x, perm)
-    shape = array_ops.concat(0, (batch_shape, (event_shape[0], -1)))
+    shape = array_ops.concat((batch_shape, (event_shape[0], -1)), 0)
     x = array_ops.reshape(x, shape)
 
     # Complexity: O(nbM) where M is the complexity of the operator solving a
@@ -238,9 +239,9 @@ class _WishartOperatorPD(distribution.Distribution):
 
     # Undo make batch-op ready.
     # Complexity: O(nbk^2)
-    shape = array_ops.concat(0, (batch_shape, event_shape, (n,)))
+    shape = array_ops.concat((batch_shape, event_shape, (n,)), 0)
     x = array_ops.reshape(x, shape)
-    perm = array_ops.concat(0, ((ndims-1,), math_ops.range(0, ndims-1)))
+    perm = array_ops.concat(((ndims - 1,), math_ops.range(0, ndims - 1)), 0)
     x = array_ops.transpose(x, perm)
 
     if not self.cholesky_input_output_matrices:
@@ -261,7 +262,7 @@ class _WishartOperatorPD(distribution.Distribution):
     ndims = array_ops.rank(x_sqrt)
     # sample_ndims = ndims - batch_ndims - event_ndims
     sample_ndims = ndims - array_ops.shape(batch_shape)[0] - 2
-    sample_shape = array_ops.slice(
+    sample_shape = array_ops.strided_slice(
         array_ops.shape(x_sqrt), [0], [sample_ndims])
 
     # We need to be able to pre-multiply each matrix by its corresponding
@@ -277,12 +278,13 @@ class _WishartOperatorPD(distribution.Distribution):
 
     # Complexity: O(nbk^2) since transpose must access every element.
     scale_sqrt_inv_x_sqrt = x_sqrt
-    perm = array_ops.concat(0, (math_ops.range(sample_ndims, ndims),
-                                math_ops.range(0, sample_ndims)))
+    perm = array_ops.concat((math_ops.range(sample_ndims, ndims),
+                             math_ops.range(0, sample_ndims)), 0)
     scale_sqrt_inv_x_sqrt = array_ops.transpose(scale_sqrt_inv_x_sqrt, perm)
     shape = array_ops.concat(
-        0, (batch_shape,
-            (math_ops.cast(self.dimension, dtype=dtypes.int32), -1)))
+        (batch_shape, (math_ops.cast(
+            self.dimension, dtype=dtypes.int32), -1)),
+        0)
     scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
 
     # Complexity: O(nbM*k) where M is the complexity of the operator solving
@@ -294,10 +296,10 @@ class _WishartOperatorPD(distribution.Distribution):
 
     # Undo make batch-op ready.
     # Complexity: O(nbk^2)
-    shape = array_ops.concat(0, (batch_shape, event_shape, sample_shape))
+    shape = array_ops.concat((batch_shape, event_shape, sample_shape), 0)
     scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
-    perm = array_ops.concat(0, (math_ops.range(ndims - sample_ndims, ndims),
-                                math_ops.range(0, ndims - sample_ndims)))
+    perm = array_ops.concat((math_ops.range(ndims - sample_ndims, ndims),
+                             math_ops.range(0, ndims - sample_ndims)), 0)
     scale_sqrt_inv_x_sqrt = array_ops.transpose(scale_sqrt_inv_x_sqrt, perm)
 
     # Write V = SS', X = LL'. Then:
@@ -367,7 +369,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _mode(self):
     s = self.df - self.dimension - 1.
-    s = math_ops.select(
+    s = array_ops.where(
         math_ops.less(s, 0.),
         constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
         s)

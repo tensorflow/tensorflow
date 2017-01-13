@@ -212,3 +212,14 @@ export function tensorIsGenerated(tensorName: string): boolean {
 export function xor(cond1: boolean, cond2: boolean): boolean {
   return (cond1 || cond2) && !(cond1 && cond2);
 }
+
+/** Checks to see if the browser supports webgl. */
+export function hasWebGLSupport(): boolean {
+  try {
+    let c = document.createElement('canvas');
+    let gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    return gl != null && typeof weblas !== 'undefined';
+  } catch (e) {
+    return false;
+  }
+}

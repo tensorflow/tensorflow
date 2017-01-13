@@ -18,6 +18,8 @@ import {ProjectorConfig, DataProvider, EmbeddingInfo, TENSORS_MSG_ID} from './da
 import * as dataProvider from './data-provider';
 import * as logging from './logging';
 
+const BYTES_EXTENSION = '.bytes';
+
 /** Data provider that loads data from a demo folder. */
 export class DemoDataProvider implements DataProvider {
   private projectorConfigPath: string;
@@ -47,7 +49,14 @@ export class DemoDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching projector config...');
     d3.json(this.projectorConfigPath, (err, projectorConfig) => {
       if (err) {
-        logging.setErrorMessage(err.responseText);
+        let errorMessage = err;
+        // If the error is a valid XMLHttpResponse, it's possible this is a
+        // cross-origin error.
+        if (err.responseText != null) {
+          errorMessage = 'Cannot fetch projector config, possibly a ' +
+              'Cross-Origin request error.';
+        }
+        logging.setErrorMessage(errorMessage, 'fetching projector config');
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -59,18 +68,24 @@ export class DemoDataProvider implements DataProvider {
   retrieveTensor(run: string, tensorName: string,
       callback: (ds: DataSet) => void) {
     let embedding = this.getEmbeddingInfo(tensorName);
-    let separator = embedding.tensorPath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${embedding.tensorPath}`;
-    logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
-    d3.text(url, (error: any, dataString: string) => {
-      if (error) {
-        logging.setErrorMessage(error.responseText);
-        return;
-      }
-      dataProvider.parseTensors(dataString, separator).then(points => {
-        callback(new DataSet(points));
+    if (embedding.tensorPath.substr(-1 * BYTES_EXTENSION.length) ===
+        BYTES_EXTENSION) {
+      dataProvider.retrieveTensorAsBytes(
+          this, this.getEmbeddingInfo(tensorName), run, tensorName, url,
+          callback);
+    } else {
+      logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
+      d3.text(url, (error: any, dataString: string) => {
+        if (error) {
+          logging.setErrorMessage(error.responseText, 'fetching tensors');
+          return;
+        }
+        dataProvider.parseTensors(dataString).then(points => {
+          callback(new DataSet(points));
+        });
       });
-    });
+    }
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,

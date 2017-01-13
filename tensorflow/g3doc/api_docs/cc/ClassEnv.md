@@ -78,9 +78,9 @@ The returned memory region can be accessed from many threads in parallel.
 
 The ownership of the returned ReadOnlyMemoryRegion is passed to the caller and the object should be deleted when is not used. The memory region object shouldn&apos;t live longer than the Env object.
 
-#### `bool tensorflow::Env::FileExists(const string &fname)` {#bool_tensorflow_Env_FileExists}
+#### `Status tensorflow::Env::FileExists(const string &fname)` {#Status_tensorflow_Env_FileExists}
 
-Returns true iff the named file exists.
+Returns OK if the named path exists and NOT_FOUND otherwise.
 
 
 
@@ -92,7 +92,7 @@ Original contents of *results are dropped.
 
 #### `virtual bool tensorflow::Env::MatchPath(const string &path, const string &pattern)=0` {#virtual_bool_tensorflow_Env_MatchPath}
 
-Returns true if the path matches the given pattern. The wildcards allowed in pattern are described below (GetMatchingPaths).
+Returns true if the path matches the given pattern. The wildcards allowed in pattern are described in FileSystem::GetMatchingPaths.
 
 
 
@@ -100,13 +100,7 @@ Returns true if the path matches the given pattern. The wildcards allowed in pat
 
 Given a pattern, stores in *results the set of paths that matches that pattern. *results is cleared.
 
-pattern must match all of a name, not just a substring. pattern: { term } term: &apos;*&apos;: matches any sequence of non-&apos;/&apos; characters &apos;?&apos;: matches a single non-&apos;/&apos; character &apos;[&apos; [ &apos;^&apos; ] { match-list } &apos;]&apos;: matches any single character (not) on the list c: matches character c (c != &apos;*&apos;, &apos;?&apos;, &apos;\&apos;, &apos;[&apos;) &apos;\&apos; c: matches character c character-range: c: matches character c (c != &apos;\&apos;, &apos;-&apos;, &apos;]&apos;) &apos;\&apos; c: matches character c lo &apos;-&apos; hi: matches character c for lo <= c <= hi
-
-Typical return codes
-
-OK - no errors
-
-UNIMPLEMENTED - Some underlying functions (like GetChildren) are not implemented The default implementation uses a combination of GetChildren, MatchPath and IsDirectory.
+More details about `pattern` in FileSystem::GetMatchingPaths.
 
 #### `Status tensorflow::Env::DeleteFile(const string &fname)` {#Status_tensorflow_Env_DeleteFile}
 
@@ -190,15 +184,21 @@ Renames file src to target. If target already exists, it will be replaced.
 
 
 
+#### `string tensorflow::Env::GetExecutablePath()` {#string_tensorflow_Env_GetExecutablePath}
+
+Returns the absolute path of the current executable. It resolves symlinks if there is any.
+
+
+
 #### `virtual uint64 tensorflow::Env::NowMicros()=0` {#virtual_uint64_tensorflow_Env_NowMicros}
 
-Returns the number of micro-seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of micro-seconds since the Unix epoch.
 
 
 
 #### `virtual uint64 tensorflow::Env::NowSeconds()` {#virtual_uint64_tensorflow_Env_NowSeconds}
 
-Returns the number of seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of seconds since the Unix epoch.
 
 
 
@@ -233,6 +233,12 @@ Caller takes ownership of the result and must delete it eventually (the deletion
 
 
 #### `virtual Status tensorflow::Env::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol)=0` {#virtual_Status_tensorflow_Env_GetSymbolFromLibrary}
+
+
+
+
+
+#### `virtual string tensorflow::Env::FormatLibraryFileName(const string &name, const string &version)=0` {#virtual_string_tensorflow_Env_FormatLibraryFileName}
 
 
 

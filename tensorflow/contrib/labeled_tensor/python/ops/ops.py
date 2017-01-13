@@ -198,7 +198,7 @@ def concat(labeled_tensors, axis_name, name=None):
 
     concat_axis = core.concat_axes(concat_axis_list)
     concat_dimension = axis_names.index(axis_name)
-    concat_tensor = array_ops.concat(concat_dimension, tensors, name=scope)
+    concat_tensor = array_ops.concat(tensors, concat_dimension, name=scope)
     values = list(axes_0.values())
     concat_axes = (values[:concat_dimension] + [concat_axis] +
                    values[concat_dimension + 1:])
@@ -727,10 +727,10 @@ def matmul(a, b, name=None):
     b = core.convert_to_labeled_tensor(b)
 
     if len(a.axes) > 2 or len(b.axes) > 2:
-      # We could use tf.batch_matmul to make this work, but we would also need
-      # to use tf.tile and/or tf.transpose. These are more expensive than doing
-      # reshapes, so it's not clear if it's a good idea to do this
-      # automatically.
+      # We could pass batched inputs to tf.matmul to make this work, but we
+      # would also need to use tf.tile and/or tf.transpose. These are more
+      # expensive than doing reshapes, so it's not clear if it's a good idea to
+      # do this automatically.
       raise NotImplementedError(
           'matmul currently requires inputs with rank 2 or less, but '
           'inputs have ranks %r and %r' % (len(a.axes), len(b.axes)))

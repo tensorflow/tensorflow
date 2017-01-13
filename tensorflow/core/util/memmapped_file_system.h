@@ -53,9 +53,19 @@ class MemmappedFileSystem : public FileSystem {
  public:
   // Memmapped regions use this prefix to distinguish from
   // the filesystem.
-  static constexpr char kMemmappedPackagePrefix[] = "memmapped_package://";
-  // The default graphdef in the package.
+#if defined(COMPILER_MSVC)
+  static constexpr char* kMemmappedPackagePrefix =
+#else
+  static constexpr char kMemmappedPackagePrefix[] =
+#endif
+      "memmapped_package://";
+
+// The default graphdef in the package.
+#if defined(COMPILER_MSVC)
+  static constexpr char* kMemmappedPackageDefaultGraphDef =
+#else
   static constexpr char kMemmappedPackageDefaultGraphDef[] =
+#endif
       "memmapped_package://.";
 
   MemmappedFileSystem();

@@ -11,10 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-"""
-This is an example of using convolutional networks over characters
-for DBpedia dataset to predict class from description of an entity.
+"""This is an example of using convolutional networks over characters for DBpedia dataset to predict class from description of an entity.
 
 This model is similar to one described in this paper:
    "Character-level Convolutional Networks for Text Classification"
@@ -36,7 +33,7 @@ import pandas
 from sklearn import metrics
 import tensorflow as tf
 
-from tensorflow.contrib import learn
+learn = tf.contrib.learn
 
 FLAGS = None
 
@@ -51,8 +48,8 @@ POOLING_STRIDE = 2
 def char_cnn_model(features, target):
   """Character level convolutional neural network model to predict classes."""
   target = tf.one_hot(target, 15, 1, 0)
-  byte_list = tf.reshape(tf.one_hot(features, 256, 1, 0),
-                         [-1, MAX_DOCUMENT_LENGTH, 256, 1])
+  byte_list = tf.reshape(
+      tf.one_hot(features, 256, 1, 0), [-1, MAX_DOCUMENT_LENGTH, 256, 1])
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
     conv1 = tf.contrib.layers.convolution2d(
@@ -60,8 +57,11 @@ def char_cnn_model(features, target):
     # Add a RELU for non linearity.
     conv1 = tf.nn.relu(conv1)
     # Max pooling across output of Convolution+Relu.
-    pool1 = tf.nn.max_pool(conv1, ksize=[1, POOLING_WINDOW, 1, 1],
-                           strides=[1, POOLING_STRIDE, 1, 1], padding='SAME')
+    pool1 = tf.nn.max_pool(
+        conv1,
+        ksize=[1, POOLING_WINDOW, 1, 1],
+        strides=[1, POOLING_STRIDE, 1, 1],
+        padding='SAME')
     # Transpose matrix so that n_filters from convolution becomes width.
     pool1 = tf.transpose(pool1, [0, 1, 3, 2])
   with tf.variable_scope('CNN_Layer2'):
@@ -76,12 +76,15 @@ def char_cnn_model(features, target):
   loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
 
   train_op = tf.contrib.layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(),
-      optimizer='Adam', learning_rate=0.01)
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='Adam',
+      learning_rate=0.01)
 
-  return (
-      {'class': tf.argmax(logits, 1), 'prob': tf.nn.softmax(logits)},
-      loss, train_op)
+  return ({
+      'class': tf.argmax(logits, 1),
+      'prob': tf.nn.softmax(logits)
+  }, loss, train_op)
 
 
 def main(unused_argv):
@@ -104,7 +107,9 @@ def main(unused_argv):
   # Train and predict
   classifier.fit(x_train, y_train, steps=100)
   y_predicted = [
-      p['class'] for p in classifier.predict(x_test, as_iterable=True)]
+      p['class'] for p in classifier.predict(
+          x_test, as_iterable=True)
+  ]
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 
@@ -115,7 +120,6 @@ if __name__ == '__main__':
       '--test_with_fake_data',
       default=False,
       help='Test the example code with fake data.',
-      action='store_true'
-  )
+      action='store_true')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

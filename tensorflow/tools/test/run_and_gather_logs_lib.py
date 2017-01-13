@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Library for getting system information during TensorFlow tests."""
 
 from __future__ import absolute_import
@@ -25,9 +24,8 @@ import subprocess
 import tempfile
 import time
 
-import tensorflow as tf
-
 from tensorflow.core.util import test_log_pb2
+from tensorflow.python.platform import gfile
 from tensorflow.tools.test import system_info_lib
 
 
@@ -44,8 +42,8 @@ def get_git_commit_sha():
   return os.getenv("GIT_COMMIT")
 
 
-def process_test_logs(
-    name, test_name, test_args, start_time, run_time, log_files):
+def process_test_logs(name, test_name, test_args, start_time, run_time,
+                      log_files):
   """Gather test information and put it in a TestResults proto.
 
   Args:
@@ -82,7 +80,7 @@ def process_test_logs(
 def process_benchmarks(log_files):
   benchmarks = test_log_pb2.BenchmarkEntries()
   for f in log_files:
-    content = tf.gfile.GFile(f, "rb").read()
+    content = gfile.GFile(f, "rb").read()
     if benchmarks.MergeFromString(content) != len(content):
       raise Exception("Failed parsing benchmark entry from %s" % f)
   return benchmarks
@@ -106,18 +104,14 @@ def run_and_gather_logs(name, test_name, test_args):
     subprocess.CalledProcessError: If the target itself fails.
     IOError: If there are problems gathering test log output from the test.
   """
-  if not (test_name
-          and test_name.startswith("//")
-          and ".." not in test_name
-          and not test_name.endswith(":")
-          and not test_name.endswith(":all")
-          and not test_name.endswith("...")
-          and len(test_name.split(":")) == 2):
+  if not (test_name and test_name.startswith("//") and ".." not in test_name and
+          not test_name.endswith(":") and not test_name.endswith(":all") and
+          not test_name.endswith("...") and len(test_name.split(":")) == 2):
     raise ValueError("Expected test_name parameter with a unique test, e.g.: "
                      "--test_name=//path/to:test")
   test_executable = test_name.rstrip().strip("/").replace(":", "/")
 
-  if tf.gfile.Exists(os.path.join("bazel-bin", test_executable)):
+  if gfile.Exists(os.path.join("bazel-bin", test_executable)):
     # Running in standalone mode from core of the repository
     test_executable = os.path.join("bazel-bin", test_executable)
   else:
@@ -130,7 +124,7 @@ def run_and_gather_logs(name, test_name, test_args):
   test_file_prefix = "%s." % test_file_prefix
 
   try:
-    if not tf.gfile.Exists(test_executable):
+    if not gfile.Exists(test_executable):
       raise ValueError("Executable does not exist: %s" % test_executable)
     test_args = shlex.split(test_args)
 
@@ -140,15 +134,18 @@ def run_and_gather_logs(name, test_name, test_args):
     start_time = time.time()
     subprocess.check_call([test_executable] + test_args)
     run_time = time.time() - start_time
-    log_files = tf.gfile.Glob("{}*".format(test_file_prefix))
+    log_files = gfile.Glob("{}*".format(test_file_prefix))
 
-    return (process_test_logs(name, test_name, test_args,
-                              start_time=int(start_time),
-                              run_time=run_time, log_files=log_files),
-            mangled_test_name)
+    return (process_test_logs(
+        name,
+        test_name,
+        test_args,
+        start_time=int(start_time),
+        run_time=run_time,
+        log_files=log_files), mangled_test_name)
 
   finally:
     try:
-      tf.gfile.DeleteRecursively(temp_directory)
+      gfile.DeleteRecursively(temp_directory)
     except OSError:
       pass

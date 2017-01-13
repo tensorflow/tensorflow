@@ -23,7 +23,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -33,7 +36,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean_squared_error`</b>: A tensor representing the current mean, the value of
+*  <b>`mean_squared_error`</b>: A `Tensor` representing the current mean, the value of
     `total` divided by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_squared_error`.

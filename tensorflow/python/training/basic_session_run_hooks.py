@@ -46,7 +46,7 @@ from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
-class _SecondOrStepTimer(object):
+class SecondOrStepTimer(object):
   """Timer that triggers at most once every N seconds or once every N steps.
   """
 
@@ -145,8 +145,8 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     if not isinstance(tensors, dict):
       tensors = {item: item for item in tensors}
     self._tensors = tensors
-    self._timer = _SecondOrStepTimer(every_secs=every_n_secs,
-                                     every_steps=every_n_iter)
+    self._timer = SecondOrStepTimer(every_secs=every_n_secs,
+                                    every_steps=every_n_iter)
 
   def begin(self):
     self._iter_count = 0
@@ -217,6 +217,68 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
       run_context.request_stop()
 
 
+class CheckpointSaverListener(object):
+  """An interface for event hooks that depend on a checkpoint.
+
+  CheckpointSaverListeners are similar to SessionRunHooks, and can be useful to
+  track training, report progress, and more.  The distinction is that
+  CheckpointSaverListeners run only in steps when CheckpointSaverHook is
+  triggered, and provide callbacks to run before or after the checkpoint is
+  generated.  This is in contrast to SessionRunHooks, which may run in steps
+  when no checkpoint is written, and which have no guaranteed execution order
+  in any case.  CheckpointSaverListeners use the observer pattern and notify at
+  the following points:
+   - when a session starts being used
+   - before each call to `Saver.save()`
+   - after each call to `Saver.save()`
+   - when the session closed
+
+  Custom CheckpointSaverListeners look like this:
+    class ExampleCheckpointSaverListerner(CheckpointSaverListener):
+      def begin(self):
+        # You can add ops to the graph here.
+        print('Starting the session.')
+        self.your_tensor = ...
+
+      def before_save(self, session, global_step_value):
+        print('About to write a checkpoint')
+
+      def after_save(self, session, global_step_value):
+        print('Done writing checkpoint.')
+
+      def end(self, session, global_step_value):
+        print('Done with the session.')
+
+  A CheckpointSaverListener may simply take some action after every checkpoint.
+  It is also possible for the listener to use its own schedule to act less
+  frequently, based on wall clock time or on global_step_value.  In this case,
+  implementors must be careful about what happens at end().  When end is called,
+  The CheckpointSaverHook will have already triggered after_save() in the same
+  global_step, but the listener may or may not have actually acted on it.
+  The listener may want to be sure to act at end() if there is a fresh
+  checkpoint available, but should not act twice if after_save() already handled
+  it.  In this case, end() should have logic to detect the situation and do the
+  right thing, similar to what CheckpointSaverHook.end() does using
+  self._timer.last_triggered_step().
+
+  To use such listeners, pass them in the checkpoint_listeners argument to
+  graph_actions._monitored_train().  If using tf.Learn Estimators, create a
+  custom Estimator and override _get_checkpoint_listeners().
+  """
+
+  def begin(self):
+    pass
+
+  def before_save(self, session, global_step_value):
+    pass
+
+  def after_save(self, session, global_step_value):
+    pass
+
+  def end(self, session, global_step_value):
+    pass
+
+
 class CheckpointSaverHook(session_run_hook.SessionRunHook):
   """Saves checkpoints every N steps or seconds."""
 
@@ -226,7 +288,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                save_steps=None,
                saver=None,
                checkpoint_basename="model.ckpt",
-               scaffold=None):
+               scaffold=None,
+               listeners=None):
     """Initialize CheckpointSaverHook monitor.
 
     Args:
@@ -236,6 +299,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       saver: `Saver` object, used for saving.
       checkpoint_basename: `str`, base name for the checkpoint files.
       scaffold: `Scaffold`, use to get saver object.
+      listeners: List of `CheckpointSaverListener` subclass instances.
+        Used for callbacks that run immediately after the corresponding
+        CheckpointSaverHook callbacks, only in steps where the
+        CheckpointSaverHook was triggered.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
@@ -247,17 +314,20 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       raise ValueError("Exactly one of saver or scaffold must be provided.")
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
-    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
-    self._timer = _SecondOrStepTimer(every_secs=save_secs,
-                                     every_steps=save_steps)
+    self._timer = SecondOrStepTimer(every_secs=save_secs,
+                                    every_steps=save_steps)
+    self._listeners = listeners or []
 
   def begin(self):
+    self._summary_writer = SummaryWriterCache.get(self._checkpoint_dir)
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use CheckpointSaverHook.")
+    for l in self._listeners:
+      l.begin()
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     if self._timer.last_triggered_step() is None:
@@ -288,15 +358,24 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     last_step = session.run(training_util.get_global_step())
     if last_step != self._timer.last_triggered_step():
       self._save(last_step, session)
+    for l in self._listeners:
+      l.end(session, last_step)
 
   def _save(self, step, session):
     """Saves the latest checkpoint."""
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
+
+    for l in self._listeners:
+      l.before_save(session, step)
+
     self._get_saver().save(session, self._save_path, global_step=step)
     self._summary_writer.add_session_log(
         SessionLog(
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
         step)
+
+    for l in self._listeners:
+      l.after_save(session, step)
 
   def _get_saver(self):
     if self._saver is not None:
@@ -314,23 +393,24 @@ class StepCounterHook(session_run_hook.SessionRunHook):
                every_n_secs=None,
                output_dir=None,
                summary_writer=None):
-    self._summary_tag = "global_step/sec"
 
     if (every_n_steps is None) == (every_n_secs is None):
       raise ValueError(
           "exactly one of every_n_steps and every_n_secs should be provided.")
-    self._timer = _SecondOrStepTimer(every_steps=every_n_steps,
-                                     every_secs=every_n_secs)
+    self._timer = SecondOrStepTimer(every_steps=every_n_steps,
+                                    every_secs=every_n_secs)
 
     self._summary_writer = summary_writer
-    if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+    self._output_dir = output_dir
 
   def begin(self):
+    if self._summary_writer is None and self._output_dir:
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use StepCounterHook.")
+    self._summary_tag = self._global_step_tensor.op.name + "/sec"
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
@@ -410,9 +490,11 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
           one will be created accordingly.
       scaffold: `Scaffold` to get summary_op if it's not provided.
-      summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `tf.summary.scalar` or
-          `tf.summary.merge_all`.
+      summary_op: `Tensor` of type `string` containing the serialized `Summary`
+          protocol buffer or a list of `Tensor`. They are most likely an output
+          by TF summary methods like `tf.summary.scalar` or
+          `tf.summary.merge_all`. It can be passed in as one tensor; if more
+          than one, they must be passed in as a list.
 
     Raises:
       ValueError: Exactly one of scaffold or summary_op should be set.
@@ -423,14 +505,15 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
           "Exactly one of scaffold or summary_op must be provided.")
     self._summary_op = summary_op
     self._summary_writer = summary_writer
-    if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+    self._output_dir = output_dir
     self._scaffold = scaffold
-    self._timer = _SecondOrStepTimer(every_secs=save_secs,
-                                     every_steps=save_steps)
+    self._timer = SecondOrStepTimer(every_secs=save_secs,
+                                    every_steps=save_steps)
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def begin(self):
+    if self._summary_writer is None and self._output_dir:
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._next_step = None
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
@@ -443,10 +526,8 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
         self._timer.should_trigger_for_step(self._next_step))
     requests = {"global_step": self._global_step_tensor}
     if self._request_summary:
-      if self._summary_op is not None:
-        requests["summary"] = self._summary_op
-      elif self._scaffold.summary_op is not None:
-        requests["summary"] = self._scaffold.summary_op
+      if self._get_summary_op() is not None:
+        requests["summary"] = self._get_summary_op()
 
     return SessionRunArgs(requests)
 
@@ -464,14 +545,33 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if self._request_summary:
       self._timer.update_last_triggered_step(global_step)
       if "summary" in run_values.results:
-        self._summary_writer.add_summary(run_values.results["summary"],
-                                         global_step)
+        for summary in run_values.results["summary"]:
+          self._summary_writer.add_summary(summary, global_step)
 
     self._next_step = global_step + 1
 
   def end(self, session=None):
     if self._summary_writer:
       self._summary_writer.flush()
+
+  def _get_summary_op(self):
+    """Fetches the summary op either from self._summary_op or self._scaffold.
+
+    Returns:
+      Returns a list of summary `Tensor`.
+    """
+    summary_op = None
+    if self._summary_op is not None:
+      summary_op = self._summary_op
+    elif self._scaffold.summary_op is not None:
+      summary_op = self._scaffold.summary_op
+
+    if summary_op is None:
+      return None
+
+    if not isinstance(summary_op, list):
+      return [summary_op]
+    return summary_op
 
 
 class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
@@ -519,6 +619,32 @@ class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
                      "Current step is %d.", self._wait_until_step, current_step)
         last_logged_step = current_step
       time.sleep(0.5)
+
+
+class FinalOpsHook(session_run_hook.SessionRunHook):
+  """A run hook which evaluates `Tensors` at the end of a session."""
+
+  def __init__(self, final_ops, final_ops_feed_dict=None):
+    """Constructs the FinalOpHook with ops to run at the end of the session.
+
+    Args:
+      final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of
+        names to `Tensors`.
+      final_ops_feed_dict: A feed dictionary to use when running
+        `final_ops_dict`.
+    """
+    self._final_ops = final_ops
+    self._final_ops_feed_dict = final_ops_feed_dict
+    self._final_ops_values = None
+
+  @property
+  def final_ops_values(self):
+    return self._final_ops_values
+
+  def end(self, session):
+    if self._final_ops is not None:
+      self._final_ops_values = session.run(self._final_ops,
+                                           feed_dict=self._final_ops_feed_dict)
 
 
 def _as_graph_element(obj):

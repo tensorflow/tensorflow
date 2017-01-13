@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -86,7 +86,7 @@ more summaries and call the evaluation_loop method:
       logdir,
       num_evals=num_evals,
       eval_op=names_to_updates.values(),
-      summary_op=tf.merge_summary(summary_ops),
+      summary_op=tf.contrib.deprecated.merge_summary(summary_ops),
       eval_interval_secs=600)
 
 **************************************************
@@ -113,7 +113,7 @@ with only summaries. The user need only leave out the 'eval_op' argument:
       checkpoint_dir,
       logdir,
       num_evals=1,
-      summary_op=tf.merge_summary(summary_ops),
+      summary_op=tf.contrib.deprecated.merge_summary(summary_ops),
       eval_interval_secs=600)
 
 """
@@ -122,162 +122,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import summary
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.contrib.training.python.training import evaluation
+from tensorflow.python.summary import summary
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
-from tensorflow.python.training import summary_io
-from tensorflow.python.training import supervisor
-from tensorflow.python.training import training_util
 
 __all__ = [
     'evaluate_once',
-    'evaluation',
     'evaluation_loop',
     'wait_for_new_checkpoint',
     'checkpoints_iterator',
 ]
 
-
-def wait_for_new_checkpoint(checkpoint_dir,
-                            last_checkpoint,
-                            seconds_to_sleep=1,
-                            timeout=None):
-  """Waits until a new checkpoint file is found.
-
-  Args:
-    checkpoint_dir: The directory in which checkpoints are saved.
-    last_checkpoint: The last checkpoint path used.
-    seconds_to_sleep: The number of seconds to sleep for before looking for a
-      new checkpoint.
-    timeout: The maximum amount of time to wait. If left as `None`, then the
-      process will wait indefinitely.
-
-  Returns:
-    a new checkpoint path, or None if the timeout was reached.
-  """
-  logging.info('Waiting for new checkpoint at %s', checkpoint_dir)
-  stop_time = time.time() + timeout if timeout is not None else None
-  while True:
-    checkpoint_path = tf_saver.latest_checkpoint(checkpoint_dir)
-    if checkpoint_path is None or checkpoint_path == last_checkpoint:
-      if stop_time is not None and time.time() + seconds_to_sleep > stop_time:
-        return None
-      time.sleep(seconds_to_sleep)
-    else:
-      logging.info('Found new checkpoint at %s', checkpoint_path)
-      return checkpoint_path
-
-
-def checkpoints_iterator(checkpoint_dir,
-                         min_interval_secs=0,
-                         timeout=None):
-  """Continuously yield new checkpoint files as they appear.
-
-  The iterator only checks for new checkpoints when control flow has been
-  reverted to it. This means it can miss checkpoints if your code takes longer
-  to run between iterations than `min_interval_secs` or the interval at which
-  new checkpoints are written.
-
-  Args:
-    checkpoint_dir: The directory in which checkpoints are saved.
-    min_interval_secs: The minimum number of seconds between yielding
-      checkpoints.
-    timeout: The maximum amount of time to wait between checkpoints. If left as
-      `None`, then the process will wait indefinitely.
-
-  Yields:
-    String paths to latest checkpoint files as they arrive. Stops yielding only
-    if/when waiting for a checkpoint times out.
-  """
-  checkpoint_path = None
-  while True:
-    checkpoint_path = wait_for_new_checkpoint(
-        checkpoint_dir, checkpoint_path, timeout=timeout)
-    if checkpoint_path is None:
-      # timed out
-      return
-    start = time.time()
-    yield checkpoint_path
-    time_to_next_eval = start + min_interval_secs - time.time()
-    if time_to_next_eval > 0:
-      time.sleep(time_to_next_eval)
-
-
-def evaluation(sess,
-               num_evals=1,
-               initial_op=None,
-               initial_op_feed_dict=None,
-               eval_op=None,
-               eval_op_feed_dict=None,
-               final_op=None,
-               final_op_feed_dict=None,
-               summary_op=None,
-               summary_op_feed_dict=None,
-               summary_writer=None,
-               global_step=None):
-  """Performs a single evaluation run.
-
-  A single evaluation consists of several steps run in the following order:
-  (1) an initialization op, (2) an evaluation op which is executed `num_evals`
-  times (3) a finalization op and (4) the execution of a summary op which is
-  written out using a summary writer.
-
-  Args:
-    sess: The current TensorFlow `Session`.
-    num_evals: The number of times to execute `eval_op`.
-    initial_op: An operation run at the beginning of evaluation.
-    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
-    eval_op: A operation run `num_evals` times.
-    eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
-    final_op: An operation to execute after all of the `eval_op` executions. The
-      value of `final_op` is returned.
-    final_op_feed_dict: A feed dictionary to use when executing `final_op`.
-    summary_op: A summary op executed after `eval_op` and `finalize_op`.
-    summary_op_feed_dict: An optional feed dictionary to use when executing the
-      `summary_op`.
-    summary_writer: The summery writer used if `summary_op` is provided.
-    global_step: the global step variable. If left as `None`, then
-      slim.variables.global_step() is used.
-
-  Returns:
-    The value of `final_op` or `None` if `final_op` is `None`.
-
-  Raises:
-    ValueError: if `summary_op` is provided but `global_step` is `None`.
-  """
-  if initial_op is not None:
-    logging.info('Executing initial eval op')
-    sess.run(initial_op, initial_op_feed_dict)
-
-  if eval_op is not None:
-    logging.info('Executing eval ops')
-    for i in range(int(num_evals)):
-      logging.info('Executing eval_op %d/%d', i + 1, num_evals)
-      sess.run(eval_op, eval_op_feed_dict)
-
-  if final_op is not None:
-    logging.info('Executing final op')
-    final_op_value = sess.run(final_op, final_op_feed_dict)
-  else:
-    final_op_value = None
-
-  if summary_op is not None:
-    logging.info('Executing summary op')
-    if global_step is None:
-      global_step = variables.get_or_create_global_step()
-
-    global_step = training_util.global_step(sess, global_step)
-    summary_str = sess.run(summary_op, summary_op_feed_dict)
-    summary_writer.add_summary(summary_str, global_step)
-    summary_writer.flush()
-
-  return final_op_value
-
+wait_for_new_checkpoint = evaluation.wait_for_new_checkpoint
+checkpoints_iterator = evaluation.checkpoints_iterator
 
 _USE_DEFAULT = 0
 
@@ -326,44 +184,27 @@ def evaluate_once(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  global_step = variables.get_or_create_global_step()
+  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
-  saver = tf_saver.Saver(
-      variables_to_restore or variables.get_variables_to_restore(),
-      write_version=saver_pb2.SaverDef.V1)
+  if summary_op is not None:
+    hooks.append(
+        evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
 
-  summary_writer = summary_io.SummaryWriter(logdir)
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
 
-  sv = supervisor.Supervisor(graph=ops.get_default_graph(),
-                             logdir=logdir,
-                             summary_op=None,
-                             summary_writer=None,
-                             global_step=None,
-                             saver=None)
-
-  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                         time.gmtime()))
-  with sv.managed_session(
-      master, start_standard_services=False, config=session_config) as sess:
-    saver.restore(sess, checkpoint_path)
-    sv.start_queue_runners(sess)
-    final_op_value = evaluation(sess,
-                                num_evals=num_evals,
-                                initial_op=initial_op,
-                                initial_op_feed_dict=initial_op_feed_dict,
-                                eval_op=eval_op,
-                                eval_op_feed_dict=eval_op_feed_dict,
-                                final_op=final_op,
-                                final_op_feed_dict=final_op_feed_dict,
-                                summary_op=summary_op,
-                                summary_op_feed_dict=summary_op_feed_dict,
-                                summary_writer=summary_writer,
-                                global_step=global_step)
-
-  logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                         time.gmtime()))
-
-  return final_op_value
+  return evaluation.evaluate_once(
+      checkpoint_path,
+      master=master,
+      scaffold=monitored_session.Scaffold(
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
+      eval_ops=eval_op,
+      feed_dict=eval_op_feed_dict,
+      final_ops=final_op,
+      final_ops_feed_dict=final_op_feed_dict,
+      hooks=hooks,
+      config=session_config)
 
 
 def evaluation_loop(master,
@@ -418,53 +259,27 @@ def evaluation_loop(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  global_step = variables.get_or_create_global_step()
+  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
-  saver = tf_saver.Saver(variables_to_restore or
-                         variables.get_variables_to_restore())
+  if summary_op is not None:
+    hooks.append(
+        evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
 
-  summary_writer = summary_io.SummaryWriter(logdir)
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
 
-  sv = supervisor.Supervisor(graph=ops.get_default_graph(),
-                             logdir=logdir,
-                             summary_op=None,
-                             summary_writer=None,
-                             global_step=None,
-                             saver=saver)
-
-  number_of_evaluations = 0
-  for checkpoint_path in checkpoints_iterator(checkpoint_dir,
-                                              eval_interval_secs,
-                                              timeout):
-    logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                           time.gmtime()))
-
-    with sv.managed_session(
-        master, start_standard_services=False, config=session_config) as sess:
-      sv.saver.restore(sess, checkpoint_path)
-      sv.start_queue_runners(sess)
-      final_op_value = evaluation(sess,
-                                  num_evals=num_evals,
-                                  initial_op=initial_op,
-                                  initial_op_feed_dict=initial_op_feed_dict,
-                                  eval_op=eval_op,
-                                  eval_op_feed_dict=eval_op_feed_dict,
-                                  final_op=final_op,
-                                  final_op_feed_dict=final_op_feed_dict,
-                                  summary_op=summary_op,
-                                  summary_op_feed_dict=summary_op_feed_dict,
-                                  summary_writer=summary_writer,
-                                  global_step=global_step)
-
-    logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                           time.gmtime()))
-    number_of_evaluations += 1
-    if (max_number_of_evaluations and
-        number_of_evaluations >= max_number_of_evaluations):
-      logging.info('Reached max_number_of_evaluations=%s. Exit',
-                   max_number_of_evaluations)
-      return final_op_value
-
-  logging.info(
-      'Timed-out waiting for new checkpoint file. Exiting evaluation loop.')
-  return final_op_value
+  return evaluation.evaluate_repeatedly(
+      checkpoint_dir,
+      master=master,
+      scaffold=monitored_session.Scaffold(
+          init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
+      eval_ops=eval_op,
+      feed_dict=eval_op_feed_dict,
+      final_ops=final_op,
+      final_ops_feed_dict=final_op_feed_dict,
+      eval_interval_secs=eval_interval_secs,
+      hooks=hooks,
+      config=session_config,
+      max_number_of_evaluations=max_number_of_evaluations,
+      timeout=timeout)

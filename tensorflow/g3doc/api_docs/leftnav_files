@@ -14,7 +14,6 @@ python/sparse_ops.md
 python/io_ops.md
 python/python_io.md
 python/nn.md
-python/rnn_cell.md
 python/client.md
 python/train.md
 python/histogram_ops.md
