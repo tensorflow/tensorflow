@@ -1338,13 +1338,6 @@ class FlattenTest(test.TestCase):
                                    'must have a least 2 dimensions'):
         _layers.flatten(inputs)
 
-  def testUnknownLastDim(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
-      inputs.set_shape(tensor_shape.TensorShape((5, None)))
-      with self.assertRaisesRegexp(ValueError, '2nd dimension must be defined'):
-        _layers.flatten(inputs)
-
   def testCollectOutputs(self):
     height, width = 3, 3
     with self.test_session():
@@ -1382,6 +1375,17 @@ class FlattenTest(test.TestCase):
       inputs = array_ops.placeholder(dtypes.int32, (None, height, width, 3))
       output = _layers.flatten(inputs)
       self.assertEqual(output.get_shape().as_list(), [None, height * width * 3])
+      output = sess.run(output, {inputs: images.eval()})
+      self.assertEqual(output.size, images.get_shape().num_elements())
+      self.assertEqual(output.shape[0], images.get_shape()[0])
+
+  def testUnknownDims(self):
+    height = width = depth = 3
+    with self.test_session() as sess:
+      images = random_ops.random_uniform(
+          (5, height, width, depth), seed=1, name='images')
+      inputs = array_ops.placeholder(dtypes.int32, (None, None, None, None))
+      output = _layers.flatten(inputs)
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.size, images.get_shape().num_elements())
       self.assertEqual(output.shape[0], images.get_shape()[0])
