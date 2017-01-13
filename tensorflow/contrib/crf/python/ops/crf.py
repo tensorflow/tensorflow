@@ -106,15 +106,15 @@ def crf_log_norm(inputs, transition_params, sequence_lengths):
     inputs = array_ops.unpack(inputs, axis=1)
     # extract ROI of transition_params, and expand dims, resulting in shape
     # [num_tags, num_tags, 1]
-    expand_transition_params = gen_array_ops.expand_dims(transition_params[1:, :-1], 0)
+    expand_transition_params = array_ops.expand_dims(transition_params[1:, :-1], 0)
 
     # calculate the normalization value starts from the special start symbol
     # and the first observation step, resulting in shape [batch_size, num_tags]
-    prev = gen_array_ops.expand_dims(transition_params[0, :-1], 0) + inputs[0]
+    prev = array_ops.expand_dims(transition_params[0, :-1], 0) + inputs[0]
     prevs = [prev]
 
     for i, ins in enumerate(inputs[1:]):
-        prev = gen_array_ops.expand_dims(prev, -1)
+        prev = array_ops.expand_dims(prev, -1)
         prev = math_ops.reduce_logsumexp(prev + expand_transition_params, 1) + ins
         prevs.append(prev)
 
@@ -125,14 +125,14 @@ def crf_log_norm(inputs, transition_params, sequence_lengths):
         # retrieve the last alpha according to sequence_lengths
         # prev = tf.gather_nd(alphas, tf.pack([tf.range(batch_size), sequence_lengths], axis=1))
         # TODO the following should be replaced by tf.gather_nd, when its gradient is implemented.
-        offset = array_ops.expand_dims(tf.range(batch_size) * seq_len, 1)
-        flattened_indices = gen_array_ops.reshape(offset + tf.expand_dims(sequence_lengths-1, -1), [-1])
+        offset = array_ops.expand_dims(math_ops.range(batch_size) * seq_len, 1)
+        flattened_indices = gen_array_ops.reshape(offset + array_ops.expand_dims(sequence_lengths-1, -1), [-1])
         flattened_alphas = gen_array_ops.reshape(alphas, [-1, num_tags])
         prev = gen_array_ops.reshape(gen_array_ops.gather(flattened_alphas, flattened_indices), [batch_size, num_tags])
 
     # calculate the normalization value starts from the last observation step
     # to the special end symbol
-    last = math_ops.reduce_logsumexp(gen_array_ops.expand_dims(transition_params[1:, -1], 0) + prev, 1)
+    last = math_ops.reduce_logsumexp(array_ops.expand_dims(transition_params[1:, -1], 0) + prev, 1)
     return last
 
 
@@ -178,8 +178,8 @@ def crf_binary_score(targets, sequence_lengths, transition_params):
     num_tags = array_ops.shape(transition_params)[0]
 
     # encode the indices
-    start_indices = array_ops.concat(1, [array_ops.zeros([batch_size, 1], dtype=dtypes.int32),
-                                     array_ops.slice(targets, [0, 0], [-1, seq_len-1]) + 1])
+    start_indices = array_ops.concat_v2([array_ops.zeros([batch_size, 1], dtype=dtypes.int32),
+                                         array_ops.slice(targets, [0, 0], [-1, seq_len-1]) + 1], 1)
     end_indices = array_ops.slice(targets, [0, 0], [-1, seq_len])
 
     flat_transition_indices = start_indices * num_tags + end_indices
@@ -197,8 +197,8 @@ def crf_binary_score(targets, sequence_lengths, transition_params):
     # which denote 'end of states'
     # last_state_ids = tf.gather_nd(targets, tf.pack([tf.range(batch_size), sequence_lengths], axis=1))
     #
-    offset = gen_array_ops.expand_dims(math_ops.range(batch_size) * seq_len, 1)
-    flattened_indices = gen_array_ops.reshape(offset + gen_array_ops.expand_dims(sequence_lengths-1, -1), [-1])
+    offset = array_ops.expand_dims(math_ops.range(batch_size) * seq_len, 1)
+    flattened_indices = gen_array_ops.reshape(offset + array_ops.expand_dims(sequence_lengths-1, -1), [-1])
     flattened_states = gen_array_ops.reshape(targets, [-1])
     last_state_ids = gen_array_ops.gather(flattened_states, flattened_indices)
 
@@ -206,7 +206,7 @@ def crf_binary_score(targets, sequence_lengths, transition_params):
     # last_trans_score = tf.gather_nd(transition_params, last_trans_inds)
     #
     flattened_indices = (last_state_ids + 1) * num_tags + (num_tags - 1)
-    flattened_transition_params = math_ops.reshape(transition_params, [-1])
+    flattened_transition_params = gen_array_ops.reshape(transition_params, [-1])
     last_trans_score = gen_array_ops.gather(flattened_transition_params, flattened_indices)
 
     binary_scores += last_trans_score
@@ -230,7 +230,7 @@ def viterbi_decode(inputs, transition_params, sequence_lengths, name=None):
 
     # calcuate the first step score, that is scores starts from beginning symbol to each
     # state of the first step, which resulting in [batch_size, num_tags] tensor
-    first_alphas = gen_array_ops.expand_dims(transition_params[0, :-1], 0) + first_input
+    first_alphas = array_ops.expand_dims(transition_params[0, :-1], 0) + first_input
 
     viterbi_forward_cell = ViterbiForwardRnnCell(transition_params)
     backtracks, last_alphas = rnn.dynamic_rnn(
@@ -242,7 +242,7 @@ def viterbi_decode(inputs, transition_params, sequence_lengths, name=None):
 
     # calculate the score from the each state of the last step to the endding symbol, which resulting
     # in [batch_size, num_tags] vector
-    final_alpha = last_alphas + gen_array_ops.expand_dims(transition_params[1:, -1], 0)
+    final_alpha = last_alphas + array_ops.expand_dims(transition_params[1:, -1], 0)
     max_score = math_ops.reduce_max(final_alpha, 1)
     last_state_ids = math_ops.argmax(final_alpha, 1)
 
@@ -254,17 +254,17 @@ def viterbi_decode(inputs, transition_params, sequence_lengths, name=None):
             cell=viterbi_backtrack_cell,
             inputs=backtracks,
             sequence_length=sequence_lengths - 1,
-            initial_state=gen_array_ops.expand_dims(last_state_ids, -1),
+            initial_state=array_ops.expand_dims(last_state_ids, -1),
             dtype=dtypes.int64)
-    viterbis = array_ops.concat(1, [gen_array_ops.expand_dims(last_state_ids, -1),
-                                array_ops.squeeze(viterbis, [2])])
+    viterbis = array_ops.concat_v2([array_ops.expand_dims(last_state_ids, -1),
+                                    array_ops.squeeze(viterbis, [2])], 1)
     viterbis = gen_array_ops.reverse_sequence(viterbis, sequence_lengths, 1)
     return math_ops.to_int32(viterbis, name=name)
 
 
 class ViterbiForwardRnnCell(core_rnn_cell.RNNCell):
     def __init__(self, transition_params):
-        self.transition_params = gen_array_ops.expand_dims(transition_params[1:, :-1], 0)
+        self.transition_params = array_ops.expand_dims(transition_params[1:, :-1], 0)
         self.num_tags = transition_params.get_shape()[0].value - 1
 
     @property
@@ -276,7 +276,7 @@ class ViterbiForwardRnnCell(core_rnn_cell.RNNCell):
         return self.num_tags
 
     def __call__(self, inputs, state, scope=None):
-        state = gen_array_ops.expand_dims(state, -1)
+        state = array_ops.expand_dims(state, -1)
         transition_scores = state + self.transition_params
 
         new_state = inputs + math_ops.reduce_max(transition_scores, reduction_indices=[1])
@@ -308,6 +308,6 @@ class ViterbiBacktrackRnnCell(core_rnn_cell.RNNCell):
         offset = math_ops.range(batch_size) * self.num_tags
         flattened_indices = gen_array_ops.reshape(offset + state, [-1])
         flattened_inputs = gen_array_ops.reshape(inputs, [-1])
-        new_state_ids = gen_array_ops.expand_dims(gen_array_ops.gather(flattened_inputs, flattened_indices), -1)
+        new_state_ids = array_ops.expand_dims(gen_array_ops.gather(flattened_inputs, flattened_indices), -1)
         return new_state_ids, new_state_ids
 
