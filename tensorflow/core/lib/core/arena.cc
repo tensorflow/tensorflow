@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <assert.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
