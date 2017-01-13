@@ -34,6 +34,24 @@ def check_version(bazel_version):
           native.bazel_version, bazel_version))
   pass
 
+# Temporary workaround to support including TensorFlow as a submodule until this
+# use-case is supported in the next Bazel release.
+def _temp_workaround_http_archive_impl(repo_ctx):
+   repo_ctx.template("BUILD", repo_ctx.attr.build_file,
+                     {"%ws%": repo_ctx.attr.repository}, False)
+   repo_ctx.download_and_extract(repo_ctx.attr.urls, "", repo_ctx.attr.sha256,
+                                 "", repo_ctx.attr.strip_prefix)
+
+temp_workaround_http_archive = repository_rule(
+   implementation=_temp_workaround_http_archive_impl,
+   attrs = {
+      "build_file": attr.label(),
+      "repository": attr.string(),
+      "urls": attr.string_list(default = []),
+      "sha256": attr.string(default = ""),
+      "strip_prefix": attr.string(default = ""),
+   })
+
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
@@ -128,7 +146,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       build_file = str(Label("//third_party:nasm.BUILD")),
   )
 
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "jpeg",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
@@ -137,6 +155,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
       strip_prefix = "libjpeg-turbo-1.5.1",
       build_file = str(Label("//third_party/jpeg:jpeg.BUILD")),
+      repository = tf_repo_name,
   )
 
   native.new_http_archive(
