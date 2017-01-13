@@ -188,7 +188,7 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
       in output_alternatives.items()}
 
   # Add the default SignatureDef
-  default_inputs = input_alternatives[DEFAULT_INPUT_ALTERNATIVE_KEY]
+  default_inputs = input_alternatives.get(DEFAULT_INPUT_ALTERNATIVE_KEY)
   if not default_inputs:
     raise ValueError('A default input_alternative must be provided.')
     # default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
@@ -259,7 +259,7 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 def make_export_strategy(export_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
-                         export_as_text=False,
+                         as_text=False,
                          exports_to_keep=None):
   """Create an ExportStrategy for use with Experiment."""
 
@@ -270,7 +270,7 @@ def make_export_strategy(export_input_fn,
         export_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        export_as_text=export_as_text,
+        as_text=as_text,
         exports_to_keep=exports_to_keep)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
