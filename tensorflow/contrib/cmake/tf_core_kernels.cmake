@@ -102,6 +102,20 @@ file(GLOB_RECURSE tf_core_gpu_kernels_srcs
    "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
 )
 
+if(WIN32 AND tensorflow_ENABLE_GPU)
+  file(GLOB_RECURSE tf_core_kernels_cpu_only_srcs
+      # GPU implementation not working on Windows yet.
+      "${tensorflow_source_dir}/tensorflow/core/kernels/matrix_diag_op.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/one_hot_op.cc")
+  list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_cpu_only_srcs})
+  add_library(tf_core_kernels_cpu_only OBJECT ${tf_core_kernels_srcs})
+  add_dependencies(tf_core_kernels_cpu_only tf_core_cpu)
+  # Undefine GOOGLE_CUDA to avoid registering unsupported GPU kernel symbols.
+  get_target_property(target_compile_flags tf_core_kernels_cpu_only COMPILE_FLAGS)
+  set(target_compile_flags "${target_compile_flags} /UGOOGLE_CUDA")
+  set_target_properties(tf_core_kernels_cpu_only PROPERTIES COMPILE_FLAGS ${target_compile_flags})
+endif(WIN32 AND tensorflow_ENABLE_GPU)
+
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)
 
