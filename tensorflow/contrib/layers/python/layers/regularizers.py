@@ -65,7 +65,7 @@ def l1_regularizer(scale, scope=None):
       my_scale = ops.convert_to_tensor(scale,
                                        dtype=weights.dtype.base_dtype,
                                        name='scale')
-      return standard_ops.mul(
+      return standard_ops.multiply(
           my_scale,
           standard_ops.reduce_sum(standard_ops.abs(weights)),
           name=name)
