@@ -1,8 +1,12 @@
 # Description:
 # TensorFlow Debugger (tfdbg).
 #
-# Public Android targets:
-# filegroup ":android_srcs" - Debugger source files for Android.
+# Public target(s):
+#
+# ":debug" - Depending on this target causes a concrete implementation of
+#    DebuggerState to be constructed at initialization time, enabling
+#    TensorFlow Debugger (tfdbg) support. For details, please see
+#    core/common_runtime/debugger_state_interface.h.
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -39,14 +43,12 @@ tf_proto_library_cc(
     protodeps = ["//tensorflow/core:protos_all"],
 )
 
-# Depending on this target causes a concrete DebuggerState implementation
-# to be registered at initialization time.  For details, please see
-# core/common_runtime/debugger_state_interface.h.
 cc_library(
     name = "debug",
     srcs = ["debug.cc"],
     copts = tf_copts(),
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         ":debug_graph_utils",
         "//tensorflow/core:core_cpu_internal",

@@ -131,6 +131,9 @@ class XlaOpKernelContext {
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }
 
+  // Mark the op has having side effects (i.e., via Send).
+  void SetOpHasSideEffects();
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
   void CtxFailureWithWarning(Status s);

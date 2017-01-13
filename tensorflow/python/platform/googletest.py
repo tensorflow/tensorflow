@@ -80,9 +80,12 @@ def g_main(argv):
 
 
 # Redefine main to allow running benchmarks
-def main():  # pylint: disable=function-redefined
+def main(argv=None):  # pylint: disable=function-redefined
   def main_wrapper():
-    return app.run(main=g_main, argv=sys.argv)
+    args = argv
+    if args is None:
+      args = sys.argv
+    return app.run(main=g_main, argv=args)
   benchmark.benchmarks_main(true_main=main_wrapper)
 
 

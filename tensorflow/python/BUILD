@@ -77,6 +77,7 @@ py_library(
         ":util",
         "//third_party/py/numpy",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
     ]),

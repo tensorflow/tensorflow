@@ -24831,6 +24831,1318 @@ op {
   }
 }
 op {
+  name: "ResourceApplyAdadelta"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum_update"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyAdagrad"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyAdagradDA"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyAdam"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "v"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "beta1_power"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2_power"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyCenteredRMSProp"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mg"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyFtrl"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "linear"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyGradientDescent"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "delta"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyMomentum"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyProximalAdagrad"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyProximalGradientDescent"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "delta"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceApplyRMSProp"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyAdadelta"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum_update"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyAdagrad"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyAdagradDA"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyCenteredRMSProp"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mg"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyFtrl"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "linear"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyMomentum"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyProximalAdagrad"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyProximalGradientDescent"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResourceSparseApplyRMSProp"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "Restore"
   input_arg {
     name: "file_pattern"
@@ -32557,6 +33869,34 @@ op {
   }
 }
 op {
+  name: "Stage"
+  input_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "StopGradient"
   input_arg {
     name: "input"
@@ -37031,6 +38371,34 @@ op {
       }
     }
   }
+}
+op {
+  name: "Unstage"
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Variable"

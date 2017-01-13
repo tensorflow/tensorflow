@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import time
 
 from tensorflow.python.client import session as session_lib
@@ -30,11 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
-flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
 
 
 def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
@@ -245,4 +243,16 @@ class BatchNormBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  test.main()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--use_gpu",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=True,
+      help="Run GPU benchmarks."
+  )
+  global FLAGS  # pylint:disable=global-at-module-level
+  FLAGS, unparsed = parser.parse_known_args()
+  test.main(argv=[sys.argv[0]] + unparsed)

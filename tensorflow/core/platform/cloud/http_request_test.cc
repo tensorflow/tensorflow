@@ -17,6 +17,7 @@ limitations under the License.
 #include <fstream>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -172,7 +173,8 @@ class FakeLibCurl : public LibCurl {
       temp_str.replace(n, victim.size(), encoded);
       n += encoded.size();
     }
-    char* out_char_str = (char*)malloc(sizeof(char) * temp_str.size() + 1);
+    char* out_char_str =
+        (char*)port::Malloc(sizeof(char) * temp_str.size() + 1);
     std::copy(temp_str.begin(), temp_str.end(), out_char_str);
     out_char_str[temp_str.size()] = '\0';
     return out_char_str;
@@ -180,7 +182,7 @@ class FakeLibCurl : public LibCurl {
   void curl_slist_free_all(curl_slist* list) override {
     delete reinterpret_cast<std::vector<string>*>(list);
   }
-  void curl_free(void* p) override { free(p); }
+  void curl_free(void* p) override { port::Free(p); }
 
   // Variables defining the behavior of this fake.
   string response_content;

@@ -219,19 +219,26 @@ class LocalClient : public Client {
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
 
-  // Compiles the computation for ahead-of-time execution.  This is intended for
-  // use in static compilation.  The |argument_layouts| parameter is used to
-  // inform the compiler of the expected layout for arguments while
-  // |result_layout| is used to signal the layout of the result.  The |options|
-  // parameter is used to request which target the compiler should emit code
-  // for.
+  // A description of a computation to compile using CompileAheadOfTime.
+  struct AheadOfTimeComputationInstance {
+    const Computation* computation;
+    // Inform the compiler of the expected layout for arguments.
+    std::vector<const Shape*> argument_layouts;
+    // Specifies the expected result layout.
+    const Shape* result_layout;
+  };
+
+  // Compiles a list of computations for ahead-of-time execution.  This is
+  // intended for use in static compilation. The |options| parameter describes
+  // the target for which the compiler should emit code.
   //
   // TODO(b/31222190): This doesn't really belong in LocalClient. Move it to its
   // own library.
-  StatusOr<std::unique_ptr<AotCompilationResult>> CompileAheadOfTime(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const Shape& result_layout, const AotCompilationOptions& options);
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(
+      const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
+          computations,
+      const AotCompilationOptions& options);
 
   // Returns the size of a pointer in bytes for a given triple.
   static int64 PointerSizeForTriple(tensorflow::StringPiece triple);
