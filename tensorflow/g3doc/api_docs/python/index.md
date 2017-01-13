@@ -415,6 +415,7 @@
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
   * [`rot90`](../../api_docs/python/image.md#rot90)
   * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
+  * [`total_variation`](../../api_docs/python/image.md#total_variation)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:
