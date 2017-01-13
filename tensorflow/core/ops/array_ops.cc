@@ -97,10 +97,9 @@ Status PadShapeFn(InferenceContext* c) {
     return Status::OK();
   }
 
-  // tensor value was provided for paddings_t; doublecheck n_dim value is the
-  // same.
-  const auto num_dims = c->Value(n_dim);
-  DCHECK_EQ(num_dims, paddings_t->shape().dim_size(0));
+  const int64 num_dims = paddings_t->shape().dim_size(0);
+  TF_RETURN_IF_ERROR(c->WithRank(input, num_dims, &input));
+  TF_RETURN_IF_ERROR(c->WithValue(n_dim, num_dims, &n_dim));
 
   if (paddings_t->dtype() == DT_INT32) {
     return PadKnown<int32>(c, input, paddings_t, num_dims);
@@ -440,7 +439,8 @@ REGISTER_OP("SplitV")
           c->set_output(i, output_shape);
         }
       } else {
-        // Determine the output shape if split dimension and split sizes are known
+        // Determine the output shape if split dimension and split sizes are
+        // known.
         int64 split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         std::vector<int64> data;
@@ -451,12 +451,12 @@ REGISTER_OP("SplitV")
         }
         if (num_outputs != data.size()) {
           return errors::InvalidArgument(
-            "Length of size_splits should be equal to num_outputs");
+              "Length of size_splits should be equal to num_outputs");
         }
         for (int i = 0; i < num_outputs; ++i) {
           output_shape = c->UnknownShapeOfRank(rank);
-          TF_RETURN_IF_ERROR(
-              c->ReplaceDim(input, split_dim, c->MakeDim(data[i]), &output_shape));
+          TF_RETURN_IF_ERROR(c->ReplaceDim(input, split_dim,
+                                           c->MakeDim(data[i]), &output_shape));
           c->set_output(i, output_shape);
         }
       }
@@ -1370,8 +1370,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices), " and params shape: ",
-            c->DebugString(params));
+            c->DebugString(indices),
+            " and params shape: ", c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -1906,12 +1906,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument("batch_dim must be < input rank: ",
-                                       batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument(
+            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument("seq_dim must be < input rank: ",
-                                       seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument(
+            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -3790,8 +3790,9 @@ REGISTER_OP("SpaceToDepth")
       TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
                                      &output_depth));
 
-      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
-                                     output_width, output_depth}));
+      c->set_output(0,
+                    c->MakeShape({c->Dim(input, 0), output_height, output_width,
+                                  output_depth}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -3895,8 +3896,9 @@ REGISTER_OP("DepthToSpace")
       TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 3), block_size * block_size,
                                    true /* evenly_divisible */, &output_depth));
 
-      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
-                                     output_width, output_depth}));
+      c->set_output(0,
+                    c->MakeShape({c->Dim(input, 0), output_height, output_width,
+                                  output_depth}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -4772,8 +4774,9 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), " must match the outer ", outer_dims,
+            "The outer ", outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }
