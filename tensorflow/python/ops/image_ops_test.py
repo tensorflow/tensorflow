@@ -2405,5 +2405,186 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
                     [0, 255 * 256])
 
 
+class TotalVariationTest(test_util.TensorFlowTestCase):
+  """Tests the function total_variation() in image_ops.
+
+  We test a few small handmade examples, as well as
+  some larger examples using an equivalent numpy
+  implementation of the total_variation() function.
+
+  We do NOT test for overflows and invalid / edge-case arguments.
+  """
+
+  def _test(self, x_np, y_np):
+    """Test that the TensorFlow implementation of
+    total_variation(x_np) calculates the values in y_np.
+
+    Note that these may be float-numbers so we only test
+    for approximate equality within some narrow error-bound.
+    """
+
+    # Create a TensorFlow session.
+    with self.test_session(use_gpu=True):
+      # Add a constant to the TensorFlow graph that holds the input.
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+
+      # Add ops for calculating the total variation using TensorFlow.
+      y = image_ops.total_variation(images=x_tf)
+
+      # Run the TensorFlow session to calculate the result.
+      y_tf = y.eval()
+
+      # Assert that the results are as expected within
+      # some small error-bound in case they are float-values.
+      self.assertAllClose(y_tf, y_np)
+
+  def _total_variation_np(self, x_np):
+    """Calculate the total variation of x_np using numpy.
+    This implements the same function as TensorFlow but
+    using numpy instead.
+
+    Args:
+        x_np: Numpy array with 3 or 4 dimensions.
+    """
+
+    dim = len(x_np.shape)
+
+    if dim == 3:
+      # Calculate differences for neighboring pixel-values using slices.
+      dif1 = x_np[1:, :, :] - x_np[:-1, :, :]
+      dif2 = x_np[:, 1:, :] - x_np[:, :-1, :]
+
+      # Sum for all axis.
+      sum_axis = None
+    elif dim == 4:
+      # Calculate differences for neighboring pixel-values using slices.
+      dif1 = x_np[:, 1:, :, :] - x_np[:, :-1, :, :]
+      dif2 = x_np[:, :, 1:, :] - x_np[:, :, :-1, :]
+
+      # Only sum for the last 3 axis.
+      sum_axis = (1, 2, 3)
+    else:
+      # This should not occur in this test-code.
+      pass
+
+    tot_var = np.sum(np.abs(dif1), axis=sum_axis) + \
+              np.sum(np.abs(dif2), axis=sum_axis)
+
+    return tot_var
+
+  def _test_tensorflow_vs_numpy(self, x_np):
+    """Test the TensorFlow implementation against a numpy implementation.
+
+    Args:
+        x_np: Numpy array with 3 or 4 dimensions.
+    """
+
+    # Calculate the y-values using the numpy implementation.
+    y_np = self._total_variation_np(x_np)
+
+    self._test(x_np, y_np)
+
+  def _generateArray(self, shape):
+    """Generate an array of the given shape for use in testing.
+    The numbers are calculated as the cumulative sum, which
+    causes the difference between neighboring numbers to vary."""
+
+    # Flattened length of the array.
+    flat_len = np.prod(shape)
+
+    a = np.array(range(flat_len), dtype=int)
+    a = np.cumsum(a)
+    a = a.reshape(shape)
+
+    return a
+
+  def testTotalVariationNumpy(self):
+    """Test the TensorFlow implementation against a numpy implementation.
+    The two implementations are very similar so it is possible that both
+    have the same bug, which would not be detected by this test. It is
+    therefore necessary to test with manually crafted data as well."""
+
+    # Generate a test-array.
+    # This is an 'image' with 100x80 pixels and 3 color channels.
+    a = self._generateArray(shape=(100, 80, 3))
+
+    # Test the TensorFlow implementation vs. numpy implementation.
+    # We use a numpy implementation to check the results that are
+    # calculated using TensorFlow are correct.
+    self._test_tensorflow_vs_numpy(a)
+    self._test_tensorflow_vs_numpy(a + 1)
+    self._test_tensorflow_vs_numpy(-a)
+    self._test_tensorflow_vs_numpy(1.1 * a)
+
+    # Expand to a 4-dim array.
+    b = a[np.newaxis, :]
+
+    # Combine several variations of the image into a single 4-dim array.
+    multi = np.vstack((b, b + 1, -b, 1.1 * b))
+
+    # Test that the TensorFlow function can also handle 4-dim arrays.
+    self._test_tensorflow_vs_numpy(multi)
+
+  def testTotalVariationHandmade(self):
+    """Test the total variation for a few handmade examples."""
+
+    # We create an image that is 2x2 pixels with 3 color channels.
+    # The image is very small so we can check the result by hand.
+
+    # Red color channel.
+    # The following are the sum of absolute differences between the pixels.
+    # sum row dif = (4-1) + (7-2) = 3 + 5 = 8
+    # sum col dif = (2-1) + (7-4) = 1 + 3 = 4
+    r = [[1, 2],
+         [4, 7]]
+
+    # Blue color channel.
+    # sum row dif = 18 + 29 = 47
+    # sum col dif = 7 + 18 = 25
+    g = [[11, 18],
+         [29, 47]]
+
+    # Green color channel.
+    # sum row dif = 120 + 193 = 313
+    # sum col dif = 47 + 120 = 167
+    b = [[73, 120],
+         [193, 313]]
+
+    # Combine the 3 color channels into a single 3-dim array.
+    # The shape is (2, 2, 3) corresponding to (height, width and color).
+    a = np.dstack((r, g, b))
+
+    # Total variation for this image.
+    # Sum of all pixel differences = 8 + 4 + 47 + 25 + 313 + 167 = 564
+    tot_var = 564
+
+    # Calculate the total variation using TensorFlow and assert it is correct.
+    self._test(a, tot_var)
+
+    # If we add 1 to all pixel-values then the total variation is unchanged.
+    self._test(a + 1, tot_var)
+
+    # If we negate all pixel-values then the total variation is unchanged.
+    self._test(-a, tot_var)
+
+    # Scale the pixel-values by a float. This scales the total variation as well.
+    b = 1.1 * a
+    self._test(b, 1.1 * tot_var)
+
+    # Scale by another float.
+    c = 1.2 * a
+    self._test(c, 1.2 * tot_var)
+
+    # Combine these 3 images into a single array of shape (3, 2, 2, 3)
+    # where the first dimension is for the image-number.
+    multi = np.vstack((a[np.newaxis, :],
+                       b[np.newaxis, :],
+                       c[np.newaxis, :]))
+
+    # Check that TensorFlow correctly calculates the total variation
+    # for each image individually and returns the correct array.
+    self._test(multi, tot_var * np.array([1.0, 1.1, 1.2]))
+
+
 if __name__ == '__main__':
   googletest.main()

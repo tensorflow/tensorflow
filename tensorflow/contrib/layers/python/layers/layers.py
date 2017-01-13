@@ -177,7 +177,8 @@ def _fused_batch_norm(
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
       performance.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor.  If False, 
+      `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -408,7 +409,8 @@ def batch_norm(
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
       performance. Try zero_debias_moving_mean=True for improved stability.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -1444,7 +1446,8 @@ def layer_norm(inputs,
   Args:
     inputs: a tensor with 2 or more dimensions. The normalization
             occurs over all but the first dimension.
-    center: If True, subtract `beta`. If False, `beta` is ignored.
+    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
+      is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.

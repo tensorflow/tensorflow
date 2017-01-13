@@ -262,6 +262,7 @@ cc_library(
         "platform/subprocess.h",
         "platform/thread_annotations.h",
         "platform/types.h",
+        "platform/windows/cpu_info.h",
     ],
     visibility = ["//visibility:public"],
     deps = [

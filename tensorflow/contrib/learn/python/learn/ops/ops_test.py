@@ -32,8 +32,8 @@ from tensorflow.contrib.learn.python.learn import ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -79,15 +79,6 @@ class OpsTest(test.TestCase):
                       feed_dict={cat_var_idx.name: [[0, 2], [1, 3]]})
     self.assertEqual(emb1.shape, emb2.shape)
     self.assertAllEqual(np.transpose(emb2, axes=[1, 0, 2]), emb1)
-
-  def test_one_hot_matrix(self):
-    with self.test_session() as sess:
-      tensor_in = array_ops.placeholder(dtypes.int64, [10, 2])
-      one_hot_tensor = ops.one_hot_matrix(tensor_in, 3)
-      res = sess.run(ops.one_hot_matrix([[0, 1], [2, 1]], 3))
-    self.assertAllEqual(one_hot_tensor.get_shape(), [10, 2, 3])
-    self.assertAllEqual(res, [[[1.0, 0, 0], [0, 1.0, 0]],
-                              [[0, 0, 1.0], [0, 1.0, 0]]])
 
 
 if __name__ == "__main__":
