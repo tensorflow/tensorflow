@@ -32,6 +32,7 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty(void);
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #include "include/libxsmm_cpuid.h"
+#include "libxsmm_dnn_handle.h"
 
 namespace tensorflow {
 
@@ -81,6 +82,33 @@ static void chk_libxsmm_err(libxsmm_dnn_err_t status, string msg) {
   }
 }
 
+LIBXSMM_INLINE void copy_RSCK_to_custom(const float* rsck, float *kcrs, int R, int S, int C, int K,int blocksifm, int blocksofm, int ifmblock,int ofmblock, int start, int end)
+{
+  LIBXSMM_VLA_DECL(4, const      float, input, rsck, S, C,K);
+  LIBXSMM_VLA_DECL(6, float, output, kcrs, blocksifm,R,S,ifmblock, ofmblock);
+  int r, s, k,c, v1,v2;
+  
+  for (k = start; k < end ; k++ ) { 
+    for(c = 0; c < blocksifm;c++){
+      for ( r = 0; r < R; r++ ) {
+        for ( s = 0; s < S; s++ ){
+          for ( v1 = c*ifmblock; v1 < std::min(C,(c+1)*ifmblock) ; v1++ ) {
+            for ( v2 = k*ofmblock; v2 < std::min(K, (k+1)*ofmblock); v2++ )
+              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*ifmblock,v2-k*ofmblock, blocksifm, R, S,ifmblock,ofmblock) = LIBXSMM_VLA_ACCESS(4, input, r, s, v1, v2,  S, C, K);
+            for ( v2 = K; v2 < (k+1)*ofmblock ; v2++ )
+              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*ifmblock,v2-k*ofmblock, blocksifm, R, S,ifmblock,ofmblock) = 0.0f; 
+            }
+          for ( v1 = C; v1 < (c+1)*ifmblock ; v1++ ) {
+            for ( v2 = k*ofmblock; v2 < (k+1)*ofmblock; v2++ )
+              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*ifmblock,v2-k*ofmblock, blocksifm, R, S,ifmblock,ofmblock) = 0.0f;
+          }
+        }
+      }
+    }
+  }
+}
+
+ 
 
 class libxsmm_dnn_conv_desc_wrap{
   public:
@@ -178,12 +206,63 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                     "Destroy handle");
     return false;  // Use non-libxsmm code
   }
-  // libxsmm_dnn_get_codegen_success can return real errors as well
   chk_libxsmm_err(status, "Check codegen status");
 
   libxsmm_dnn_buffer* libxsmm_input;
   libxsmm_dnn_buffer* libxsmm_output;
   libxsmm_dnn_filter* libxsmm_filter;
+  
+ /* 
+  const DeviceBase::CpuWorkerThreads* worker_threads =
+      ctx->device()->tensorflow_cpu_worker_threads();
+ 
+  int num_threads = worker_threads->num_threads;
+*/
+
+  int ifmblock = (libxsmm_handle->ifmblock);
+  int ofmblock = (libxsmm_handle->ofmblock); 
+
+  int blocksifm = desc.K%ifmblock ==0 ? desc.K/ifmblock :desc.K/ifmblock + 1;           
+  int blocksofm = desc.C%ofmblock ==0 ? desc.C/ofmblock :desc.C/ofmblock + 1;
+  float *native_filter = (float*)libxsmm_aligned_malloc( blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float), 2097152);
+ 
+
+  
+  const DeviceBase::CpuWorkerThreads* worker_threads =
+      ctx->device()->tensorflow_cpu_worker_threads();
+
+  int num_threads = worker_threads->num_threads;
+
+
+  if(ofmblock > num_threads){
+    int work = ofmblock;
+    BlockingCounter count(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+        worker_threads->workers->Schedule([=, &count]() {
+        int start = work/num_threads*i;
+        int end =  (start + work/num_threads) > work ? work: start + work/num_threads;  
+        copy_RSCK_to_custom(filter, native_filter, desc.R, desc.S,desc.C, desc.K,blocksifm,blocksofm,ifmblock,ofmblock,start, end);
+        count.DecrementCount();
+        });
+    }
+    count.Wait();
+  }
+  else{
+
+    int work = ofmblock;
+    int num_threads = work;
+    
+    BlockingCounter count(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+        worker_threads->workers->Schedule([=, &count]() {
+        int start = i;
+        int end =  i+1;
+        copy_RSCK_to_custom(filter, native_filter, desc.R, desc.S,desc.C, desc.K,blocksifm,blocksofm,ifmblock,ofmblock, start, end);
+        count.DecrementCount();
+        });
+    }
+    count.Wait();
+  }
 
   libxsmm_input = libxsmm_dnn_link_input_buffer_check(
       libxsmm_handle, input, LIBXSMM_DNN_CONV_FORMAT_NHWC_PTR, &status);
@@ -192,7 +271,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
       libxsmm_handle, output, LIBXSMM_DNN_CONV_FORMAT_NHWC_PTR, &status);
   chk_libxsmm_err(status, "Link output buffer");
   libxsmm_filter = libxsmm_dnn_link_filter_check(
-      libxsmm_handle, filter, LIBXSMM_DNN_CONV_FORMAT_RSCK_PTR, &status);
+      libxsmm_handle, native_filter,  LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status);
   chk_libxsmm_err(status, "Link filter");
 
   chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
@@ -209,10 +288,10 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     libxsmm_dnn_transpose_filter(libxsmm_handle);
   }
 
-  const DeviceBase::CpuWorkerThreads* worker_threads =
-      ctx->device()->tensorflow_cpu_worker_threads();
-  int num_threads = worker_threads->num_threads;
   BlockingCounter counter(num_threads);
+  
+
+
   for (int i = 0; i < num_threads; ++i) {
     worker_threads->workers->Schedule([=, &counter]() {
       chk_libxsmm_err(libxsmm_dnn_convolve_st(libxsmm_handle, kind, 0, i),
@@ -221,7 +300,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     });
   }
   counter.Wait();
-
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_input), "Destroy input");
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_output), "Destroy output");
   chk_libxsmm_err(libxsmm_dnn_destroy_filter(libxsmm_filter), "Destroy filter");
@@ -229,7 +307,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   if(kind != LIBXSMM_DNN_CONV_KIND_FWD)
     chk_libxsmm_err(libxsmm_dnn_destroy_conv_handle(libxsmm_handle),
                   "Destroy handle");
-
+  libxsmm_free(native_filter);
   return true;  // Succeeded
 }
 
