@@ -112,7 +112,11 @@ if(WIN32 AND tensorflow_ENABLE_GPU)
   add_dependencies(tf_core_kernels_cpu_only tf_core_cpu)
   # Undefine GOOGLE_CUDA to avoid registering unsupported GPU kernel symbols.
   get_target_property(target_compile_flags tf_core_kernels_cpu_only COMPILE_FLAGS)
-  set(target_compile_flags "${target_compile_flags} /UGOOGLE_CUDA")
+  if(target_compile_flags STREQUAL "target_compile_flags-NOTFOUND")
+    set(target_compile_flags "/UGOOGLE_CUDA")
+  else()
+    set(target_compile_flags "${target_compile_flags} /UGOOGLE_CUDA")
+  endif()
   set_target_properties(tf_core_kernels_cpu_only PROPERTIES COMPILE_FLAGS ${target_compile_flags})
 endif(WIN32 AND tensorflow_ENABLE_GPU)
 
