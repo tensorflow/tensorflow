@@ -89,6 +89,14 @@ struct ImportGraphDefOptions {
   // TODO(skyewm): add functionality to retrieve unused `input_map` keys
   std::map<TensorId, TensorId> input_map;
 
+  // The names of existing nodes in `g` that the imported graph should have
+  // control dependencies on.
+  //
+  // Note that to avoid creating many redundant control edges, ImportGraphDef()
+  // won't add control edges to nodes that will inherit the dependencies from
+  // other nodes in `gdef`.
+  std::vector<string> control_dependencies;
+
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
