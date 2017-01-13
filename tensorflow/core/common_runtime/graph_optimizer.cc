@@ -51,7 +51,7 @@ Status RemoveParallelConcat(bool* removed_any, Graph* g) {
     TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
     TensorShapeProto shape;
     TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "shape", &shape));
-    // Add the constant shape input to the _empty node.
+    // Add the constant shape input to the start node.
     NodeDef shape_node_def = make_node("Const");
     AddNodeAttr("dtype", DT_INT32, &shape_node_def);
     TensorProto shape_tensor;
@@ -65,18 +65,16 @@ Status RemoveParallelConcat(bool* removed_any, Graph* g) {
     Node* shape_node = g->AddNode(shape_node_def, &status);
     if (!status.ok()) return status;
 
-    // Add the _empty node
-    // TODO(apassos): create and use _ParallelStackBegin instead of empty, and
-    // something similar for InplaceUpdate.
-    NodeDef empty_def = make_node("Empty");
-    AddNodeAttr("dtype", dtype, &empty_def);
-    AddNodeAttr("Tshape", DT_INT32, &empty_def);
-    AddNodeAttr("init", false, &empty_def);
-    empty_def.add_input(shape_node_def.name());
-    Node* empty = g->AddNode(empty_def, &status);
+    // Add the start node
+    NodeDef start_def = make_node("_ParallelConcatStart");
+    AddNodeAttr("dtype", dtype, &start_def);
+    AddNodeAttr("Tshape", DT_INT32, &start_def);
+    AddNodeAttr("init", false, &start_def);
+    start_def.add_input(shape_node_def.name());
+    Node* start = g->AddNode(start_def, &status);
     if (!status.ok()) return status;
     // TODO(apassos): make the shape an attr of _ParallelStackBegin.
-    g->AddEdge(shape_node, 0, empty, 0);
+    g->AddEdge(shape_node, 0, start, 0);
 
     // Add all the inplace_updates.
     std::vector<string> control_dependencies;
@@ -84,35 +82,35 @@ Status RemoveParallelConcat(bool* removed_any, Graph* g) {
     int i = 0;
     for (const Edge* input_edge : n->in_edges()) {
       if (input_edge->IsControlEdge()) {
-        g->AddControlEdge(input_edge->src(), empty);
+        g->AddControlEdge(input_edge->src(), start);
         continue;
       }
-      // Constant index for the inplace node.
+      // Constant index for the update node.
       // TODO(apassos): make _ParallelStackUpdate take this as an attr.
-      NodeDef inplace_idx_def = make_node("Const");
-      AddNodeAttr("dtype", DT_INT64, &inplace_idx_def);
+      NodeDef update_idx_def = make_node("Const");
+      AddNodeAttr("dtype", DT_INT64, &update_idx_def);
       TensorProto index_tensor;
       index_tensor.set_dtype(DT_INT64);
       index_tensor.mutable_tensor_shape()->add_dim()->set_size(1);
       index_tensor.add_int64_val(i);
-      AddNodeAttr("value", index_tensor, &inplace_idx_def);
-      Node* index = g->AddNode(inplace_idx_def, &status);
+      AddNodeAttr("value", index_tensor, &update_idx_def);
+      Node* index = g->AddNode(update_idx_def, &status);
       if (!status.ok()) return status;
 
-      NodeDef inplace_def = make_node("InplaceUpdate");
-      control_dependencies.push_back(inplace_def.name());
-      AddNodeAttr("T", dtype, &inplace_def);
-      AddNodeAttr("Tshape", DT_INT64, &inplace_def);
-      inplace_def.add_input(empty_def.name());
-      inplace_def.add_input(inplace_idx_def.name());
-      inplace_def.add_input(strings::StrCat(input_edge->src()->name(), ":",
-                                            input_edge->src_output()));
-      Node* inplace = g->AddNode(inplace_def, &status);
+      NodeDef update_def = make_node("_ParallelConcatUpdate");
+      control_dependencies.push_back(update_def.name());
+      AddNodeAttr("T", dtype, &update_def);
+      AddNodeAttr("Tshape", DT_INT64, &update_def);
+      update_def.add_input(start_def.name());
+      update_def.add_input(update_idx_def.name());
+      update_def.add_input(strings::StrCat(input_edge->src()->name(), ":",
+                                           input_edge->src_output()));
+      Node* update = g->AddNode(update_def, &status);
       if (!status.ok()) return status;
-      g->AddEdge(empty, 0, inplace, 0);
-      g->AddEdge(index, 0, inplace, 1);
-      g->AddEdge(input_edge->src(), input_edge->src_output(), inplace, 2);
-      control_nodes.push_back(inplace);
+      g->AddEdge(start, 0, update, 0);
+      g->AddEdge(index, 0, update, 1);
+      g->AddEdge(input_edge->src(), input_edge->src_output(), update, 2);
+      control_nodes.push_back(update);
 
       ++i;
     }
@@ -120,13 +118,13 @@ Status RemoveParallelConcat(bool* removed_any, Graph* g) {
     // Add the final identity.
     NodeDef identity_def = make_node("Identity");
     AddNodeAttr("T", dtype, &identity_def);
-    identity_def.add_input(empty_def.name());
+    identity_def.add_input(start_def.name());
     for (const string& s : control_dependencies) {
       identity_def.add_input(strings::StrCat("^", s));
     }
     Node* identity_node = g->AddNode(identity_def, &status);
     if (!status.ok()) return status;
-    g->AddEdge(empty, 0, identity_node, 0);
+    g->AddEdge(start, 0, identity_node, 0);
     for (Node* inp : control_nodes) {
       g->AddControlEdge(inp, identity_node);
     }

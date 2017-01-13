@@ -342,17 +342,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "inplace_ops_test",
-    size = "small",
-    srcs = ["inplace_ops_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:nn_ops",
-    ],
-)
-
-tf_py_test(
     name = "io_ops_test",
     size = "small",
     srcs = ["io_ops_test.py"],
