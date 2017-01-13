@@ -39,16 +39,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import Tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
+
+__all__ = [
+    "crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
+    "crf_unary_score", "crf_binary_score", "viterbi_decode"
+]
 
 
 def crf_log_likelihood(inputs, targets, transition_params, sequence_lengths=None):
@@ -82,8 +85,8 @@ def crf_sequence_score(inputs, targets, transition_params, sequence_lengths):
         sequence_lengths: a [batch_size] vector of sequence lengths.
     """
 
-    unary_scores = crf_unary_scores(targets, sequence_lengths, inputs)
-    binary_scores = crf_binary_scores(targets, sequence_lengths, transition_params)
+    unary_scores = crf_unary_score(targets, sequence_lengths, inputs)
+    binary_scores = crf_binary_score(targets, sequence_lengths, transition_params)
 
     sequence_scores = unary_scores + binary_scores
     return sequence_scores
@@ -133,7 +136,7 @@ def crf_log_norm(inputs, transition_params, sequence_lengths):
     return last
 
 
-def crf_unary_scores(targets, sequence_lengths, inputs):
+def crf_unary_score(targets, sequence_lengths, inputs):
     """Computes the unary scores of tag sequences.
 
     Args:
@@ -160,7 +163,7 @@ def crf_unary_scores(targets, sequence_lengths, inputs):
         unary_scores = math_ops.reduce_sum(unary_scores * masks, 1)
     return unary_scores
 
-def crf_binary_scores(targets, sequence_lengths, transition_params):
+def crf_binary_score(targets, sequence_lengths, transition_params):
     """Computes the binary scores of tag sequences.
 
     Args:
@@ -259,7 +262,7 @@ def viterbi_decode(inputs, transition_params, sequence_lengths, name=None):
     return math_ops.to_int32(viterbis, name=name)
 
 
-class ViterbiForwardRnnCell(rnn_cell.RNNCell):
+class ViterbiForwardRnnCell(core_rnn_cell.RNNCell):
     def __init__(self, transition_params):
         self.transition_params = gen_array_ops.expand_dims(transition_params[1:, :-1], 0)
         self.num_tags = transition_params.get_shape()[0].value - 1
@@ -282,7 +285,7 @@ class ViterbiForwardRnnCell(rnn_cell.RNNCell):
         return new_state_ids, new_state
 
 
-class ViterbiBacktrackRnnCell(rnn_cell.RNNCell):
+class ViterbiBacktrackRnnCell(core_rnn_cell.RNNCell):
     def __init__(self, num_tags):
         self.num_tags = num_tags
 
