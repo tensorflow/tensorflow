@@ -108,7 +108,7 @@ if(WIN32 AND tensorflow_ENABLE_GPU)
       "${tensorflow_source_dir}/tensorflow/core/kernels/matrix_diag_op.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/one_hot_op.cc")
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_cpu_only_srcs})
-  add_library(tf_core_kernels_cpu_only OBJECT ${tf_core_kernels_srcs})
+  add_library(tf_core_kernels_cpu_only OBJECT ${tf_core_kernels_cpu_only_srcs})
   add_dependencies(tf_core_kernels_cpu_only tf_core_cpu)
   # Undefine GOOGLE_CUDA to avoid registering unsupported GPU kernel symbols.
   get_target_property(target_compile_flags tf_core_kernels_cpu_only COMPILE_FLAGS)
