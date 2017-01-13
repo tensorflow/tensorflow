@@ -748,6 +748,9 @@ class Defun(object):
   default graph and adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
+  
+  Definitions of function is frozen for the session after first session.run
+  call, so you must create node using given function before it.
 
   Example, but also see the [How To on functions](link_needed).
 
