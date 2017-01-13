@@ -75,9 +75,10 @@ class GrpcRemoteWorker : public WorkerInterface {
     IssueRequest(request, response, rungraph_, std::move(done), call_opts);
   }
   void RunGraphAsync(CallOptions* call_opts, RunGraphRequestWrapper* request,
-                     RunGraphResponse* response, StatusCallback done) override {
-    IssueRequest(&request->ToProto(), response, rungraph_, std::move(done),
-                 call_opts);
+                     MutableRunGraphResponseWrapper* response,
+                     StatusCallback done) override {
+    IssueRequest(&request->ToProto(), get_proto_from_wrapper(response),
+                 rungraph_, std::move(done), call_opts);
   }
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
