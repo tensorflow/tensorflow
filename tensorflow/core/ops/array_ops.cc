@@ -164,6 +164,71 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
 
 }  // namespace
 
+REGISTER_OP("ParallelConcat")
+    .Input("values: N * T")
+    .Output("output: T")
+    .Attr("N: int >= 1")
+    .Attr("T: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      // Validate that the shape attr is correct.
+      TensorShapeProto passed_shape_proto;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &passed_shape_proto));
+      ShapeHandle passed_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(passed_shape_proto, &passed_shape));
+      if (!c->FullyDefined(passed_shape)) {
+        return errors::InvalidArgument("shape attr must be fully defined.");
+      }
+      ShapeHandle cur;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(
+          passed_shape, 0, c->MakeDim(shape_inference::DimensionOrConstant(1)),
+          &cur));
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        if (!c->FullyDefined(c->input(i))) {
+          return errors::InvalidArgument(
+              "All input shapes must be fully defined.");
+        }
+        DimensionHandle unused;
+        if (!c->WithValue(c->Dim(c->input(i), 0), 1, &unused).ok()) {
+          return errors::InvalidArgument("Size of first dimension must be 1.");
+        }
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
+                                        "From merging shape ", i,
+                                        " with other shapes.");
+      }
+
+      c->set_output(0, passed_shape);
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Concatenates a list of `N` tensors along the first dimension.
+
+The input tensors are all required to have size 1 in the first dimension.
+
+For example:
+
+```prettyprint
+# 'x' is [[1, 4]]
+# 'y' is [[2, 5]]
+# 'z' is [[3, 6]]
+parallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+```
+
+The difference between concat and parallel_concat is that concat requires all
+of the inputs be computed before the operation will begin but doesn't require
+that the input shapes be known during graph construction.  Parallel concat
+will copy pieces of the input into the output as they become available, in
+some situations this can provide a performance benefit.
+
+values: Tensors to be concatenated. All must have size 1 in the first dimension
+ and same shape.
+output: The concatenated tensor.
+shape: the final shape of the result; should be equal to the shapes of any input
+ but with the number of input values in the first dimension.
+)doc");
+
 REGISTER_OP("Pack")
     .Input("values: N * T")
     .Output("output: T")

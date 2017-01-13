@@ -972,16 +972,9 @@ def parallel_stack(values, name="parallel_stack"):
 
     output_shape = tensor_shape.TensorShape([len(values)])
     output_shape = output_shape.concatenate(value_shape)
-
-    outputs = _empty(output_shape, values[0].dtype)
-    output_ops = []
-    for i in range(len(values)):
-      with ops.colocate_with(outputs):
-        output_op = _alias_inplace_update(outputs, i, values[i])
-      output_ops.append(output_op)
-    with ops.control_dependencies(output_ops):
-      outputs = identity(outputs)
-    return outputs
+    # expand_dims converts concat to stack.
+    return gen_array_ops._parallel_concat(
+        [expand_dims(value, 0) for value in values], shape=output_shape)
 
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.

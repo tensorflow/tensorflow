@@ -27,6 +27,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+// TODO(apassos): validate the shapes better.
 class InplaceOpBase : public OpKernel {
  public:
   explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -159,6 +160,17 @@ class EmptyOp : public OpKernel {
   bool init_;
 };
 
+class FailureKernel : public OpKernel {
+ public:
+  explicit FailureKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   errors::Internal("Found instance of parallel_stack which "
+                                    "could not be properly replaced."));
+  }
+
+  void Compute(OpKernelContext*) {}
+};
+
 #define REGISTER(type)                                                      \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("InplaceUpdate").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
@@ -182,6 +194,13 @@ TF_CALL_NUMBER_TYPES(REGISTER)
 TF_CALL_POD_STRING_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
 
+#define REGISTER_PARALLEL_CONCAT(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ParallelConcat").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      FailureKernel);
+TF_CALL_POD_STRING_TYPES(REGISTER_PARALLEL_CONCAT);
+#undef REGISTER_PARALLEL_CONCAT
+
 #if GOOGLE_CUDA
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -194,6 +213,13 @@ typedef Eigen::GpuDevice GPUDevice;
                           EmptyOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
+
+#define REGISTER_PARALLEL_CONCAT(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ParallelConcat").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      FailureKernel);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
+#undef REGISTER_PARALLEL_CONCAT
 
 #define REGISTER(type)                                                      \
   REGISTER_KERNEL_BUILDER(                                                  \
