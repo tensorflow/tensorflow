@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
-namespace ops {
 
 class Output;
 
@@ -285,7 +284,19 @@ class InputList {
   std::vector<Input> inputs_;
 };
 
+// These symbols used to live in the ops namespace, so we temporarily
+// declare some aliases there. TODO(josh11b): Delete this!
+namespace ops {
+
+using ::tensorflow::Input;
+using ::tensorflow::InputList;
+using ::tensorflow::Operation;
+using ::tensorflow::Output;
+using ::tensorflow::OutputHash;
+using ::tensorflow::OutputList;
+
 }  // namespace ops
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_OPS_H_
