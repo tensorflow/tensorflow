@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import os
 import re
 import time
@@ -128,10 +127,15 @@ def get_input_alternatives(input_ops):
   if not features:
     raise ValueError('Features must be defined.')
 
+  # TODO(b/34253951): reinstate the "features" input_signature.
+  # The "features" input_signature, as written, does not work with
+  # SparseTensors.  It is simply commented out as a stopgap, pending discussion
+  # on the bug as to the correct solution.
+
   # Add the "features" input_signature in any case.
   # Note defensive copy because model_fns alter the features dict.
-  input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
-      copy.copy(features))
+  # input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
+  #    copy.copy(features))
 
   return input_alternatives, features
 
@@ -184,7 +188,8 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
   # Add the default SignatureDef
   default_inputs = input_alternatives[DEFAULT_INPUT_ALTERNATIVE_KEY]
   if not default_inputs:
-    default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
+    raise ValueError('A default input_alternative must be provided.')
+    # default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
   # default outputs are guaranteed to exist above
   (default_problem_type, default_outputs) = (
       output_alternatives[actual_default_output_alternative_key])
