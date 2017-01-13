@@ -11831,6 +11831,37 @@ op {
   is_stateful: true
 }
 op {
+  name: "ParallelConcat"
+  input_arg {
+    name: "values"
+    description: "Tensors to be concatenated. All must have size 1 in the first dimension\nand same shape."
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    description: "The concatenated tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "the final shape of the result; should be equal to the shapes of any input\nbut with the number of input values in the first dimension."
+  }
+  summary: "Concatenates a list of `N` tensors along the first dimension."
+  description: "The input tensors are all required to have size 1 in the first dimension.\n\nFor example:\n\n```prettyprint\n# \'x\' is [[1, 4]]\n# \'y\' is [[2, 5]]\n# \'z\' is [[3, 6]]\nparallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\n```\n\nThe difference between concat and parallel_concat is that concat requires all\nof the inputs be computed before the operation will begin but doesn\'t require\nthat the input shapes be known during graph construction.  Parallel concat\nwill copy pieces of the input into the output as they become available, in\nsome situations this can provide a performance benefit."
+}
+op {
   name: "ParameterizedTruncatedNormal"
   input_arg {
     name: "shape"
