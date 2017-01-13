@@ -407,6 +407,30 @@ Get the partition graphs.
 
 - - -
 
+#### `tf_debug.DebugDumpDir.run_feed_keys_info` {#DebugDumpDir.run_feed_keys_info}
+
+Get a str representation of the feed_dict used in the Session.run() call.
+
+##### Returns:
+
+  If the information is available, a `str` obtained from `repr(feed_dict)`.
+  If the information is not available, `None`.
+
+
+- - -
+
+#### `tf_debug.DebugDumpDir.run_fetches_info` {#DebugDumpDir.run_fetches_info}
+
+Get a str representation of the fetches used in the Session.run() call.
+
+##### Returns:
+
+  If the information is available, a `str` obtained from `repr(fetches)`.
+  If the information is not available, `None`.
+
+
+- - -
+
 #### `tf_debug.DebugDumpDir.set_python_graph(python_graph)` {#DebugDumpDir.set_python_graph}
 
 Provide Python `Graph` object to the wrapper.

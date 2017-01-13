@@ -309,6 +309,46 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     reverse_2d_t = reverse_v2(data_2d_t, axis_2d_t)
     self.assertEqual(2, reverse_2d_t.get_shape().ndims)
 
+  def testReverseRowsOf3Channels(self):
+    """Tests optimized code for reversing rows with last dim size = 3."""
+    with self.test_session(use_gpu=True):
+      for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+        for outer_size in (1, 2):
+          for middle_size in list(range(50)) + [100000]:
+            x_np = np.reshape(
+                np.arange(
+                    outer_size * middle_size * 3, dtype=np.float32),
+                newshape=(outer_size, middle_size, 3))
+            x_tf = reverse_f(x_np, [1]).eval()
+            np_answer = x_np[:, ::-1, :]
+            self.assertAllEqual(x_tf, np_answer)
+
+  def testReverseRowsOf4Channels(self):
+    with self.test_session(use_gpu=True):
+      for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+        for outer_size in (1, 2):
+          for middle_size in list(range(50)) + [100000]:
+            x_np = np.reshape(
+                np.arange(
+                    outer_size * middle_size * 4, dtype=np.float32),
+                newshape=(outer_size, middle_size, 4))
+            x_tf = reverse_f(x_np, [1]).eval()
+            np_answer = x_np[:, ::-1, :]
+            self.assertAllEqual(x_tf, np_answer)
+
+  def testReverseColumnsOf3Channels(self):
+    with self.test_session(use_gpu=True):
+      for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+        for outer_size in list(range(50)) + [100000]:
+          for middle_size in (1, 2):
+            x_np = np.reshape(
+                np.arange(
+                    outer_size * middle_size * 3, dtype=np.float32),
+                newshape=(outer_size, middle_size, 3))
+            x_tf = reverse_f(x_np, [0]).eval()
+            np_answer = x_np[::-1, :, :]
+            self.assertAllEqual(x_tf, np_answer)
+
 
 class MeshgridTest(test_util.TensorFlowTestCase):
 

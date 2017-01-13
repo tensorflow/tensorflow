@@ -57,7 +57,25 @@ done
 if is_windows; then
   TF_NEED_GCP=0
   TF_NEED_HDFS=0
+  TF_NEED_JEMALLOC=0
   TF_NEED_OPENCL=0
+fi
+
+while [ "$TF_NEED_JEMALLOC" == "" ]; do
+  read -p "Do you wish to use jemalloc as the malloc implementation? "\
+"(Linux only) [Y/n] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "jemalloc enabled on Linux"; TF_NEED_JEMALLOC=1;;
+    [Nn]* ) echo "jemalloc disabled on Linux"; TF_NEED_JEMALLOC=0;;
+    "" ) echo "jemalloc enabled on Linux"; TF_NEED_JEMALLOC=1;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [ "$TF_NEED_JEMALLOC" == "1" ]; then
+  sed -i -e "s/WITH_JEMALLOC = False/WITH_JEMALLOC = True/" tensorflow/core/platform/default/build_config.bzl
+else
+  sed -i -e "s/WITH_JEMALLOC = True/WITH_JEMALLOC = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_GCP" == "" ]; do

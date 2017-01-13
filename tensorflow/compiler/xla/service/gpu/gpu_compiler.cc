@@ -312,10 +312,11 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::CompileAheadOfTime(
-    std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-    const AotCompilationOptions& options) {
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+GpuCompiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> module,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_config,
+    HloDumper dump_hlo, const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
 }
 

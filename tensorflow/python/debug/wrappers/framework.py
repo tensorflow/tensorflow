@@ -232,14 +232,24 @@ class OnRunStartResponse(object):
   action the debug-wrapper session actually takes on the run() call.
   """
 
-  def __init__(self, action, debug_urls):
+  def __init__(self,
+               action,
+               debug_urls,
+               debug_ops="DebugIdentity",
+               node_name_regex_whitelist=None,
+               op_type_regex_whitelist=None):
     """Constructor of `OnRunStartResponse`.
 
     Args:
       action: (`OnRunStartAction`) the action actually taken by the wrapped
         session for the run() call.
-      debug_urls: (list of str) debug_urls used in watching the tensors during
-        the run() call.
+      debug_urls: (`list` of `str`) debug_urls used in watching the tensors
+        during the run() call.
+      debug_ops: (`str` or `list` of `str`) Debug op(s) to be used by the
+        debugger.
+      node_name_regex_whitelist: Regular-expression whitelist for node
+        name.
+      op_type_regex_whitelist: Regular-expression whitelist for op type.
     """
 
     _check_type(action, str)
@@ -247,6 +257,11 @@ class OnRunStartResponse(object):
 
     _check_type(debug_urls, list)
     self.debug_urls = debug_urls
+
+    self.debug_ops = debug_ops
+
+    self.node_name_regex_whitelist = node_name_regex_whitelist
+    self.op_type_regex_whitelist = op_type_regex_whitelist
 
 
 class OnRunEndRequest(object):
@@ -377,8 +392,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
       decorated_run_options = options or config_pb2.RunOptions()
       run_metadata = run_metadata or config_pb2.RunMetadata()
 
-      self._decorate_run_options(decorated_run_options,
-                                 run_start_resp.debug_urls)
+      self._decorate_run_options(
+          decorated_run_options,
+          run_start_resp.debug_urls,
+          debug_ops=run_start_resp.debug_ops,
+          node_name_regex_whitelist=run_start_resp.node_name_regex_whitelist,
+          op_type_regex_whitelist=run_start_resp.op_type_regex_whitelist)
 
       # Invoke the run() method of the wrapped Session. Catch any TensorFlow
       # runtime errors.
@@ -434,7 +453,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
     raise NotImplementedError(
         "partial_run is not implemented for debug-wrapper sessions.")
 
-  def _decorate_run_options(self, run_options, debug_urls):
+  def _decorate_run_options(self,
+                            run_options,
+                            debug_urls,
+                            debug_ops="DebugIdentity",
+                            node_name_regex_whitelist=None,
+                            op_type_regex_whitelist=None):
     """Modify a RunOptions object for debug tensor watching.
 
     Specifies request for outputting partition graphs. Adds
@@ -444,11 +468,20 @@ class BaseDebugWrapperSession(session.SessionInterface):
       run_options: (RunOptions) the modified RunOptions object.
       debug_urls: (list of str) debug URLs to be entered in run_options.
         debug_tensor_watch_opts.
+      debug_ops: (str or list of str) debug op(s) to be used by the debugger.
+      node_name_regex_whitelist: Regular-expression whitelist for node
+        name.
+      op_type_regex_whitelist: Regular-expression whitelist for op type.
     """
 
     run_options.output_partition_graphs = True
     debug_utils.watch_graph(
-        run_options, self._sess.graph, debug_urls=debug_urls)
+        run_options,
+        self._sess.graph,
+        debug_urls=debug_urls,
+        debug_ops=debug_ops,
+        node_name_regex_whitelist=node_name_regex_whitelist,
+        op_type_regex_whitelist=op_type_regex_whitelist)
 
   @abc.abstractmethod
   def on_session_init(self, request):

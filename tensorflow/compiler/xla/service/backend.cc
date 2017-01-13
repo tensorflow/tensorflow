@@ -234,4 +234,8 @@ StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
           executor_b->GetDeviceDescription().name());
 }
 
+Status Backend::ResetDevices() {
+  return transfer_manager_->ResetDevices(stream_executors_);
+}
+
 }  // namespace xla

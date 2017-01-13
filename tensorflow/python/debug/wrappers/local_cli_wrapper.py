@@ -161,7 +161,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       request: An instance of `OnSessionInitRequest`.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
     """
 
     return framework.OnSessionInitResponse(

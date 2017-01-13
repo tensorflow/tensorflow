@@ -312,13 +312,15 @@ def _run_benchmarks(regex):
         instance_benchmark_fn()
 
 
-def benchmarks_main(true_main):
-  """Run benchmarks as declared in args.
+def benchmarks_main(true_main, argv=None):
+  """Run benchmarks as declared in argv.
 
   Args:
     true_main: True main function to run if benchmarks are not requested.
+    argv: the command line arguments (if None, uses sys.argv).
   """
-  argv = sys.argv
+  if argv is None:
+    argv = sys.argv
   found_arg = [arg for arg in argv
                if arg.startswith("--benchmarks=")
                or arg.startswith("-benchmarks=")]
@@ -327,6 +329,6 @@ def benchmarks_main(true_main):
     argv.remove(found_arg[0])
 
     regex = found_arg[0].split("=")[1]
-    app.run(lambda _: _run_benchmarks(regex))
+    app.run(lambda _: _run_benchmarks(regex), argv=argv)
   else:
     true_main()

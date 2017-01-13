@@ -2299,6 +2299,9 @@ class Graph(object):
     if (function.grad_func_name is not None) and (
         function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
 
   @property

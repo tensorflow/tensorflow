@@ -257,6 +257,15 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "stage_op",
+    srcs = ["stage_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
@@ -1161,6 +1170,7 @@ cc_library(
         ":session_ops",
         ":sparse_conditional_accumulator_op",
         ":stack_ops",
+        ":stage_op",
         ":tensor_array_ops",
     ],
 )
@@ -3228,6 +3238,7 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
+        ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_ops_op_lib",
