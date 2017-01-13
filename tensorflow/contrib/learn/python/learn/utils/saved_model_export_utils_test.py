@@ -124,6 +124,21 @@ class SavedModelExportUtilsTest(test.TestCase):
         })
     }, output_alternatives)
 
+  def test_get_output_alternatives_implicit_single(self):
+    prediction_tensor = constant_op.constant(["bogus"])
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions=prediction_tensor,
+        output_alternatives=None)
+
+    output_alternatives, _ = saved_model_export_utils.get_output_alternatives(
+        model_fn_ops)
+    self.assertEqual({
+        "default_output_alternative": (constants.ProblemType.UNSPECIFIED, {
+            "output": prediction_tensor
+        })
+    }, output_alternatives)
+
   def test_build_all_signature_defs(self):
     input_features = constant_op.constant(["10"])
     input_example = constant_op.constant(["11"])

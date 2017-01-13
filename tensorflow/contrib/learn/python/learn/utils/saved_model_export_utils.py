@@ -167,6 +167,8 @@ def get_output_alternatives(
   # interpret the model as single-headed of unknown type.
   default_problem_type = constants.ProblemType.UNSPECIFIED
   default_outputs = model_fn_ops.predictions
+  if not isinstance(default_outputs, dict):
+    default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
   actual_default_output_alternative_key = DEFAULT_OUTPUT_ALTERNATIVE_KEY
   output_alternatives = {actual_default_output_alternative_key:
                          (default_problem_type, default_outputs)}
