@@ -82,25 +82,25 @@ static void chk_libxsmm_err(libxsmm_dnn_err_t status, string msg) {
   }
 }
 
-LIBXSMM_INLINE void copy_RSCK_to_KCRS(const float* rsck, float *kcrs, int R, int S, int C, int K,int ifmblock, int ofmblock, int vlen,int vlen2, int start, int end)
+LIBXSMM_INLINE void copy_RSCK_to_custom(const float* rsck, float *kcrs, int R, int S, int C, int K,int blocksifm, int blocksofm, int ifmblock,int ofmblock, int start, int end)
 {
   LIBXSMM_VLA_DECL(4, const      float, input, rsck, S, C,K);
-  LIBXSMM_VLA_DECL(6, float, output, kcrs, ifmblock,R,S,vlen, vlen2);
+  LIBXSMM_VLA_DECL(6, float, output, kcrs, blocksifm,R,S,ifmblock, ofmblock);
   int r, s, k,c, v1,v2;
   
   for (k = start; k < end ; k++ ) { 
-    for(c = 0; c < ifmblock;c++){
+    for(c = 0; c < blocksifm;c++){
       for ( r = 0; r < R; r++ ) {
         for ( s = 0; s < S; s++ ){
-          for ( v1 = c*vlen; v1 < std::min(C,(c+1)*vlen) ; v1++ ) {
-            for ( v2 = k*vlen2; v2 < std::min(K, (k+1)*vlen2); v2++ )
-              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*vlen,v2-k*vlen2, ifmblock, R, S,vlen,vlen2) = LIBXSMM_VLA_ACCESS(4, input, r, s, v1, v2,  S, C, K);
-            for ( v2 = K; v2 < (k+1)*vlen2 ; v2++ )
-              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*vlen,v2-k*vlen2, ifmblock, R, S,vlen,vlen2) = 0.0f; 
+          for ( v1 = c*ifmblock; v1 < std::min(C,(c+1)*ifmblock) ; v1++ ) {
+            for ( v2 = k*ofmblock; v2 < std::min(K, (k+1)*ofmblock); v2++ )
+              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*ifmblock,v2-k*ofmblock, blocksifm, R, S,ifmblock,ofmblock) = LIBXSMM_VLA_ACCESS(4, input, r, s, v1, v2,  S, C, K);
+            for ( v2 = K; v2 < (k+1)*ofmblock ; v2++ )
+              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*ifmblock,v2-k*ofmblock, blocksifm, R, S,ifmblock,ofmblock) = 0.0f; 
             }
-          for ( v1 = C; v1 < (c+1)*vlen ; v1++ ) {
-            for ( v2 = k*vlen; v2 < (k+1)*vlen2 ; v2++ )
-              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*vlen,v2-k*vlen2, ifmblock, R, S,vlen,vlen2) = 0.0f;
+          for ( v1 = C; v1 < (c+1)*ifmblock ; v1++ ) {
+            for ( v2 = k*ofmblock; v2 < (k+1)*ofmblock; v2++ )
+              LIBXSMM_VLA_ACCESS(6,  output, k,c, r, s,v1- c*ifmblock,v2-k*ofmblock, blocksifm, R, S,ifmblock,ofmblock) = 0.0f;
           }
         }
       }
@@ -219,12 +219,12 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   int num_threads = worker_threads->num_threads;
 */
 
-  int vlen = (libxsmm_handle->ifmblock);
-  int vlen2 = (libxsmm_handle->ofmblock); 
+  int ifmblock = (libxsmm_handle->ifmblock);
+  int ofmblock = (libxsmm_handle->ofmblock); 
 
-  int ofmblock = desc.K%vlen ==0 ? desc.K/vlen :desc.K/vlen + 1;           
-  int ifmblock = desc.C%vlen2 ==0 ? desc.C/vlen2 :desc.C/vlen2 + 1;
-  float *native_filter = (float*)libxsmm_aligned_malloc( ofmblock*ifmblock*desc.R*desc.S*vlen*vlen2*sizeof(float), 2097152);
+  int blocksifm = desc.K%ifmblock ==0 ? desc.K/ifmblock :desc.K/ifmblock + 1;           
+  int blocksofm = desc.C%ofmblock ==0 ? desc.C/ofmblock :desc.C/ofmblock + 1;
+  float *native_filter = (float*)libxsmm_aligned_malloc( blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float), 2097152);
  
 
   
@@ -241,7 +241,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
         worker_threads->workers->Schedule([=, &count]() {
         int start = work/num_threads*i;
         int end =  (start + work/num_threads) > work ? work: start + work/num_threads;  
-        copy_RSCK_to_KCRS(filter, native_filter, desc.R, desc.S,desc.C, desc.K,ifmblock,ofmblock,vlen,vlen2,start, end);
+        copy_RSCK_to_custom(filter, native_filter, desc.R, desc.S,desc.C, desc.K,blocksifm,blocksofm,ifmblock,ofmblock,start, end);
         count.DecrementCount();
         });
     }
@@ -257,7 +257,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
         worker_threads->workers->Schedule([=, &count]() {
         int start = i;
         int end =  i+1;
-        copy_RSCK_to_KCRS(filter, native_filter, desc.R, desc.S,desc.C, desc.K,ifmblock,ofmblock,vlen,vlen2, start, end);
+        copy_RSCK_to_custom(filter, native_filter, desc.R, desc.S,desc.C, desc.K,blocksifm,blocksofm,ifmblock,ofmblock, start, end);
         count.DecrementCount();
         });
     }
