@@ -1032,6 +1032,7 @@
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
   * [`LinearOperatorIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorIdentity)
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
+  * [`LinearOperatorScaledIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorScaledIdentity)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
