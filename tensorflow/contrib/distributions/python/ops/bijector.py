@@ -1583,6 +1583,7 @@ class Affine(Bijector):
         `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
         lower triangular matrix.
         When `None` no `scale_tril` term is added to `scale`.
+        The upper triangular elements above the diagonal are ignored.
       scale_perturb_factor: Numeric `Tensor` representing factor matrix with
         last two dimensions of shape `(k, r)`.
         When `None`, no rank-r update is added to `scale`.
