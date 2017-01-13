@@ -26,9 +26,9 @@ limitations under the License.
 namespace tensorflow {
 
 const bool SHOW_DBG_IN_SOC = false;
-const bool DBG_DUMP_RESULT = false;
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
+const bool DBG_SHOW_RESULT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
 
 #ifdef USE_HEXAGON_LIBS
@@ -169,7 +169,7 @@ bool HexagonControlWrapper::SetupGraph(
   return soc_interface_ConstructGraph();
 
   // Keep following comment to use dummy graph construction
-  // return soc_interface_SetupGraphDummy(3 /* inception version */);
+  // return soc_interface_setupDummyGraph(3 /* inception version */);
 }
 
 bool HexagonControlWrapper::ExecuteGraph() {
@@ -213,7 +213,7 @@ bool HexagonControlWrapper::ReadOutputNode(
   // TODO: Accept all results
   std::get<2>(output) = DT_FLOAT;
   outputs->emplace_back(output);
-  if (DBG_DUMP_RESULT) {
+  if (DBG_SHOW_RESULT) {
     const int byte_size = std::get<1>(output);
     const int element_count = byte_size / sizeof(float);
     const float* float_array = reinterpret_cast<float*>(std::get<0>(output));

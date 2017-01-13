@@ -25,8 +25,6 @@ import hashlib
 import inspect
 import re
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import op_def_pb2
@@ -65,82 +63,6 @@ def _tensor_to_argdef(t, name=None, used_names=None):
 
 def _get_node_def(op):
   return op._node_def  # pylint: disable=protected-access
-
-
-def _add_input_array(op, start, limit, dtype, func):
-  """Adds a _ListToArray node in the func for op.inputs[start:limit]."""
-  node = function_pb2.FunctionDef.Node()
-  node.op = "_ListToArray"
-  ret_name = op.name + "_L2A_" + str(start)
-  node.ret.extend([ret_name])
-  node.arg.extend(
-      [_make_argname_from_tensor_name(x.name) for x in op.inputs[start:limit]])
-  num = limit - start
-  node.attr["Tin"].CopyFrom(
-      attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
-          type=[dtype] * num)))
-  node.attr["T"].CopyFrom(attr_value_pb2.AttrValue(type=dtype))
-  node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
-  func.node.extend([node])
-  return ret_name
-
-
-def _add_identity_dtype_proto(func, src, dst, dtype_proto):
-  node = function_pb2.FunctionDef.Node()
-  node.op = "Identity"
-  node.arg.append(src)
-  node.ret.append(dst)
-  node.attr["T"].CopyFrom(dtype_proto)
-  func.node.extend([node])
-
-
-def _add_identity_dtype_enum(func, src, dst, dtype):
-  dtype_proto = attr_value_pb2.AttrValue(type=dtype)
-  _add_identity_dtype_proto(func, src, dst, dtype_proto)
-
-
-def _add_output_array(op, start, limit, dtype, func):
-  """Adds a _ArrayToList node in the func for op.outputs[start:limit]."""
-  dtype_proto = attr_value_pb2.AttrValue(type=dtype)
-  # A node converting N*T to list(T)
-  node = function_pb2.FunctionDef.Node()
-  node.op = "_ArrayToList"
-  arg_name = op.name + "_A2L_" + str(start)
-  ret_name = arg_name + "_out"
-  node.ret.append(ret_name)
-  node.arg.append(arg_name)
-  node.attr["T"].CopyFrom(dtype_proto)
-  num = limit - start
-  node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
-  node.attr["out_types"].CopyFrom(
-      attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
-          type=[dtype] * num)))
-  func.node.extend([node])
-  num = limit - start
-  # Adds an identity node for each element in the array N*T so that
-  # uses of each element can be added easily later. These Identity
-  # will be eliminated before graph execution.
-  for i in xrange(num):
-    _add_identity_dtype_proto(
-        func, ret_name + ":" + str(i),
-        _make_argname_from_tensor_name(op.outputs[i].name), dtype_proto)
-  return arg_name
-
-
-def _add_output_list(op, start, limit, dtype_lst, func):
-  """Adds a _ArrayToList node in the func for op.outputs[start:limit]."""
-  ret_name = op.name + "_Lst_" + str(start) + "_" + str(limit)
-  num = limit - start
-  assert len(dtype_lst) == num
-  # Adds an identity node for each element in the array N*T so that
-  # uses of each element can be added easily later. These Identity
-  # will be eliminated before graph execution.
-  for i in xrange(num):
-    _add_identity_dtype_enum(func,
-                             ret_name + ":" + str(i),
-                             _make_argname_from_tensor_name(op.outputs[i].name),
-                             dtype_lst[i])
-  return ret_name
 
 
 def _get_op_def(op):
@@ -196,76 +118,6 @@ def _add_op_node(op, func, input_dict):
       assert node_def.input[i] in input_dict, (
           "%s missing from %s" % (node_def.input[i], input_dict.items()))
       node_def.input[i] = input_dict[node_def.input[i]]
-
-  # To support legacy consumers, add an entry in func.node.
-  # TODO(josh11b): Delete this.
-  node = function_pb2.FunctionDef.Node()
-  node.op = op.type
-  op_def = _get_op_def(op)
-  attrs = node_def.attr
-  if not op_def.output_arg:
-    node.ret.append(_make_argname_from_tensor_name(op.name))
-  else:
-    out_index = 0
-    for arg_def in op_def.output_arg:
-      if arg_def.number_attr:
-        dtype = arg_def.type or attrs[arg_def.type_attr].type
-        num = attrs[arg_def.number_attr].i
-        node.ret.append(
-            _add_output_array(op, out_index, out_index + num, dtype, func))
-        out_index += num
-      elif arg_def.type_list_attr:
-        dtype_lst = attrs[arg_def.type_list_attr].list.type
-        num = len(dtype_lst)
-        node.ret.append(
-            _add_output_list(op, out_index, out_index + num, dtype_lst, func))
-        out_index += num
-      else:
-        node.ret.append(
-            _make_argname_from_tensor_name(op.outputs[out_index].name))
-        out_index += 1
-  inp_index = 0
-  for arg_def in op_def.input_arg:
-    if arg_def.number_attr:
-      dtype = arg_def.type or attrs[arg_def.type_attr].type
-      num = attrs[arg_def.number_attr].i
-      node.arg.append(
-          _add_input_array(op, inp_index, inp_index + num, dtype, func))
-      inp_index += num
-    elif arg_def.type_list_attr:
-      num = len(attrs[arg_def.type_list_attr].list.type)
-      node.arg.extend([
-          _make_argname_from_tensor_name(op.inputs[i].name)
-          for i in range(inp_index, inp_index + num)
-      ])
-      inp_index += num
-    else:
-      node.arg.append(_make_argname_from_tensor_name(op.inputs[inp_index].name))
-      inp_index += 1
-  node.dep.extend(
-      [_make_argname_from_tensor_name(x.name) for x in op.control_inputs])
-  for k, v in attrs.items():
-    node.attr[k].CopyFrom(v)
-  func.node.extend([node])
-
-
-def _replace_ret(func, original, replacement):
-  for n in func.node:
-    for i, r in enumerate(n.ret):
-      if r == original:
-        n.ret[i] = replacement
-        return
-  raise ValueError("Could not find ret == '%s'" % original)
-
-
-def _replace_arg(func, original, replacement):
-  for n in func.node:
-    for i, a in enumerate(n.arg):
-      if a == original:
-        n.arg[i] = replacement
-    for i, d in enumerate(n.dep):
-      if d == original:
-        n.dep[i] = replacement
 
 
 def _graph_to_function_def(graph, inputs, outputs, out_names=None):
@@ -323,20 +175,9 @@ def _graph_to_function_def(graph, inputs, outputs, out_names=None):
     for index, o in enumerate(outputs):
       k = func.signature.output_arg[index].name
       func.ret[k] = input_dict[o.name]
-      # TODO(josh11b): Delete this once we switch fully to NodeDefs for
-      # function bodies.
-      orig = _make_argname_from_tensor_name(o.name)
-      if k != orig:
-        _add_identity_dtype_enum(func, orig, k,
-                                 func.signature.output_arg[index].type)
   else:
     for o, n in zip(outputs, out_names):
       func.ret[n] = input_dict[o.name]
-      # TODO(josh11b): Delete this once we switch fully to NodeDefs for
-      # function bodies.
-      k = _make_argname_from_tensor_name(o.name)
-      _replace_ret(func, k, n)
-      _replace_arg(func, k, n)
 
   return func
 

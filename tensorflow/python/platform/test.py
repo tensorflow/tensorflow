@@ -88,9 +88,9 @@ else:
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 
 
-def main():
+def main(argv=None):
   """Runs all unit tests."""
-  return _googletest.main()
+  return _googletest.main(argv)
 
 
 def get_temp_dir():

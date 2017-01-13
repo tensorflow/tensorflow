@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -63,8 +64,10 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor,
       const Literal& literal) = 0;
 
-  // Resets the device that the given executor runs on.
-  virtual Status ResetDevice(perftools::gputools::StreamExecutor* executor) = 0;
+  // Resets the devices associated with this transfer manager.
+  virtual Status ResetDevices(
+      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+          executor) = 0;
 
   // Shallow copy a tuple from the device and create a DeviceMemoryBase object
   // for each element in the tuple. A DeviceMemoryBase object refers to the

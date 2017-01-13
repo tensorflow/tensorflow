@@ -4486,7 +4486,7 @@ class StreamingMeanIOUTest(test.TestCase):
                                                    num_classes)
       sess.run(variables.local_variables_initializer())
       confusion_matrix = update_op.eval()
-      self.assertAllEqual([[3, 2], [0, 5]], confusion_matrix)
+      self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
       desired_miou = np.mean([3. / 5., 5. / 7.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 
@@ -4509,7 +4509,7 @@ class StreamingMeanIOUTest(test.TestCase):
       miou, update_op = metrics.streaming_mean_iou(predictions, labels,
                                                    num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[0, 40], [0, 0]], update_op.eval())
+      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
       self.assertEqual(0., miou.eval())
 
   def testResultsWithSomeMissing(self):
@@ -4540,7 +4540,7 @@ class StreamingMeanIOUTest(test.TestCase):
       miou, update_op = metrics.streaming_mean_iou(
           predictions, labels, num_classes, weights=weights)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[2, 2], [0, 4]], update_op.eval())
+      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 

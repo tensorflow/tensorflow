@@ -90,6 +90,27 @@ cc_library(
 # Internal targets below this point.
 
 cc_test(
+    name = "xla_compiler_test",
+    srcs = ["xla_compiler_test.cc"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
     name = "str_util_test",
     srcs = [
         "str_util_test.cc",

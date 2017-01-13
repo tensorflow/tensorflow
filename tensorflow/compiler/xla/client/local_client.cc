@@ -314,12 +314,23 @@ tensorflow::Status LocalClient::ExecuteLocally(
                                         options, result);
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>> LocalClient::CompileAheadOfTime(
-    const Computation& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const Shape& result_layout, const AotCompilationOptions& options) {
-  return local_service_->CompileAheadOfTime(
-      computation.handle(), argument_layouts, result_layout, options);
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+LocalClient::CompileAheadOfTime(
+    const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
+        computations,
+    const AotCompilationOptions& options) {
+  std::vector<LocalService::AheadOfTimeComputationInstance> service_instances;
+  service_instances.reserve(computations.size());
+  for (const AheadOfTimeComputationInstance& instance : computations) {
+    service_instances.push_back({});
+    LocalService::AheadOfTimeComputationInstance& service_instance =
+        service_instances.back();
+    TF_RET_CHECK(instance.computation != nullptr);
+    service_instance.computation = instance.computation->handle();
+    service_instance.argument_layouts = instance.argument_layouts;
+    service_instance.result_layout = instance.result_layout;
+  }
+  return local_service_->CompileAheadOfTime(service_instances, options);
 }
 
 int64 LocalClient::PointerSizeForTriple(tensorflow::StringPiece target_triple) {

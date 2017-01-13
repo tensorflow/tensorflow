@@ -29,7 +29,7 @@ methods.  We will document these methods soon.
 
 - - -
 
-### `tf.test.main()` {#main}
+### `tf.test.main(argv=None)` {#main}
 
 Runs all unit tests.
 
@@ -492,7 +492,7 @@ then compares them using self._AssertProtoEqual().
 
 - - -
 
-#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=20, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
+#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=21, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
 
 
 

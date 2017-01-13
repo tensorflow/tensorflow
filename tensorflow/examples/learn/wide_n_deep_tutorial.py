@@ -17,27 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import tempfile
+
 from six.moves import urllib
 
 import pandas as pd
 import tensorflow as tf
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string("model_dir", "", "Base directory for output models.")
-flags.DEFINE_string("model_type", "wide_n_deep",
-                    "Valid model types: {'wide', 'deep', 'wide_n_deep'}.")
-flags.DEFINE_integer("train_steps", 200, "Number of training steps.")
-flags.DEFINE_string(
-    "train_data",
-    "",
-    "Path to the training data.")
-flags.DEFINE_string(
-    "test_data",
-    "",
-    "Path to the test data.")
 
 COLUMNS = ["age", "workclass", "fnlwgt", "education", "education_num",
            "marital_status", "occupation", "relationship", "race", "gender",
@@ -50,10 +38,10 @@ CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
                       "hours_per_week"]
 
 
-def maybe_download():
+def maybe_download(train_data, test_data):
   """Maybe downloads training data and returns train and test file names."""
-  if FLAGS.train_data:
-    train_file_name = FLAGS.train_data
+  if train_data:
+    train_file_name = train_data
   else:
     train_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.request.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)  # pylint: disable=line-too-long
@@ -61,8 +49,8 @@ def maybe_download():
     train_file.close()
     print("Training data is downloaded to %s" % train_file_name)
 
-  if FLAGS.test_data:
-    test_file_name = FLAGS.test_data
+  if test_data:
+    test_file_name = test_data
   else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.request.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)  # pylint: disable=line-too-long
@@ -73,7 +61,7 @@ def maybe_download():
   return train_file_name, test_file_name
 
 
-def build_estimator(model_dir):
+def build_estimator(model_dir, model_type):
   """Build an estimator."""
   # Sparse base columns.
   gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender",
@@ -128,10 +116,10 @@ def build_estimator(model_dir):
       hours_per_week,
   ]
 
-  if FLAGS.model_type == "wide":
+  if model_type == "wide":
     m = tf.contrib.learn.LinearClassifier(model_dir=model_dir,
                                           feature_columns=wide_columns)
-  elif FLAGS.model_type == "deep":
+  elif model_type == "deep":
     m = tf.contrib.learn.DNNClassifier(model_dir=model_dir,
                                        feature_columns=deep_columns,
                                        hidden_units=[100, 50])
@@ -166,9 +154,9 @@ def input_fn(df):
   return feature_cols, label
 
 
-def train_and_eval():
+def train_and_eval(model_dir, model_type, train_steps, train_data, test_data):
   """Train and evaluate the model."""
-  train_file_name, test_file_name = maybe_download()
+  train_file_name, test_file_name = maybe_download(train_data, test_data)
   df_train = pd.read_csv(
       tf.gfile.Open(train_file_name),
       names=COLUMNS,
@@ -190,19 +178,56 @@ def train_and_eval():
   df_test[LABEL_COLUMN] = (
       df_test["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)
 
-  model_dir = tempfile.mkdtemp() if not FLAGS.model_dir else FLAGS.model_dir
+  model_dir = tempfile.mkdtemp() if not model_dir else model_dir
   print("model directory = %s" % model_dir)
 
-  m = build_estimator(model_dir)
-  m.fit(input_fn=lambda: input_fn(df_train), steps=FLAGS.train_steps)
+  m = build_estimator(model_dir, model_type)
+  m.fit(input_fn=lambda: input_fn(df_train), steps=train_steps)
   results = m.evaluate(input_fn=lambda: input_fn(df_test), steps=1)
   for key in sorted(results):
     print("%s: %s" % (key, results[key]))
 
 
+FLAGS = None
+
+
 def main(_):
-  train_and_eval()
+  train_and_eval(FLAGS.model_dir, FLAGS.model_type, FLAGS.train_steps,
+                 FLAGS.train_data, FLAGS.test_data)
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--model_dir",
+      type=str,
+      default="",
+      help="Base directory for output models."
+  )
+  parser.add_argument(
+      "--model_type",
+      type=str,
+      default="wide_n_deep",
+      help="Valid model types: {'wide', 'deep', 'wide_n_deep'}."
+  )
+  parser.add_argument(
+      "--train_steps",
+      type=int,
+      default=200,
+      help="Number of training steps."
+  )
+  parser.add_argument(
+      "--train_data",
+      type=str,
+      default="",
+      help="Path to the training data."
+  )
+  parser.add_argument(
+      "--test_data",
+      type=str,
+      default="",
+      help="Path to the test data."
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

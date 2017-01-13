@@ -749,11 +749,11 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   TF_RET_CHECK(LayoutUtil::HasLayout(filter_shape));
   TF_RET_CHECK(LayoutUtil::HasLayout(convolution_shape));
 
-  // Require 1x1 filter in the spatial dimensions (so no need to extract image
-  // patches).
-  if (filter_shape.dimensions(dnums.kernel_spatial_dimensions(0)) != 1 ||
-      filter_shape.dimensions(dnums.kernel_spatial_dimensions(1)) != 1) {
-    return Status::OK();
+  // Require the spatial dimensions in the kernel to have a bound of one.
+  for (int64 i = 0; i < dnums.kernel_spatial_dimensions_size(); ++i) {
+    if (filter_shape.dimensions(dnums.kernel_spatial_dimensions(i)) != 1) {
+      return Status::OK();
+    }
   }
 
   // Stride ignores part of the output, which matrix multiplication does not do,
@@ -782,9 +782,9 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
       input_shape.layout().minor_to_major(0) != dnums.feature_dimension() ||
       // The input feature dimension should come later in the minor-to-major
       // order.
-      (PositionInContainer(AsInt64Slice(filter_shape.layout().minor_to_major()),
+      (PositionInContainer(filter_shape.layout().minor_to_major(),
                            dnums.kernel_input_feature_dimension()) <
-       PositionInContainer(AsInt64Slice(filter_shape.layout().minor_to_major()),
+       PositionInContainer(filter_shape.layout().minor_to_major(),
                            dnums.kernel_output_feature_dimension()))) {
     return Status::OK();
   }

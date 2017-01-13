@@ -766,6 +766,13 @@ class MeanSquaredErrorTest(test.TestCase):
         losses.mean_squared_error(
             self._predictions, self._predictions, weights=None)
 
+  def testScalar(self):
+    with self.test_session():
+      self.assertEqual(
+          0.0,
+          losses.mean_squared_error(predictions=constant_op.constant(0),
+                                    labels=constant_op.constant(0)).eval())
+
   def testAllCorrectNoLossWeight(self):
     loss = losses.mean_squared_error(self._predictions, self._predictions)
     with self.test_session():

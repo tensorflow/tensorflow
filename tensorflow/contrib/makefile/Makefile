@@ -21,7 +21,7 @@ echo "false")
 
 # Hexagon integration
 ifdef HEXAGON_LIBS
-	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libgemm_wrapper.so
+	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libhexagon_controller.so
 	ifeq ($(shell test -f $(LIBGEMM_WRAPPER) 2> /dev/null; echo $$?), 0)
     $(info "Use hexagon libs at " $(LIBGEMM_WRAPPER))
 	else
@@ -271,7 +271,7 @@ ifeq ($(TARGET),ANDROID)
 
 	ifdef HEXAGON_LIBS
 		INCLUDES += -I$(HEXAGON_INCLUDE)
-		LIBS += -lgemm_wrapper
+		LIBS += -lhexagon_controller
 		LDFLAGS += -L$(HEXAGON_LIBS)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif

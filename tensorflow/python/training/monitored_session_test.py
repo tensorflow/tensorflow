@@ -179,7 +179,7 @@ class FakeHook(session_run_hook.SessionRunHook):
   def begin(self):
     self.call_counter['begin'] += 1
 
-  def after_create_session(self, session):  # pylint: disable=unused-argument
+  def after_create_session(self, session, coord):  # pylint: disable=unused-argument
     self.call_counter['after_create_session'] += 1
 
   def before_run(self, run_context):
