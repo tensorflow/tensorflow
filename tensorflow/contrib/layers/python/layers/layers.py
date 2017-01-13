@@ -1214,10 +1214,16 @@ def flatten(inputs,
 
     flat_spatial_dim = math_ops.reduce_prod(spatial_dims)
     flat_spatial_dim = array_ops.expand_dims(flat_spatial_dim, 0)
-
-    flat_shape = array_ops.concat(0, [batch_dim, flat_spatial_dim])
+    flat_shape = array_ops.concat([batch_dim, flat_spatial_dim], 0)
 
     outputs = array_ops.reshape(inputs, flat_shape)
+
+    # Attempt to propagate shape information, if it is defined.
+    input_shape = inputs.get_shape().as_list()
+    batch_dim, spatial_dims = input_shape[0], input_shape[1:]
+    if all(spatial_dims):
+      outputs.set_shape([batch_dim,
+                        functools.reduce(lambda x, y: x * y, spatial_dims)])
 
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
