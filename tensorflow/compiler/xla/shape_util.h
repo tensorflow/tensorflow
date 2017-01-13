@@ -374,6 +374,19 @@ class ShapeUtil {
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
+  // Returns a shape with the given dimension deleted.
+  // For example:
+  // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
+  static Shape DeleteDimension(int64 dim_to_delete, Shape shape);
+
+  // Returns a shape with all the dimensions of the input shape for which `p`
+  // returns true.
+  // For examples:
+  // • `FilterDimensions((< 2), T[m, n, k]) = T[m, n]`
+  // • `FilterDimensions(is_even_number, T[m, n, k]) = T[m, k]`
+  static Shape FilterDimensions(const std::function<bool(int64)>& p,
+                                Shape shape);
+
  private:
   // Recursive helper for comparing the equality of two shapes. Returns true if
   // the shapes are the same. If compare_layouts is true, then layouts must also

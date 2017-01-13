@@ -64,24 +64,20 @@ REGISTER_OP("DenseToDenseSetOperation")
       }
       // The following should stay in sync with `ComputeDenseToDense` shape
       // assertions in kernels/set_kernels.cc.
-      // Dimension n contains the set values to be compared, so ranks and the
-      // first n-1 dimensions of inputs and output must match.
+      // Dimension n contains the set values to be compared, so ranks must be
+      // >= 2, and the first n-1 dimensions of inputs and output must be
+      // compatible.
       DimensionHandle output_rank;
       ShapeHandle input0_shape = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(input0_shape, 2, &input0_shape));
       if (c->RankKnown(input0_shape)) {
         const int32 input0_rank = c->Rank(input0_shape);
-        if (input0_rank < 2) {
-          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
-                                         input0_rank, ".");
-        }
         ShapeHandle input1_shape = c->input(1);
+        TF_RETURN_IF_ERROR(
+            c->WithRank(input1_shape, input0_rank, &input1_shape));
         if (c->RankKnown(input1_shape)) {
+          // If both ranks are specified, the first n-1 dims must be compatible.
           const int32 rank = c->Rank(input1_shape);
-          if (input0_rank != rank) {
-            return errors::InvalidArgument("Ranks do not match: input 0 ",
-                                           input0_rank, ", input 1 ", rank,
-                                           ".");
-          }
           ShapeHandle group0_shape;
           TF_RETURN_IF_ERROR(
               c->Subshape(input0_shape, 0, rank - 1, &group0_shape));
@@ -95,28 +91,16 @@ REGISTER_OP("DenseToDenseSetOperation")
         output_rank = c->MakeDim(input0_rank);
       } else {
         ShapeHandle input1_shape = c->input(1);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input1_shape, 2, &input1_shape));
         if (c->RankKnown(input1_shape)) {
-          const int32 input1_rank = c->Rank(input1_shape);
-          if (input1_rank < 2) {
-            return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
-                                           input1_rank, ".");
-          }
-          output_rank = c->MakeDim(input1_rank);
+          output_rank = c->MakeDim(c->Rank(input1_shape));
         } else {
           output_rank = c->UnknownDim();
         }
       }
-      DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
-      if (!c->ValueKnown(output_num_elements)) {
-        ShapeHandle input1_shape = c->input(1);
-        output_num_elements = c->Dim(input1_shape, 0);
-        if (!c->ValueKnown(output_num_elements)) {
-          output_num_elements = c->UnknownDim();
-        }
-      }
 
-      c->set_output(0, c->Matrix(output_num_elements, output_rank));
-      c->set_output(1, c->Vector(output_num_elements));
+      c->set_output(0, c->Matrix(c->UnknownDim(), output_rank));
+      c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(output_rank));
       return Status::OK();
     })
@@ -159,30 +143,30 @@ REGISTER_OP("DenseToSparseSetOperation")
       }
       // The following should stay in sync with `ComputeDenseToSparse` shape
       // assertions in kernels/set_kernels.cc.
-      // Dimension n contains the set values to be compared, so ranks and the
-      // first n-1 dimensions of inputs and output must match.
-      DimensionHandle output_rank;
+      // Ranks must be compatible, and be >= 2.
+      ShapeHandle input1_shape_shape = c->input(3);
+      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
+          c, c->input(1), c->input(2), input1_shape_shape));
+
+      DimensionHandle input1_rank_dim = c->Dim(input1_shape_shape, 0);
+
+      DimensionHandle output_rank_dim;
       ShapeHandle input0_shape = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(input0_shape, 2, &input0_shape));
       if (c->RankKnown(input0_shape)) {
         const int32 input0_rank = c->Rank(input0_shape);
-        if (input0_rank < 2) {
-          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
-                                         input0_rank, ".");
-        }
-        output_rank = c->MakeDim(input0_rank);
+        TF_RETURN_IF_ERROR(
+            c->WithValue(input1_rank_dim, input0_rank, &input1_rank_dim));
+        output_rank_dim = c->MakeDim(input0_rank);
+      } else if (c->ValueKnown(input1_rank_dim)) {
+        output_rank_dim = input1_rank_dim;
       } else {
-        output_rank = c->UnknownDim();
-      }
-      TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
-          c, c->input(1), c->input(2), c->input(3)));
-      DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
-      if (!c->ValueKnown(output_num_elements)) {
-        output_num_elements = c->UnknownDim();
+        output_rank_dim = c->UnknownDim();
       }
 
-      c->set_output(0, c->Matrix(output_num_elements, output_rank));
-      c->set_output(1, c->Vector(output_num_elements));
-      c->set_output(2, c->Vector(output_rank));
+      c->set_output(0, c->Matrix(c->UnknownDim(), output_rank_dim));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(output_rank_dim));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -239,13 +223,40 @@ REGISTER_OP("SparseToSparseSetOperation")
       }
       // The following should stay in sync with `ComputeSparseToSparse` shape
       // assertions in kernels/set_kernels.cc.
+      // Ranks must be compatible, and be >= 2.
+      ShapeHandle input0_shape_shape = c->input(2);
+      ShapeHandle input1_shape_shape = c->input(5);
       TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
-          c, c->input(0), c->input(1), c->input(2)));
+          c, c->input(0), c->input(1), input0_shape_shape));
       TF_RETURN_IF_ERROR(shape_inference::ValidateSparseTensor(
-          c, c->input(3), c->input(4), c->input(5)));
-      c->set_output(0, c->Matrix(c->UnknownDim(), c->UnknownDim()));
+          c, c->input(3), c->input(4), input1_shape_shape));
+
+      DimensionHandle input0_rank_dim = c->Dim(input0_shape_shape, 0);
+      DimensionHandle input1_rank_dim = c->Dim(input1_shape_shape, 0);
+      DimensionHandle output_rank_dim;
+      if (c->ValueKnown(input0_rank_dim)) {
+        const int32 input0_rank = c->Value(input0_rank_dim);
+        if (input0_rank < 2) {
+          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                         input0_rank, ".");
+        }
+        TF_RETURN_IF_ERROR(
+            c->WithValue(input1_rank_dim, input0_rank, &input1_rank_dim));
+        output_rank_dim = input0_rank_dim;
+      } else if (c->ValueKnown(input1_rank_dim)) {
+        const int32 input1_rank = c->Value(input1_rank_dim);
+        if (input1_rank < 2) {
+          return errors::InvalidArgument("Input 1, expected rank >= 2, got ",
+                                         input1_rank, ".");
+        }
+        output_rank_dim = input1_rank_dim;
+      } else {
+        output_rank_dim = c->UnknownDim();
+      }
+
+      c->set_output(0, c->Matrix(c->UnknownDim(), output_rank_dim));
       c->set_output(1, c->Vector(c->UnknownDim()));
-      c->set_output(2, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(output_rank_dim));
       return Status::OK();
     })
     .Doc(R"doc(

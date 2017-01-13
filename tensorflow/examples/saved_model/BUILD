@@ -1,7 +1,7 @@
 # Description: SavedModel half plus two example.
 
 package(
-    default_visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    default_visibility = ["//tensorflow:internal"],
     features = [
         "-layering_check",
     ],
@@ -32,14 +32,5 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:util",
-        "//tensorflow/python/saved_model:builder",
-        "//tensorflow/python/saved_model:constants",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
-        "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/saved_model:utils",
     ],
 )

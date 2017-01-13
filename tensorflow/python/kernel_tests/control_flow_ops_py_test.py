@@ -2075,7 +2075,7 @@ class ControlFlowTest(test.TestCase):
       y = constant_op.constant(2.0, name="y")
 
       c = lambda x: math_ops.less(x, 100.0)
-      b = lambda x: math_ops.mul(x, y)
+      b = lambda x: math_ops.multiply(x, y)
       rx = control_flow_ops.while_loop(c, b, [x])
 
       rg = gradients_impl.gradients(rx, y)[0]

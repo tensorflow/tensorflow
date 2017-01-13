@@ -29,11 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
-flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
 
 
 def build_graph(device, input_shape, variable, num_inputs, axis, grad):

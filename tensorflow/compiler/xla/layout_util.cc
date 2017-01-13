@@ -360,4 +360,20 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
   }
 }
 
+/* static */ bool LayoutUtil::AreDimensionsConsecutive(
+    const Layout& layout, tensorflow::gtl::ArraySlice<int64> dims) {
+  std::vector<int64> positions_in_layout;
+  for (int64 dim : dims) {
+    positions_in_layout.push_back(
+        PositionInContainer(layout.minor_to_major(), dim));
+  }
+  std::sort(positions_in_layout.begin(), positions_in_layout.end());
+  for (size_t i = 1; i < positions_in_layout.size(); ++i) {
+    if (1 != positions_in_layout[i] - positions_in_layout[i - 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace xla

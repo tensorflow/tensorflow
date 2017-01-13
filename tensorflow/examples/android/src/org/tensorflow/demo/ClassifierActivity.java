@@ -73,7 +73,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   private static final boolean MAINTAIN_ASPECT = true;
 
-  private TensorFlowImageClassifier classifier;
+  private Classifier classifier;
 
   private Integer sensorOrientation;
 
@@ -87,7 +87,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private Bitmap cropCopyBitmap;
 
   private boolean computing = false;
-
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
@@ -112,17 +111,15 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
-    final float textSizePx = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP,
-        getResources().getDisplayMetrics());
+    final float textSizePx =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    classifier = new TensorFlowImageClassifier();
-
     try {
-      final int initStatus =
-          classifier.initializeTensorFlow(
+      classifier =
+          TensorFlowImageClassifier.create(
               getAssets(),
               MODEL_FILE,
               LABEL_FILE,
@@ -132,10 +129,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
               IMAGE_STD,
               INPUT_NAME,
               OUTPUT_NAME);
-      if (initStatus != 0) {
-        LOGGER.e("TF init status != 0: %d", initStatus);
-        throw new RuntimeException();
-      }
     } catch (final Exception e) {
       throw new RuntimeException("Error initializing TensorFlow!", e);
     }
@@ -147,8 +140,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     final Display display = getWindowManager().getDefaultDisplay();
     final int screenOrientation = display.getRotation();
 
-    LOGGER.i("Sensor orientation: %d, Screen orientation: %d",
-        rotation, screenOrientation);
+    LOGGER.i("Sensor orientation: %d, Screen orientation: %d", rotation, screenOrientation);
 
     sensorOrientation = rotation + screenOrientation;
 
@@ -157,22 +149,24 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
 
-    frameToCropTransform = ImageUtils.getTransformationMatrix(
-        previewWidth, previewHeight,
-        INPUT_SIZE, INPUT_SIZE,
-        sensorOrientation, MAINTAIN_ASPECT);
+    frameToCropTransform =
+        ImageUtils.getTransformationMatrix(
+            previewWidth, previewHeight,
+            INPUT_SIZE, INPUT_SIZE,
+            sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
 
     yuvBytes = new byte[3][];
 
-    addCallback(new DrawCallback() {
-      @Override
-      public void drawCallback(final Canvas canvas) {
-        renderDebug(canvas);
-      }
-    });
+    addCallback(
+        new DrawCallback() {
+          @Override
+          public void drawCallback(final Canvas canvas) {
+            renderDebug(canvas);
+          }
+        });
   }
 
   @Override

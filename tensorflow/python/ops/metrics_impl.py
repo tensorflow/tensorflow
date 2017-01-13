@@ -296,12 +296,11 @@ def mean(values, weights=None, metrics_collections=None,
       values = math_ops.multiply(values, weights)
       num_values = math_ops.reduce_sum(weights)
 
-    total_compute_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
-    count_compute_op = state_ops.assign_add(count, num_values)
+    update_total_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
+    update_count_op = state_ops.assign_add(count, num_values)
 
     mean_t = _safe_div(total, count, 'value')
-    with ops.control_dependencies([total_compute_op, count_compute_op]):
-      update_op = _safe_div(total, count, 'update_op')
+    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_t)
@@ -1007,8 +1006,8 @@ def mean_tensor(values, weights=None, metrics_collections=None,
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
 
-    total_compute_op = state_ops.assign_add(total, values)
-    count_compute_op = state_ops.assign_add(count, num_values)
+    update_total_op = state_ops.assign_add(total, values)
+    update_count_op = state_ops.assign_add(count, num_values)
 
     def compute_mean(total, count, name):
       non_zero_count = math_ops.maximum(count,
@@ -1017,8 +1016,7 @@ def mean_tensor(values, weights=None, metrics_collections=None,
       return math_ops.truediv(total, non_zero_count, name=name)
 
     mean_t = compute_mean(total, count, 'value')
-    with ops.control_dependencies([total_compute_op, count_compute_op]):
-      update_op = compute_mean(total, count, 'update_op')
+    update_op = compute_mean(update_total_op, update_count_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_t)
@@ -1271,17 +1269,16 @@ def precision(labels, predictions, weights=None,
         labels, predictions, weights, metrics_collections=None,
         updates_collections=None, name=None)
 
-    def compute_precision(name):
+    def compute_precision(tp, fp, name):
       return array_ops.where(
-          math_ops.greater(true_p + false_p, 0),
-          math_ops.div(true_p, true_p + false_p),
+          math_ops.greater(tp + fp, 0),
+          math_ops.div(tp, tp + fp),
           0,
           name)
 
-    p = compute_precision('value')
-    with ops.control_dependencies([true_positives_update_op,
-                                   false_positives_update_op]):
-      update_op = compute_precision('update_op')
+    p = compute_precision(true_p, false_p, 'value')
+    update_op = compute_precision(
+        true_positives_update_op, false_positives_update_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, p)
@@ -1342,17 +1339,15 @@ def precision_at_thresholds(labels, predictions, thresholds,
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights, includes=('tp', 'fp'))
-    tp = values['tp']
-    fp = values['fp']
 
     # Avoid division by zero.
     epsilon = 1e-7
-    def compute_precision(name):
+    def compute_precision(tp, fp, name):
       return math_ops.div(tp, epsilon + tp + fp, name='precision_' + name)
 
-    prec = compute_precision('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_precision('update_op')
+    prec = compute_precision(values['tp'], values['fp'], 'value')
+    update_op = compute_precision(
+        update_ops['tp'], update_ops['fp'], 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, prec)
@@ -1469,9 +1464,8 @@ def recall(labels, predictions, weights=None,
           name)
 
     rec = compute_recall(true_p, false_n, 'value')
-    with ops.control_dependencies([true_positives_update_op,
-                                   false_negatives_update_op]):
-      update_op = compute_recall(true_p, false_n, 'update_op')
+    update_op = compute_recall(
+        true_positives_update_op, false_negatives_update_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, rec)
@@ -1881,17 +1875,14 @@ def recall_at_thresholds(labels, predictions, thresholds,
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights, includes=('tp', 'fn'))
-    tp = values['tp']
-    fn = values['fn']
 
     # Avoid division by zero.
     epsilon = 1e-7
-    def compute_recall(name):
+    def compute_recall(tp, fn, name):
       return math_ops.div(tp, epsilon + tp + fn, name='recall_' + name)
 
-    rec = compute_recall('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_recall('update_op')
+    rec = compute_recall(values['tp'], values['fn'], 'value')
+    update_op = compute_recall(update_ops['tp'], update_ops['fn'], 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, rec)
@@ -1951,21 +1942,20 @@ def root_mean_squared_error(labels, predictions, weights=None,
   labels, predictions, weights = _remove_squeezable_dimensions(
       labels, predictions, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-  value_tensor, update_op = mean_squared_error(
+  mse, update_mse_op = mean_squared_error(
       labels, predictions, weights, None, None,
       name or 'root_mean_squared_error')
 
-  rmse = math_ops.sqrt(value_tensor)
-  with ops.control_dependencies([update_op]):
-    update_op = math_ops.sqrt(update_op)
+  rmse = math_ops.sqrt(mse)
+  update_rmse_op = math_ops.sqrt(update_mse_op)
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, rmse)
 
   if updates_collections:
-    ops.add_to_collections(updates_collections, update_op)
+    ops.add_to_collections(updates_collections, update_rmse_op)
 
-  return rmse, update_op
+  return rmse, update_rmse_op
 
 
 def sensitivity_at_specificity(
@@ -2031,12 +2021,8 @@ def sensitivity_at_specificity(
 
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights)
-    tp = values['tp']
-    fn = values['fn']
-    tn = values['tn']
-    fp = values['fp']
 
-    def compute_sensitivity_at_specificity(name):
+    def compute_sensitivity_at_specificity(tp, tn, fp, fn, name):
       specificities = math_ops.div(tn, tn + fp + kepsilon)
       tf_index = math_ops.argmin(math_ops.abs(specificities - specificity), 0)
       tf_index = math_ops.cast(tf_index, dtypes.int32)
@@ -2046,9 +2032,11 @@ def sensitivity_at_specificity(
                           tp[tf_index] + fn[tf_index] + kepsilon,
                           name)
 
-    sensitivity = compute_sensitivity_at_specificity('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_sensitivity_at_specificity('update_op')
+    sensitivity = compute_sensitivity_at_specificity(
+        values['tp'], values['tn'], values['fp'], values['fn'], 'value')
+    update_op = compute_sensitivity_at_specificity(
+        update_ops['tp'], update_ops['tn'], update_ops['fp'], update_ops['fn'],
+        'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, sensitivity)
@@ -2595,15 +2583,15 @@ def specificity_at_sensitivity(
 
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights)
-    tp = values['tp']
-    fn = values['fn']
-    tn = values['tn']
-    fp = values['fp']
 
-    def compute_specificity_at_sensitivity(name):
+    def compute_specificity_at_sensitivity(tp, tn, fp, fn, name):
       """Computes the specificity at the given sensitivity.
 
       Args:
+        tp: True positives.
+        tn: True negatives.
+        fp: False positives.
+        fn: False negatives.
         name: The name of the operation.
 
       Returns:
@@ -2626,9 +2614,11 @@ def specificity_at_sensitivity(
                           tn[tf_index] + fp[tf_index] + kepsilon,
                           name)
 
-    specificity = compute_specificity_at_sensitivity('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_specificity_at_sensitivity('update_op')
+    specificity = compute_specificity_at_sensitivity(
+        values['tp'], values['tn'], values['fp'], values['fn'], 'value')
+    update_op = compute_specificity_at_sensitivity(
+        update_ops['tp'], update_ops['tn'], update_ops['fp'], update_ops['fn'],
+        'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, specificity)
