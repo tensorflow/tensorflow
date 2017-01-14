@@ -24,48 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-// TODO(apassos): validate the shapes better.
-class InplaceOpBase : public OpKernel {
- public:
-  explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    auto value = ctx->input(0);
-    auto loc = ctx->input(1);
-    auto update = ctx->input(2);
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(loc.shape()),
-                errors::InvalidArgument("loc must be a vector. ",
-                                        loc.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, value.dims() == update.dims(),
-        errors::InvalidArgument("value and update shape doesn't match: ",
-                                value.shape().DebugString(), " vs. ",
-                                update.shape().DebugString()));
-    for (int i = 1; i < value.dims(); ++i) {
-      OP_REQUIRES(
-          ctx, value.dim_size(i) == update.dim_size(i),
-          errors::InvalidArgument("value and update shape doesn't match ",
-                                  value.shape().DebugString(), " vs. ",
-                                  update.shape().DebugString()));
-    }
-    OP_REQUIRES(ctx, loc.dim_size(0) == update.dim_size(0),
-                errors::InvalidArgument("loc and update shape doesn't match: ",
-                                        loc.shape().DebugString(), " vs. ",
-                                        update.shape().DebugString()));
-
-    Tensor output = value;  // This creates an alias intentionally.
-    OP_REQUIRES_OK(ctx, DoCompute(ctx, update, loc, &output));
-    ctx->set_output(0, output);
-  }
-
- protected:
-  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& value,
-                           const Tensor& loc, Tensor* output) = 0;
-};
 
 namespace functor {
 
@@ -111,6 +70,48 @@ Status DoInplace(const CPUDevice& d, InplaceOpType op, const Tensor& value,
 }
 
 }  // end namespace functor
+
+namespace {
+
+// TODO(apassos): validate the shapes better.
+class InplaceOpBase : public OpKernel {
+ public:
+  explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    auto value = ctx->input(0);
+    auto loc = ctx->input(1);
+    auto update = ctx->input(2);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(loc.shape()),
+                errors::InvalidArgument("loc must be a vector. ",
+                                        loc.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, value.dims() == update.dims(),
+        errors::InvalidArgument("value and update shape doesn't match: ",
+                                value.shape().DebugString(), " vs. ",
+                                update.shape().DebugString()));
+    for (int i = 1; i < value.dims(); ++i) {
+      OP_REQUIRES(
+          ctx, value.dim_size(i) == update.dim_size(i),
+          errors::InvalidArgument("value and update shape doesn't match ",
+                                  value.shape().DebugString(), " vs. ",
+                                  update.shape().DebugString()));
+    }
+    OP_REQUIRES(ctx, loc.dim_size(0) == update.dim_size(0),
+                errors::InvalidArgument("loc and update shape doesn't match: ",
+                                        loc.shape().DebugString(), " vs. ",
+                                        update.shape().DebugString()));
+
+    Tensor output = value;  // This creates an alias intentionally.
+    OP_REQUIRES_OK(ctx, DoCompute(ctx, update, loc, &output));
+    ctx->set_output(0, output);
+  }
+
+ protected:
+  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& value,
+                           const Tensor& loc, Tensor* output) = 0;
+};
 
 template <typename Device, functor::InplaceOpType op>
 class InplaceOp : public InplaceOpBase {
@@ -237,4 +238,5 @@ REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                         InplaceOp<CPUDevice, functor::I_UPDATE>);
 #endif
 
+}  // end namespace
 }  // end namespace tensorflow
