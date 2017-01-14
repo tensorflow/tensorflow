@@ -25,10 +25,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
@@ -74,7 +72,7 @@ def _BatchMatrixDeterminantGrad(op, grad):
   c = op.outputs[0]
   a_adj_inv = linalg_ops.batch_matrix_inverse(a, adjoint=True)
   multipliers = array_ops.reshape(
-      grad * c, c.get_shape().concatenate(tensor_shape.TensorShape([1, 1])))
+      grad * c, array_ops.concat(0, [array_ops.shape(c), [1, 1]]))
   return multipliers * a_adj_inv
 
 

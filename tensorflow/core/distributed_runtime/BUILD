@@ -247,7 +247,6 @@ tf_cuda_cc_tests(
         #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
     ],
     deps = [
-        "@grpc//:grpc++_unsecure",
         ":master",
         ":remote_device",
         ":worker_interface",
@@ -271,18 +270,18 @@ tf_cuda_cc_tests(
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:variable_ops",
+        "@grpc//:grpc++_unsecure",
     ],
 )
 
 tf_cuda_cc_tests(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["manual"],
     tests = [
         "remote_device_test.cc",
     ],
     deps = [
-        "@grpc//:grpc++_unsecure",
         ":master",
         ":remote_device",
         ":worker_interface",
@@ -301,5 +300,6 @@ tf_cuda_cc_tests(
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "@grpc//:grpc++_unsecure",
     ],
 )

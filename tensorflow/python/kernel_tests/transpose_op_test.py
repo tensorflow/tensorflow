@@ -107,8 +107,13 @@ class TransposeTest(tf.test.TestCase):
     self._compare(x, use_gpu=False)
     self._compare(x, use_gpu=True)
 
-  def test1D(self):
+  def testRank1(self):
     self._compareCpu(np.arange(0., 2), [0])
+
+  def test1D(self):
+    vector = np.arange(0, 2).reshape((1, 1, 1, 2, 1))
+    self._compare(vector, use_gpu=False)
+    self._compare(vector, use_gpu=True)
 
   def testNop(self):
     self._compareCpu(np.arange(0, 6).reshape([3, 2]).astype(np.float32), [0, 1])

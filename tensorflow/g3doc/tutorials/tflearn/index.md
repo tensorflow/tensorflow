@@ -240,9 +240,10 @@ second sample is *Iris virginica*.
 * For further reference materials on tf.contrib.learn, see the official
 [API docs](../../api_docs/python/contrib.learn.md).
 
-<!-- David, will the below be live when this tutorial is released? -->
 * To learn more about using tf.contrib.learn to create linear models, see 
 [Large-scale Linear Models with TensorFlow](../linear/).
+
+* To build your own Estimator using tf.contrib.learn APIs, check out [Building Machine Learning Estimator in TensorFlow](http://terrytangyuan.github.io/2016/07/08/understand-and-build-tensorflow-estimator/).
 
 * To experiment with neural network modeling and visualization in the browser,
 check out [Deep Playground](http://playground.tensorflow.org/).

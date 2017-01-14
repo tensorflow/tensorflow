@@ -178,8 +178,13 @@ class ReductionOp : public OpKernel {
 
     if (tmp_out.NumElements() == 0) {
       // Nothing to do, fall through to final reshaping.
-    }
-    if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
+    } else if (data.NumElements() == 0) {
+      // Degenerate reduction where the input is empty but the output is
+      // nonempty (thus tmp_out.NumElements() > 0), and we must fill the output
+      // with identity elements.  Example: tf.reduce_sum(tf.zeros((0, 3)), [0]).
+      // Eigen sometimes crashes in this case, so we do it manually.
+      Functor::FillIdentity(d, tmp_out.flat<T>(), reducer);
+    } else if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
       // Reduce to a scalar.
       Functor::Reduce(d, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
                       constants.kZero, reducer);
@@ -241,6 +246,12 @@ struct ReduceFunctor<CPUDevice, Reducer> {
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
     ReduceEigenImpl(d, out, in, reduction_axes, reducer);
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const CPUDevice& d, OUT_T out,
+                           const Reducer& reducer) {
+    FillIdentityEigenImpl(d, out, reducer);
   }
 };
 

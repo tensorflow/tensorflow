@@ -16,11 +16,18 @@
 # Builds the TensorFlow core library with ARM and x86 architectures for iOS, and
 # packs them into a fat file.
 
+ACTUAL_XCODE_VERSION=`xcodebuild -version | head -n 1 | sed 's/Xcode //'`
+REQUIRED_XCODE_VERSION=7.3.0
+if [ ${ACTUAL_XCODE_VERSION//.} -lt ${REQUIRED_XCODE_VERSION//.} ]
+then
+    echo "error: Xcode ${REQUIRED_XCODE_VERSION} or later is required."
+    exit 1
+fi
+
 GENDIR=tensorflow/contrib/makefile/gen/
 LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core
 
-make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
 TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
@@ -29,7 +36,6 @@ then
   exit 1
 fi
 
-make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
 TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
@@ -38,7 +44,6 @@ then
   exit 1
 fi
 
-make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
 TARGET=IOS IOS_ARCH=ARM64 LIB_NAME=${LIB_PREFIX}-arm64.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
@@ -47,7 +52,6 @@ then
   exit 1
 fi
 
-make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
 TARGET=IOS IOS_ARCH=I386 LIB_NAME=${LIB_PREFIX}-i386.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
@@ -56,7 +60,6 @@ then
   exit 1
 fi
 
-make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \
 TARGET=IOS IOS_ARCH=X86_64 LIB_NAME=${LIB_PREFIX}-x86_64.a OPTFLAGS="$1" $2 $3
 if [ $? -ne 0 ]
@@ -66,10 +69,10 @@ then
 fi
 
 lipo \
-${LIBDIR}/${LIB_PREFIX}-armv7.a \
-${LIBDIR}/${LIB_PREFIX}-armv7s.a \
-${LIBDIR}/${LIB_PREFIX}-arm64.a \
-${LIBDIR}/${LIB_PREFIX}-i386.a \
-${LIBDIR}/${LIB_PREFIX}-x86_64.a \
+${LIBDIR}/ios_ARMV7/${LIB_PREFIX}-armv7.a \
+${LIBDIR}/ios_ARMV7S/${LIB_PREFIX}-armv7s.a \
+${LIBDIR}/ios_ARM64/${LIB_PREFIX}-arm64.a \
+${LIBDIR}/ios_I386/${LIB_PREFIX}-i386.a \
+${LIBDIR}/ios_X86_64/${LIB_PREFIX}-x86_64.a \
 -create \
 -output ${LIBDIR}/${LIB_PREFIX}.a

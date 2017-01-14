@@ -96,13 +96,29 @@ string V(const Tensor& tensor) {
   return tensor.scalar<string>()();
 }
 
+const char* kFoo = "/cpu:0;1;/cpu:1;foo;1;2";
+const char* kBar = "/gpu:0;2;/gpu:1;bar;1;2";
+
+Rendezvous::ParsedKey MakeKey(const string& name) {
+  string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
+                                   "/job:mnist/replica:1/task:2/GPU:0", name,
+                                   FrameAndIter(0, 0));
+  Rendezvous::ParsedKey k;
+  TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));
+  return k;
+}
+
+Rendezvous::ParsedKey KeyFoo() { return MakeKey("foo"); }
+Rendezvous::ParsedKey KeyBar() { return MakeKey("bar"); }
+
 TEST_F(LocalRendezvousTest, SendRecv) {
   Rendezvous::Args args;
-  TF_ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
-  EXPECT_TRUE(errors::IsAborted(rendez_->Send("foo", args, V("hello"), false)));
+  TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
+  EXPECT_TRUE(
+      errors::IsAborted(rendez_->Send(KeyFoo(), args, V("hello"), false)));
   Tensor val(DT_STRING);
   bool is_dead = false;
-  TF_ASSERT_OK(rendez_->Recv("foo", args, &val, &is_dead));
+  TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &val, &is_dead));
   EXPECT_EQ("hello", V(val));
 }
 
@@ -110,12 +126,12 @@ TEST_F(LocalRendezvousTest, RecvSend) {
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(10000);
     Rendezvous::Args args;
-    TF_ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
+    TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
   });
   Tensor val(DT_STRING);
   bool is_dead = false;
   Rendezvous::Args args;
-  TF_ASSERT_OK(rendez_->Recv("foo", args, &val, &is_dead));
+  TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &val, &is_dead));
   EXPECT_EQ("hello", V(val));
 }
 
@@ -124,16 +140,17 @@ TEST_F(LocalRendezvousTest, DuplicateWaiterRecv) {
     Tensor t(DT_STRING);
     bool is_dead = false;
     Rendezvous::Args args;
-    TF_ASSERT_OK(rendez_->Recv("foo", args, &t, &is_dead));
-    TF_ASSERT_OK(rendez_->Send("bar", args, t, is_dead));
+    TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &t, &is_dead));
+    TF_ASSERT_OK(rendez_->Send(KeyBar(), args, t, is_dead));
   });
   Env::Default()->SleepForMicroseconds(1000000);
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  EXPECT_TRUE(errors::IsAborted(rendez_->Recv("foo", args, &val, &val_dead)));
-  TF_ASSERT_OK(rendez_->Send("foo", args, V("secret msg"), val_dead));
-  TF_ASSERT_OK(rendez_->Recv("bar", args, &val, &val_dead));
+  EXPECT_TRUE(
+      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
+  TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
+  TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
 }
 
@@ -142,17 +159,18 @@ TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
     Tensor t(DT_STRING);
     bool is_dead = false;
     Rendezvous::Args args;
-    TF_ASSERT_OK(rendez_->Recv("foo", args, &t, &is_dead));
-    TF_ASSERT_OK(rendez_->Send("bar", args, t, is_dead));
+    TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &t, &is_dead));
+    TF_ASSERT_OK(rendez_->Send(KeyBar(), args, t, is_dead));
   });
   Env::Default()->SleepForMicroseconds(1000000);
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  TF_ASSERT_OK(rendez_->Send("foo", args, V("secret msg"), val_dead));
-  TF_ASSERT_OK(rendez_->Recv("bar", args, &val, &val_dead));
+  TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
+  TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
-  EXPECT_TRUE(errors::IsAborted(rendez_->Recv("foo", args, &val, &val_dead)));
+  EXPECT_TRUE(
+      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
 }
 
 // A simple structure that behaves a bit like a blocking counter.  The
@@ -174,7 +192,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       random::SimplePhilox rnd(&philox);
       Env::Default()->SleepForMicroseconds(1000 + rnd.Uniform(10000));
       Rendezvous::Args args;
-      TF_ASSERT_OK(rendez_->Send(strings::StrCat(i), args,
+      TF_ASSERT_OK(rendez_->Send(MakeKey(strings::StrCat(i)), args,
                                  V(strings::StrCat(i)), false));
     });
     SchedClosure([this, &state, i]() {
@@ -184,7 +202,8 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       Tensor val(DT_STRING);
       bool val_dead = false;
       Rendezvous::Args args;
-      TF_ASSERT_OK(rendez_->Recv(strings::StrCat(i), args, &val, &val_dead));
+      TF_ASSERT_OK(
+          rendez_->Recv(MakeKey(strings::StrCat(i)), args, &val, &val_dead));
       EXPECT_EQ(strings::StrCat(i), V(val));
       bool done = false;
       {
@@ -212,7 +231,7 @@ TEST_F(LocalRendezvousTest, RecvAbort) {
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  Status status = rendez_->Recv("foo", args, &val, &val_dead);
+  Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
   EXPECT_TRUE(errors::IsAborted(status));
 }
 
@@ -228,7 +247,7 @@ TEST_F(LocalRendezvousTest, RecvSleepAbort) {
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  Status status = rendez_->Recv("foo", args, &val, &val_dead);
+  Status status = rendez_->Recv(KeyFoo(), args, &val, &val_dead);
   EXPECT_TRUE(errors::IsAborted(status));
 }
 
@@ -237,8 +256,9 @@ TEST_F(LocalRendezvousTest, AbortThenRecvOrSend) {
   Tensor val(DT_STRING);
   bool val_dead = false;
   Rendezvous::Args args;
-  EXPECT_TRUE(errors::IsAborted(rendez_->Send("foo", args, val, val_dead)));
-  EXPECT_TRUE(errors::IsAborted(rendez_->Recv("foo", args, &val, &val_dead)));
+  EXPECT_TRUE(errors::IsAborted(rendez_->Send(KeyFoo(), args, val, val_dead)));
+  EXPECT_TRUE(
+      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
 }
 
 class DummyDeviceContext : public DeviceContext {
@@ -255,15 +275,15 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   Rendezvous::Args args;
   args.device_context = new DummyDeviceContext(123);
 
-  TF_ASSERT_OK(rendez_->Send("foo", args, V("hello"), false));
+  TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
 
   Notification n;
   Rendezvous::Args args1;
   args1.device_context = new DummyDeviceContext(1);
-  rendez_->RecvAsync("foo", args1, [&n](const Status& s,
-                                        const Rendezvous::Args& send_args,
-                                        const Rendezvous::Args& recv_args,
-                                        const Tensor& val, bool is_dead) {
+  rendez_->RecvAsync(KeyFoo(), args1, [&n](const Status& s,
+                                           const Rendezvous::Args& send_args,
+                                           const Rendezvous::Args& recv_args,
+                                           const Tensor& val, bool is_dead) {
     CHECK_EQ(123,
              dynamic_cast<const DummyDeviceContext*>(send_args.device_context)
                  ->stream_id());
@@ -284,8 +304,8 @@ static void BM_SendRecv(int iters) {
   Status s;
   if (iters > 0) {
     while (iters--) {
-      s = rendez->Send("foo", args, orig, is_dead);
-      s = rendez->Recv("foo", args, &val, &is_dead);
+      s = rendez->Send(KeyFoo(), args, orig, is_dead);
+      s = rendez->Recv(KeyFoo(), args, &val, &is_dead);
     }
     CHECK_EQ(V(val), V(orig));
   }
@@ -307,8 +327,8 @@ static void BM_RecvSend(int iters) {
     Rendezvous::Args args;
     Status s;
     for (int i = 0; i < iters / 2; ++i) {
-      s = rendez->Recv("foo", args, &foo, &is_dead);
-      s = rendez->Send("bar", args, bar, is_dead);
+      s = rendez->Recv(KeyFoo(), args, &foo, &is_dead);
+      s = rendez->Send(KeyBar(), args, bar, is_dead);
     }
     CHECK_EQ("foo", V(foo));
   });
@@ -318,8 +338,8 @@ static void BM_RecvSend(int iters) {
   Rendezvous::Args args;
   Status s;
   for (int i = 0; i < iters / 2; ++i) {
-    s = rendez->Send("foo", args, foo, is_dead);
-    s = rendez->Recv("bar", args, &bar, &is_dead);
+    s = rendez->Send(KeyFoo(), args, foo, is_dead);
+    s = rendez->Recv(KeyBar(), args, &bar, &is_dead);
   }
   CHECK_EQ("bar", V(bar));
   delete pool;

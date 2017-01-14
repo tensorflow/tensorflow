@@ -15,8 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#define EIGEN_USE_THREADS
+
 #include <math.h>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/quantization/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -25,6 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <class T1, class T2>
 class QuantizeDownAndShrinkRangeOp : public OpKernel {
@@ -62,10 +67,22 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
                                         input_max_float));
     const float actual_max_float = QuantizedToFloat(
         actual_max_quantized, input_min_float, input_max_float);
+
+#if 0
+    // This is the reference, non-eigen implementation:
     auto output_array = output->flat<T2>();
-    RequantizeManyInNewRange(input_array.data(), input_array.size(),
-                             input_min_float, input_max_float, actual_min_float,
-                             actual_max_float, output_array.data());
+    RequantizeManyInNewRange<T1, T2>(input_array.data(), input_array.size(),
+                                     input_min_float, input_max_float,
+                                     actual_min_float, actual_max_float,
+                                     output_array.data());
+#endif
+
+    if (input_array.size() > 0) {
+      RequantizeManyInNewRangeUsingEigen<T1, T2>(
+          ctx->eigen_device<CPUDevice>(), input, input_min_float,
+          input_max_float, actual_min_float, actual_max_float, output);
+    }
+
     output_min->flat<float>().setConstant(actual_min_float);
     output_max->flat<float>().setConstant(actual_max_float);
   }

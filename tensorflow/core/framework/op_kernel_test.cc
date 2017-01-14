@@ -284,7 +284,8 @@ class DummyDevice : public DeviceBase {
 TEST_F(OpKernelTest, SaveTempFalse) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.device = new DummyDevice(env, false);
+  params.record_tensor_accesses = false;
+  params.device = new DummyDevice(env, params.record_tensor_accesses);
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -308,7 +309,8 @@ TEST_F(OpKernelTest, SaveTempFalse) {
 TEST_F(OpKernelTest, SaveTempTrue) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.device = new DummyDevice(env, true);
+  params.record_tensor_accesses = true;
+  params.device = new DummyDevice(env, params.record_tensor_accesses);
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),

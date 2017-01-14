@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +28,34 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_s
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 
 
+# TODO(b/29580537): Remove when we deprecate feature column inference.
+class InferredfeatureColumnTest(tf.test.TestCase):
+  """Custom optimizer tests."""
+
+  def testIrisMomentum(self):
+    random.seed(42)
+
+    iris = datasets.load_iris()
+    x_train, x_test, y_train, y_test = train_test_split(iris.data,
+                                                        iris.target,
+                                                        test_size=0.2,
+                                                        random_state=42)
+
+    def custom_optimizer(learning_rate):
+      return tf.train.MomentumOptimizer(learning_rate, 0.9)
+
+    classifier = learn.TensorFlowDNNClassifier(
+        hidden_units=[10, 20, 10],
+        n_classes=3,
+        steps=400,
+        learning_rate=0.01,
+        optimizer=custom_optimizer)
+    classifier.fit(x_train, y_train)
+    score = accuracy_score(y_test, classifier.predict(x_test))
+
+    self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
+
+
 class CustomOptimizer(tf.test.TestCase):
   """Custom optimizer tests."""
 
@@ -44,11 +71,13 @@ class CustomOptimizer(tf.test.TestCase):
     def custom_optimizer(learning_rate):
       return tf.train.MomentumOptimizer(learning_rate, 0.9)
 
-    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-                                               n_classes=3,
-                                               steps=400,
-                                               learning_rate=0.01,
-                                               optimizer=custom_optimizer)
+    classifier = learn.TensorFlowDNNClassifier(
+        hidden_units=[10, 20, 10],
+        feature_columns=learn.infer_real_valued_columns_from_input(x_train),
+        n_classes=3,
+        steps=400,
+        learning_rate=0.01,
+        optimizer=custom_optimizer)
     classifier.fit(x_train, y_train)
     score = accuracy_score(y_test, classifier.predict(x_test))
 

@@ -69,8 +69,8 @@ compose in your graph, but here are the details of how to add you own custom Op.
 
 ## How to write TensorFlow code
 
-Tensorflow Style Guide is set of style decisions that both developers
-and users of Tensorflow should follow to increase the readability of their code,
+TensorFlow Style Guide is set of style decisions that both developers
+and users of TensorFlow should follow to increase the readability of their code,
 reduce the number of errors, and promote consistency.
 
 [View Style Guide](style_guide.md)

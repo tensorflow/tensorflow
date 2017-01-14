@@ -19,6 +19,7 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/protobuf.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/protobuf.h
 
+#include "google/protobuf/arena.h"
 #include "google/protobuf/compiler/importer.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/io/coded_stream.h"

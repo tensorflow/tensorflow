@@ -30,6 +30,7 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
                             int64 index) {
   typedef typename EnumToDataType<DT>::Type T;
   DCHECK_NE(parent.dim_size(0), 0);
+  DCHECK_GE(index, 0);
   if (element->NumElements() != (parent.NumElements() / parent.dim_size(0))) {
     TensorShape chip_shape = parent.shape();
     chip_shape.RemoveDim(0);
@@ -48,6 +49,7 @@ template <DataType DT>
 Status HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
   typedef typename EnumToDataType<DT>::Type T;
   DCHECK_NE(parent->dim_size(0), 0);
+  DCHECK_GE(index, 0);
   if (element.NumElements() != (parent->NumElements() / parent->dim_size(0))) {
     TensorShape chip_shape = parent->shape();
     chip_shape.RemoveDim(0);
@@ -357,6 +359,7 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
     return Status::OK();                                                  \
   }
   HANDLE_TYPE(DT_FLOAT);
+  HANDLE_TYPE(DT_HALF);
   HANDLE_TYPE(DT_DOUBLE);
   HANDLE_TYPE(DT_INT32);
   HANDLE_TYPE(DT_UINT8);
@@ -386,6 +389,7 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
     return Status::OK();                                                  \
   }
   HANDLE_TYPE(DT_FLOAT);
+  HANDLE_TYPE(DT_HALF);
   HANDLE_TYPE(DT_DOUBLE);
   HANDLE_TYPE(DT_INT32);
   HANDLE_TYPE(DT_UINT8);

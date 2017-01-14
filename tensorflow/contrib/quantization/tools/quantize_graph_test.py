@@ -24,7 +24,7 @@ import numpy as np
 
 import tensorflow as tf
 from tensorflow.contrib.quantization.tools import quantize_graph
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -142,9 +142,9 @@ def are_tensors_near(a, b, tolerance):
     return True
   else:
     print("Tensors have {0} different values ({1}%), with mean difference"
-          " {2} and mean absolute difference {3}").format(
+          " {2} and mean absolute difference {3}".format(
               how_many_different, proportion_different * 100, mean_difference,
-              mean_abs_difference)
+              mean_abs_difference))
     return False
 
 
@@ -193,6 +193,14 @@ def test_graph(float_graph_def, input_map, output_names):
 
 
 class QuantizeGraphTest(tf.test.TestCase):
+
+  def test_negative_const_problem(self):
+    shape_constant_name = "shape_constant"
+    shape_constant = quantize_graph.create_constant_node(
+        shape_constant_name, value=-0.8, dtype=tf.float32, shape=[1])
+    quantization_result = quantize_graph.quantize_weight_eightbit(
+        shape_constant, b"MIN_COMBINED")
+    self.assertEqual(4, len(quantization_result))
 
   def test_odd_padding_problem(self):
     """Tests one error case we ran into in a real graph."""

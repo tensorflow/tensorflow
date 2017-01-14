@@ -124,7 +124,9 @@ class QuantizeV2Op : public OpKernel {
                 .template cast<T>();
       }
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      FloatTensorToQuantizedInPlace<T>(input, min_range, max_range, output);
+      FloatTensorToQuantizedInPlaceUsingEigen<T>(
+          ctx->template eigen_device<Device>(), input, min_range, max_range,
+          output);
     }
 
     Tensor* output_min_tensor = nullptr;

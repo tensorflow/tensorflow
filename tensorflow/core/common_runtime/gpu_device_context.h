@@ -56,9 +56,9 @@ class GPUDeviceContext : public DeviceContext {
                              Tensor* device_tensor,
                              StatusCallback done) const override;
 
-  void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             const string& edge_name, Device* device,
-                             Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
+                             Device* device, Tensor* cpu_tensor,
+                             StatusCallback done) override;
 
   void MaintainLifetimeOnStream(
       const Tensor* t, perftools::gputools::Stream* stream) const override {}

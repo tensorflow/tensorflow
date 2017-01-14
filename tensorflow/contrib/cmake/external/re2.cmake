@@ -1,7 +1,8 @@
 include (ExternalProject)
 
-set(re2_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/re2/re2)
-set(re2_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/re2/src)
+set(re2_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/re2/re2
+    ${CMAKE_CURRENT_BINARY_DIR}/external/re2)
+set(re2_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/re2/src/re2)
 set(re2_URL https://github.com/google/re2.git)
 set(re2_TAG 791beff)
 set(re2_BUILD ${CMAKE_BINARY_DIR}/re2/src/re2)

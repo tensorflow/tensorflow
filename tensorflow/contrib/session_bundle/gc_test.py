@@ -44,6 +44,12 @@ class GcTest(test_util.TensorFlowTestCase):
     n = newest(paths)
     self.assertEquals(n, [gc.Path("/foo", 9), gc.Path("/foo", 10)])
 
+  def testLargestExportVersionsDoesNotDeleteZeroFolder(self):
+    paths = [gc.Path("/foo", 0), gc.Path("/foo", 3)]
+    newest = gc.largest_export_versions(2)
+    n = newest(paths)
+    self.assertEquals(n, [gc.Path("/foo", 0), gc.Path("/foo", 3)])
+
   def testModExportVersion(self):
     paths = [gc.Path("/foo", 4), gc.Path("/foo", 5), gc.Path("/foo", 6),
              gc.Path("/foo", 9)]

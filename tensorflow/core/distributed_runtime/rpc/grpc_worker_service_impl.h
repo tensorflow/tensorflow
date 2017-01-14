@@ -24,6 +24,7 @@ limitations under the License.
 #include "grpc++/impl/codegen/status.h"
 #include "grpc++/impl/codegen/stub_options.h"
 #include "grpc++/impl/codegen/sync_stream.h"
+#include "grpc++/support/byte_buffer.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -386,11 +387,10 @@ class WorkerService GRPC_FINAL {
       ::grpc::Service::RequestAsyncUnary(5, context, request, response,
                                          new_call_cq, notification_cq, tag);
     }
-    void RequestRecvTensor(
+    void RequestRecvTensorRaw(
         ::grpc::ServerContext* context,
         ::tensorflow::RecvTensorRequest* request,
-        ::grpc::ServerAsyncResponseWriter<::tensorflow::RecvTensorResponse>*
-            response,
+        ::grpc::ServerAsyncResponseWriter<::grpc::ByteBuffer>* response,
         ::grpc::CompletionQueue* new_call_cq,
         ::grpc::ServerCompletionQueue* notification_cq, void* tag) {
       ::grpc::Service::RequestAsyncUnary(6, context, request, response,

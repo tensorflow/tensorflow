@@ -6,6 +6,8 @@ The hash function is deterministic on the content of the string within the
 process.
 
 Note that the hash function may change from time to time.
+This functionality will be deprecated and it's recommended to use
+`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
 
 ##### Args:
 

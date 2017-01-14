@@ -30,6 +30,7 @@
 ## Utility functions
 
 @@device
+@@container
 @@name_scope
 @@control_dependencies
 @@convert_to_tensor
@@ -77,6 +78,7 @@ from tensorflow.python.framework.ops import IndexedSlices
 
 # Utilities used when building a Graph.
 from tensorflow.python.framework.ops import device
+from tensorflow.python.framework.ops import container
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.framework.ops import control_dependencies

@@ -148,6 +148,14 @@ class CastOpTest(tf.test.TestCase):
     self._OpError(np.arange(0, 10), tf.string,
                   "Cast.*int64.*string.*")
 
+  def testCastToTypeOfVariable(self):
+    with self.test_session() as sess:
+      x = tf.Variable(5, dtype=tf.float32)
+      y = tf.Variable(True, dtype=tf.bool)
+      cast = tf.cast(y, x.dtype)
+      tf.initialize_all_variables().run()
+      self.assertEqual(1.0, sess.run(cast))
+
   def testGradients(self):
     t = [tf.float32, tf.float64]
     for src_t in t:

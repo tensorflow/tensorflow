@@ -31,9 +31,9 @@ class TestRandomAccessFile : public RandomAccessFile {
 
 class TestFileSystem : public NullFileSystem {
  public:
-  Status NewRandomAccessFile(const string& fname,
-                             RandomAccessFile** result) override {
-    *result = new TestRandomAccessFile;
+  Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
+    result->reset(new TestRandomAccessFile);
     return Status::OK();
   }
   // Always return size of 10

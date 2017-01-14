@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace test_util {
 
 string TestSrcDirPath(const string& relative_path) {
@@ -31,5 +31,5 @@ string TestSrcDirPath(const string& relative_path) {
 }
 
 }  // namespace test_util
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

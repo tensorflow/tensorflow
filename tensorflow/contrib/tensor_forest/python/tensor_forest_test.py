@@ -33,8 +33,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         split_after_samples=25, num_features=60).fill()
     self.assertEquals(2, hparams.num_classes)
     self.assertEquals(3, hparams.num_output_columns)
-    # 2 * ceil(log_2(1000)) = 20
-    self.assertEquals(20, hparams.max_depth)
     # sqrt(num_features) < 10, so num_splits_to_consider should be 10.
     self.assertEquals(10, hparams.num_splits_to_consider)
     # Don't have more fertile nodes than max # leaves, which is 500.
@@ -50,7 +48,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         num_classes=2, num_trees=100, max_nodes=1000000,
         split_after_samples=25,
         num_features=1000).fill()
-    self.assertEquals(40, hparams.max_depth)
     # sqrt(1000) = 31.63...
     self.assertEquals(32, hparams.num_splits_to_consider)
     # 1000000 / 32 = 31250
@@ -103,6 +100,47 @@ class TensorForestTest(test_util.TensorFlowTestCase):
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
     graph = graph_builder.average_impurity()
+    self.assertTrue(isinstance(graph, tf.Tensor))
+
+  def testTrainingConstructionClassificationSparse(self):
+    input_data = tf.SparseTensor(
+        indices=[[0, 0], [0, 3],
+                 [1, 0], [1, 7],
+                 [2, 1],
+                 [3, 9]],
+        values=[-1.0, 0.0,
+                -1., 2.,
+                1.,
+                -2.0],
+        shape=[4, 10])
+    input_labels = [0, 1, 2, 3]
+
+    params = tensor_forest.ForestHParams(
+        num_classes=4, num_features=10, num_trees=10, max_nodes=1000,
+        split_after_samples=25).fill()
+
+    graph_builder = tensor_forest.RandomForestGraphs(params)
+    graph = graph_builder.training_graph(input_data, input_labels)
+    self.assertTrue(isinstance(graph, tf.Operation))
+
+  def testInferenceConstructionSparse(self):
+    input_data = tf.SparseTensor(
+        indices=[[0, 0], [0, 3],
+                 [1, 0], [1, 7],
+                 [2, 1],
+                 [3, 9]],
+        values=[-1.0, 0.0,
+                -1., 2.,
+                1.,
+                -2.0],
+        shape=[4, 10])
+
+    params = tensor_forest.ForestHParams(
+        num_classes=4, num_features=10, num_trees=10, max_nodes=1000,
+        split_after_samples=25).fill()
+
+    graph_builder = tensor_forest.RandomForestGraphs(params)
+    graph = graph_builder.inference_graph(input_data)
     self.assertTrue(isinstance(graph, tf.Tensor))
 
 

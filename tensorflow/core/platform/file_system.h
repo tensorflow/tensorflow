@@ -34,6 +34,16 @@ class RandomAccessFile;
 class ReadOnlyMemoryRegion;
 class WritableFile;
 
+struct FileStatistics {
+  // The length of the file or -1 if finding file length is not supported.
+  int64 length;
+  // The last modified time in nanoseconds.
+  int64 mtime_nsec;
+  // This field contains more than just the permissions bits.  More information
+  // can be found on the man page for stat(2).
+  mode_t mode;
+};
+
 /// A generic interface for accessing a file system.
 class FileSystem {
  public:
@@ -43,22 +53,24 @@ class FileSystem {
 
   /// The following functions are the implementations used by the corresponding
   /// functions in the Env class.
-  virtual Status NewRandomAccessFile(const string& fname,
-                                     RandomAccessFile** result) = 0;
+  virtual Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) = 0;
 
   virtual Status NewWritableFile(const string& fname,
-                                 WritableFile** result) = 0;
+                                 std::unique_ptr<WritableFile>* result) = 0;
 
   virtual Status NewAppendableFile(const string& fname,
-                                   WritableFile** result) = 0;
+                                   std::unique_ptr<WritableFile>* result) = 0;
 
   virtual Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ReadOnlyMemoryRegion** result) = 0;
+      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
   virtual bool FileExists(const string& fname) = 0;
 
   virtual Status GetChildren(const string& dir,
                              std::vector<string>* result) = 0;
+
+  virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
 
   virtual Status DeleteFile(const string& fname) = 0;
 
@@ -73,6 +85,15 @@ class FileSystem {
   // Translate an URI to a filename usable by the FileSystem implementation. The
   // implementation in this class returns the name as-is.
   virtual string TranslateName(const string& name) const;
+
+  // Returns whether the given path is a directory or not.
+  // Typical return codes (not guaranteed exhaustive):
+  //  * OK - The path exists and is a directory.
+  //  * FAILED_PRECONDITION - The path exists and is not a directory.
+  //  * NOT_FOUND - The path entry does not exist.
+  //  * PERMISSION_DENIED - Insufficient permissions.
+  //  * UNIMPLEMENTED - The file factory doesn't support directories.
+  virtual Status IsDirectory(const string& fname);
 };
 
 // Degenerate file system that provides no implementations.
@@ -82,22 +103,24 @@ class NullFileSystem : public FileSystem {
 
   ~NullFileSystem() override = default;
 
-  Status NewRandomAccessFile(const string& fname,
-                             RandomAccessFile** result) override {
+  Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
     return errors::Unimplemented("NewRandomAccessFile unimplemented");
   }
 
-  Status NewWritableFile(const string& fname, WritableFile** result) override {
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result) override {
     return errors::Unimplemented("NewWritableFile unimplemented");
   }
 
   Status NewAppendableFile(const string& fname,
-                           WritableFile** result) override {
+                           std::unique_ptr<WritableFile>* result) override {
     return errors::Unimplemented("NewAppendableFile unimplemented");
   }
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ReadOnlyMemoryRegion** result) override {
+      const string& fname,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return errors::Unimplemented(
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
@@ -126,6 +149,10 @@ class NullFileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override {
     return errors::Unimplemented("RenameFile unimplemented");
+  }
+
+  Status Stat(const string& fname, FileStatistics* stat) override {
+    return errors::Unimplemented("Stat unimplemented");
   }
 };
 

@@ -1,6 +1,6 @@
 # TensorFlow Style Guide
 
-This page contains style decisions that both developers and users of Tensorflow
+This page contains style decisions that both developers and users of TensorFlow
 should follow to increase the readability of their code, reduce the number of
 errors, and promote consistency.
 
@@ -21,8 +21,8 @@ except for using 2 spaces.
 
 ```
 from __future__ import absolute_import
-from __future__ import print_function
 from __future__ import division
+from __future__ import print_function
 ```
 
 * Use `six` to write compatible code (for example `six.range`).

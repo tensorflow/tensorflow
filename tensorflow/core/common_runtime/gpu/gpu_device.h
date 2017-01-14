@@ -91,6 +91,7 @@ class BaseGPUDevice : public LocalDevice {
     gpu::Stream* device_to_device;
   };
   gtl::InlinedVector<StreamGroup, 4> streams_;
+  gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   mutex trace_mu_;

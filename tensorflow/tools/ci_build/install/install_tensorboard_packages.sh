@@ -18,7 +18,7 @@ set -e
 
 # Install dependencies from ubuntu deb repository.
 apt-get update
-apt-get install -y \
+apt-get install -y --no-install-recommends \
     chromium-browser \
     nodejs \
     nodejs-legacy \

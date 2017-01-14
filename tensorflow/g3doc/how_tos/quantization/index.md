@@ -6,7 +6,7 @@ were the top priorities. Using floating point arithmetic was the easiest way to
 preserve accuracy, and GPUs were well-equipped to accelerate those calculations,
 so it's natural that not much attention was paid to other numerical formats.
 
-These days, we actually have a lot of models being being deployed in commercial
+These days, we actually have a lot of models being deployed in commercial
 applications. The computation demands of training grow with the number of
 researchers, but the cycles needed for inference expand in proportion to users.
 That means pure inference efficiency has become a burning issue for a lot of

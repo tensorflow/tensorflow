@@ -192,8 +192,8 @@ class CUDAHostAllocator : public SubAllocator {
     if (num_bytes > 0) {
       ptr = stream_exec_->HostMemoryAllocate(num_bytes);
       if (ptr == nullptr) {
-        LOG(FATAL) << "could not allocate pinned host memory of size: "
-                   << num_bytes;
+        LOG(WARNING) << "could not allocate pinned host memory of size: "
+                     << num_bytes;
       }
     }
     return ptr;

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tensorflow.contrib;
+package tensorflow.serving;
 
 // Signatures of model export.
 message Signatures {

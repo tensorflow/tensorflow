@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 
 const char kMetaGraphDefFilename[] = "export.meta";
 const char kAssetsDirectory[] = "assets";
@@ -43,17 +43,24 @@ const char kGraphKey[] = "serving_graph";
 // in-lined in tutorials, please update tutorial documents accordingly
 // whenever code changes.
 struct SessionBundle {
-  std::unique_ptr<tensorflow::Session> session;
-  tensorflow::MetaGraphDef meta_graph_def;
+  std::unique_ptr<Session> session;
+  MetaGraphDef meta_graph_def;
 };
 
 // Loads a manifest and initialized session using the output of an Exporter
 // using the format defined at go/tf-exporter.
-tensorflow::Status LoadSessionBundleFromPath(
-    const tensorflow::SessionOptions& options,
-    const tensorflow::StringPiece export_dir, SessionBundle* bundle);
+Status LoadSessionBundleFromPath(const SessionOptions& options,
+                                 const StringPiece export_dir,
+                                 SessionBundle* bundle);
 
-}  // namespace contrib
+// Sanity checks whether the directory looks like an export directory. Note that
+// we don't try to load any data in this method.
+//
+// If the method returns false this is definitely not an export directory, if it
+// returns true, it is no guarantee that the model will load.
+bool IsPossibleExportDirectory(const StringPiece export_dir);
+
+}  // namespace serving
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_

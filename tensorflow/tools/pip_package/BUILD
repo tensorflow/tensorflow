@@ -8,8 +8,8 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 transitive_hdrs(
     name = "other_headers",
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 
@@ -30,10 +30,11 @@ sh_binary(
         ":other_headers",
         ":simple_console",
         "//tensorflow:tensorflow_py",
-#        "//tensorflow/contrib/session_bundle:all_files",
-#        "//tensorflow/contrib/session_bundle:manifest_proto_py",
-#        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+        "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/slim:all_files",
+        "//tensorflow/contrib/slim/python/slim/data:all_files",
+        "//tensorflow/contrib/slim/python/slim/nets:all_files",
+        "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/core:framework_headers",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",
@@ -44,6 +45,7 @@ sh_binary(
         "//tensorflow/models/rnn:package",
         "//tensorflow/models/rnn/ptb:package",
         "//tensorflow/models/rnn/translate:package",
+        "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/tensorboard",
     ],
 )

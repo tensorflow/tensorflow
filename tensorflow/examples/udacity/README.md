@@ -6,7 +6,11 @@ Course information can be found at https://www.udacity.com/course/deep-learning-
 Running the Docker container from the Google Cloud repository
 -------------------------------------------------------------
 
-    docker run -p 8888:8888 -it --rm b.gcr.io/tensorflow-udacity/assignments:0.5.0
+    docker run -p 8888:8888 --name tensorflow-udacity -it b.gcr.io/tensorflow-udacity/assignments:0.5.0
+
+Note that if you ever exit the container, you can return to it using:
+
+    docker start -ai tensorflow-udacity
 
 Accessing the Notebooks
 -----------------------

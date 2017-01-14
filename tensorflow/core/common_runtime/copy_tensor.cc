@@ -43,8 +43,7 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 }  // namespace
 
 // static
-void CopyTensor::ViaDMA(const string& edge_name,
-                        DeviceContext* send_dev_context,
+void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         DeviceContext* recv_dev_context, Device* src,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,

@@ -17,7 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import framework
+from tensorflow.contrib.framework.python.framework import tensor_util
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -56,7 +57,7 @@ def set_size(a, validate_indices=True):
   Raises:
     TypeError: If `a` is an invalid types.
   """
-  a = framework.convert_to_tensor_or_sparse_tensor(a, name="a")
+  a = tensor_util.convert_to_tensor_or_sparse_tensor(a, name="a")
   if not isinstance(a, ops.SparseTensor):
     raise TypeError("Expected `SparseTensor`, got %s." % a)
   if a.values.dtype.base_dtype not in _VALID_DTYPES:
@@ -106,10 +107,10 @@ def _set_operation(a, b, set_operation, validate_indices=True):
     TypeError: If inputs are invalid types.
     ValueError: If `a` is sparse and `b` is dense.
   """
-  a = framework.convert_to_tensor_or_sparse_tensor(a, name="a")
+  a = tensor_util.convert_to_tensor_or_sparse_tensor(a, name="a")
   if a.dtype.base_dtype not in _VALID_DTYPES:
     raise TypeError("'a' invalid dtype %s." % a.dtype)
-  b = framework.convert_to_tensor_or_sparse_tensor(b, name="b")
+  b = tensor_util.convert_to_tensor_or_sparse_tensor(b, name="b")
   if b.dtype.base_dtype != a.dtype.base_dtype:
     raise TypeError("Types don't match, %s vs %s." % (a.dtype, b.dtype))
   # pylint: disable=protected-access

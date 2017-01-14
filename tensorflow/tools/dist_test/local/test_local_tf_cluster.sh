@@ -21,6 +21,7 @@
 # local machine and can be controlled by the "kubectl" binary.
 #
 # Usage: test_local_tf_cluster.sh <NUM_WORKERS> <NUM_PARAMETER_SERVERS>
+#                                 [--model-name <MODEL_NAME>]
 #                                 [--sync-replicas]
 #
 # --sync-replicas
@@ -39,15 +40,32 @@ fi
 
 NUM_WORKERS=$1
 NUM_PARAMETER_SERVERS=$2
+shift
+shift
 
+# Process optional command-line flags
+MODEL_NAME=""
+MODEL_NAME_FLAG=""
 SYNC_REPLICAS_FLAG=""
-if [[ $3 == "--sync-replicas" ]]; then
-  SYNC_REPLICAS_FLAG="--sync-replicas"
-fi
+while true; do
+  if [[ "$1" == "--model-name" ]]; then
+    MODEL_NAME="$2"
+    MODEL_NAME_FLAG="--model-name ${MODEL_NAME}"
+  elif [[ "$1" == "--sync-replicas" ]]; then
+    SYNC_REPLICAS_FLAG="--sync-replicas"
+  fi
+  shift
+
+  if [[ -z "$1" ]]; then
+    break
+  fi
+done
 
 echo "NUM_WORKERS: ${NUM_WORKERS}"
 echo "NUM_PARAMETER_SERVERS: ${NUM_PARAMETER_SERVERS}"
-echo "SYNC_REPLICAS_FLAG: ${SYNC_REPLICAS_FLAG}"
+echo "MODEL_NAME: \"${MODEL_NAME}\""
+echo "MODEL_NAME_FLAG: \"${MODEL_NAME_FLAG}\""
+echo "SYNC_REPLICAS_FLAG: \"${SYNC_REPLICAS_FLAG}\""
 
 # Get current script directory
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,11 +126,13 @@ echo "Worker URLs: ${WORKER_URLS}"
 export TF_DIST_GRPC_SERVER_URLS="${WORKER_URLS}"
 GRPC_ENV="TF_DIST_GRPC_SERVER_URLS=${TF_DIST_GRPC_SERVER_URLS}"
 
+# Command to launch clients from worker0
 CMD="${GRPC_ENV} /var/tf-k8s/scripts/dist_test.sh "\
 "--num-workers ${NUM_WORKERS} "\
 "--num-parameter-servers ${NUM_PARAMETER_SERVERS} "\
-"${SYNC_REPLICAS_FLAG}"
+"${MODEL_NAME_FLAG} ${SYNC_REPLICAS_FLAG}"
 
+# Launch clients from worker0
 docker exec ${DOCKER_CONTAINER_ID} /bin/bash -c "${CMD}"
 
 if [[ $? != "0" ]]; then

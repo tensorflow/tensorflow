@@ -23,7 +23,6 @@ import json
 import tensorflow as tf
 
 from tensorflow.python.client import timeline
-from tensorflow.python.framework import test_util
 
 
 class TimelineTest(tf.test.TestCase):
@@ -80,7 +79,7 @@ class TimelineTest(tf.test.TestCase):
     self._validateTrace(ctf)
 
   def testTimelineGpu(self):
-    if not test_util.IsGoogleCudaEnabled():
+    if not tf.test.is_gpu_available():
       return
 
     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)

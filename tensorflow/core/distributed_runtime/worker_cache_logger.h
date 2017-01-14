@@ -62,7 +62,7 @@ class WorkerCacheLogger {
 
  private:
   mutex count_mu_;
-  int32 want_logging_count_ GUARDED_BY(count_mu_);
+  int32 want_logging_count_ GUARDED_BY(count_mu_) = 0;
 
   struct StepLog {
     StepStats step_stats;

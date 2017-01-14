@@ -24,6 +24,8 @@ tensorflow/core/lib/random/weighted_picker.cc
 tensorflow/core/lib/random/simple_philox.cc
 tensorflow/core/lib/random/random.cc
 tensorflow/core/lib/random/distribution_sampler.cc
+tensorflow/core/lib/io/zlib_outputbuffer.cc
+tensorflow/core/lib/io/zlib_inputbuffer.cc
 tensorflow/core/lib/io/two_level_iterator.cc
 tensorflow/core/lib/io/table_builder.cc
 tensorflow/core/lib/io/table.cc

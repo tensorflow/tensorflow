@@ -7,6 +7,9 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
+Note: Elementwise binary operations in TensorFlow follow [numpy-style
+broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+
 ## Arithmetic Operators
 
 TensorFlow provides several operations that you can use to add basic arithmetic
@@ -208,18 +211,23 @@ mathematical functions to your graph.
 
 ### `tf.add_n(inputs, name=None)` {#add_n}
 
-Add all input tensors element wise.
+Adds all input tensors element-wise.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of the same type in: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    Must all be the same size and shape.
+*  <b>`inputs`</b>: A list of `Tensor` objects, each with same shape and type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `inputs`.
+  A `Tensor` of same shape and type as the elements of `inputs`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
+  cannot be inferred.
 
 
 - - -
@@ -239,12 +247,14 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float`, `double`, `int32`, or `int64`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
+    `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-   A `Tensor` the same size and type as `x` with absolute values.
+  A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+    values.
 
 
 - - -
@@ -253,17 +263,18 @@ number.
 
 Computes numerical negative value element-wise.
 
-I.e., \\(y = -x\\).
+I.e., \(y = -x\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -279,12 +290,13 @@ For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -312,17 +324,18 @@ I.e., \\(y = 1 / x\\).
 
 Computes square of x element-wise.
 
-I.e., \\(y = x * x = x^2\\).
+I.e., \(y = x * x = x^2\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`. Has the same type as `x`.
 
 
 - - -
@@ -341,7 +354,7 @@ tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float` or `double`.
+*  <b>`x`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -355,17 +368,18 @@ tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
 
 Computes square root of x element-wise.
 
-I.e., \\(y = \sqrt{x} = x^{1/2}\\).
+I.e., \(y = \sqrt{x} = x^{1/2}\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -405,10 +419,10 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
-   `complex128`.
-*  <b>`y`</b>: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
-   `complex128`.
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -703,12 +717,13 @@ Computes the Gauss error function of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
+*  <b>`x`</b>: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -1022,6 +1037,40 @@ Useful special cases:
   Rank `k` tensor of the same shape as input. The extracted banded tensor.
 
 
+- - -
+
+### `tf.batch_matrix_set_diag(input, diagonal, name=None)` {#batch_matrix_set_diag}
+
+Returns a batched matrix tensor with new batched diagonal values.
+
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the diagonals of the innermost
+matrices.  These will be overwritten by the values in `diagonal`.
+The batched matrices must be square.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
+    Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k+1`, with `output.shape = input.shape`.
+
+
 
 - - -
 
@@ -1180,6 +1229,43 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
   A transposed `Tensor`.
 
 
+- - -
+
+### `tf.batch_matrix_transpose(a, name='batch_matrix_transpose')` {#batch_matrix_transpose}
+
+Transposes last two dimensions of batch matrix `a`.
+
+For example:
+
+```python
+# Matrix with no batch dimension.
+# 'x' is [[1 2 3]
+#         [4 5 6]]
+tf.batch_matrixtranspose(x) ==> [[1 4]
+                                 [2 5]
+                                 [3 6]]
+
+# Matrix with two batch dimensions.
+# x.shape is [1, 2, 3, 4]
+# tf.batch_matrix_transpose(x) is shape [1, 2, 4, 3]
+```
+
+##### Args:
+
+
+*  <b>`a`</b>: A `Tensor` with `rank >= 2`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A transposed batch matrix `Tensor`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `a` is determined statically to have `rank < 2`.
+
+
 
 - - -
 
@@ -1191,7 +1277,7 @@ The inputs must be two-dimensional matrices, with matching inner dimensions,
 possibly after transposition.
 
 Both matrices must be of the same type. The supported types are:
-`float`, `double`, `int32`, `complex64`.
+`float32`, `float64`, `int32`, `complex64`.
 
 Either matrix can be transposed on the fly by setting the corresponding flag
 to `True`. This is `False` by default.
@@ -1217,7 +1303,7 @@ c = tf.matmul(a, b) => [[58 64]
 ##### Args:
 
 
-*  <b>`a`</b>: `Tensor` of type `float`, `double`, `int32` or `complex64`.
+*  <b>`a`</b>: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
 *  <b>`b`</b>: `Tensor` with same type as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
@@ -1301,7 +1387,7 @@ Calculates the determinant of a square matrix.
 Calculates the determinants for a batch of square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. The output is a 1-D tensor containing the determinants
+form square matrices. The output is a tensor containing the determinants
 for all input submatrices `[..., :, :]`.
 
 ##### Args:
@@ -1845,7 +1931,7 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 Computes the complex absolute value of a tensor.
 
 Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float` or `double` that is the absolute value of each element in `x`. All
+`float32` or `float64` that is the absolute value of each element in `x`. All
 elements in `x` must be complex numbers of the form \\(a + bj\\). The
 absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
 
@@ -1905,7 +1991,7 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` or `double` that is the imaginary part of each element in
+type `float32` or `float64` that is the imaginary part of each element in
 `input`. All elements in `input` must be complex numbers of the form \(a +
 bj\), where *a* is the real part and *b* is the imaginary part returned by
 this operation.
@@ -1925,7 +2011,7 @@ tf.imag(input) ==> [4.75, 5.75]
 
 ##### Returns:
 
-  A `Tensor` of type `float` or `double`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -1935,7 +2021,7 @@ tf.imag(input) ==> [4.75, 5.75]
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` or `double` that is the real part of each element in `input`.
+type `float32` or `float64` that is the real part of each element in `input`.
 All elements in `input` must be complex numbers of the form \(a + bj\),
 where *a* is the real part returned by this operation and *b* is the
 imaginary part.
@@ -1956,7 +2042,7 @@ tf.real(input) ==> [-2.25, 3.25]
 
 ##### Returns:
 
-  A `Tensor` of type `float` or `double`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -1979,6 +2065,8 @@ Compute the 1-dimensional discrete Fourier Transform.
 - - -
 
 ### `tf.ifft(input, name=None)` {#ifft}
+
+.Doc(R"doc(
 
 Compute the inverse 1-dimensional discrete Fourier Transform.
 
@@ -2476,6 +2564,102 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 
 
+## Scan
+
+TensorFlow provides several operations that you can use to perform scans
+(running totals) across one axis of a tensor.
+
+- - -
+
+### `tf.cumsum(x, axis=0, exclusive=False, reverse=False, name=None)` {#cumsum}
+
+Compute the cumulative sum of the tensor `x` along `axis`.
+
+By default, this op performs an inclusive cumsum, which means that the first
+element of the input is identical to the first element of the output:
+```prettyprint
+tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
+instead:
+```prettyprint
+tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumsum is performed in the
+opposite direction:
+```prettyprint
+tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+```
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+```prettyprint
+tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+   `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+   `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`axis`</b>: A `Tensor` of type `int32` (default: 0).
+*  <b>`reverse`</b>: A `bool` (default: False).
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.cumprod(x, axis=0, exclusive=False, reverse=False, name=None)` {#cumprod}
+
+Compute the cumulative product of the tensor `x` along `axis`.
+
+By default, this op performs an inclusive cumprod, which means that the first
+element of the input is identical to the first element of the output:
+```prettyprint
+tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumprod is performed
+instead:
+```prettyprint
+tf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumprod is performed in the
+opposite direction:
+```prettyprint
+tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+```
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+```prettyprint
+tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+   `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+   `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`axis`</b>: A `Tensor` of type `int32` (default: 0).
+*  <b>`reverse`</b>: A `bool` (default: False).
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+
 ## Segmentation
 
 TensorFlow provides several operations that you can use to perform common
@@ -2678,10 +2862,10 @@ Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
 of segments.
 
 Computes a tensor such that
-\\(output_i = \sum_j data_j\\) where sum is over `j` such
-that `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`
+`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
+that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 need not be sorted and need not cover all values in the full
-  range of valid values.
+range of valid values.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
@@ -2696,16 +2880,16 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
 *  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    A 1-D tensor whose rank is equal to the rank of `data`'s
-    first dimension.
+    A tensor whose shape is a prefix of `data.shape`.
 *  <b>`num_segments`</b>: A `Tensor` of type `int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `data`.
-  Has same shape as data, except for dimension 0 which
-  has size `num_segments`.
+  Has same shape as data, except for the first `segment_ids.rank`
+  dimensions, which are replaced with a single dimension which has size
+  `num_segments`.
 
 
 

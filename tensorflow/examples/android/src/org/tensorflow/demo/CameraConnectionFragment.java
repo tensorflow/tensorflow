@@ -424,7 +424,7 @@ public class CameraConnectionFragment extends Fragment {
     backgroundThread = new HandlerThread("ImageListener");
     backgroundThread.start();
     backgroundHandler = new Handler(backgroundThread.getLooper());
-    
+
     inferenceThread = new HandlerThread("InferenceThread");
     inferenceThread.start();
     inferenceHandler = new Handler(inferenceThread.getLooper());
@@ -440,7 +440,7 @@ public class CameraConnectionFragment extends Fragment {
       backgroundThread.join();
       backgroundThread = null;
       backgroundHandler = null;
-      
+
       inferenceThread.join();
       inferenceThread = null;
       inferenceThread = null;
@@ -449,7 +449,7 @@ public class CameraConnectionFragment extends Fragment {
     }
   }
 
-  private final TensorflowImageListener tfPreviewListener = new TensorflowImageListener();
+  private final TensorFlowImageListener tfPreviewListener = new TensorFlowImageListener();
 
   private final CameraCaptureSession.CaptureCallback captureCallback =
       new CameraCaptureSession.CaptureCallback() {
@@ -539,7 +539,7 @@ public class CameraConnectionFragment extends Fragment {
     LOGGER.i("Getting assets.");
     tfPreviewListener.initialize(
         getActivity().getAssets(), scoreView, inferenceHandler, sensorOrientation);
-    LOGGER.i("Tensorflow initialized.");
+    LOGGER.i("TensorFlow initialized.");
   }
 
   /**

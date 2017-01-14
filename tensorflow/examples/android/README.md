@@ -1,6 +1,6 @@
-# Tensorflow Android Camera Demo
+# TensorFlow Android Camera Demo
 
-This folder contains a simple camera-based demo application utilizing Tensorflow.
+This folder contains a simple camera-based demo application utilizing TensorFlow.
 
 ## Description
 
@@ -76,5 +76,5 @@ errors may not be obvious if the app halts immediately, so if you installed
 with bazel and the app doesn't come up, then the easiest thing to do is try
 installing with adb.
 
-Once the app is installed it will be named "Tensorflow Demo" and have the orange
-Tensorflow logo as its icon.
+Once the app is installed it will be named "TensorFlow Demo" and have the orange
+TensorFlow logo as its icon.

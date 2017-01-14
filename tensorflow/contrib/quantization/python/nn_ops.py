@@ -21,9 +21,9 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.quantization.ops import gen_nn_ops
 from tensorflow.contrib.quantization.ops.gen_nn_ops import *
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import common_shapes
 
 
 # QuantizedAvgPool* ops.

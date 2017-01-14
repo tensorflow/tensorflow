@@ -234,7 +234,7 @@ will have size `n` in the 0th dimension.
 If the queue is closed and there are more than `0` but fewer than
 `n` elements remaining, then instead of raising a
 `tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
-the remaining elements are returned immediately.  If the queue is
+less than `n` elements are returned immediately.  If the queue is
 closed and there are `0` elements left in the queue, then a
 `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
 Otherwise the behavior is identical to `dequeue_many`.

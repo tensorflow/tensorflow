@@ -10,7 +10,7 @@ There are three main methods of getting data into a TensorFlow program:
 
 [TOC]
 
-## Feeding 
+## Feeding
 
 TensorFlow's feed mechanism lets you inject data into any Tensor in a
 computation graph. A python computation can thus feed data directly into the
@@ -377,11 +377,11 @@ Again, the example queue will have some elements queued, so training will
 continue until those are exhausted.  If the example queue is a
 [`RandomShuffleQueue`](../../api_docs/python/io_ops.md#RandomShuffleQueue), say
 because you are using `shuffle_batch` or `shuffle_batch_join`, it normally will
-avoid ever going having fewer than its `min_after_dequeue` attr elements
-buffered.  However, once the queue is closed that restriction will be lifted and
-the queue will eventually empty.  At that point the actual training threads,
-when they try and dequeue from example queue, will start getting `OutOfRange`
-errors and exiting.  Once all the training threads are done,
+avoid ever having fewer than its `min_after_dequeue` attr elements buffered.
+However, once the queue is closed that restriction will be lifted and the queue
+will eventually empty.  At that point the actual training threads, when they
+try and dequeue from example queue, will start getting `OutOfRange` errors and
+exiting.  Once all the training threads are done,
 [`tf.train.Coordinator.join`](../../api_docs/python/train.md#Coordinator.join)
 will return and you can exit cleanly.
 

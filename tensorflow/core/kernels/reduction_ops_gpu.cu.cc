@@ -38,6 +38,12 @@ struct ReduceFunctor<GPUDevice, Reducer> {
                      const Reducer& reducer) {
     ReduceEigenImpl(d, To32Bit(out), To32Bit(in), reduction_axes, reducer);
   }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Reducer& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
 };
 
 template <typename T>
@@ -57,6 +63,12 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
     T scale = T(1.0) / num_coeffs_to_reduce;
     out.device(d) = (in * scale).sum(reduction_axes);
   }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const Eigen::internal::MeanReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
 };
 
 // T: the data type
@@ -70,11 +82,16 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
       const Eigen::array<Index, NUM_AXES>& reduction_axes,           \
       const REDUCER& reducer);
 
+#define DEFINE_IDENTITY(T, REDUCER)                              \
+  template void ReduceFunctor<GPUDevice, REDUCER>::FillIdentity( \
+      const GPUDevice& d, TTypes<T>::Vec out, const REDUCER& reducer);
+
 #define DEFINE_FOR_TYPE_AND_R(T, R) \
   DEFINE(T, R, 1, 1);               \
   DEFINE(T, R, 2, 1);               \
   DEFINE(T, R, 3, 1);               \
-  DEFINE(T, R, 3, 2);
+  DEFINE(T, R, 3, 2);               \
+  DEFINE_IDENTITY(T, R)
 
 #define DEFINE_FOR_ALL_REDUCERS(T)                           \
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::SumReducer<T>);  \

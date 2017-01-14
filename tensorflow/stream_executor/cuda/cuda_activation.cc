@@ -32,13 +32,8 @@ ScopedActivateExecutorContext::ScopedActivateExecutorContext(
           new ScopedActivateContext{ExtractCudaContext(cuda_exec)}) { }
 
 ScopedActivateExecutorContext::ScopedActivateExecutorContext(
-    StreamExecutor *stream_exec, MultiOpActivation unused)
-    : ScopedActivateExecutorContext(ExtractCudaExecutor(stream_exec)) {
-  // Note that the second argument is unused. We are migrating to code that
-  // always allows the multi-op activation case; the signature is kept
-  // the same until all of the code is in.
-  // TODO(cwhipkey): remove the extra parameter.
-}
+    StreamExecutor *stream_exec)
+    : ScopedActivateExecutorContext(ExtractCudaExecutor(stream_exec)) {}
 
 ScopedActivateExecutorContext::~ScopedActivateExecutorContext() {
   delete static_cast<ScopedActivateContext *>(driver_scoped_activate_context_);

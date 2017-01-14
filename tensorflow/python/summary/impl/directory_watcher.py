@@ -146,12 +146,23 @@ class DirectoryWatcher(object):
       raise StopIteration
 
   def _SetPath(self, path):
+    """Sets the current path to watch for new events.
+
+    This also records the size of the old path, if any. If the size can't be
+    found, an error is logged.
+
+    Args:
+      path: The full path of the file to watch.
+    """
     old_path = self._path
     if old_path and not gcs.IsGCSPath(old_path):
-      # We're done with the path, so store its size.
-      size = io_wrapper.Size(old_path)
-      logging.debug('Setting latest size of %s to %d', old_path, size)
-      self._finalized_sizes[old_path] = size
+      try:
+        # We're done with the path, so store its size.
+        size = io_wrapper.Size(old_path)
+        logging.debug('Setting latest size of %s to %d', old_path, size)
+        self._finalized_sizes[old_path] = size
+      except (IOError, OSError) as e:
+        logging.error('Unable to get size of %s: %s', old_path, e)
 
     self._path = path
     self._loader = self._loader_factory(path)

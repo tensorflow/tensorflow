@@ -75,7 +75,9 @@ class DequantizeOp : public OpKernel {
            scale_factor) +
           min_range;
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      QuantizedTensorToFloatInPlace<T>(input, min_range, max_range, output);
+      QuantizedTensorToFloatInPlaceUsingEigen<T>(
+          ctx->template eigen_device<Device>(), input, min_range, max_range,
+          output);
     }
   }
 

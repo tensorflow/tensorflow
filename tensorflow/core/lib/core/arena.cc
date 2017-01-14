@@ -35,8 +35,6 @@ limitations under the License.
 namespace tensorflow {
 namespace core {
 
-static const int kPageSize = getpagesize();
-
 // ----------------------------------------------------------------------
 // Arena::Arena()
 // Arena::~Arena()

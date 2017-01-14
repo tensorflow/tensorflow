@@ -285,6 +285,7 @@ TEST(RefCountedVec, InsertConstructorDestructor) {
     for (int pos = 0; pos <= len; pos++) {
       SCOPED_TRACE(pos);
       std::vector<int> counts(len, 0);
+      int inserted_count = 0;
       RefCountedVec v;
       for (int i = 0; i < len; ++i) {
         SCOPED_TRACE(i);
@@ -295,7 +296,6 @@ TEST(RefCountedVec, InsertConstructorDestructor) {
         EXPECT_EQ(1, elem);
       }
 
-      int inserted_count = 0;
       RefCounted insert_element(9999, &inserted_count);
       EXPECT_EQ(1, inserted_count);
       v.insert(v.begin() + pos, insert_element);

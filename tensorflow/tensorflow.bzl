@@ -71,11 +71,13 @@ def tf_android_core_proto_sources_relative():
         "util/saved_tensor_slice.proto",
   ]
 
-# Returns the list of pb.h headers that are generated for
+# Returns the list of pb.h and proto.h headers that are generated for
 # tf_android_core_proto_sources().
 def tf_android_core_proto_headers():
-  return ["//tensorflow/core/" + p.replace(".proto", ".pb.h")
-          for p in tf_android_core_proto_sources_relative()]
+  return (["//tensorflow/core/" + p.replace(".proto", ".pb.h")
+          for p in tf_android_core_proto_sources_relative()] +
+         ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
+          for p in tf_android_core_proto_sources_relative()])
 
 # Returns the list of protos for which proto_text headers should be generated.
 def tf_proto_text_protos_relative():
@@ -112,6 +114,13 @@ def tf_copts():
                   "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
+def tf_opts_nortti_if_android():
+  return if_android([
+      "-fno-rtti",
+      "-DGOOGLE_PROTOBUF_NO_RTTI",
+      "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+  ])
+
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
 def tf_gen_op_libs(op_lib_names):
@@ -126,7 +135,8 @@ def tf_gen_op_libs(op_lib_names):
                       alwayslink=1,
                       linkstatic=1,)
 
-def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
+def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
+                         op_gen="//tensorflow/cc:cc_op_gen_main"):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
   native.cc_binary(
@@ -134,8 +144,7 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
       copts = tf_copts(),
       linkopts = ["-lm"],
       linkstatic = 1,   # Faster to link this one-time-use binary dynamically
-      deps = (["//tensorflow/cc:cc_op_gen_main",
-               pkg + ":" + name + "_op_lib"])
+      deps = ([op_gen, pkg + ":" + name + "_op_lib"])
   )
 
   # Run the op generator.
@@ -172,18 +181,29 @@ def tf_gen_op_wrappers_cc(name,
                           op_lib_names=[],
                           other_srcs=[],
                           other_hdrs=[],
-                          pkg=""):
+                          pkg="",
+                          deps=[
+                              "//tensorflow/cc:ops",
+                              "//tensorflow/cc:scope",
+                              "//tensorflow/cc:const_op",
+                          ],
+                          op_gen="//tensorflow/cc:cc_op_gen_main"):
   subsrcs = other_srcs
   subhdrs = other_hdrs
   for n in op_lib_names:
-    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg)
+    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg, op_gen=op_gen)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
 
   native.cc_library(name=name,
                     srcs=subsrcs,
                     hdrs=subhdrs,
-                    deps=["//tensorflow/core:core_cpu"],
+                    deps=deps + [
+                        "//tensorflow/core:core_cpu",
+                        "//tensorflow/core:framework",
+                        "//tensorflow/core:lib",
+                        "//tensorflow/core:protos_all_cc",
+                    ],
                     copts=tf_copts(),
                     alwayslink=1,)
 
@@ -687,7 +707,7 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
       data=data,
       deps=[
           "//tensorflow/python:extra_py_tests_deps",
-          "//tensorflow/python:kernel_tests/gradient_checker",
+          "//tensorflow/python:gradient_checker",
       ] + additional_deps,
       srcs_version="PY2AND3")
 

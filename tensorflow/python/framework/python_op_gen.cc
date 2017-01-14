@@ -663,7 +663,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import op_def_library
+from tensorflow.python.framework import op_def_library
 
 
 )");

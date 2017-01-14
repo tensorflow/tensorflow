@@ -35,6 +35,37 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
   set(${HDRS} ${${HDRS}} PARENT_SCOPE)
 endfunction()
 
+function(RELATIVE_PROTOBUF_TEXT_GENERATE_CPP SRCS HDRS ROOT_DIR)
+  if(NOT ARGN)
+      message(SEND_ERROR "Error: RELATIVE_PROTOBUF_TEXT_GENERATE_CPP() called without any proto files")
+    return()
+  endif()
+
+  set(${SRCS})
+  set(${HDRS})
+  foreach(FIL ${ARGN})
+    set(ABS_FIL ${ROOT_DIR}/${FIL})
+    get_filename_component(FIL_WE ${FIL} NAME_WE)
+    get_filename_component(FIL_DIR ${ABS_FIL} PATH)
+    file(RELATIVE_PATH REL_DIR ${ROOT_DIR} ${FIL_DIR})
+
+    list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb_text.cc")
+    list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb_text.h")
+
+    add_custom_command(
+      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb_text.cc"
+             "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb_text.h"
+      COMMAND ${PROTO_TEXT_EXE}
+      ARGS "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}" ${REL_DIR} ${ABS_FIL} "${ROOT_DIR}/tensorflow/tools/proto_text/placeholder.txt"
+      DEPENDS ${ABS_FIL} ${PROTO_TEXT_EXE}
+      COMMENT "Running C++ protocol buffer text compiler (${PROTO_TEXT_EXE}) on ${FIL}"
+      VERBATIM )
+  endforeach()
+
+  set_source_files_properties(${${SRCS}} ${${HDRS}} PROPERTIES GENERATED TRUE)
+  set(${SRCS} ${${SRCS}} PARENT_SCOPE)
+  set(${HDRS} ${${HDRS}} PARENT_SCOPE)
+endfunction()
 
 ########################################################
 # tf_protos_cc library
@@ -52,6 +83,37 @@ RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_protos_cc_srcs}
 )
 
+set(PROTO_TEXT_EXE "proto_text")
+set(tf_proto_text_srcs
+    "tensorflow/core/example/example.proto"
+    "tensorflow/core/example/feature.proto"
+    "tensorflow/core/framework/allocation_description.proto"
+    "tensorflow/core/framework/attr_value.proto"
+    "tensorflow/core/framework/cost_graph.proto"
+    "tensorflow/core/framework/device_attributes.proto"
+    "tensorflow/core/framework/function.proto"
+    "tensorflow/core/framework/graph.proto"
+    "tensorflow/core/framework/kernel_def.proto"
+    "tensorflow/core/framework/log_memory.proto"
+    "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/step_stats.proto"
+    "tensorflow/core/framework/summary.proto"
+    "tensorflow/core/framework/tensor.proto"
+    "tensorflow/core/framework/tensor_description.proto"
+    "tensorflow/core/framework/tensor_shape.proto"
+    "tensorflow/core/framework/tensor_slice.proto"
+    "tensorflow/core/framework/types.proto"
+    "tensorflow/core/framework/versions.proto"
+    "tensorflow/core/lib/core/error_codes.proto"
+    "tensorflow/core/protobuf/config.proto"
+    "tensorflow/core/protobuf/saver.proto"
+    "tensorflow/core/util/memmapped_file_system.proto"
+    "tensorflow/core/util/saved_tensor_slice.proto"
+)
+RELATIVE_PROTOBUF_TEXT_GENERATE_CPP(PROTO_TEXT_SRCS PROTO_TEXT_HDRS
+    ${tensorflow_source_dir} ${tf_proto_text_srcs}
+)
+
 add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
 target_include_directories(tf_protos_cc PUBLIC
      ${CMAKE_CURRENT_BINARY_DIR}
@@ -59,7 +121,10 @@ target_include_directories(tf_protos_cc PUBLIC
 target_link_libraries(tf_protos_cc PUBLIC
     ${PROTOBUF_LIBRARIES}
 )
-
+# C++11
+target_compile_features(tf_protos_cc PRIVATE
+    cxx_rvalue_references
+)
 
 ########################################################
 # tf_core_lib library
@@ -87,12 +152,11 @@ target_include_directories(tf_core_lib PUBLIC
     ${tensorflow_source_dir}
     ${jpeg_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
+    ${eigen_INCLUDE_DIRS}
+    ${re2_EXTRA_INCLUDE_DIR}
+    ${jsoncpp_INCLUDE_DIR}
+    ${boringssl_INCLUDE_DIR}
 )
-#target_link_libraries(tf_core_lib
-#    ${CMAKE_THREAD_LIBS_INIT}
-#    ${PROTOBUF_LIBRARIES}
-#    tf_protos_cc
-#)
 target_compile_options(tf_core_lib PRIVATE
     -fno-exceptions
     -DEIGEN_AVOID_STL_ARRAY
@@ -109,6 +173,8 @@ add_dependencies(tf_core_lib
     re2_copy_headers_to_destination
     eigen
     tf_protos_cc
+    jsoncpp
+    boringssl
 )
 
 
@@ -120,6 +186,10 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/client/tensor_c_api.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
     "${tensorflow_source_dir}/public/*.h"
 )
 
@@ -136,7 +206,10 @@ file(GLOB_RECURSE tf_core_framework_test_srcs
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
 
-add_library(tf_core_framework OBJECT ${tf_core_framework_srcs})
+add_library(tf_core_framework OBJECT
+    ${tf_core_framework_srcs}
+    ${PROTO_TEXT_HDRS}
+    ${PROTO_TEXT_SRCS})
 target_include_directories(tf_core_framework PUBLIC
     ${tensorflow_source_dir}
     ${eigen_INCLUDE_DIRS}
@@ -154,6 +227,7 @@ target_include_directories(tf_core_framework PUBLIC
 #)
 add_dependencies(tf_core_framework
     tf_core_lib
+    proto_text
 )
 target_compile_options(tf_core_framework PRIVATE
     -fno-exceptions

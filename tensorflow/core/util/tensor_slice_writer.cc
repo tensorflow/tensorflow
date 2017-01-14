@@ -68,10 +68,10 @@ class TableBuilder : public TensorSliceWriter::Builder {
 Status CreateTableTensorSliceBuilder(const string& name,
                                      TensorSliceWriter::Builder** builder) {
   *builder = nullptr;
-  WritableFile* f;
+  std::unique_ptr<WritableFile> f;
   Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
-    *builder = new TableBuilder(name, f);
+    *builder = new TableBuilder(name, f.release());
     return Status::OK();
   } else {
     return s;

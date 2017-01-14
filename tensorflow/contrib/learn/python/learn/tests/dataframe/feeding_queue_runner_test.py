@@ -59,6 +59,23 @@ class FeedingQueueRunnerTestCase(tf.test.TestCase):
         coord.request_stop()
         coord.join(threads)
 
+  def testArrayFeedingMultiThread(self):
+    with tf.Graph().as_default():
+      array = np.arange(256).reshape([128, 2])
+      q = ff.enqueue_data(array, capacity=128, num_threads=8, shuffle=True)
+      batch_size = 3
+      dq_op = q.dequeue_many(batch_size)
+      with tf.Session() as sess:
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        for _ in range(100):
+          dq = sess.run(dq_op)
+          indices = dq[0]
+          expected_dq = get_rows(array, indices)
+          np.testing.assert_array_equal(expected_dq, dq[1])
+        coord.request_stop()
+        coord.join(threads)
+
   def testPandasFeeding(self):
     if not HAS_PANDAS:
       return
@@ -79,6 +96,29 @@ class FeedingQueueRunnerTestCase(tf.test.TestCase):
           expected_rows = df.iloc[indices]
           dq = sess.run(dq_op)
           np.testing.assert_array_equal(expected_df_indices, dq[0])
+          for col_num, col in enumerate(df.columns):
+            np.testing.assert_array_equal(expected_rows[col].values,
+                                          dq[col_num + 1])
+        coord.request_stop()
+        coord.join(threads)
+
+  def testPandasFeedingMultiThread(self):
+    if not HAS_PANDAS:
+      return
+    with tf.Graph().as_default():
+      array1 = np.arange(128, 256)
+      array2 = 2 * array1
+      df = pd.DataFrame({"a": array1, "b": array2}, index=np.arange(128))
+      q = ff.enqueue_data(df, capacity=128, num_threads=8, shuffle=True)
+      batch_size = 5
+      dq_op = q.dequeue_many(batch_size)
+      with tf.Session() as sess:
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        for _ in range(100):
+          dq = sess.run(dq_op)
+          indices = dq[0]
+          expected_rows = df.iloc[indices]
           for col_num, col in enumerate(df.columns):
             np.testing.assert_array_equal(expected_rows[col].values,
                                           dq[col_num + 1])

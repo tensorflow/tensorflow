@@ -62,10 +62,8 @@ Polymer({
       observer: '_graphChanged'
     },
     basicGraph: Object,
-    stats: {
-      type: Object,
-      observer: '_statsChanged'
-    },
+    stats: Object,
+    devicesForStats: Object,
     hierarchyParams: Object,
     progress: {
       type: Object,
@@ -102,15 +100,15 @@ Polymer({
     },
   },
   observers: [
+    '_statsChanged(stats, devicesForStats)',
     '_buildRenderHierarchy(graphHierarchy)'
   ],
-  _statsChanged: function(stats) {
+  _statsChanged: function(stats, devicesForStats) {
     if (this.graphHierarchy) {
-      if (stats != null) {
-        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
+      if (stats && devicesForStats) {
+        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats, devicesForStats);
         tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
       }
-
       // Recompute the rendering information.
       this._buildRenderHierarchy(this.graphHierarchy);
     }

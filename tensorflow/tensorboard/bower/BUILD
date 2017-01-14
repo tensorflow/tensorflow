@@ -57,6 +57,7 @@ filegroup(
         "@paper_tabs//:paper_tabs",
         "@paper_toggle_button//:paper_toggle_button",
         "@paper_toolbar//:paper_toolbar",
+        "@paper_tooltip//:paper_tooltip",
         "@plottable//:plottable",
         "@polymer//:polymer",
         "@promise_polyfill//:promise_polyfill",

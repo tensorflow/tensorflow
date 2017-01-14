@@ -198,6 +198,86 @@ class DirichletMultinomialTest(tf.test.TestCase):
         self.assertAllClose(mean2[class_num], 2 * mean1[class_num])
         self.assertTupleEqual((3,), mean1.shape)
 
+  def testVariance(self):
+    # Shape [2]
+    alpha = [1., 2]
+    ns = [2., 3., 4., 5.]
+    alpha_0 = np.sum(alpha)
+
+    # Diagonal entries are of the form:
+    # Var(X_i) = n * alpha_i / alpha_sum * (1 - alpha_i / alpha_sum) *
+    # (alpha_sum + n) / (alpha_sum + 1)
+    variance_entry = lambda a, a_sum: a / a_sum * (1 - a / a_sum)
+    # Off diagonal entries are of the form:
+    # Cov(X_i, X_j) = -n * alpha_i * alpha_j / (alpha_sum ** 2) *
+    # (alpha_sum + n) / (alpha_sum + 1)
+    covariance_entry = lambda a, b, a_sum: -a  * b/ a_sum**2
+    # Shape [2, 2].
+    shared_matrix = np.array([
+        [variance_entry(alpha[0], alpha_0),
+         covariance_entry(alpha[0], alpha[1], alpha_0)],
+        [covariance_entry(alpha[1], alpha[0], alpha_0),
+         variance_entry(alpha[1], alpha_0)]])
+
+    with self.test_session():
+      for n in ns:
+        # n is shape [] and alpha is shape [2].
+        dist = tf.contrib.distributions.DirichletMultinomial(n, alpha)
+        variance = dist.variance()
+        expected_variance = n * (n + alpha_0) / (1 + alpha_0) * shared_matrix
+
+        self.assertEqual((2, 2), variance.get_shape())
+        self.assertAllClose(expected_variance, variance.eval())
+
+  def testVariance_n_alpha_broadcast(self):
+    alpha_v = [1., 2, 3]
+    alpha_0 = np.sum(alpha_v)
+
+    # Shape [4, 3]
+    alpha = np.array(4 * [alpha_v])
+    # Shape [4, 1]
+    ns = np.array([[2.], [3.], [4.], [5.]])
+
+    variance_entry = lambda a, a_sum: a / a_sum * (1 - a / a_sum)
+    covariance_entry = lambda a, b, a_sum: -a  * b/ a_sum**2
+    # Shape [4, 3, 3]
+    shared_matrix = np.array(4 * [[
+        [variance_entry(alpha_v[0], alpha_0),
+         covariance_entry(alpha_v[0], alpha_v[1], alpha_0),
+         covariance_entry(alpha_v[0], alpha_v[2], alpha_0)],
+        [covariance_entry(alpha_v[1], alpha_v[0], alpha_0),
+         variance_entry(alpha_v[1], alpha_0),
+         covariance_entry(alpha_v[1], alpha_v[2], alpha_0)],
+        [covariance_entry(alpha_v[2], alpha_v[0], alpha_0),
+         covariance_entry(alpha_v[2], alpha_v[1], alpha_0),
+         variance_entry(alpha_v[2], alpha_0)]]])
+
+    with self.test_session():
+      # ns is shape [4, 1], and alpha is shape [4, 3].
+      dist = tf.contrib.distributions.DirichletMultinomial(ns, alpha)
+      variance = dist.variance()
+      expected_variance = np.expand_dims(
+          ns * (ns + alpha_0) / (1 + alpha_0), -1) * shared_matrix
+
+      self.assertEqual((4, 3, 3), variance.get_shape())
+      self.assertAllClose(expected_variance, variance.eval())
+
+  def testVariance_multidimensional(self):
+    alpha = np.random.rand(3, 5, 4)
+    alpha2 = np.random.rand(6, 3, 3)
+    # Ensure n > 0.
+    ns = np.random.geometric(p=0.8, size=[3, 5, 1]) + 1
+    ns2 = np.random.geometric(p=0.8, size=[6, 1, 1]) + 1
+
+    with self.test_session():
+      dist = tf.contrib.distributions.DirichletMultinomial(ns, alpha)
+      dist2 = tf.contrib.distributions.DirichletMultinomial(ns2, alpha2)
+
+      variance = dist.variance()
+      variance2 = dist2.variance()
+      self.assertEqual((3, 5, 4, 4), variance.get_shape())
+      self.assertEqual((6, 3, 3, 3), variance2.get_shape())
+
   def testZeroCountsResultsInPmfEqualToOne(self):
     # There is only one way for zero items to be selected, and this happens with
     # probability 1.
@@ -264,6 +344,16 @@ class DirichletMultinomialTest(tf.test.TestCase):
       pmf_different = dist.pmf(counts_different)
       self.assertLess(5 * pmf_different.eval(), pmf_same.eval())
       self.assertEqual((), pmf_same.get_shape())
+
+  def testNonStrictTurnsOffAllChecks(self):
+    # Make totally invalid input.
+    with self.test_session():
+      alpha = [[-1., 2]]  # alpha should be positive.
+      counts = [[1., 0], [0., -1]]  # counts should be non-negative.
+      n = [-5.3]  # n should be a non negative integer equal to counts.sum.
+      dist = tf.contrib.distributions.DirichletMultinomial(
+          n, alpha, validate_args=False)
+      dist.pmf(counts).eval()  # Should not raise.
 
 
 if __name__ == '__main__':

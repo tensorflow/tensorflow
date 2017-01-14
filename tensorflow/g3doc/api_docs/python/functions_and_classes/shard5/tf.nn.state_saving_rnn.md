@@ -6,7 +6,7 @@ RNN that accepts a state saver for time-truncated RNN calculation.
 
 
 *  <b>`cell`</b>: An instance of `RNNCell`.
-*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
+*  <b>`inputs`</b>: A length T list of inputs, each a `Tensor` of shape
     `[batch_size, input_size]`.
 *  <b>`state_saver`</b>: A state saver object with methods `state` and `save_state`.
 *  <b>`state_name`</b>: Python string or tuple of strings.  The name to use with the

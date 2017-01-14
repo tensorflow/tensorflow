@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/example/example_parser_configuration.h"
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -142,6 +143,80 @@ TEST_F(ExtractExampleParserConfigurationTest, Basic) {
   EXPECT_EQ(DT_FLOAT, dense_vec[2].dtype);
   EXPECT_EQ("ParseExample/ParseExample:8",
             dense_vec[2].values_output_tensor_name);
+}
+
+static const char kExampleParseConfigurationProto[] = R"( feature_map {
+  key: "x"
+  value {
+    fixed_len_feature {
+      dtype: DT_FLOAT
+      shape {
+        dim {
+          size: 1
+        }
+      }
+      default_value {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        float_val: 33.0
+      }
+      values_output_tensor_name: "ParseExample/ParseExample:3"
+    }
+  }
+}
+feature_map {
+  key: "y"
+  value {
+    var_len_feature {
+      dtype: DT_STRING
+      values_output_tensor_name: "ParseExample/ParseExample:1"
+      indices_output_tensor_name: "ParseExample/ParseExample:0"
+      shapes_output_tensor_name: "ParseExample/ParseExample:2"
+    }
+  }
+}
+)";
+
+class ExampleParserConfigurationProtoToFeatureVectorsTest
+    : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    CHECK(protobuf::TextFormat::ParseFromString(kExampleParseConfigurationProto,
+                                                &config_proto_));
+  }
+  ExampleParserConfiguration config_proto_;
+};
+
+TEST_F(ExampleParserConfigurationProtoToFeatureVectorsTest, Basic) {
+  std::vector<FixedLenFeature> fixed_len_features;
+  std::vector<VarLenFeature> var_len_features;
+  ExampleParserConfigurationProtoToFeatureVectors(
+      config_proto_, &fixed_len_features, &var_len_features);
+  ASSERT_EQ(1, fixed_len_features.size());
+  ASSERT_EQ(1, var_len_features.size());
+
+  const FixedLenFeature& f = fixed_len_features[0];
+  ASSERT_EQ(DT_FLOAT, f.dtype);
+  ASSERT_EQ("x", f.key);
+  ASSERT_EQ("ParseExample/ParseExample:3", f.values_output_tensor_name);
+
+  TensorShape expected_shape({1});
+  ASSERT_EQ(expected_shape.dims(), f.shape.dims());
+  ASSERT_EQ(1, f.shape.dim_size(0));
+
+  Tensor expected_default(DT_FLOAT, TensorShape({1}));
+  test::FillIota<float>(&expected_default, 33.0);
+  test::ExpectTensorEqual<float>(expected_default, f.default_value);
+
+  const VarLenFeature& v = var_len_features[0];
+  ASSERT_EQ(DT_STRING, v.dtype);
+  ASSERT_EQ("ParseExample/ParseExample:0", v.indices_output_tensor_name);
+  ASSERT_EQ("ParseExample/ParseExample:1", v.values_output_tensor_name);
+  ASSERT_EQ("ParseExample/ParseExample:2", v.shapes_output_tensor_name);
 }
 
 }  // namespace

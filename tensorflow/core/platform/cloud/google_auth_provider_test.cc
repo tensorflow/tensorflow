@@ -194,7 +194,8 @@ TEST(GoogleAuthProvider, NothingAvailable) {
                               &env);
 
   string token;
-  EXPECT_FALSE(provider.GetToken(&token).ok());
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("", token);
 }
 
 }  // namespace tensorflow

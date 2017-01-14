@@ -378,16 +378,21 @@ Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   return GradForBinaryCwise(g, {
       {{"z"}, "Pow", {"x", "y"}},
       // dz * y * Pow(x, y - 1)
-      FDH::Const("const", 1.0f),
-      {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+      FDH::Const("const_zero", 0.0f),
+      FDH::Const("const_one", 1.0f),
+      {{"zero"}, "Cast", {"const_zero"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+      {{"one"}, "Cast", {"const_one"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
       {{"t0"}, "Sub", {"y", "one"}, {}, {"dz"}},
       {{"t1"}, "Pow", {"x", "t0"}},
       {{"t2"}, "Mul", {"dz", "y"}},
       {{"gx"}, "Mul", {"t1", "t2"}},
-      // dz * z * Log(x)
-      {{"t3"}, "Log", {"x"}, {}, {"dz"}},
+      // dz * z * (x > 0 ? Log(x) : 0)
+      {{"pos_x"}, "Greater", {"x", "zero"}},
+      {{"unsafe_log"}, "Log", {"x"}, {}, {"dz"}},
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"safe_log"}, "Select", {"pos_x", "unsafe_log", "zeros"}},
       {{"t4"}, "Mul", {"dz", "z"}},
-      {{"gy"}, "Mul", {"t3", "t4"}},
+      {{"gy"}, "Mul", {"safe_log", "t4"}},
   });
   // clang-format on
 }

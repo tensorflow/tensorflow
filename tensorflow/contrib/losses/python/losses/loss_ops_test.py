@@ -215,13 +215,23 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
 
   def testSoftmaxLabelSmoothing(self):
     with self.test_session():
+      # Softmax Cross Entropy Loss is:
+      #   -\sum_i p_i \log q_i
+      # where for a softmax activation
+      # \log q_i = x_i - \log \sum_j \exp x_j
+      #          = x_i - x_max - \log \sum_j \exp (x_j - x_max)
+      # For our activations, [100, -100, -100] the log partion function becomes
+      # \log ( exp(0) + exp(-200) + exp(-200) ) = 0
+      # so our log softmaxes become: [0, -200, -200]
+      # so our cross entropy loss is:
+      # -(1 - L + L/n) * 0 + 400 * L/n = 400 L/n
       logits = tf.constant([[100.0, -100.0, -100.0]])
       labels = tf.constant([[1, 0, 0]])
       label_smoothing = 0.1
-      loss = tf.contrib.losses.sigmoid_cross_entropy(
+      loss = tf.contrib.losses.softmax_cross_entropy(
           logits, labels, label_smoothing=label_smoothing)
-      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
-      expected_value = 400.0 * label_smoothing / 9.0
+      self.assertEquals(loss.op.name, 'softmax_cross_entropy_loss/value')
+      expected_value = 400.0 * label_smoothing / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
 
 
@@ -283,13 +293,38 @@ class SigmoidCrossEntropyLossTest(tf.test.TestCase):
   def testSigmoidLabelSmoothingCorrect(self):
     with self.test_session():
       logits = tf.constant([[100.0, -100.0, -100.0]])
-      labels = tf.constant([[1, 0, 0]])
+      labels = tf.constant([[1, 0, 1]])
+      # Sigmoid cross entropy loss is:
+      #   max(x,0) - x*z + log(1 + exp(-abs(x)))
+      # The new labels are:
+      #    z' = z * (1 - L) + 0.5 L
+      #    1 -> 1 - 0.5 L
+      #    0 -> 0.5 L
+      # here we expect:
+      # 1/3 * (100 - 100 * (1 - 0.5 L)  + 0
+      #       + 0  + 100 * (0.5 L)      + 0
+      #       + 0  + 100 * (1 - 0.5 L)  + 0)
+      # = 1/3 * (100 + 50 L)
       label_smoothing = 0.1
       loss = tf.contrib.losses.sigmoid_cross_entropy(
           logits, labels, label_smoothing=label_smoothing)
       self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
-      expected_value = 400.0 * label_smoothing / 9.0
+      expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
+
+  def testSigmoidLabelSmoothingEqualsSoftmaxTwoLabel(self):
+    with self.test_session():
+      label_smoothing = 0.1
+      sigmoid_logits = tf.constant([[100.0, -100.0, -100.0]])
+      sigmoid_labels = tf.constant([[1, 0, 1]])
+      sigmoid_loss = tf.contrib.losses.sigmoid_cross_entropy(
+          sigmoid_logits, sigmoid_labels, label_smoothing=label_smoothing)
+
+      softmax_logits = tf.constant([[0.0, 100.0], [100.0, 0.0], [100.0, 0.0]])
+      softmax_labels = tf.constant([[0, 1], [1, 0], [0, 1]])
+      softmax_loss = tf.contrib.losses.softmax_cross_entropy(
+          softmax_logits, softmax_labels, label_smoothing=label_smoothing)
+      self.assertAlmostEqual(sigmoid_loss.eval(), softmax_loss.eval(), 3)
 
 
 class LogLossTest(tf.test.TestCase):
@@ -371,35 +406,35 @@ class LogLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weight = tf.constant([1.2, 3.4], shape=[2])
-    expectedes = np.multiply(
+    expected_losses = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
     loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
-      self.assertAlmostEqual(-np.sum(expectedes) / 6.0,
+      self.assertAlmostEqual(-np.sum(expected_losses) / 6.0,
                              loss.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeightsSomeZero(self):
     weight = tf.constant([1.2, 0], shape=[2])
-    expectedes = np.multiply(
+    expected_losses = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape((2, 3)))
     loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
-      self.assertAlmostEqual(-np.sum(expectedes) / 3.0,
+      self.assertAlmostEqual(-np.sum(expected_losses) / 3.0,
                              loss.eval(), 3)
 
   def testNonZeroLossWithTwoDimBatchSpecificWeightsSomeZero(self):
     weight = tf.constant([1.2, 0], shape=[2, 1])
-    expectedes = np.multiply(
+    expected_losses = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape((2, 3)))
     loss = tf.contrib.losses.log_loss(
         self._predictions, self._targets, weight)
     with self.test_session():
-      self.assertAlmostEqual(-np.sum(expectedes) / 3.0,
+      self.assertAlmostEqual(-np.sum(expected_losses) / 3.0,
                              loss.eval(), 3)
 
   def testWeightsWithSameNumDimsButWrongShapeThrowsException(self):
@@ -410,18 +445,18 @@ class LogLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithMeasurementSpecificWeights(self):
     weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3))
-    expectedes = np.multiply(self._expected_losses, weight)
+    expected_losses = np.multiply(self._expected_losses, weight)
 
     loss = tf.contrib.losses.log_loss(
         self._predictions,
         self._targets,
         weight=tf.constant(weight, shape=(2, 3)))
     with self.test_session():
-      self.assertAlmostEqual(-np.sum(expectedes) / 5.0, loss.eval(), 3)
+      self.assertAlmostEqual(-np.sum(expected_losses) / 5.0, loss.eval(), 3)
 
   def testNonZeroLossWithMeasurementSpecificWeightsWithPlaceholder(self):
     weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3))
-    expectedes = np.multiply(self._expected_losses, weight)
+    expected_losses = np.multiply(self._expected_losses, weight)
 
     tf_predictions = tf.placeholder(tf.float32, shape=[2, 3])
     loss = tf.contrib.losses.log_loss(
@@ -431,22 +466,22 @@ class LogLossTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
-      self.assertAlmostEqual(-np.sum(expectedes) / 5.0, loss, 3)
+      self.assertAlmostEqual(-np.sum(expected_losses) / 5.0, loss, 3)
 
   def testNonZeroLossWithSampleSpecificWeightsMostZero(self):
     weight = np.array([0, 0, 0, 0, 0, 2]).reshape((2, 3))
-    expectedes = np.multiply(self._expected_losses, weight)
+    expected_losses = np.multiply(self._expected_losses, weight)
 
     loss = tf.contrib.losses.log_loss(
         self._predictions,
         self._targets,
         weight=tf.constant(weight, shape=(2, 3)))
     with self.test_session():
-      self.assertAlmostEqual(-np.sum(expectedes), loss.eval(), 3)
+      self.assertAlmostEqual(-np.sum(expected_losses), loss.eval(), 3)
 
   def testNonZeroLossWithSampleSpecificWeightsMostZeroWithPlaceholder(self):
     weight = np.array([0, 0, 0, 0, 0, 2]).reshape((2, 3))
-    expectedes = np.multiply(self._expected_losses, weight)
+    expected_losses = np.multiply(self._expected_losses, weight)
 
     tf_predictions = tf.placeholder(tf.float32, shape=[2, 3])
     tf_weight = tf.constant(weight, shape=(2, 3))
@@ -454,7 +489,7 @@ class LogLossTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
-      self.assertAlmostEqual(-np.sum(expectedes), loss, 3)
+      self.assertAlmostEqual(-np.sum(expected_losses), loss, 3)
 
   def testLossWithSampleSpecificWeightsAllZero(self):
     tf_weight = tf.zeros(shape=(2, 3))
@@ -582,6 +617,32 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
     with self.test_session():
       self.assertAlmostEqual(np.sum(self._expected_losses), loss.eval(), 3)
 
+  def testGradientWithZeroWeight(self):
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+
+      inputs = tf.ones((2, 3))
+      weights = tf.get_variable('weights',
+                                shape=[3, 4],
+                                initializer=tf.truncated_normal_initializer())
+      predictions = tf.matmul(inputs, weights)
+
+      optimizer = tf.train.MomentumOptimizer(learning_rate=0.001, momentum=0.9)
+      loss = tf.contrib.losses.sum_of_pairwise_squares(
+          predictions,
+          predictions,
+          0)
+
+      gradients_to_variables = optimizer.compute_gradients(loss)
+
+      init_op = tf.initialize_all_variables()
+
+      with self.test_session() as sess:
+        sess.run(init_op)
+        for grad, _ in gradients_to_variables:
+          np_grad = sess.run(grad)
+          self.assertFalse(np.isnan(np_grad).any())
+
   def testNonZeroLossWithPythonScalarWeight(self):
     weight = 2.3
     loss = tf.contrib.losses.sum_of_pairwise_squares(
@@ -602,6 +663,15 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
       self.assertAlmostEqual(weight * np.sum(self._expected_losses),
                              loss.eval(), 3)
 
+  def testNonZeroLossWithScalarZeroWeight(self):
+    weight = 0
+    loss = tf.contrib.losses.sum_of_pairwise_squares(
+        predictions=tf.constant(self._predictions),
+        targets=tf.constant(self._targets),
+        weight=tf.constant(weight))
+    with self.test_session():
+      self.assertAlmostEqual(0, loss.eval(), 3)
+
   def testNonZeroLossWithScalarTensorWeightWithPlaceholder(self):
     weight = 2.3
     tf_predictions = tf.placeholder(tf.float32, shape=self._predictions.shape)
@@ -619,18 +689,27 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weight = np.asarray([2.0, 1.0]).reshape((2, 1))
-    expectedes = np.multiply(weight, self._expected_losses)
+    expected_losses = np.multiply(weight, self._expected_losses)
 
     loss = tf.contrib.losses.sum_of_pairwise_squares(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=tf.constant(weight, shape=[2]))
     with self.test_session():
-      self.assertAlmostEqual(np.sum(expectedes), loss.eval(), 3)
+      self.assertAlmostEqual(np.sum(expected_losses), loss.eval(), 3)
+
+  def testZeroLossWithOneDimBatchZeroWeights(self):
+    weight = np.asarray([0.0, 0.0]).reshape((2, 1))
+    loss = tf.contrib.losses.sum_of_pairwise_squares(
+        predictions=tf.constant(self._predictions),
+        targets=tf.constant(self._targets),
+        weight=tf.constant(weight, shape=[2]))
+    with self.test_session():
+      self.assertAlmostEqual(0, loss.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeightsAndPlaceholders(self):
     weight = np.asarray([1.2, 3.4]).reshape((2, 1))
-    expectedes = np.multiply(weight, self._expected_losses)
+    expected_losses = np.multiply(weight, self._expected_losses)
 
     tf_predictions = tf.placeholder(tf.float32, shape=self._predictions.shape)
     tf_targets = tf.placeholder(tf.int32, shape=self._targets.shape)
@@ -644,7 +723,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
           tf_predictions: self._predictions,
           tf_targets: self._targets,
       })
-      self.assertAlmostEqual(np.sum(expectedes), loss, 3)
+      self.assertAlmostEqual(np.sum(expected_losses), loss, 3)
 
   def testLossWithAllZeroBatchSpecificWeights(self):
     weight = np.zeros((2, 1))

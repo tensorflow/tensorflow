@@ -20,10 +20,8 @@ namespace tensorflow {
 
 Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
                                                    const string& filename) {
-  WritableFile* writable_file;
-  auto status = env->NewWritableFile(filename, &writable_file);
+  auto status = env->NewWritableFile(filename, &output_file_);
   if (status.ok()) {
-    output_file_.reset(writable_file);
     output_file_offset_ = 0;
   }
   return status;

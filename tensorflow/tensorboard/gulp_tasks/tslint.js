@@ -18,10 +18,10 @@ var tslint = require('gulp-tslint');
 
 module.exports = function(strict) {
   return function() {
-    return gulp.src('components/tf-*/**/*.ts')
-               .pipe(tslint())
-               .pipe(tslint.report('verbose', {
-                  emitError: strict,
-               }));
- };
+    return gulp.src(['components/tf-*/**/*.ts', 'components/vz-*/**/*.ts'])
+        .pipe(tslint())
+        .pipe(tslint.report('verbose', {
+          emitError: strict,
+        }));
+  };
 }

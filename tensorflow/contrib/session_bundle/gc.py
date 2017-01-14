@@ -88,7 +88,7 @@ def largest_export_versions(n):
   def keep(paths):
     heap = []
     for idx, path in enumerate(paths):
-      if path.export_version:
+      if path.export_version is not None:
         heapq.heappush(heap, (path.export_version, idx))
     keepers = [paths[i] for _, i in heapq.nlargest(n, heap)]
     return sorted(keepers)

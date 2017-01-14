@@ -108,22 +108,20 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
 };
 }  // namespace functor
 
-#define REGISTER_CPU_KERNEL(T)                           \
-  REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize") \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<T>("T"),   \
-                          QuantizeAndDequantizeOp<CPUDevice, T>);
+#define REGISTER_CPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QuantizeAndDequantize").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      QuantizeAndDequantizeOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        QuantizeAndDequantizeOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("QuantizeAndDequantize").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    QuantizeAndDequantizeOp<GPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("_QuantizeAndDequantize")
+REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantize")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<double>("T"),
                         QuantizeAndDequantizeOp<GPUDevice, double>);

@@ -19,62 +19,37 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.layers import batch_norm
+
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops as array_ops_
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import moving_averages
 
 
+@deprecated(date="2016-08-15",
+            instructions="Please use tf.contrib.layers.batch_norm instead.")
 def batch_normalize(tensor_in,
                     epsilon=1e-5,
-                    convnet=False,
+                    convnet=False,  # pylint: disable=unused-argument
                     decay=0.9,
                     scale_after_normalization=True):
   """Batch normalization.
 
+  Instead, please use contrib.layers.batch_norm. You can get is_training
+  via `tf.python.framework.ops.get_collection("IS_TRAINING")`.
+
   Args:
     tensor_in: input `Tensor`, 4D shape: [batch, in_height, in_width, in_depth].
     epsilon : A float number to avoid being divided by 0.
-    convnet: Whether this is for convolutional net use. If `True`, moments
-        will sum across axis `[0, 1, 2]`. Otherwise, only `[0]`.
+    convnet: Whether this is for convolutional net use (ignored)
     decay: Decay rate for exponential moving average.
     scale_after_normalization: Whether to scale after normalization.
 
   Returns:
     A batch-normalized `Tensor`.
   """
-  shape = tensor_in.get_shape().as_list()
-
-  with vs.variable_scope("batch_norm"):
-    gamma = vs.get_variable(
-        "gamma", [shape[-1]],
-        initializer=init_ops.random_normal_initializer(1., 0.02))
-    beta = vs.get_variable("beta", [shape[-1]],
-                           initializer=init_ops.constant_initializer(0.))
-    ema = moving_averages.ExponentialMovingAverage(decay=decay)
-    if convnet:
-      assign_mean, assign_var = nn.moments(tensor_in, [0, 1, 2])
-    else:
-      assign_mean, assign_var = nn.moments(tensor_in, [0])
-    ema_assign_op = ema.apply([assign_mean, assign_var])
-    ema_mean, ema_var = ema.average(assign_mean), ema.average(assign_var)
-
-    def _update_mean_var():
-      """Internal function that updates mean and variance during training."""
-      with ops.control_dependencies([ema_assign_op]):
-        return array_ops_.identity(assign_mean), array_ops_.identity(assign_var)
-
-    is_training = array_ops_.squeeze(ops.get_collection("IS_TRAINING"))
-    mean, variance = control_flow_ops.cond(is_training, _update_mean_var,
-                                           lambda: (ema_mean, ema_var))
-    return nn.batch_norm_with_global_normalization(
-        tensor_in,
-        mean,
-        variance,
-        beta,
-        gamma,
-        epsilon,
-        scale_after_normalization=scale_after_normalization)
+  is_training = ops.get_collection("IS_TRAINING")
+  return batch_norm(tensor_in,
+                    is_training=is_training,
+                    epsilon=epsilon,
+                    decay=decay,
+                    scale=scale_after_normalization)

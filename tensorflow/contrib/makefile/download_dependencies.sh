@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash -ex
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,22 @@
 # ==============================================================================
 
 DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
+BZL_FILE_PATH=tensorflow/workspace.bzl
 
-mkdir ${DOWNLOADS_DIR}
+mkdir -p ${DOWNLOADS_DIR}
 
 # Grab the current Eigen version name from the Bazel build file
-EIGEN_HASH=$(cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
+EIGEN_HASH=$(cat "${BZL_FILE_PATH}" | egrep "eigen_version.*=.*\".*\"" | awk '{ print $3 }')
+# Trim trailing and preceding double quotes
+EIGEN_HASH="${EIGEN_HASH%\"}"
+EIGEN_HASH="${EIGEN_HASH#\"}"
+
+if [[ -z "${EIGEN_HASH}" ]]; then
+    echo >&2 "Eigen hash does not exist."
+    exit 1
+else
+    echo "Eigen hash = ${EIGEN_HASH}"
+fi
 
 curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_HASH}.tar.gz" \
 -o /tmp/eigen-${EIGEN_HASH}.tar.gz
@@ -34,3 +45,5 @@ git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
 cd ${DOWNLOADS_DIR}
 rm -rf eigen-latest
 ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
+
+echo "download_dependencies.sh completed successfully."

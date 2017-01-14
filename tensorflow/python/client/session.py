@@ -23,6 +23,7 @@ import re
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
@@ -31,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 class SessionInterface(object):
@@ -69,22 +71,11 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
                   [feed.values, feed.indices, feed.dense_shape], feed_val))
 
 
-def _flatten1(seq):
-  """Flattens one level of nested sequences."""
-  ret = []
-  for el in seq:
-    if isinstance(el, (list, tuple)):
-      ret.extend(el)
-    else:
-      ret.append(el)
-  return ret
-
-
 def _unflatten_fetches(fetches, flat_values):
   """Creates a dictionary mapping fetched keys to values.
 
   Args:
-    fetches: A heterogeneous list of either graph elements or lists/tuples
+    fetches: A dictionary of either graph elements or lists/tuples
       of graph elements.
     flat_values: A flat list of fetched values.
 
@@ -94,10 +85,11 @@ def _unflatten_fetches(fetches, flat_values):
   """
   used = 0
   ret = {}
-  for key, fetch in fetches.items():
+  for key, fetch in six.iteritems(fetches):
     if isinstance(fetch, (list, tuple)):
-      start, used = used, used + len(fetch)
-      ret[key] = flat_values[start : used]
+      flat_fetch_values = nest.flatten(fetch)
+      start, used = used, used + len(flat_fetch_values)
+      ret[key] = nest.pack_sequence_as(fetch, flat_values[start:used])
     else:
       ret[key] = flat_values[used]
       used += 1
@@ -124,10 +116,13 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow session.
+      TypeError: If one of the arguments has the wrong type.
     """
     if graph is None:
       self._graph = ops.get_default_graph()
     else:
+      if not isinstance(graph, ops.Graph):
+        raise TypeError('graph must be a tf.Graph, but got %s' % type(graph))
       self._graph = graph
 
     self._opened = False
@@ -135,18 +130,30 @@ class BaseSession(SessionInterface):
 
     self._current_version = 0
     self._extend_lock = threading.Lock()
-    self._target = target
+    if target is not None:
+      try:
+        self._target = compat.as_bytes(target)
+      except TypeError:
+        raise TypeError('target must be a string, but got %s' % type(target))
+    else:
+      self._target = None
 
     self._delete_lock = threading.Lock()
     self._dead_handles = []
 
-    self._session = None
-    self._config = config
-    self._add_shapes = config.graph_options.infer_shapes if (
-        config and config.graph_options) else False
+    if config is not None:
+      if not isinstance(config, config_pb2.ConfigProto):
+        raise TypeError('config must be a tf.ConfigProto, but got %s'
+                        % type(config))
+      self._config = config
+      self._add_shapes = config.graph_options.infer_shapes
+    else:
+      self._config = None
+      self._add_shapes = False
 
+    self._session = None
+    opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
-      opts = tf_session.TF_NewSessionOptions(target=target, config=config)
       with errors.raise_exception_on_not_ok_status() as status:
         self._session = tf_session.TF_NewSession(opts, status)
     finally:
@@ -198,7 +205,7 @@ class BaseSession(SessionInterface):
 
     Use with the `with` keyword to specify that calls to
     [`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
-    [`Tensor.run()`](../../api_docs/python/framework.md#Tensor.run) should be
+    [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
     executed in this session.
 
     ```python
@@ -292,10 +299,10 @@ class BaseSession(SessionInterface):
     and evaluate every `Tensor` in `fetches`, substituting the values in
     `feed_dict` for the corresponding input values.
 
-    The `fetches` argument may be a single graph element, a list of
-    graph elements, or a dictionary whose values are the above. The type of
-    `fetches` determines the return value of this
-    method. A graph element can be one of the following types:
+    The `fetches` argument may be a single graph element, an arbitrarily nested
+    list of graph elements, or a dictionary whose values are the above. The type
+    of `fetches` determines the return value of this method. A graph element can
+    be one of the following types:
 
     * If an element of `fetches` is an
       [`Operation`](../../api_docs/python/framework.md#Operation), the
@@ -326,6 +333,9 @@ class BaseSession(SessionInterface):
       [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
       the value should be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
+    * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
+      should be a nested tuple with the same structure that maps to their
+      corresponding values as above.
 
     Each value in `feed_dict` must be convertible to a numpy array of the dtype
     of the corresponding key.
@@ -569,11 +579,15 @@ class BaseSession(SessionInterface):
     # Flatten/unflatten fetched values.
     if isinstance(fetches, (list, tuple)):
       # fetches is already a list or tuple; nothing to do.
-      unflatten = lambda fetched: fetched
+      orig_fetches, fetches = fetches, nest.flatten(fetches)
+      unflatten = lambda fetched: nest.pack_sequence_as(orig_fetches, fetched)
     elif isinstance(fetches, dict):
       # fetches is a dictionary; flatten the values and map fetched
       # values back into to a dictionary.
-      orig_fetches, fetches = fetches, _flatten1(fetches.values())
+      # nest.flatten does not accept iterators, next line is for python3
+      # compatibility.
+      fetches_values = list(fetches.values())
+      orig_fetches, fetches = fetches, nest.flatten(fetches_values)
       unflatten = lambda fetched: _unflatten_fetches(orig_fetches, fetched)
     else:
       # fetches is a singleton.
@@ -593,6 +607,7 @@ class BaseSession(SessionInterface):
 
     # Validate and process feed_dict.
     if feed_dict:
+      feed_dict = nest.flatten_dict_items(feed_dict)
       for feed, feed_val in feed_dict.items():
         for subfeed, subfeed_val in _feed_fn(feed, feed_val):
           try:
@@ -616,7 +631,7 @@ class BaseSession(SessionInterface):
                 ' Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
-          np_val = np.array(subfeed_val, dtype=subfeed_dtype)
+          np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
           if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
             raise ValueError(
@@ -630,14 +645,14 @@ class BaseSession(SessionInterface):
           feed_map[subfeed_name] = (subfeed_t, subfeed_val)
 
     # Run request and get response.
+    # We need to keep the movers alive for the following _do_run().
+    # These movers are no longer needed when _do_run() completes, and
+    # are deleted when `movers` goes out of scope when this _run() ends.
+    # TODO(yuanbyu, keveman): Revisit whether we should just treat feeding
+    # of a handle from a different device as an error.
     movers = self._update_with_movers(feed_dict_string, feed_map)
-    try:
-      results = self._do_run(handle, target_list, unique_fetches,
-                             feed_dict_string, options, run_metadata)
-    finally:
-      # The movers are no longer used. Delete them.
-      for handle in movers:
-        self._register_dead_handle(handle)
+    results = self._do_run(handle, target_list, unique_fetches,
+                           feed_dict_string, options, run_metadata)
 
     # User may have fetched the same tensor multiple times, but we
     # only fetch them from the runtime once.  Furthermore, they may
@@ -731,16 +746,16 @@ class BaseSession(SessionInterface):
     # Ensure any changes to the graph are reflected in the runtime.
     with self._extend_lock:
       if self._graph.version > self._current_version:
-        graph_def = self._graph.as_graph_def(
+        # pylint: disable=protected-access
+        graph_def, self._current_version = self._graph._as_graph_def(
             from_version=self._current_version,
             add_shapes=self._add_shapes)
+        # pylint: enable=protected-access
 
         with errors.raise_exception_on_not_ok_status() as status:
           tf_session.TF_ExtendGraph(
               self._session, graph_def.SerializeToString(), status)
         self._opened = True
-
-        self._current_version = self._graph.version
 
   # The threshold to run garbage collection to delete dead tensors.
   _DEAD_HANDLES_THRESHOLD = 10
@@ -853,6 +868,8 @@ class Session(BaseSession):
 
   @@as_default
 
+  @@reset
+
   """
 
   def __init__(self, target='', graph=None, config=None):
@@ -868,8 +885,9 @@ class Session(BaseSession):
 
     Args:
       target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine. At present, no value
-        other than the empty string is supported.
+        Defaults to using an in-process engine. See [Distributed Tensorflow]
+        (https://www.tensorflow.org/how_tos/distributed/index.html)
+        for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
         protocol buffer with configuration options for the session.
@@ -891,6 +909,40 @@ class Session(BaseSession):
       context_manager.__exit__(exec_type, exec_value, exec_tb)
 
     self.close()
+
+  @staticmethod
+  def reset(target, containers=None, config=None):
+    """Resets resource containers on `target`, and close all connected sessions.
+
+    A resource container is distributed across all workers in the
+    same cluster as `target`.  When a resource container on `target`
+    is reset, resources associated with that container will be cleared.
+    In particular, all Variables in the container will become undefined:
+    they lose their values and shapes.
+
+    NOTE:
+    (i) reset() is currently only implemented for distributed sessions.
+    (ii) Any sessions on the master named by `target` will be closed.
+
+    If no resource containers are provided, all containers are reset.
+
+    Args:
+      target: The execution engine to connect to.
+      containers: A list of resource container name strings, or `None` if all of
+        all the containers are to be reset.
+      config: (Optional.) Protocol buffer with configuration options.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        resetting containers.
+    """
+    if target is not None:
+      target = compat.as_bytes(target)
+    if containers is not None:
+      containers = [compat.as_bytes(c) for c in containers]
+    else:
+      containers = []
+    tf_session.TF_Reset(target, containers, config)
 
 
 class InteractiveSession(BaseSession):

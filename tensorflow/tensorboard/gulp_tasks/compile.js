@@ -27,12 +27,19 @@ var tsProject = ts.createProject('./tsconfig.json', {
 
 
 module.exports = function() {
-  var isComponent = filter(['components/**/*.js']);
+  var isComponent = filter([
+    'components/tf-*/**/*.ts',
+    'components/vz-*/**/*.ts',
+    'typings/**/*.ts',
+    // TODO(danmane): add plottable to the typings registry after updating it
+    // and remove this.
+    'components/plottable/plottable.d.ts'
+  ]);
 
   return tsProject.src()
+           .pipe(isComponent)
            .pipe(ts(tsProject))
            .js
-            .pipe(isComponent)
-            .pipe(gulp.dest('.'))
+            .pipe(gulp.dest('.'));
 
 }

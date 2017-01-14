@@ -395,13 +395,14 @@ def Walk(top, topdown=1, onerror=None):
   optional argument "onerror" is specified, it should be a function.  It
   will be called with one argument, an os.error instance.  It can return
   to continue with the walk, or reraise the exception to abort the walk.
+  By default, the walk follows symlinks that resolve into directories.
 
   Yields:
     # Each yield is a 3-tuple:  the pathname of a directory, followed
     # by lists of all its subdirectories and leaf files.
     (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
   """
-  return os.walk(top, topdown=topdown, onerror=onerror)
+  return os.walk(top, topdown=topdown, onerror=onerror, followlinks=True)
 
 
 def Stat(path):   # pylint: disable=invalid-name

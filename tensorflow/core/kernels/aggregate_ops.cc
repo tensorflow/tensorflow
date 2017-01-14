@@ -38,15 +38,16 @@ class AddNOp : public OpKernel {
     if (!ctx->ValidateInputsAreSameShape(this)) return;
 
     const Tensor& input0 = ctx->input(0);
+    const int num = ctx->num_inputs();
+
+    if (num == 1) {
+      ctx->set_output(0, input0);
+      return;
+    }
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
     auto To = output->flat<T>();
-
-    const int num = ctx->num_inputs();
-    if (num == 1) {
-      *output = input0;
-      return;
-    }
 
 #define I(IDX) ctx->input(IDX).flat<T>()
 

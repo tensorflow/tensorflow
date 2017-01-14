@@ -94,6 +94,20 @@ def GetTempDir():
   return temp_dir
 
 
+def test_src_dir_path(relative_path):
+  """Creates an absolute test srcdir path given a relative path.
+
+  Args:
+    relative_path: a path relative to tensorflow root.
+      e.g. "contrib/session_bundle/example".
+
+  Returns:
+    An absolute path to the linked in runfiles.
+  """
+  return os.path.join(os.environ['TEST_SRCDIR'],
+                      "org_tensorflow/tensorflow", relative_path)
+
+
 def StatefulSessionAvailable():
   return False
 

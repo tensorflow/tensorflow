@@ -25,7 +25,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -43,18 +42,23 @@ py_library(
     ],
 )
 
-# TODO(nsilberman): Fix this test and re-enable.
-#py_test(
-#    name = "learning_test",
-#    srcs = ["python/slim/learning_test.py"],
-#    srcs_version = "PY2AND3",
-#    deps = [
-#        "//tensorflow:tensorflow_py",
-#        "//tensorflow/contrib/slim",
-#        "//tensorflow/python:framework_test_lib",
-#        "//tensorflow/python:platform_test",
-#    ],
-#)
+py_test(
+    name = "learning_test",
+    srcs = ["python/slim/learning_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/slim",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "model_analyzer",
+    srcs = ["python/slim/model_analyzer.py"],
+    srcs_version = "PY2AND3",
+)
 
 py_library(
     name = "queues",
@@ -76,7 +80,9 @@ py_library(
     deps = [
         ":evaluation",
         ":learning",
+        ":model_analyzer",
         ":queues",
+        "//tensorflow/contrib/slim/python/slim/data",
     ],
 )
 

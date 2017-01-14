@@ -37,6 +37,18 @@ class ClassificationTest(tf.test.TestCase):
                            })
       self.assertEqual(result, 0.5)
 
+  def testAccuracy1DBool(self):
+    with self.test_session() as session:
+      pred = tf.placeholder(tf.bool, shape=[None])
+      labels = tf.placeholder(tf.bool, shape=[None])
+      acc = classification.accuracy(pred, labels)
+      result = session.run(acc,
+                           feed_dict={
+                               pred: [1, 0, 1, 0],
+                               labels: [1, 1, 0, 0]
+                           })
+      self.assertEqual(result, 0.5)
+
   def testAccuracy1DInt64(self):
     with self.test_session() as session:
       pred = tf.placeholder(tf.int64, shape=[None])

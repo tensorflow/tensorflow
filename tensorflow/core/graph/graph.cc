@@ -29,9 +29,6 @@ namespace tensorflow {
 // Node
 
 string Node::DebugString() const {
-  if (this == nullptr) {
-    return "{nullptr}";
-  }
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
     strings::StrAppend(&ret, " source}");
@@ -205,8 +202,9 @@ Graph::~Graph() {
 }
 
 Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
-  const OpDef* op_def = ops_->LookUp(node_def.op(), status);
-  if (op_def == nullptr) return nullptr;
+  const OpDef* op_def;
+  status->Update(ops_->LookUpOpDef(node_def.op(), &op_def));
+  if (!status->ok()) return nullptr;
 
   DataTypeVector inputs;
   DataTypeVector outputs;

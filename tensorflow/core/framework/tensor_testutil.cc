@@ -21,7 +21,8 @@ namespace test {
 
 template <typename T>
 bool IsClose(const T& x, const T& y, double atol, double rtol) {
-  return fabs(x - y) < atol + rtol * fabs(x);
+  // Need x == y so that infinities are close to themselves
+  return x == y || fabs(x - y) < atol + rtol * fabs(x);
 }
 
 template <typename T>

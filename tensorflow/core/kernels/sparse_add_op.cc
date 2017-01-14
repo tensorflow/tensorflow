@@ -54,31 +54,32 @@ class SparseAddOp : public OpKernel {
                     b_values_t->shape().DebugString()));
     auto a_values = ctx->input(1).vec<T>();
     auto b_values = ctx->input(4).vec<T>();
-
-    OP_REQUIRES_OK(ctx, ctx->input("a_shape", &a_shape));
-    OP_REQUIRES_OK(ctx, ctx->input("b_shape", &b_shape));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(a_shape->shape()) &&
-                         TensorShapeUtils::IsVector(b_shape->shape()),
-                errors::InvalidArgument(
-                    "Input shape should be a vector but received shapes ",
-                    a_shape->shape().DebugString(), " and ",
-                    b_shape->shape().DebugString()));
-
     OP_REQUIRES(
         ctx, a_values.size() == a_nnz && b_values.size() == b_nnz,
         errors::InvalidArgument("Expected ", a_nnz, " and ", b_nnz,
                                 " non-empty input values, got ",
                                 a_values.size(), " and ", b_values.size()));
 
-    OP_REQUIRES(ctx, a_shape->dims() == b_shape->dims(),
+    OP_REQUIRES_OK(ctx, ctx->input("a_shape", &a_shape));
+    OP_REQUIRES_OK(ctx, ctx->input("b_shape", &b_shape));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(a_shape->shape()) &&
+                         TensorShapeUtils::IsVector(b_shape->shape()),
                 errors::InvalidArgument(
-                    "Ranks of input tensors must match, but saw ranks: ",
-                    a_shape->dims(), " and ", b_shape->dims()));
-    for (int i = 0; i < a_shape->dims(); ++i) {
-      OP_REQUIRES(ctx, a_shape->dim_size(i) == b_shape->dim_size(i),
+                    "Input shapes should be a vector but received shapes ",
+                    a_shape->shape().DebugString(), " and ",
+                    b_shape->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, a_shape->IsSameSize(*b_shape),
+        errors::InvalidArgument(
+            "Operands do not have the same ranks; got shapes: ",
+            a_shape->SummarizeValue(10), " and ", b_shape->SummarizeValue(10)));
+    const auto a_shape_flat = a_shape->flat<int64>();
+    const auto b_shape_flat = b_shape->flat<int64>();
+    for (int i = 0; i < a_shape->NumElements(); ++i) {
+      OP_REQUIRES(ctx, a_shape_flat(i) == b_shape_flat(i),
                   errors::InvalidArgument(
-                      "Input shapes must match: got ", a_shape->dim_size(i),
-                      " and ", b_shape->dim_size(i), " for dimension ", i));
+                      "Operands' shapes do not match: got ", a_shape_flat(i),
+                      " and ", b_shape_flat(i), " for dimension ", i));
     }
 
     OP_REQUIRES_OK(ctx, ctx->input("thresh", &thresh_t));

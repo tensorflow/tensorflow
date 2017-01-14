@@ -64,6 +64,10 @@ class AdamOptimizer(optimizer.Optimizer):
     general. For example, when training an Inception network on ImageNet a
     current good choice is 1.0 or 0.1.
 
+    Note that in dense implement of this algorithm, m_t, v_t and variable will 
+    update even if g is zero, but in sparse implement, m_t, v_t and variable 
+    will not update in iterations g is zero.
+
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
       beta1: A float value or a constant float tensor.

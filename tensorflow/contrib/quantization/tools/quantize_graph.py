@@ -15,7 +15,7 @@
 r"""Transforms a float-trained graph into an equivalent quantized version.
 
 An example of command-line usage is:
-bazel build tensorflow/contrib/quantization/tools/:quantize_graph \
+bazel build tensorflow/contrib/quantization/tools:quantize_graph \
 && bazel-bin/tensorflow/contrib/quantization/tools/quantize_graph \
 --input=tensorflow_inception_graph.pb
 --output_node_names="softmax2" --print_nodes --output=/tmp/quantized_graph.pb \
@@ -32,7 +32,7 @@ import re
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_util
 
 # TODO(petewarden) - Remove this ugly hack to get around Python linking problems
@@ -60,6 +60,8 @@ flags.DEFINE_string("test_input_dims", "1,224,224,3",
                     """ graph loaded from a file.""")
 flags.DEFINE_boolean("strip_redundant_quantization", True,
                      """Removes redundant dequantize/quantize pairs.""")
+flags.DEFINE_boolean("load_quantization_so", True,
+                     """Explicitly load the quantization ops library""")
 
 
 def print_input_nodes(current_node, nodes_map, indent, already_visited):
@@ -241,8 +243,10 @@ def quantize_weight_eightbit(input_node, quantization_mode):
   if min_value == max_value:
     if abs(min_value) < 0.000001:
       max_value = min_value + 1.0
-    else:
+    elif min_value > 0:
       max_value = 2 * min_value
+    else:
+      max_value = min_value / 2.0
 
   sess = tf.Session()
   with sess.as_default():
@@ -286,8 +290,9 @@ class GraphRewriter(object):
     self.nodes_map = self.create_nodes_map(input_graph)
     self.output_graph = None
     self.mode = mode
-    load_quantized_ops_so.Load()
-    load_quantized_kernels_so.Load()
+    if FLAGS.load_quantization_so:
+      load_quantized_ops_so.Load()
+      load_quantized_kernels_so.Load()
 
   def create_nodes_map(self, graph):
     """Builds a mapping of node names to their defs from the graph."""

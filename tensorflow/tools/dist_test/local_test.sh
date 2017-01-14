@@ -25,9 +25,13 @@
 #    and run the distributed test suite.
 #
 # Usage: local_test.sh [--leave-container-running]
+#                      [--model-name <MODEL_NAME>]
 #                      [--num-workers <NUM_WORKERS>]
 #                      [--num-parameter-servers <NUM_PARAMETER_SERVERS>]
 #                      [--sync-replicas]
+#
+# E.g., local_test.sh --model-name CENSUS_WIDENDEEP
+#       local_test.sh --num-workers 3 --num-parameter-servers 3
 #
 # Arguments:
 # --leave-container-running:  Do not stop the docker-in-docker container after
@@ -46,7 +50,7 @@
 #
 # In addition, this script obeys the following environment variables:
 # TF_DIST_SERVER_DOCKER_IMAGE:  overrides the default docker image to launch
-#                                 TensorFlow (GRPC) servers with
+#                               TensorFlow (GRPC) servers with
 # TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
 
 
@@ -64,6 +68,8 @@ get_container_id_by_image_name() {
 
 # Parse input arguments
 LEAVE_CONTAINER_RUNNING=0
+MODEL_NAME=""
+MODEL_NAME_FLAG=""
 NUM_WORKERS=2
 NUM_PARAMETER_SERVERS=2
 SYNC_REPLICAS=0
@@ -71,6 +77,9 @@ SYNC_REPLICAS=0
 while true; do
   if [[ $1 == "--leave-container-running" ]]; then
     LEAVE_CONTAINER_RUNNING=1
+  elif [[ $1 == "--model-name" ]]; then
+    MODEL_NAME="$2"
+    MODEL_NAME_FLAG="--model-name ${MODEL_NAME}"
   elif [[ $1 == "--num-workers" ]]; then
     NUM_WORKERS=$2
   elif [[ $1 == "--num-parameter-servers" ]]; then
@@ -86,9 +95,10 @@ while true; do
 done
 
 echo "LEAVE_CONTAINER_RUNNING: ${LEAVE_CONTAINER_RUNNING}"
+echo "MODEL_NAME: \"${MODEL_NAME}\""
 echo "NUM_WORKERS: ${NUM_WORKERS}"
 echo "NUM_PARAMETER_SERVERS: ${NUM_PARAMETER_SERVERS}"
-echo "SYNC_REPLICAS: ${SYNC_REPLICAS}"
+echo "SYNC_REPLICAS: \"${SYNC_REPLICAS}\""
 
 # Current script directory
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -175,7 +185,8 @@ fi
 
 docker exec ${DIND_ID} \
        /var/tf-k8s/local/test_local_tf_cluster.sh \
-       ${NUM_WORKERS} ${NUM_PARAMETER_SERVERS} ${SYNC_REPLICAS_FLAG}
+       ${NUM_WORKERS} ${NUM_PARAMETER_SERVERS} \
+       ${MODEL_NAME_FLAG} ${SYNC_REPLICAS_FLAG}
 TEST_RES=$?
 
 # Tear down: stop docker-in-docker container

@@ -11,10 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
-"""## Activation Functions
+"""## Activation Functions.
 
 The activation ops provide different types of nonlinearities for use in neural
 networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
@@ -220,6 +220,12 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 @@state_saving_rnn
 @@bidirectional_rnn
 
+## Conectionist Temporal Classification (CTC)
+
+@@ctc_loss
+@@ctc_greedy_decoder
+@@ctc_beam_search_decoder
+
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
@@ -269,12 +275,12 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
@@ -294,6 +300,7 @@ from tensorflow.python.util.all_util import make_all
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.ctc_ops import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
@@ -514,6 +521,7 @@ def zero_fraction(value, name=None):
                                               dtypes.float32))
 
 
+# pylint: disable=redefined-builtin,line-too-long
 def depthwise_conv2d(input, filter, strides, padding, name=None):
   """Depthwise 2-D convolution.
 
@@ -540,7 +548,7 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
@@ -572,8 +580,10 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     else:
       return nn_ops.depthwise_conv2d_native(input, filter, strides, padding,
                                             name=name)
+# pylint: enable=redefined-builtin,line-too-long
 
 
+# pylint: disable=redefined-builtin,line-too-long
 def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                      padding,
                      name=None):
@@ -618,7 +628,7 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
       which means that the separable convolution is overparameterized.
   """
   with ops.op_scope([input, depthwise_filter, pointwise_filter],
-                   name, "separable_conv2d") as name:
+                    name, "separable_conv2d") as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     depthwise_filter = ops.convert_to_tensor(depthwise_filter,
                                              name="depthwise_filter")
@@ -647,6 +657,7 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                                                padding, name="depthwise")
     return nn_ops.conv2d(depthwise, pointwise_filter, [1, 1, 1, 1],
                          padding="VALID", name=name)
+# pylint: enable=redefined-builtin,line-too-long
 
 
 def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
@@ -758,19 +769,31 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     shift: A `Tensor` containing the value by which to shift the data for
       numerical stability, or `None` if no shift is to be performed. A shift
       close to the true mean provides the most numerically stable results.
-    keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
+    keep_dims: produce moments with the same dimensionality as the input.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.op_scope([x, axes, shift], name, "moments"):
-    counts, m_ss, v_ss, shift = sufficient_statistics(x,
+    # The dynamic range of fp16 is too limited to support the collection of
+    # sufficient statistics. As a workaround we simply perform the operations
+    # on 32-bit floats before converting the mean and variance back to fp16
+    y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+    shift = math_ops.cast(shift, dtypes.float32) if (
+        shift is not None and x.dtype == dtypes.float16) else shift
+    counts, m_ss, v_ss, shift = sufficient_statistics(y,
                                                       axes,
                                                       shift=shift,
                                                       keep_dims=keep_dims,
                                                       name=name)
-    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+    with ops.control_dependencies([counts, m_ss, v_ss]):
+      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
+      if x.dtype == dtypes.float16:
+        return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+            variance, dtypes.float16))
+      else:
+        return (mean, variance)
 
 
 def batch_normalization(x,
@@ -780,7 +803,7 @@ def batch_normalization(x,
                         scale,
                         variance_epsilon,
                         name=None):
-  """Batch normalization.
+  r"""Batch normalization.
 
   As described in http://arxiv.org/abs/1502.03167.
   Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
@@ -859,7 +882,7 @@ def batch_norm_with_global_normalization(t,
       needs to be multiplied with gamma.
     name: A name for this operation (optional).
 
-   Returns:
+  Returns:
      A batch-normalized `t`.
   """
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
@@ -1186,14 +1209,10 @@ __all__.extend([
     "all_candidate_sampler",
     "batch_norm_with_global_normalization",
     "batch_normalization",
-    "bidirectional_rnn",
     "conv2d_backprop_filter",
     "conv2d_backprop_input",
     "depthwise_conv2d_native",
-    "dynamic_rnn",
     "lrn",
     "relu_layer",
-    "rnn",
-    "state_saving_rnn",
     "xw_plus_b",
 ])

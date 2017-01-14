@@ -30,7 +30,7 @@ namespace tensorflow {
 
 namespace {
 
-// The requested lifetime of a auth bearer token.
+// The requested lifetime of an auth bearer token.
 constexpr int kRequestedTokenLifetimeSec = 3600;
 
 // The crypto algorithm to be used with OAuth.

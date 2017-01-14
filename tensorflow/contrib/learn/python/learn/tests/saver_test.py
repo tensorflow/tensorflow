@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import random
 
 import tensorflow as tf
@@ -49,9 +47,8 @@ class SaverTest(tf.test.TestCase):
     random.seed(42)
     iris = datasets.load_iris()
 
-    def _custom_model(X, y):
-      # pylint: disable=invalid-name
-      return learn.models.logistic_regression(X, y)
+    def _custom_model(x, y):
+      return learn.models.logistic_regression(x, y)
 
     classifier = learn.TensorFlowEstimator(model_fn=_custom_model, n_classes=3)
     classifier.fit(iris.data, iris.target)
