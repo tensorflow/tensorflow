@@ -186,9 +186,7 @@ Status XlaCompiler::CompileFunctionBody(
   // for devices other than CPU.
   OptimizerOptions opts;
   GraphOptimizer optimizer(opts);
-  Graph* g = graph.release();
-  OptimizeGraph(flr, &g);
-  graph.reset(g);
+  OptimizeGraph(flr, &graph);
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile(
