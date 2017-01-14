@@ -279,7 +279,7 @@ public final class Tensor implements AutoCloseable {
   /**
    * Write the tensor data into the given buffer.
    *
-   * <p>This method copies {@code getDataByteSize()/Integer.BYTES} bytes to the buffer.
+   * <p>This method copies {@code numElements()} elements to the buffer.
    *
    * <p>This method may be used to read tensor data of type {@link DataType#INT32}.
    *
@@ -302,7 +302,7 @@ public final class Tensor implements AutoCloseable {
   /**
    * Write the tensor data into the given buffer.
    *
-   * <p>This method copies {@code getDataByteSize()/Float.BYTES} bytes to the buffer.
+   * <p>This method copies {@code numElements()} elements to the buffer.
    *
    * <p>This method may be used to read tensor data of type {@link DataType#FLOAT}.
    *
@@ -325,7 +325,7 @@ public final class Tensor implements AutoCloseable {
   /**
    * Write the tensor data into the given buffer.
    *
-   * <p>This method copies {@code getDataByteSize()/Double.BYTES} bytes to the buffer.
+   * <p>This method copies {@code numElements()} elements to the buffer.
    *
    * <p>This method may be used to read tensor data of type {@link DataType#DOUBLE}.
    *
@@ -348,7 +348,7 @@ public final class Tensor implements AutoCloseable {
   /**
    * Write the tensor data into the given buffer.
    *
-   * <p>This method copies {@code getDataByteSize()/Long.BYTES} bytes to the buffer.
+   * <p>This method copies {@code numElements()} elements to the buffer.
    *
    * <p>This method may be used to read tensor data of type {@link DataType#INT64}.
    *
@@ -371,7 +371,7 @@ public final class Tensor implements AutoCloseable {
   /**
    * Write the tensor data into the given buffer.
    *
-   * <p>This method copies {@code getDataByteSize()} bytes to the buffer.
+   * <p>This method copies {@code byteSize()} bytes to the buffer.
    *
    * <p>This method may be used to read tensor data of any type.  Note that
    * primitive data is in native byte order.
