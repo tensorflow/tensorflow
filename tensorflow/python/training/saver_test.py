@@ -1837,14 +1837,19 @@ class WriteGraphTest(test.TestCase):
   def testWriteGraph(self):
     test_dir = _TestDir("write_graph_dir")
     variables.Variable([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32, name="v0")
-    graph_io.write_graph(ops_lib.get_default_graph(),
-                         "/".join([test_dir, "l1"]), "graph.pbtxt")
+    path = graph_io.write_graph(ops_lib.get_default_graph(),
+                                "/".join([test_dir, "l1"]), "graph.pbtxt")
+    truth = os.path.join("/".join([test_dir, "l1"]), "graph.pbtxt")
+    self.assertEqual(path, truth)
+
 
   def testRecursiveCreate(self):
     test_dir = _TestDir("deep_dir")
     variables.Variable([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32, name="v0")
-    graph_io.write_graph(ops_lib.get_default_graph().as_graph_def(),
-                         "/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
+    path = graph_io.write_graph(ops_lib.get_default_graph().as_graph_def(),
+                                "/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
+    truth = os.path.join("/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
+    self.assertEqual(path, truth)
 
 
 class SaverUtilsTest(test.TestCase):
