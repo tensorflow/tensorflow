@@ -39,6 +39,7 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _as_type_list(dtypes):
@@ -1053,7 +1054,21 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
+@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
+  """Returns an Op that initializes all tables of the default graph.
+
+  Args:
+    name: Optional name for the initialization op.
+
+  Returns:
+    An Op that initializes all tables.  Note that if there are
+    not tables the returned Op is a NoOp.
+  """
+  return tables_initializer(name)
+
+
+def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
   Args:
