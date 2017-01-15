@@ -52,12 +52,21 @@ class GrpcRemoteMaster : public MasterInterface {
     return FromGrpcStatus(stub_->ExtendSession(&ctx, *request, response));
   }
 
-  Status RunStep(CallOptions* call_options, const RunStepRequest* request,
+  Status PartialRunSetup(CallOptions* call_options,
+                         const PartialRunSetupRequest* request,
+                         PartialRunSetupResponse* response) override {
+    ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
+    SetDeadline(&ctx, call_options->GetTimeout());
+    return FromGrpcStatus(stub_->PartialRunSetup(&ctx, *request, response));
+  }
+
+  Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
                  RunStepResponse* response) override {
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->RunStep(&ctx, *request, response));
+    return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(), response));
   }
 
   Status CloseSession(CallOptions* call_options,

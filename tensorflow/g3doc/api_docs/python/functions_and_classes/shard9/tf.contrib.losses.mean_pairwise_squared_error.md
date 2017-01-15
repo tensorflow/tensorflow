@@ -1,14 +1,10 @@
 ### `tf.contrib.losses.mean_pairwise_squared_error(*args, **kwargs)` {#mean_pairwise_squared_error}
 
-Adds a pairwise-errors-squared loss to the training procedure. (deprecated arguments) (deprecated)
+Adds a pairwise-errors-squared loss to the training procedure. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
 Use tf.losses.mean_pairwise_squared_error instead.
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-11-25.
-Instructions for updating:
-`targets` is being deprecated, use `labels`. `weight` is being deprecated, use `weights`.
 
 Unlike `mean_squared_error`, which is a measure of the differences between
 corresponding elements of `predictions` and `labels`,
@@ -25,10 +21,10 @@ samples within a batch. For example, if `predictions` represents a batch of
 16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
 is drawn from each image, but not across images.
 
-`weight` acts as a coefficient for the loss. If a scalar is provided, then the
-loss is simply scaled by the given value. If `weight` is a tensor of size
+`weights` acts as a coefficient for the loss. If a scalar is provided, then
+the loss is simply scaled by the given value. If `weights` is a tensor of size
 [batch_size], then the total loss for each sample of the batch is rescaled
-by the corresponding element in the `weight` vector.
+by the corresponding element in the `weights` vector.
 
 ##### Args:
 
@@ -40,8 +36,6 @@ by the corresponding element in the `weight` vector.
 *  <b>`weights`</b>: Coefficients for the loss a scalar, a tensor of shape [batch_size]
     or a tensor whose shape matches `predictions`.
 *  <b>`scope`</b>: The scope for the operations performed in computing the loss.
-*  <b>`targets`</b>: Deprecated alias for `labels`.
-*  <b>`weight`</b>: Deprecated alias for `weights`.
 
 ##### Returns:
 
@@ -51,5 +45,5 @@ by the corresponding element in the `weight` vector.
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `labels` or
-    if the shape of `weight` is invalid.
+    if the shape of `weights` is invalid.
 

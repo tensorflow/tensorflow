@@ -285,10 +285,9 @@ tutorial for building a custom estimator.
 
 ## Additional Estimators
 
-There are two additional estimators under
+There is an additional estimators under
 `tensorflow.contrib.factorization.python.ops`:
 
-*   K-Means
 *   Gaussian mixture model (GMM) clustering
 
 ## Further reading
@@ -307,7 +306,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.estimators.classifier import Classifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
@@ -317,14 +315,14 @@ from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat
+from tensorflow.contrib.learn.python.learn.estimators.kmeans import KMeansClustering
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor
 from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModeKeys
+from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.contrib.learn.python.learn.estimators.prediction_key import PredictionKey
-from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestEstimator
-from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossHook
 from tensorflow.contrib.learn.python.learn.estimators.run_config import ClusterConfig
 from tensorflow.contrib.learn.python.learn.estimators.run_config import Environment
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig

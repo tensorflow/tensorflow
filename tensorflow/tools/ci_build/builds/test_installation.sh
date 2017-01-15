@@ -97,11 +97,13 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
+"tensorflow/contrib/session_bundle/bundle_shim_test.py:"\
 "tensorflow/contrib/session_bundle/exporter_test.py:"\
 "tensorflow/contrib/session_bundle/session_bundle_test.py:"\
 "tensorflow/python/platform/default/_resource_loader_test.py:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
+"tensorflow/python/saved_model/saved_model_test.py:"\
 "tensorflow/contrib/learn/nonlinear_test.py:"
 
 # Test blacklist: GPU-only
@@ -257,7 +259,7 @@ cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
 
 # Run tests
 DIR0=$(pwd)
-ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
+ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
 
 

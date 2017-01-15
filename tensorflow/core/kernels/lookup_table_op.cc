@@ -394,8 +394,9 @@ class MutableDenseHashTable final : public LookupInterface {
 
     OP_REQUIRES_OK(ctx,
                    GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(value_shape_) ||
-                         TensorShapeUtils::IsVector(value_shape_),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(value_shape_) ||
+                    TensorShapeUtils::IsVector(value_shape_),
                 errors::InvalidArgument(
                     "Empty value must be a scalar or a vector, got shape ",
                     value_shape_.DebugString()));
@@ -403,8 +404,9 @@ class MutableDenseHashTable final : public LookupInterface {
     const Tensor* empty_key_input;
     OP_REQUIRES_OK(ctx, ctx->input("empty_key", &empty_key_input));
     key_shape_ = empty_key_input->shape();
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_shape_) ||
-                         TensorShapeUtils::IsVector(key_shape_),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsScalar(key_shape_) ||
+                    TensorShapeUtils::IsVector(key_shape_),
                 errors::InvalidArgument(
                     "Empty key must be a scalar or a vector, got shape ",
                     key_shape_.DebugString()));
@@ -859,6 +861,7 @@ REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, string);
 
 #undef REGISTER_KERNEL
 
@@ -894,7 +897,7 @@ REGISTER_KERNEL(int64, string);
 
 #undef REGISTER_KERNEL
 
-// Register the MutableHashTableOfTensors op.
+// Register the MutableDenseHashTable op.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                            \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MutableDenseHashTable")                                        \
@@ -906,6 +909,7 @@ REGISTER_KERNEL(int64, string);
 
 REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(string, float);
 
 #undef REGISTER_KERNEL

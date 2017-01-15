@@ -103,12 +103,13 @@ more information about how to configure a distributed TensorFlow program.
 @@SessionManager
 @@ClusterSpec
 @@replica_device_setter
-@@Scaffold
 @@MonitoredTrainingSession
+@@MonitoredSession
+@@SingularMonitoredSession
+@@Scaffold
 @@SessionCreator
 @@ChiefSessionCreator
 @@WorkerSessionCreator
-@@MonitoredSession
 
 ## Reading Summaries from Event Files
 
@@ -167,7 +168,6 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
-from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizerV2
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
@@ -181,6 +181,7 @@ from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
 # pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
@@ -197,6 +198,7 @@ from tensorflow.python.training.monitored_session import SessionCreator
 from tensorflow.python.training.monitored_session import ChiefSessionCreator
 from tensorflow.python.training.monitored_session import WorkerSessionCreator
 from tensorflow.python.training.monitored_session import MonitoredSession
+from tensorflow.python.training.monitored_session import SingularMonitoredSession
 from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import generate_checkpoint_state_proto
@@ -254,8 +256,6 @@ _allowed_symbols = [
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
     "SyncReplicasOptimizer",
-    "SyncReplicasOptimizerV2",
-
     # Protobufs:
     "BytesList",          # from example_pb2.
     "ClusterDef",
@@ -271,7 +271,6 @@ _allowed_symbols = [
     "SequenceExample",    # from example_pb2.
     "ServerDef",
 ]
-
 # Include extra modules for docstrings because:
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.

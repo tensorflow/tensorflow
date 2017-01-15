@@ -17,11 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import resource_loader
 
@@ -44,26 +45,60 @@ def obtain_next(string_list_tensor, counter):
   return _input_pipeline_ops.obtain_next(string_list_tensor, counter)
 
 
-def seek_next(string_list):
+def _maybe_randomize_list(string_list, shuffle):
+  if shuffle:
+    random.shuffle(string_list)
+  return string_list
+
+
+def _create_list(string_list, shuffle, seed, num_epochs):
+  if shuffle and seed:
+    random.seed(seed)
+  expanded_list = _maybe_randomize_list(string_list, shuffle)
+  if num_epochs:
+    for _ in range(num_epochs - 1):
+      expanded_list.extend(_maybe_randomize_list(string_list, shuffle))
+  return expanded_list
+
+
+def seek_next(string_list, shuffle=False, seed=None, num_epochs=None):
   """Returns an op that seeks the next element in a list of strings.
 
   Seeking happens in a round robin fashion. This op creates a variable called
   counter that is initialized to -1 and is used to keep track of which element
-  in the list was returned.
+  in the list was returned. If num_epochs is not None, then we limit the number
+  of times we go around the string_list before OutOfRangeError is thrown. It
+  creates a variable to keep track of this.
 
   Args:
-    string_list: A list of strings
+    string_list: A list of strings.
+    shuffle: If true, we shuffle the string_list differently for each epoch.
+    seed: Seed used for shuffling.
+    num_epochs: Returns OutOfRangeError once string_list has been repeated
+                num_epoch times. If unspecified then keeps on looping.
 
   Returns:
     An op that produces the next element in the provided list.
   """
+  expanded_list = _create_list(string_list, shuffle, seed, num_epochs)
+
   with variable_scope.variable_scope("obtain_next"):
     counter = variable_scope.get_variable(
         name="obtain_next_counter",
-        initializer=constant_op.constant([-1], dtype=dtypes.int64),
+        initializer=constant_op.constant(
+            -1, dtype=dtypes.int64),
         dtype=dtypes.int64)
     with ops.device(counter.device):
-      string_tensor = constant_op.constant(string_list,
-                                           name="obtain_next_string_list")
-  return obtain_next(string_tensor, counter)
-
+      string_tensor = constant_op.constant(
+          expanded_list, name="obtain_next_expanded_list")
+    if num_epochs:
+      filename_counter = variable_scope.get_variable(
+          name="obtain_next_filename_counter",
+          initializer=constant_op.constant(
+              0, dtype=dtypes.int64),
+          dtype=dtypes.int64)
+      c = filename_counter.count_up_to(len(expanded_list))
+      with ops.control_dependencies([c]):
+        return obtain_next(string_tensor, counter)
+    else:
+      return obtain_next(string_tensor, counter)

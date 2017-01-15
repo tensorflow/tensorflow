@@ -360,7 +360,7 @@ name, with a suffix depending on the max_outputs setting:
 
 Outputs a `Summary` protocol buffer with images.
 
-The summary has up to `max_images` summary values containing images. The
+The summary has up to `max_outputs` summary values containing images. The
 images are built from `tensor` which must be 4-D with shape `[batch_size,
 height, width, channels]` and where `channels` can be:
 
@@ -424,7 +424,7 @@ in the summaries to merge use the same tag.
 *  <b>`inputs`</b>: A list of `string` `Tensor` objects containing serialized `Summary`
     protocol buffers.
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
-    added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    added to these collections. Defaults to `[]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

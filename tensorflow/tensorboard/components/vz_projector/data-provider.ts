@@ -105,10 +105,17 @@ export function retrieveTensorAsBytes(
   xhr.onload = () => {
     if (xhr.status !== 200) {
       let msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
-      logging.setErrorMessage(msg);
+      logging.setErrorMessage(msg, 'fetching tensors');
       return;
     }
-    let data = new Float32Array(xhr.response);
+    let data: Float32Array;
+    try {
+      data = new Float32Array(xhr.response);
+    } catch (e) {
+      logging.setErrorMessage(e, 'parsing tensor bytes');
+      return;
+    }
+
     let dim = embedding.tensorShape[1];
     let N = data.length / dim;
     if (embedding.tensorShape[0] > N) {
@@ -249,12 +256,9 @@ export function analyzeMetadata(
     });
   });
   columnStats.forEach((stats, colIndex) => {
-    let map = mapOfValues[colIndex];
-    if (!stats.tooManyUniqueValues) {
-      stats.uniqueEntries = map.entries().map(e => {
-        return {label: e.key, count: e.value};
-      });
-    }
+    stats.uniqueEntries = mapOfValues[colIndex].entries().map(e => {
+      return {label: e.key, count: e.value};
+    });
   });
   return columnStats;
 }
@@ -311,7 +315,7 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
       logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
       d3.text(metadataPath, (err: any, rawMetadata: string) => {
         if (err) {
-          logging.setErrorMessage(err.responseText);
+          logging.setErrorMessage(err.responseText, 'fetching metadata');
           reject(err);
           return;
         }

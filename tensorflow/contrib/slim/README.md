@@ -139,7 +139,7 @@ model_variables = slim.get_model_variables()
 # Regular variables
 my_var = slim.variable('my_var',
                        shape=[20, 1],
-                       initializer=tf.zeros_initializer)
+                       initializer=tf.zeros_initializer())
 regular_variables_and_model_variables = slim.get_variables()
 ```
 

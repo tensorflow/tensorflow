@@ -47,7 +47,7 @@ convert $src.gif -coalesce $dst.gif
 
 - - -
 
-### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, name=None)` {#decode_jpeg}
+### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, dct_method=None, name=None)` {#decode_jpeg}
 
 Decode a JPEG-encoded image to a uint8 tensor.
 
@@ -82,6 +82,13 @@ downscaling the image later.
 *  <b>`acceptable_fraction`</b>: An optional `float`. Defaults to `1`.
     The minimum required fraction of lines before a truncated
     input is accepted.
+*  <b>`dct_method`</b>: An optional `string`. Defaults to `""`.
+    string specifying a hint about the algorithm used for
+    decompression.  Defaults to "" which maps to a system-specific
+    default.  Currently valid values are ["INTEGER_FAST",
+    "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+    jpeg library changes to a version that does not have that specific
+    option.)
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -206,6 +213,36 @@ the smallest output, but is slower.
 ##### Returns:
 
   A `Tensor` of type `string`. 0-D. PNG-encoded image.
+
+
+
+- - -
+
+### `tf.image.decode_image(contents, channels=None, name=None)` {#decode_image}
+
+Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
+Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
+operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
+
+Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
+opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
+`[height, width, num_channels]`. Make sure to take this into account when
+constructing your graph if you are intermixing GIF files with JPEG and/or PNG
+files.
+
+##### Args:
+
+
+*  <b>`contents`</b>: 0-D `string`. The encoded image bytes.
+*  <b>`channels`</b>: An optional `int`. Defaults to `0`. Number of color channels for
+    the decoded image.
+*  <b>`name`</b>: A name for the operation (optional)
+
+##### Returns:
+
+  `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+    JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
+    images.
 
 
 
@@ -1406,7 +1443,9 @@ false and no bounding boxes are supplied, an error is raised.
     A second seed to avoid seed collision.
 *  <b>`min_object_covered`</b>: An optional `float`. Defaults to `0.1`.
     The cropped area of the image must contain at least this
-    fraction of any bounding box supplied.
+    fraction of any bounding box supplied. The value of this parameter should be
+    non-negative. In the case of 0, the cropped area does not need to overlap
+    any of the bounding boxes supplied.
 *  <b>`aspect_ratio_range`</b>: An optional list of `floats`. Defaults to `[0.75, 1.33]`.
     The cropped area of the image must have an aspect ratio =
     width / height within this range.

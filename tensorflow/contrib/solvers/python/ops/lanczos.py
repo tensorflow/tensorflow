@@ -22,9 +22,15 @@ from __future__ import print_function
 
 import collections
 
-import tensorflow as tf
-
 from tensorflow.contrib.solvers.python.ops import util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import tensor_array_ops
 
 
 def lanczos_bidiag(operator,
@@ -82,20 +88,17 @@ def lanczos_bidiag(operator,
   """
 
   def tarray(size, dtype, name):
-    return tf.TensorArray(
-        dtype=dtype,
-        size=size,
-        tensor_array_name=name,
-        clear_after_read=False)
+    return tensor_array_ops.TensorArray(
+        dtype=dtype, size=size, tensor_array_name=name, clear_after_read=False)
 
   # Reads a row-vector at location i in tarray and returns it as a
   # column-vector.
   def read_colvec(tarray, i):
-    return tf.expand_dims(tarray.read(i), -1)
+    return array_ops.expand_dims(tarray.read(i), -1)
 
   # Writes an column-vector as a row-vecor at location i in tarray.
   def write_colvec(tarray, colvec, i):
-    return tarray.write(i, tf.squeeze(colvec))
+    return tarray.write(i, array_ops.squeeze(colvec))
 
   # Ephemeral class holding Lanczos bidiagonalization state:
   #   u = left Lanczos vectors
@@ -112,21 +115,20 @@ def lanczos_bidiag(operator,
     return lanzcos_bidiag_state(
         write_colvec(old.u, u, i + 1),
         write_colvec(old.v, v, i),
-        old.alpha.write(i, alpha),
-        old.beta.write(i, beta))
+        old.alpha.write(i, alpha), old.beta.write(i, beta))
 
   def gram_schmidt_step(j, basis, v):
     """Makes v orthogonal to the j'th vector in basis."""
     v_shape = v.get_shape()
     basis_vec = read_colvec(basis, j)
-    v -= tf.matmul(basis_vec, v, adjoint_a=True) * basis_vec
+    v -= math_ops.matmul(basis_vec, v, adjoint_a=True) * basis_vec
     v.set_shape(v_shape)
     return j + 1, basis, v
 
   def orthogonalize_once(i, basis, v):
-    j = tf.constant(0, dtype=tf.int32)
-    _, _, v = tf.while_loop(lambda j, basis, v: j < i, gram_schmidt_step,
-                            [j, basis, v])
+    j = constant_op.constant(0, dtype=dtypes.int32)
+    _, _, v = control_flow_ops.while_loop(lambda j, basis, v: j < i,
+                                          gram_schmidt_step, [j, basis, v])
     return util.l2normalize(v)
 
   # Iterated modified Gram-Schmidt orthogonalization adapted from PROPACK.
@@ -139,9 +141,9 @@ def lanczos_bidiag(operator,
     # round of MGS. See proof in:
     #   B. N. Parlett, ``The Symmetric Eigenvalue Problem'',
     #   Prentice-Hall, Englewood Cliffs, NJ, 1980. pp. 105-109
-    return tf.cond(v_new_norm < 0.7071 * v_norm,
-                   lambda: orthogonalize_once(i, basis, v),
-                   lambda: (v_new, v_new_norm))
+    return control_flow_ops.cond(v_new_norm < 0.7071 * v_norm,
+                                 lambda: orthogonalize_once(i, basis, v),
+                                 lambda: (v_new, v_new_norm))
 
   def stopping_criterion(i, _):
     # TODO(rmlarsen): Stop if an invariant subspace is detected.
@@ -153,9 +155,8 @@ def lanczos_bidiag(operator,
     r = operator.apply_adjoint(u)
     # The shape inference doesn't work across cond, save and reapply the shape.
     r_shape = r.get_shape()
-    r = tf.cond(
-        i > 0,
-        lambda: r - ls.beta.read(i - 1) * read_colvec(ls.v, i - 1),
+    r = control_flow_ops.cond(
+        i > 0, lambda: r - ls.beta.read(i - 1) * read_colvec(ls.v, i - 1),
         lambda: r)
     r.set_shape(r_shape)
     if orthogonalize:
@@ -170,10 +171,10 @@ def lanczos_bidiag(operator,
 
     return i + 1, update_state(ls, i, u, v, alpha, beta)
 
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     dtype = operator.dtype
     if starting_vector is None:
-      starting_vector = tf.random_uniform(
+      starting_vector = random_ops.random_uniform(
           operator.shape[:1], -1, 1, dtype=dtype)
     u0, _ = util.l2normalize(starting_vector)
     ls = lanzcos_bidiag_state(
@@ -181,11 +182,13 @@ def lanczos_bidiag(operator,
         v=tarray(k, dtype, "v"),
         alpha=tarray(k, dtype, "alpha"),
         beta=tarray(k, dtype, "beta"))
-    i = tf.constant(0, dtype=tf.int32)
-    _, ls = tf.while_loop(stopping_criterion, lanczos_bidiag_step, [i, ls])
+    i = constant_op.constant(0, dtype=dtypes.int32)
+    _, ls = control_flow_ops.while_loop(stopping_criterion, lanczos_bidiag_step,
+                                        [i, ls])
     return lanzcos_bidiag_state(
-        tf.matrix_transpose(ls.u.pack()),
-        tf.matrix_transpose(ls.v.pack()), ls.alpha.pack(), ls.beta.pack())
+        array_ops.matrix_transpose(ls.u.stack()),
+        array_ops.matrix_transpose(ls.v.stack()),
+        ls.alpha.stack(), ls.beta.stack())
 
 
 # TODO(rmlarsen): Implement C++ ops for handling bidiagonal matrices
@@ -219,13 +222,16 @@ def bidiag_matmul(matrix, alpha, beta, adjoint_b=False, name="bidiag_matmul"):
     If `adjoint_b` is False the `A * B` is returned.
     If `adjoint_b` is True the `A * B'` is returned.
   """
-  with tf.name_scope(name):
-    alpha = tf.expand_dims(alpha, 0)
+  with ops.name_scope(name):
+    alpha = array_ops.expand_dims(alpha, 0)
     if adjoint_b is False:
-      beta = tf.expand_dims(beta, 0)
+      beta = array_ops.expand_dims(beta, 0)
       return matrix[:, :-1] * alpha + matrix[:, 1:] * beta
     else:
-      beta = tf.expand_dims(beta[:-1], 0)
-      shape = tf.shape(matrix)
-      zero_column = tf.expand_dims(tf.zeros(shape[:1], dtype=matrix.dtype), 1)
-      return matrix * alpha + tf.concat(1, [zero_column, matrix[:, :-1] * beta])
+      beta = array_ops.expand_dims(beta[:-1], 0)
+      shape = array_ops.shape(matrix)
+      zero_column = array_ops.expand_dims(
+          array_ops.zeros(
+              shape[:1], dtype=matrix.dtype), 1)
+      return matrix * alpha + array_ops.concat(
+          [zero_column, matrix[:, :-1] * beta], 1)

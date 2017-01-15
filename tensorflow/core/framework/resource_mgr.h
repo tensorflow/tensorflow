@@ -368,6 +368,13 @@ Status ResourceMgr::Delete(const string& container, const string& name) {
 template <typename T>
 Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
                               T** resource) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &dtype));
+  if (dtype == DT_RESOURCE) {
+    const Tensor* handle;
+    TF_RETURN_IF_ERROR(ctx->input(input_name, &handle));
+    return LookupResource(ctx, handle->scalar<ResourceHandle>()(), resource);
+  }
   string container;
   string shared_name;
   {
@@ -479,7 +486,7 @@ template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
   Tensor* output = nullptr;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-  output->flat<ResourceHandle>()(0) =
+  output->scalar<ResourceHandle>()() =
       MakeResourceHandle<T>(ctx, container_, name_);
 }
 

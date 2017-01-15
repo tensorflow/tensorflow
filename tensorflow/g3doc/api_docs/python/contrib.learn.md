@@ -338,18 +338,27 @@ Constructs an `Estimator` instance.
 
 *  <b>`model_fn`</b>: Model function. Follows the signature:
     * Args:
-      * `features` are single `Tensor` or `dict` of `Tensor`s
+      * `features`: single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
+      * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
              models). If mode is `ModeKeys.INFER`, `labels=None` will be
              passed. If the `model_fn`'s signature does not accept
              `mode`, the `model_fn` must still be able to handle
              `labels=None`.
-      * `mode` specifies if this training, evaluation or
+      * `mode`: Optional. Specifies if this training, evaluation or
              prediction. See `ModeKeys`.
-      * `params` is a `dict` of hyperparameters. Will receive what
+      * `params`: Optional `dict` of hyperparameters.  Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tuning.
+      * `config`: Optional configuration object. Will receive what is passed
+             to Estimator in `config` parameter, or the default `config`.
+             Allows updating things in your model_fn based on configuration
+             such as `num_ps_replicas`.
+      * `model_dir`: Optional directory where model parameters, graph etc
+             are saved. Will receive what is passed to Estimator in
+             `model_dir` parameter, or the default `model_dir`. Allows
+             updating things in your model_fn that expect model_dir, such as
+             training hooks.
 
     * Returns:
       `ModelFnOps`
@@ -367,6 +376,10 @@ Constructs an `Estimator` instance.
       * `(features, labels) -> (predictions, loss, train_op)`
       * `(features, labels, mode) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params) -> (predictions, loss, train_op)`
+      * `(features, labels, mode, params, config) ->
+         (predictions, loss, train_op)`
+      * `(features, labels, mode, params, config, model_dir) ->
+         (predictions, loss, train_op)`
 
 
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
@@ -724,17 +737,17 @@ Trains a model given training data `x` predictions and `y` labels.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of labels. The training label values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`. Note: For classification, label values must
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or the dictionary of Matrices.
+     Can be iterator that returns arrays of features or dictionary of arrays of features.
+     The training input samples for fitting the model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] or the dictionary of same.
+     Can be iterator that returns array of labels or dictionary of array of labels.
+     The training label values (class labels in classification, real numbers in regression).
+     If set, `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
 *  <b>`input_fn`</b>: Input function returning a tuple of:
-      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      features - `Tensor` or dictionary of string feature name to `Tensor`.
       labels - `Tensor` or dictionary of `Tensor` with labels.
     If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
 *  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
@@ -767,7 +780,7 @@ Trains a model given training data `x` predictions and `y` labels.
 Interface for objects that are evaluatable by, e.g., `Experiment`.
 - - -
 
-#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#Evaluable.evaluate}
+#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#Evaluable.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -786,12 +799,14 @@ for which this evaluation was performed.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] containing the input samples
-     for fitting the model. Can be iterator that returns arrays of features.
-     If set, `input_fn` must be `None`.
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
+     containing the input samples for fitting the model. Can be iterator that returns
+     arrays of features or dictionary of array of features. If set, `input_fn` must
+     be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
      label values (class labels in classification, real numbers in
-     regression). Can be iterator that returns array of labels. If set,
+     regression) or dictionary of multiple vectors/matrices. Can be iterator
+     that returns array of targets or dictionary of array of targets. If set,
      `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
@@ -824,6 +839,8 @@ for which this evaluation was performed.
     different data sets, such as on training data vs test data.
 *  <b>`checkpoint_path`</b>: Path of a specific checkpoint to evaluate. If `None`, the
     latest checkpoint in `model_dir` is used.
+*  <b>`hooks`</b>: List of `SessionRunHook` subclass instances. Used for callbacks
+    inside the evaluation call.
 
 ##### Returns:
 
@@ -907,7 +924,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, embedding_lr_multipliers=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, embedding_lr_multipliers=None, input_layer_min_slice_size=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -950,6 +967,8 @@ Initializes a DNNClassifier instance.
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EmbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
+*  <b>`input_layer_min_slice_size`</b>: Optional. The min slice size of input layer
+      partitions. If not provided, will use the default of 64M.
 
 ##### Returns:
 
@@ -959,6 +978,13 @@ Initializes a DNNClassifier instance.
 
 
 *  <b>`ValueError`</b>: If `n_classes` < 2.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
 
 
 - - -
@@ -981,9 +1007,26 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNClassifier.evaluate}
+#### `tf.contrib.learn.DNNClassifier.evaluate(*args, **kwargs)` {#DNNClassifier.evaluate}
 
-See evaluable.Evaluable. Note: Labels must be integer class indices.
+See `Evaluable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -997,16 +1040,81 @@ See BaseEstimator.export.
 
 #### `tf.contrib.learn.DNNClassifier.export_savedmodel(*args, **kwargs)` {#DNNClassifier.export_savedmodel}
 
-EXPERIMENTAL FUNCTION
+Exports inference graph as a SavedModel into given dir. (experimental)
 
 THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
+##### Args:
+
+
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
+
+
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
+#### `tf.contrib.learn.DNNClassifier.fit(*args, **kwargs)` {#DNNClassifier.fit}
 
-See trainable.Trainable. Note: Labels must be integer class indices.
+See `Trainable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.get_params(deep=True)` {#DNNClassifier.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+
+    If `True`, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
 
 
 - - -
@@ -1033,7 +1141,7 @@ Returns value of the variable given by name.
 
 ##### Returns:
 
-  `Tensor` object.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1045,7 +1153,90 @@ Returns value of the variable given by name.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.partial_fit(*args, **kwargs)` {#DNNClassifier.partial_fit}
+
+Incremental fit on a batch of samples. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
+      provided.
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.predict(*args, **kwargs)` {#DNNClassifier.predict}
+
+Returns predicted classes for given features. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.predict_classes(*args, **kwargs)` {#DNNClassifier.predict_classes}
 
 Returns predicted classes for given features. (deprecated arguments)
 
@@ -1100,6 +1291,32 @@ altogether. The behavior of this flag is described below.
 
   Numpy array of predicted probabilities with shape [batch_size, n_classes]
   (or an iterable of predicted probabilities if as_iterable is True).
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.set_params(**params)` {#DNNClassifier.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -1171,7 +1388,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, label_dimension=1, embedding_lr_multipliers=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, label_dimension=1, embedding_lr_multipliers=None, input_layer_min_slice_size=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -1211,10 +1428,19 @@ Initializes a `DNNRegressor` instance.
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
+*  <b>`input_layer_min_slice_size`</b>: Optional. The min slice size of input layer
+      partitions. If not provided, will use the default of 64M.
 
 ##### Returns:
 
   A `DNNRegressor` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.__repr__()` {#DNNRegressor.__repr__}
+
+
 
 
 - - -
@@ -1226,7 +1452,7 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#DNNRegressor.evaluate}
+#### `tf.contrib.learn.DNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#DNNRegressor.evaluate}
 
 See evaluable.Evaluable.
 
@@ -1240,9 +1466,83 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNRegressor.fit}
+#### `tf.contrib.learn.DNNRegressor.export_savedmodel(*args, **kwargs)` {#DNNRegressor.export_savedmodel}
 
-See trainable.Trainable.
+Exports inference graph as a SavedModel into given dir. (experimental)
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+##### Args:
+
+
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.fit(*args, **kwargs)` {#DNNRegressor.fit}
+
+See `Trainable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.get_params(deep=True)` {#DNNRegressor.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
+
+
+*  <b>`deep`</b>: boolean, optional
+
+    If `True`, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
 
 
 - - -
@@ -1269,7 +1569,7 @@ Returns value of the variable given by name.
 
 ##### Returns:
 
-  `Tensor` object.
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1277,6 +1577,59 @@ Returns value of the variable given by name.
 #### `tf.contrib.learn.DNNRegressor.model_dir` {#DNNRegressor.model_dir}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.partial_fit(*args, **kwargs)` {#DNNRegressor.partial_fit}
+
+Incremental fit on a batch of samples. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
+      provided.
 
 
 - - -
@@ -1307,6 +1660,62 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted scores (or an iterable of predicted scores if
   as_iterable is True). If `label_dimension == 1`, the shape of the output
   is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.predict_scores(*args, **kwargs)` {#DNNRegressor.predict_scores}
+
+Returns predicted scores for given features. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.set_params(**params)` {#DNNRegressor.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 
@@ -1425,6 +1834,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.__repr__()` {#LinearClassifier.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.bias_` {#LinearClassifier.bias_}
 
 DEPRECATED FUNCTION
@@ -1443,9 +1859,26 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearClassifier.evaluate}
+#### `tf.contrib.learn.LinearClassifier.evaluate(*args, **kwargs)` {#LinearClassifier.evaluate}
 
-See evaluable.Evaluable. Note: Labels must be integer class indices.
+See `Evaluable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -1459,37 +1892,108 @@ See BaseEstimator.export.
 
 #### `tf.contrib.learn.LinearClassifier.export_savedmodel(*args, **kwargs)` {#LinearClassifier.export_savedmodel}
 
-EXPERIMENTAL FUNCTION
+Exports inference graph as a SavedModel into given dir. (experimental)
 
 THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
 
 
+##### Args:
+
+
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
+
+
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
+#### `tf.contrib.learn.LinearClassifier.fit(*args, **kwargs)` {#LinearClassifier.fit}
 
-See trainable.Trainable. Note: Labels must be integer class indices.
+See `Trainable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.get_estimator()` {#LinearClassifier.get_estimator}
+#### `tf.contrib.learn.LinearClassifier.get_params(deep=True)` {#LinearClassifier.get_params}
+
+Get parameters for this estimator.
+
+##### Args:
 
 
+*  <b>`deep`</b>: boolean, optional
+
+    If `True`, will return the parameters for this estimator and
+    contained subobjects that are estimators.
+
+##### Returns:
+
+  params : mapping of string to any
+  Parameter names mapped to their values.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.get_variable_names()` {#LinearClassifier.get_variable_names}
 
+Returns list of all variable names in this model.
 
+##### Returns:
+
+  List of names.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.get_variable_value(name)` {#LinearClassifier.get_variable_value}
 
+Returns value of the variable given by name.
 
+##### Args:
+
+
+*  <b>`name`</b>: string, name of the tensor.
+
+##### Returns:
+
+  Numpy array - value of the tensor.
 
 
 - - -
@@ -1501,7 +2005,73 @@ See trainable.Trainable. Note: Labels must be integer class indices.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.partial_fit(*args, **kwargs)` {#LinearClassifier.partial_fit}
+
+Incremental fit on a batch of samples. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+This method is expected to be called several times consecutively
+on different or the same chunks of the dataset. This either can
+implement iterative training or out-of-core/online training.
+
+This is especially useful when the whole dataset is too big to
+fit in memory at the same time. Or when model is taking long time
+to converge, and you want to split up training into subparts.
+
+##### Args:
+
+
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
+     returns arrays of features. The training input samples for fitting the
+     model. If set, `input_fn` must be `None`.
+*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+     iterator that returns array of labels. The training label values
+     (class labels in classification, real numbers in regression). If set,
+     `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
+    `None`.
+*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
+*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
+    dimension of `x`. Must be `None` if `input_fn` is provided.
+*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
+    inside the training loop.
+
+##### Returns:
+
+  `self`, for chaining.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
+      provided.
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
+
+Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.predict_classes(*args, **kwargs)` {#LinearClassifier.predict_classes}
 
 Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
 
@@ -1523,6 +2093,32 @@ Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.set_params(**params)` {#LinearClassifier.set_params}
+
+Set the parameters of this estimator.
+
+The method works on simple estimators as well as on nested objects
+(such as pipelines). The former have parameters of the form
+``<component>__<parameter>`` so that it's possible to update each
+component of a nested object.
+
+##### Args:
+
+
+*  <b>`**params`</b>: Parameters.
+
+##### Returns:
+
+  self
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If params contain invalid names.
 
 
 - - -
@@ -1624,6 +2220,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
 DEPRECATED FUNCTION
@@ -1642,9 +2245,26 @@ This method will be removed after the deprecation date. To inspect variables, us
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LinearRegressor.evaluate}
+#### `tf.contrib.learn.LinearRegressor.evaluate(*args, **kwargs)` {#LinearRegressor.evaluate}
 
-See evaluable.Evaluable.
+See `Evaluable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
+      `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
@@ -1657,202 +2277,6 @@ See BaseEstimator.export.
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.export_savedmodel(*args, **kwargs)` {#LinearRegressor.export_savedmodel}
-
-EXPERIMENTAL FUNCTION
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearRegressor.fit}
-
-See trainable.Trainable.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.get_variable_names()` {#LinearRegressor.get_variable_names}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.get_variable_value(name)` {#LinearRegressor.get_variable_value}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.model_dir` {#LinearRegressor.model_dir}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
-
-Runs inference to determine the predicted class. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
-Instructions for updating:
-The default behavior of predict() is changing. The default value for
-as_iterable will change to True, and then the flag will be removed
-altogether. The behavior of this flag is described below.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.weights_` {#LinearRegressor.weights_}
-
-DEPRECATED FUNCTION
-
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
-Instructions for updating:
-This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
-
-
-
-- - -
-
-### `class tf.contrib.learn.LogisticRegressor` {#LogisticRegressor}
-
-Logistic regression Estimator for binary classification.
-
-This class provides a basic Estimator with some additional metrics for custom
-binary classification models, including AUC, precision/recall and accuracy.
-
-Example:
-
-```python
-  # See tf.contrib.learn.Estimator(...) for details on model_fn structure
-  def my_model_fn(...):
-    pass
-
-  estimator = LogisticRegressor(model_fn=my_model_fn)
-
-  # Input builders
-  def input_fn_train:
-    pass
-
-  estimator.fit(input_fn=input_fn_train)
-  estimator.predict(x=x)
-```
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.__init__(model_fn, thresholds=None, model_dir=None, config=None, feature_engineering_fn=None)` {#LogisticRegressor.__init__}
-
-Initializes a LogisticRegressor.
-
-##### Args:
-
-
-*  <b>`model_fn`</b>: Model function. See superclass Estimator for more details. This
-    expects the returned predictions to be probabilities in [0.0, 1.0].
-*  <b>`thresholds`</b>: List of floating point thresholds to use for accuracy,
-    precision, and recall metrics. If `None`, defaults to `[0.5]`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graphs, etc. This can also
-    be used to load checkpoints from the directory into a estimator to
-    continue training a previously saved model.
-*  <b>`config`</b>: A RunConfig configuration object.
-*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
-                    labels which are the output of `input_fn` and
-                    returns features and labels which will be fed
-                    into the model.
-
-
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.__repr__()` {#LogisticRegressor.__repr__}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.config` {#LogisticRegressor.config}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#LogisticRegressor.evaluate}
-
-Evaluates given model with provided evaluation data.
-
-See superclass Estimator for more details.
-
-##### Args:
-
-
-*  <b>`x`</b>: features.
-*  <b>`y`</b>: labels (must be 0 or 1).
-*  <b>`input_fn`</b>: Input function.
-*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called.
-*  <b>`batch_size`</b>: minibatch size to use on the input.
-*  <b>`steps`</b>: Number of steps for which to evaluate model.
-*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metrics are used.
-*  <b>`name`</b>: Name of the evaluation.
-*  <b>`checkpoint_path`</b>: A specific checkpoint to use. By default, use the latest
-    checkpoint in the `model_dir`.
-
-##### Returns:
-
-  Returns `dict` with evaluation results.
-
-
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.export(*args, **kwargs)` {#LogisticRegressor.export}
-
-Exports inference graph into given dir. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
-Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
-
-##### Args:
-
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`input_fn`</b>: If `use_deprecated_input_fn` is true, then a function that given
-    `Tensor` of `Example` strings, parses it into features that are then
-    passed to the model. Otherwise, a function that takes no argument and
-    returns a tuple of (features, labels), where features is a dict of
-    string key to `Tensor` and labels is a `Tensor` that's currently not
-    used (and so can be `None`).
-*  <b>`input_feature_key`</b>: Only used if `use_deprecated_input_fn` is false. String
-    key into the features dict returned by `input_fn` that corresponds to a
-    the raw `Example` strings `Tensor` that the exported model will take as
-    input. Can only be `None` if you're using a custom `signature_fn` that
-    does not use the first arg (examples).
-*  <b>`use_deprecated_input_fn`</b>: Determines the signature format of `input_fn`.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`prediction_key`</b>: The key for a tensor in the `predictions` dict (output
-    from the `model_fn`) to use as the `predictions` input to the
-    `signature_fn`. Optional. If `None`, predictions will pass to
-    `signature_fn` without filtering.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
-
-##### Returns:
-
-  The string path to the exported directory. NB: this functionality was
-  added ca. 2016/09/25; clients that depend on the return value may need
-  to handle the case where this function returns None because subclasses
-  are not returning a value.
-
-
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.export_savedmodel(*args, **kwargs)` {#LogisticRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir. (experimental)
 
@@ -1890,7 +2314,7 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.fit(*args, **kwargs)` {#LogisticRegressor.fit}
+#### `tf.contrib.learn.LinearRegressor.fit(*args, **kwargs)` {#LinearRegressor.fit}
 
 See `Trainable`. (deprecated arguments)
 
@@ -1913,24 +2337,7 @@ available in the SKCompat class, Estimator will only accept input_fn.
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.get_default_metrics(cls, thresholds=None)` {#LogisticRegressor.get_default_metrics}
-
-Returns a dictionary of basic metrics for logistic regression.
-
-##### Args:
-
-
-*  <b>`thresholds`</b>: List of floating point thresholds to use for accuracy,
-    precision, and recall metrics. If None, defaults to [0.5].
-
-##### Returns:
-
-  Dictionary mapping metrics string names to metrics functions.
-
-
-- - -
-
-#### `tf.contrib.learn.LogisticRegressor.get_params(deep=True)` {#LogisticRegressor.get_params}
+#### `tf.contrib.learn.LinearRegressor.get_params(deep=True)` {#LinearRegressor.get_params}
 
 Get parameters for this estimator.
 
@@ -1950,7 +2357,7 @@ Get parameters for this estimator.
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.get_variable_names()` {#LogisticRegressor.get_variable_names}
+#### `tf.contrib.learn.LinearRegressor.get_variable_names()` {#LinearRegressor.get_variable_names}
 
 Returns list of all variable names in this model.
 
@@ -1961,7 +2368,7 @@ Returns list of all variable names in this model.
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.get_variable_value(name)` {#LogisticRegressor.get_variable_value}
+#### `tf.contrib.learn.LinearRegressor.get_variable_value(name)` {#LinearRegressor.get_variable_value}
 
 Returns value of the variable given by name.
 
@@ -1977,14 +2384,14 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.model_dir` {#LogisticRegressor.model_dir}
+#### `tf.contrib.learn.LinearRegressor.model_dir` {#LinearRegressor.model_dir}
 
 
 
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.partial_fit(*args, **kwargs)` {#LogisticRegressor.partial_fit}
+#### `tf.contrib.learn.LinearRegressor.partial_fit(*args, **kwargs)` {#LinearRegressor.partial_fit}
 
 Incremental fit on a batch of samples. (deprecated arguments)
 
@@ -2037,52 +2444,33 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.predict(*args, **kwargs)` {#LogisticRegressor.predict}
+#### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
 
-Returns predictions for given features. (deprecated arguments)
+Runs inference to determine the predicted scores. (deprecated arguments)
 
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
-Estimator is decoupled from Scikit Learn interface by moving into
-separate class SKCompat. Arguments x, y and batch_size are only
-available in the SKCompat class, Estimator will only accept input_fn.
-
-##### Example conversion:
-
-  est = Estimator(...) -> est = SKCompat(Estimator(...))
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
-*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-    'None'.
-*  <b>`outputs`</b>: list of `str`, name of the output to predict.
-    If `None`, returns all.
-*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-    for each example until inputs are exhausted. Note: The inputs must
-    terminate if you want the iterable to terminate (e.g. be sure to pass
-    num_epochs=1 if you are using something like read_batch_features).
-
-##### Returns:
-
-  A numpy array of predicted classes or regression values if the
-  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-  predictions if as_iterable is True.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
 
 - - -
 
-#### `tf.contrib.learn.LogisticRegressor.set_params(**params)` {#LogisticRegressor.set_params}
+#### `tf.contrib.learn.LinearRegressor.predict_scores(*args, **kwargs)` {#LinearRegressor.predict_scores}
+
+Runs inference to determine the predicted scores. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.set_params(**params)` {#LinearRegressor.set_params}
 
 Set the parameters of this estimator.
 
@@ -2105,6 +2493,65 @@ component of a nested object.
 
 *  <b>`ValueError`</b>: If params contain invalid names.
 
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.weights_` {#LinearRegressor.weights_}
+
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
+
+
+
+- - -
+
+### `tf.contrib.learn.LogisticRegressor(model_fn, thresholds=None, model_dir=None, config=None, feature_engineering_fn=None)` {#LogisticRegressor}
+
+Builds a logistic regression Estimator for binary classification.
+
+This method provides a basic Estimator with some additional metrics for custom
+binary classification models, including AUC, precision/recall and accuracy.
+
+Example:
+
+```python
+  # See tf.contrib.learn.Estimator(...) for details on model_fn structure
+  def my_model_fn(...):
+    pass
+
+  estimator = LogisticRegressor(model_fn=my_model_fn)
+
+  # Input builders
+  def input_fn_train:
+    pass
+
+  estimator.fit(input_fn=input_fn_train)
+  estimator.predict(x=x)
+```
+
+##### Args:
+
+
+*  <b>`model_fn`</b>: Model function with the signature:
+    `(features, labels, mode) -> (predictions, loss, train_op)`.
+    Expects the returned predictions to be probabilities in [0.0, 1.0].
+*  <b>`thresholds`</b>: List of floating point thresholds to use for accuracy,
+    precision, and recall metrics. If `None`, defaults to `[0.5]`.
+*  <b>`model_dir`</b>: Directory to save model parameters, graphs, etc. This can also
+    be used to load checkpoints from the directory into a estimator to
+    continue training a previously saved model.
+*  <b>`config`</b>: A RunConfig configuration object.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    labels which are the output of `input_fn` and
+                    returns features and labels which will be fed
+                    into the model.
+
+##### Returns:
+
+  A `tf.contrib.learn.Estimator` instance.
 
 
 
@@ -2217,6 +2664,20 @@ variable.
 
 - - -
 
+#### `tf.contrib.learn.RunConfig.keep_checkpoint_every_n_hours` {#RunConfig.keep_checkpoint_every_n_hours}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.keep_checkpoint_max` {#RunConfig.keep_checkpoint_max}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.RunConfig.master` {#RunConfig.master}
 
 
@@ -2225,6 +2686,27 @@ variable.
 - - -
 
 #### `tf.contrib.learn.RunConfig.num_ps_replicas` {#RunConfig.num_ps_replicas}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.save_checkpoints_secs` {#RunConfig.save_checkpoints_secs}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.save_checkpoints_steps` {#RunConfig.save_checkpoints_steps}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.save_summary_steps` {#RunConfig.save_summary_steps}
 
 
 
@@ -2243,12 +2725,30 @@ variable.
 
 
 
+- - -
+
+#### `tf.contrib.learn.RunConfig.tf_config` {#RunConfig.tf_config}
+
+
+
 
 - - -
 
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, update_op=None, global_step_tensor=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
+#### `tf.contrib.learn.RunConfig.tf_random_seed` {#RunConfig.tf_random_seed}
 
-Evaluate a model loaded from a checkpoint.
+
+
+
+
+- - -
+
+### `tf.contrib.learn.evaluate(*args, **kwargs)` {#evaluate}
+
+Evaluate a model loaded from a checkpoint. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
 to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
@@ -2302,9 +2802,13 @@ and written to `output_dir`.
 
 - - -
 
-### `tf.contrib.learn.infer(restore_checkpoint_path, output_dict, feed_dict=None)` {#infer}
+### `tf.contrib.learn.infer(*args, **kwargs)` {#infer}
 
-Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
+Restore graph from `restore_checkpoint_path` and run `output_dict` tensors. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
 init all variables.
@@ -2334,14 +2838,22 @@ init all variables.
 
 ### `tf.contrib.learn.run_feeds(*args, **kwargs)` {#run_feeds}
 
-See run_feeds_iter(). Returns a `list` instead of an iterator.
+See run_feeds_iter(). Returns a `list` instead of an iterator. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 
 - - -
 
-### `tf.contrib.learn.run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1)` {#run_n}
+### `tf.contrib.learn.run_n(*args, **kwargs)` {#run_n}
 
-Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
+Run `output_dict` tensors `n` times, with the same `feed_dict` each run. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 ##### Args:
 
@@ -2361,9 +2873,13 @@ Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None, max_steps=None)` {#train}
+### `tf.contrib.learn.train(*args, **kwargs)` {#train}
 
-Train a model.
+Train a model. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
 run a training loop. The given `train_op` performs one step of training on the
@@ -2551,6 +3067,47 @@ Extracts numpy matrix from pandas DataFrame.
 ##### Returns:
 
   A numpy `ndarray` of the DataFrame's values.
+
+
+- - -
+
+### `tf.contrib.learn.infer_real_valued_columns_from_input(x)` {#infer_real_valued_columns_from_input}
+
+Creates `FeatureColumn` objects for inputs defined by input `x`.
+
+This interprets all inputs as dense, fixed-length float values.
+
+##### Args:
+
+
+*  <b>`x`</b>: Real-valued matrix of shape [n_samples, n_features...]. Can be
+     iterator that returns arrays of features.
+
+##### Returns:
+
+  List of `FeatureColumn` objects.
+
+
+- - -
+
+### `tf.contrib.learn.infer_real_valued_columns_from_input_fn(input_fn)` {#infer_real_valued_columns_from_input_fn}
+
+Creates `FeatureColumn` objects for inputs defined by `input_fn`.
+
+This interprets all inputs as dense, fixed-length float values. This creates
+a local graph in which it calls `input_fn` to build the tensors, then discards
+it.
+
+##### Args:
+
+
+*  <b>`input_fn`</b>: Input function returning a tuple of:
+      features - Dictionary of string feature name to `Tensor` or `Tensor`.
+      labels - `Tensor` of label values.
+
+##### Returns:
+
+  List of `FeatureColumn` objects.
 
 
 - - -

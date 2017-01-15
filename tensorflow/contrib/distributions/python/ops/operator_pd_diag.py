@@ -82,7 +82,7 @@ class OperatorPDDiagBase(operator_pd.OperatorPDBase):
   def _shape(self):
     d_shape = array_ops.shape(self._diag)
     k = array_ops.gather(d_shape, array_ops.size(d_shape) - 1)
-    return array_ops.concat(0, (d_shape, [k]))
+    return array_ops.concat((d_shape, [k]), 0)
 
   @abc.abstractmethod
   def _batch_log_det(self):
@@ -176,7 +176,7 @@ class OperatorPDDiag(OperatorPDDiagBase):
 
   def _batch_log_det(self):
     return math_ops.reduce_sum(
-        math_ops.log(self._diag), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_solve(x)
@@ -267,7 +267,8 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
 
   def _batch_log_det(self):
     return 2 * math_ops.reduce_sum(
-        math_ops.log(self._diag), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)),
+        reduction_indices=[-1])
 
   def _inv_quadratic_form_on_vectors(self, x):
     # This Operator is defined in terms of diagonal entries of the sqrt.

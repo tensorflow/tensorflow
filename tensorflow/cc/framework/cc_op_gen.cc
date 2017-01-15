@@ -695,6 +695,7 @@ string OpInfo::GetConstructorBody() const {
   strings::StrAppend(&body, "  ", scope_str, ".UpdateBuilder(&builder);\n");
   strings::StrAppend(&body, "  ", scope_str, ".UpdateStatus(builder.Finalize(",
                      scope_str, ".graph(), &ret));\n");
+  strings::StrAppend(&body, "  ", return_on_error, "\n");
 
   // TODO(b/28152992): Enable this code-path once we have converted
   // all python shape functions to call their C++ versions.

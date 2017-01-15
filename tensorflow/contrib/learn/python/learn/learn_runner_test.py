@@ -20,15 +20,24 @@ from __future__ import print_function
 
 import json
 import os
+import sys
 
-import tensorflow as tf
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn import learn_runner
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
-patch = tf.test.mock.patch
+patch = test.mock.patch
 
 
-class TestExperiment(tf.contrib.learn.Experiment):
+class TestExperiment(experiment.Experiment):
 
   def __init__(self, default=None, config=None):
     self.default = default
@@ -36,8 +45,10 @@ class TestExperiment(tf.contrib.learn.Experiment):
 
   @property
   def estimator(self):
+
     class Estimator(object):
       config = self.config
+
     return Estimator()
 
   def local_run(self):
@@ -58,20 +69,22 @@ class TestExperiment(tf.contrib.learn.Experiment):
 
 # pylint: disable=unused-argument
 def build_experiment(output_dir):
-  tf.logging.info("In default build_experiment.")
+  tf_logging.info("In default build_experiment.")
   return TestExperiment()
 
 
 def build_non_experiment(output_dir):
   return "Ceci n'est pas un Experiment."
+
+
 # pylint: enable=unused-argument
 
 
 def build_distributed_cluster_spec():
   return {
-      tf.contrib.learn.TaskType.PS: ["localhost:1234", "localhost:1235"],
-      tf.contrib.learn.TaskType.WORKER: ["localhost:1236", "localhost:1237"],
-      tf.contrib.learn.TaskType.MASTER: ["localhost:1238"],
+      run_config_lib.TaskType.PS: ["localhost:1234", "localhost:1235"],
+      run_config_lib.TaskType.WORKER: ["localhost:1236", "localhost:1237"],
+      run_config_lib.TaskType.MASTER: ["localhost:1238"],
       "foo_has_no_default_schedule": ["localhost:1239"]
   }
 
@@ -80,7 +93,7 @@ def build_non_distributed_cluster_spec():
   return {"foo": ["localhost:1234"]}
 
 
-class MainTest(tf.test.TestCase):
+class MainTest(test.TestCase):
 
   def setUp(self):
     # Ensure the TF_CONFIG environment variable is unset for all tests.
@@ -101,9 +114,12 @@ class MainTest(tf.test.TestCase):
                          schedule="local_run"))
 
   def test_schedule_from_tf_config_runs_train_on_worker(self):
-    os.environ["TF_CONFIG"] = json.dumps(
-        {"cluster": build_distributed_cluster_spec(),
-         "task": {"type": tf.contrib.learn.TaskType.WORKER}})
+    os.environ["TF_CONFIG"] = json.dumps({
+        "cluster": build_distributed_cluster_spec(),
+        "task": {
+            "type": run_config_lib.TaskType.WORKER
+        }
+    })
     # RunConfig constructor will set job_name from TF_CONFIG.
     config = run_config.RunConfig()
     self.assertEqual(
@@ -115,7 +131,7 @@ class MainTest(tf.test.TestCase):
     tf_config = {
         "cluster": build_distributed_cluster_spec(),
         "task": {
-            "type": tf.contrib.learn.TaskType.MASTER
+            "type": run_config_lib.TaskType.MASTER
         }
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
@@ -129,7 +145,7 @@ class MainTest(tf.test.TestCase):
     tf_config = {
         "cluster": build_distributed_cluster_spec(),
         "task": {
-            "type": tf.contrib.learn.TaskType.PS
+            "type": run_config_lib.TaskType.PS
         }
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
@@ -147,8 +163,7 @@ class MainTest(tf.test.TestCase):
   def test_no_schedule_and_no_config_runs_train_and_evaluate(self):
     self.assertEqual(
         "train_and_evaluate",
-        learn_runner.run(build_experiment,
-                         output_dir="/tmp"))
+        learn_runner.run(build_experiment, output_dir="/tmp"))
 
   def test_no_schedule_and_non_distributed_runs_train_and_evaluate(self):
     tf_config = {"cluster": build_non_distributed_cluster_spec()}
@@ -207,4 +222,4 @@ class MainTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

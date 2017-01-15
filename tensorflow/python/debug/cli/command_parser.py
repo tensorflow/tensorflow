@@ -74,6 +74,42 @@ def parse_command(command):
   return arguments
 
 
+def extract_output_file_path(args):
+  """Extract output file path from command arguments.
+
+  Args:
+    args: (list of str) command arguments.
+
+  Returns:
+    (list of str) Command arguments with the output file path part stripped.
+    (str or None) Output file path (if any).
+
+  Raises:
+    SyntaxError: If there is no file path after the last ">" character.
+  """
+
+  if args and args[-1].endswith(">"):
+    raise SyntaxError("Redirect file path is empty")
+  elif args and args[-1].startswith(">"):
+    output_file_path = args[-1][1:]
+    args = args[:-1]
+  elif len(args) > 1 and args[-2] == ">":
+    output_file_path = args[-1]
+    args = args[:-2]
+  elif args and args[-1].count(">") == 1:
+    gt_index = args[-1].index(">")
+    output_file_path = args[-1][gt_index + 1:]
+    args[-1] = args[-1][:gt_index]
+  elif len(args) > 1 and args[-2].endswith(">"):
+    output_file_path = args[-1]
+    args = args[:-1]
+    args[-1] = args[-1][:-1]
+  else:
+    output_file_path = None
+
+  return args, output_file_path
+
+
 def parse_tensor_name_with_slicing(in_str):
   """Parse tensor name, potentially suffixed by slicing string.
 
@@ -176,3 +212,60 @@ def parse_ranges(range_string):
                        type(item[0]))
 
   return ranges
+
+
+def parse_readable_size_str(size_str):
+  """Convert a human-readable str representation to number of bytes.
+
+  Only the units "kB", "MB", "GB" are supported. The "B character at the end
+  of the input `str` may be omitted.
+
+  Args:
+    size_str: (`str`) A human-readable str representing a number of bytes
+      (e.g., "0", "1023", "1.1kB", "24 MB", "23GB", "100 G".
+
+  Returns:
+    (`int`) The parsed number of bytes.
+
+  Raises:
+    ValueError: on failure to parse the input `size_str`.
+  """
+
+  size_str = size_str.strip()
+  if size_str.endswith("B"):
+    size_str = size_str[:-1]
+
+  if size_str.isdigit():
+    return int(size_str)
+  elif size_str.endswith("k"):
+    return int(float(size_str[:-1]) * 1024)
+  elif size_str.endswith("M"):
+    return int(float(size_str[:-1]) * 1048576)
+  elif size_str.endswith("G"):
+    return int(float(size_str[:-1]) * 1073741824)
+  else:
+    raise ValueError("Failed to parsed human-readable byte size str: \"%s\"" %
+                     size_str)
+
+
+def evaluate_tensor_slice(tensor, tensor_slicing):
+  """Call eval on the slicing of a tensor, with validation.
+
+  Args:
+    tensor: (numpy ndarray) The tensor value.
+    tensor_slicing: (str or None) Slicing of the tensor, e.g., "[:, 1]". If
+      None, no slicing will be performed on the tensor.
+
+  Returns:
+    (numpy ndarray) The sliced tensor.
+
+  Raises:
+    ValueError: If tensor_slicing is not a valid numpy ndarray slicing str.
+  """
+
+  _ = tensor
+
+  if not validate_slicing_string(tensor_slicing):
+    raise ValueError("Invalid tensor-slicing string.")
+
+  return eval("tensor" + tensor_slicing)  # pylint: disable=eval-used

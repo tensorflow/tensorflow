@@ -7,11 +7,6 @@ TensorFlow computation graphs are powerful but complicated. The graph visualizat
 
 To see your own graph, run TensorBoard pointing it to the log directory of the job, click on the graph tab on the top pane and select the appropriate run using the menu at the upper left corner. For in depth information on how to run TensorBoard and make sure you are logging all the necessary information, see [TensorBoard: Visualizing Learning](../../how_tos/summaries_and_tensorboard/index.md).
 
-You can interact with an instance of TensorBoard looking at data from an
-[MNIST](../../tutorials/mnist/beginners/index.md) training session, including the
-graph visualization, by clicking
-[here](https://www.tensorflow.org/tensorboard/index.html#graphs).
-
 ## Name scoping and nodes
 
 Typical TensorFlow graphs can have many thousands of nodes--far too many to see

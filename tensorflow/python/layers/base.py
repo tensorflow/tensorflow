@@ -85,7 +85,7 @@ class _Layer(object):
     self._updates = []
     self._losses = []
     self._reuse = kwargs.get('_reuse')
-    self._dtype = dtype
+    self.dtype = dtype
 
     # Determine base name (non-unique).
     base_name = name
@@ -100,20 +100,17 @@ class _Layer(object):
       self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
 
     # Unique name is borrowed from scope to match variable names.
-    self._name = self._scope.name
+    self.name = self._scope.name
 
   def __setattr__(self, name, value):
     if hasattr(self, name):
-      # Only allow self to update its own attributes
-      stack_0_locals = inspect.stack()[1][0].f_locals
-      called_from_layer = stack_0_locals.get('self', None) is self
-      if not called_from_layer:
+      # Only allow private attributes to be set more than once, under the
+      # convention that private attributes should only be set from inside
+      # the class.
+      # All attributes meant to be set several times should be set to private.
+      if name[0] != '_':
         raise AttributeError('Read-only property cannot be set: %s' % name)
     super(_Layer, self).__setattr__(name, value)
-
-  @property
-  def name(self):
-    return self._name
 
   @property
   def trainable_variables(self):
@@ -149,10 +146,6 @@ class _Layer(object):
     return self._trainable
 
   @property
-  def dtype(self):
-    return self._dtype
-
-  @property
   def weights(self):
     """Returns the list of all layer variables/weights.
 
@@ -186,7 +179,7 @@ class _Layer(object):
     Arguments:
       name: variable name.
       shape: variable shape.
-      dtype: The type of the variable. Defaults to `self._dtype`.
+      dtype: The type of the variable. Defaults to `self.dtype`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
       trainable: whether the variable should be part of the layer's
@@ -198,18 +191,19 @@ class _Layer(object):
       The created variable.
     """
     if dtype is None:
-      dtype = self._dtype
+      dtype = self.dtype
+    existing_variables = set(tf_variables.global_variables())
     variable = variable_getter(name,
                                shape=shape,
                                initializer=initializer,
                                dtype=dtype,
                                trainable=trainable and self.trainable)
     # TODO(sguada) fix name = variable.op.name
-    if trainable:
-      self._trainable_variables.append(variable)
-    else:
-      self._non_trainable_variables.append(variable)
-    if regularizer and not self._reuse:
+    if variable in existing_variables:
+      return variable
+    if regularizer:
+      # To match the behavior of tf.get_variable(), we only
+      # apply regularization if the variable is newly created.
       if isinstance(variable, tf_variables.PartitionedVariable):
         for v in variable:
           with ops.colocate_with(v.op):
@@ -227,6 +221,10 @@ class _Layer(object):
           self._losses.append(regularization)
           _add_elements_to_collection(
               regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+    if trainable:
+      self._trainable_variables.append(variable)
+    else:
+      self._non_trainable_variables.append(variable)
     return variable
 
   def __call__(self, inputs, **kwargs):
@@ -252,7 +250,8 @@ class _Layer(object):
           variable_getter=functools.partial(getter, **kwargs))
 
     # Build (if necessary) and call the layer, inside a variable scope.
-    with vs.variable_scope(self._scope, reuse=self._reuse,
+    with vs.variable_scope(self._scope,
+                           reuse=True if self._built else self._reuse,
                            custom_getter=variable_getter) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:

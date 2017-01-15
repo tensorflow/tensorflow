@@ -70,7 +70,9 @@ Status WorkerCachePartial::RefreshDeviceStatus(const string& device_name) {
     s = errors::InvalidArgument("Bad device name to RefreshDeviceStatus: ",
                                 device_name);
   }
-  std::unique_ptr<WorkerInterface> rwi(CreateWorker(task));
+  auto deleter = [this, task](WorkerInterface* wi) { ReleaseWorker(task, wi); };
+  std::unique_ptr<WorkerInterface, decltype(deleter)> rwi(CreateWorker(task),
+                                                          deleter);
   if (s.ok() && !rwi.get()) {
     s = errors::Internal("RefreshDeviceStatus, unknown worker task: ", task);
   }

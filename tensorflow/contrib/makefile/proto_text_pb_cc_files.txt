@@ -8,6 +8,7 @@ tensorflow/core/protobuf/queue_runner.pb.cc
 tensorflow/core/protobuf/named_tensor.pb.cc
 tensorflow/core/protobuf/meta_graph.pb.cc
 tensorflow/core/protobuf/config.pb.cc
+tensorflow/core/protobuf/debug.pb.cc
 tensorflow/core/lib/core/error_codes.pb.cc
 tensorflow/core/framework/versions.pb.cc
 tensorflow/core/framework/variable.pb.cc

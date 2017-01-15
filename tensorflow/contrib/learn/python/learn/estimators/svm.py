@@ -20,12 +20,9 @@ from __future__ import print_function
 
 import inspect
 import re
-import tempfile
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework import list_variables
-from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
@@ -149,11 +146,10 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         symmetric_l2_regularization=l2_regularization)
 
     self._feature_columns = feature_columns
-    self._model_dir = model_dir or tempfile.mkdtemp()
     self._chief_hook = linear._SdcaUpdateWeightsHook()  # pylint: disable=protected-access
     self._estimator = estimator.Estimator(
         model_fn=linear.sdca_model_fn,
-        model_dir=self._model_dir,
+        model_dir=model_dir,
         config=config,
         params={
             "head": head_lib._binary_svm_head(  # pylint: disable=protected-access
@@ -185,14 +181,29 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                                max_steps=max_steps)
 
   # pylint: disable=protected-access
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None,
-               checkpoint_path=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """See evaluable.Evaluable."""
-    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
-                                    feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name,
-                                    checkpoint_path=checkpoint_path)
+    return self._estimator.evaluate(
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        feed_fn=feed_fn,
+        batch_size=batch_size,
+        steps=steps,
+        metrics=metrics,
+        name=name,
+        checkpoint_path=checkpoint_path,
+        hooks=hooks)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -229,7 +240,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   # pylint: enable=protected-access
 
   def get_variable_names(self):
-    return [name for name, _ in list_variables(self._model_dir)]
+    return self._estimator.get_variable_names()
 
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
@@ -264,15 +275,15 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
-    for name, _ in list_variables(self._model_dir):
+    for name in self.get_variable_names():
       if (name.startswith("linear/") and
           name != "linear/bias_weight" and
           not re.match(optimizer_regex, name)):
-        values[name] = load_variable(self._model_dir, name)
+        values[name] = self.get_variable_value(name)
     if len(values) == 1:
       return values[list(values.keys())[0]]
     return values
 
   @property
   def bias_(self):
-    return load_variable(self._model_dir, name="linear/bias_weight")
+    return self.get_variable_value("linear/bias_weight")

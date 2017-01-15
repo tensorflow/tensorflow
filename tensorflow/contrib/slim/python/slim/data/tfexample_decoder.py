@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -137,7 +137,7 @@ class BoundingBox(ItemHandler):
       side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
       sides.append(side)
 
-    bounding_box = array_ops.concat(0, sides)
+    bounding_box = array_ops.concat(sides, 0)
     return array_ops.transpose(bounding_box)
 
 
@@ -192,7 +192,7 @@ class Tensor(ItemHandler):
         if isinstance(shape_dim, sparse_tensor.SparseTensor):
           shape_dim = sparse_ops.sparse_tensor_to_dense(shape_dim)
         shape_dims.append(shape_dim)
-      shape = array_ops.reshape(array_ops.pack(shape_dims), [-1])
+      shape = array_ops.reshape(array_ops.stack(shape_dims), [-1])
     if isinstance(tensor, sparse_tensor.SparseTensor):
       if shape is not None:
         tensor = sparse_ops.sparse_reshape(tensor, shape)
@@ -206,8 +206,13 @@ class Tensor(ItemHandler):
 class SparseTensor(ItemHandler):
   """An ItemHandler for SparseTensors."""
 
-  def __init__(self, indices_key=None, values_key=None, shape_key=None,
-               shape=None, densify=False, default_value=0):
+  def __init__(self,
+               indices_key=None,
+               values_key=None,
+               shape_key=None,
+               shape=None,
+               densify=False,
+               default_value=0):
     """Initializes the Tensor handler.
 
     Args:
@@ -246,14 +251,14 @@ class SparseTensor(ItemHandler):
     elif self._shape:
       shape = self._shape
     else:
-      shape = indices.shape
+      shape = indices.dense_shape
     indices_shape = array_ops.shape(indices.indices)
     rank = indices_shape[1]
     ids = math_ops.to_int64(indices.values)
     indices_columns_to_preserve = array_ops.slice(
-        indices.indices, [0, 0], array_ops.pack([-1, rank - 1]))
-    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
-                                       array_ops.reshape(ids, [-1, 1])])
+        indices.indices, [0, 0], array_ops.stack([-1, rank - 1]))
+    new_indices = array_ops.concat(
+        [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
 
     tensor = sparse_tensor.SparseTensor(new_indices, values.values, shape)
     if self._densify:
@@ -264,8 +269,7 @@ class SparseTensor(ItemHandler):
 class Image(ItemHandler):
   """An ItemHandler that decodes a parsed Tensor as an image."""
 
-  def __init__(self, image_key=None, format_key=None, shape=None,
-               channels=3):
+  def __init__(self, image_key=None, format_key=None, shape=None, channels=3):
     """Initializes the image.
 
     Args:
@@ -273,9 +277,10 @@ class Image(ItemHandler):
         is stored.
       format_key: the name of the TF-Example feature in which the image format
         is stored.
-      shape: the output shape of the image. If provided, the image is reshaped
-        accordingly. If left as None, no reshaping is done. A shape should be
-        supplied only if all the stored images have the same shape.
+      shape: the output shape of the image as 1-D `Tensor`
+        [height, width, channels]. If provided, the image is reshaped
+        accordingly. If left as None, no reshaping is done. A shape should
+        be supplied only if all the stored images have the same shape.
       channels: the number of channels in the image.
     """
     if not image_key:
@@ -300,36 +305,44 @@ class Image(ItemHandler):
     """Decodes the image buffer.
 
     Args:
-      image_buffer: T tensor representing the encoded image tensor.
+      image_buffer: The tensor representing the encoded image tensor.
       image_format: The image format for the image in `image_buffer`.
 
     Returns:
-      A decoder image.
+      A tensor that represents decoded image of self._shape, or
+      (?, ?, self._channels) if self._shape is not specified.
     """
+
     def decode_png():
       return image_ops.decode_png(image_buffer, self._channels)
+
     def decode_raw():
       return parsing_ops.decode_raw(image_buffer, dtypes.uint8)
+
     def decode_jpg():
       return image_ops.decode_jpeg(image_buffer, self._channels)
 
     # For RGBA images JPEG is not a valid decoder option.
     if self._channels > 3:
       pred_fn_pairs = {
-        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
-                            math_ops.equal(image_format, 'RAW')): decode_raw,
+          math_ops.logical_or(
+              math_ops.equal(image_format, 'raw'),
+              math_ops.equal(image_format, 'RAW')): decode_raw,
       }
       default_decoder = decode_png
     else:
       pred_fn_pairs = {
-        math_ops.logical_or(math_ops.equal(image_format, 'png'),
-                            math_ops.equal(image_format, 'PNG')): decode_png,
-        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
-                            math_ops.equal(image_format, 'RAW')): decode_raw,
+          math_ops.logical_or(
+              math_ops.equal(image_format, 'png'),
+              math_ops.equal(image_format, 'PNG')): decode_png,
+          math_ops.logical_or(
+              math_ops.equal(image_format, 'raw'),
+              math_ops.equal(image_format, 'RAW')): decode_raw,
       }
       default_decoder = decode_jpg
 
-    image = control_flow_ops.case(pred_fn_pairs, default=default_decoder, exclusive=True)
+    image = control_flow_ops.case(
+        pred_fn_pairs, default=default_decoder, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:
@@ -386,9 +399,8 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     Returns:
       the decoded items, a list of tensor.
     """
-    example = parsing_ops.parse_single_example(
-        serialized_example,
-        self._keys_to_features)
+    example = parsing_ops.parse_single_example(serialized_example,
+                                               self._keys_to_features)
 
     # Reshape non-sparse elements just once:
     for k in self._keys_to_features:

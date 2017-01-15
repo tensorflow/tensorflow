@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Text processor tests."""
 
 from __future__ import absolute_import
@@ -21,13 +20,19 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.learn.python.learn.preprocessing import CategoricalVocabulary
 from tensorflow.contrib.learn.python.learn.preprocessing import text
+from tensorflow.python.platform import test
 
 
-class TextTest(tf.test.TestCase):
+class TextTest(test.TestCase):
   """Text processor tests."""
 
   def testTokenizer(self):
@@ -50,16 +55,16 @@ class TextTest(tf.test.TestCase):
     self.assertAllEqual(res, ["abc", "фыва", "фыва", "abc", "12345678"])
 
   def testVocabularyProcessor(self):
-    vocab_processor = text.VocabularyProcessor(max_document_length=4,
-                                               min_frequency=1)
+    vocab_processor = text.VocabularyProcessor(
+        max_document_length=4, min_frequency=1)
     tokens = vocab_processor.fit_transform(["a b c", "a\nb\nc", "a, b - c"])
     self.assertAllEqual(
         list(tokens), [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
 
   def testVocabularyProcessorSaveRestore(self):
-    filename = tf.test.get_temp_dir() + "test.vocab"
-    vocab_processor = text.VocabularyProcessor(max_document_length=4,
-                                               min_frequency=1)
+    filename = test.get_temp_dir() + "test.vocab"
+    vocab_processor = text.VocabularyProcessor(
+        max_document_length=4, min_frequency=1)
     tokens = vocab_processor.fit_transform(["a b c", "a\nb\nc", "a, b - c"])
     vocab_processor.save(filename)
     new_vocab = text.VocabularyProcessor.restore(filename)
@@ -71,12 +76,11 @@ class TextTest(tf.test.TestCase):
     vocab.get("A")
     vocab.get("B")
     vocab.freeze()
-    vocab_processor = text.VocabularyProcessor(max_document_length=4,
-                                               vocabulary=vocab,
-                                               tokenizer_fn=list)
+    vocab_processor = text.VocabularyProcessor(
+        max_document_length=4, vocabulary=vocab, tokenizer_fn=list)
     tokens = vocab_processor.fit_transform(["ABC", "CBABAF"])
     self.assertAllEqual(list(tokens), [[1, 2, 0, 0], [0, 2, 1, 2]])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

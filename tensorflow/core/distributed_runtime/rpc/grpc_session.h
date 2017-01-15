@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -97,7 +98,7 @@ class GrpcSession : public Session {
 
  protected:
   // Takes ownership of `*master`.
-  void SetRemoteMaster(MasterInterface* master);
+  void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
 
  private:
   SessionOptions options_;
@@ -110,7 +111,14 @@ class GrpcSession : public Session {
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);
 
-  Status RunProto(CallOptions* call_options, RunStepRequest* req,
+  Status RunHelper(const RunOptions& run_options,
+                   const std::vector<std::pair<string, Tensor> >& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                   const string& prun_handle);
+
+  Status RunProto(CallOptions* call_options, MutableRunStepRequestWrapper* req,
                   RunStepResponse* resp);
 
   // Implementations for all the public interfaces.

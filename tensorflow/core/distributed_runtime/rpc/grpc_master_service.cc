@@ -46,8 +46,8 @@ namespace tensorflow {
 
 class GrpcMasterService : public AsyncServiceInterface {
  public:
-  GrpcMasterService(MasterEnv* env, ::grpc::ServerBuilder* builder)
-      : master_impl_(new Master(env, 0.0)), is_shutdown_(false) {
+  GrpcMasterService(Master* master, ::grpc::ServerBuilder* builder)
+      : master_impl_(master), is_shutdown_(false) {
     builder->RegisterService(&master_service_);
     cq_ = builder->AddCompletionQueue().release();
   }
@@ -55,7 +55,6 @@ class GrpcMasterService : public AsyncServiceInterface {
   ~GrpcMasterService() {
     delete shutdown_alarm_;
     delete cq_;
-    delete master_impl_;
   }
 
   void Shutdown() override {
@@ -105,6 +104,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(CreateSession, true);
     ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(PartialRunSetup, false);
       ENQUEUE_REQUEST(RunStep, true);
     }
     ENQUEUE_REQUEST(CloseSession, false);
@@ -127,7 +127,7 @@ class GrpcMasterService : public AsyncServiceInterface {
   }
 
  private:
-  Master* master_impl_;                // Owned.
+  Master* master_impl_;                // Not owned.
   ::grpc::ServerCompletionQueue* cq_;  // Owned.
   grpc::MasterService::AsyncService master_service_;
 
@@ -159,16 +159,30 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(ExtendSession, false);
   }
 
+  // RPC handler for setting up a partial run call.
+  void PartialRunSetupHandler(
+      MasterCall<PartialRunSetupRequest, PartialRunSetupResponse>* call) {
+    master_impl_->PartialRunSetup(&call->request, &call->response,
+                                  [call](const Status& status) {
+                                    call->SendResponse(ToGrpcStatus(status));
+                                  });
+    ENQUEUE_REQUEST(PartialRunSetup, false);
+  }
+
   // RPC handler for running one step in a session.
   void RunStepHandler(MasterCall<RunStepRequest, RunStepResponse>* call) {
     CallOptions* call_opts = new CallOptions;
+    RunStepRequestWrapper* wrapped_request =
+        new ProtoRunStepRequest(&call->request);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunStep(call_opts, &call->request, &call->response,
-                          [call, call_opts](const Status& status) {
-                            call->ClearCancelCallback();
-                            delete call_opts;
-                            call->SendResponse(ToGrpcStatus(status));
-                          });
+    master_impl_->RunStep(
+        call_opts, wrapped_request, &call->response,
+        [call, call_opts, wrapped_request](const Status& status) {
+          call->ClearCancelCallback();
+          delete call_opts;
+          delete wrapped_request;
+          call->SendResponse(ToGrpcStatus(status));
+        });
     ENQUEUE_REQUEST(RunStep, true);
   }
 
@@ -205,10 +219,9 @@ class GrpcMasterService : public AsyncServiceInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
 };
 
-AsyncServiceInterface* NewGrpcMasterService(MasterEnv* env,
+AsyncServiceInterface* NewGrpcMasterService(Master* master,
                                             ::grpc::ServerBuilder* builder) {
-  CHECK(!env->local_devices.empty());
-  return new GrpcMasterService(env, builder);
+  return new GrpcMasterService(master, builder);
 }
 
 }  // end namespace tensorflow

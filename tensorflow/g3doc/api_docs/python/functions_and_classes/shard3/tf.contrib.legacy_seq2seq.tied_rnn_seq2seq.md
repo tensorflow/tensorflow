@@ -11,7 +11,7 @@ Encoder and decoder use the same RNN cell and share parameters.
 
 *  <b>`encoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`loop_function`</b>: If not None, this function will be applied to i-th output
     in order to generate i+1-th input, and decoder_inputs will be ignored,
     except for the first element ("GO" symbol), see rnn_decoder for details.

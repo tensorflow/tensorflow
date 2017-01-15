@@ -57,7 +57,9 @@ allows the user to toggle between various dashboards.
           <div class="toolbar-title">TensorBoard</div>
           <paper-tabs selected="{{modeIndex}}" noink class="tabs" id="tabs">
             <template is="dom-repeat" items="[[tabs]]">
-              <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              <template is="dom-if" if="[[_isTabEnabled(item)]]">
+                <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              </template>
             </template>
           </paper-tabs>
           <div class="global-actions">
@@ -237,6 +239,14 @@ allows the user to toggle between various dashboards.
           type: Boolean,
           value: false,
         },
+        disabledTabs: String,
+      },
+      _isTabEnabled: function(tab) {
+        if (this.disabledTabs != null &&
+            this.disabledTabs.split(',').indexOf(tab) >= 0) {
+          return false;
+        }
+        return true;
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];

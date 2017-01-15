@@ -23,8 +23,10 @@ from __future__ import print_function
 import os
 import sys
 
-import tensorflow as tf
+import six
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import gfile
 from tensorflow.tools.tfprof import tfprof_log_pb2
 
 TRAINABLE_VARIABLES = '_trainable_variables'
@@ -49,7 +51,8 @@ def _fill_missing_graph_shape(graph, run_meta):
         if op.outputs[i].get_shape().is_fully_defined():
           continue
         node_stat_dims = node_stat_out.tensor_description.shape.dim
-        node_stat_shape = tf.TensorShape([d.size for d in node_stat_dims])
+        node_stat_shape = tensor_shape.TensorShape(
+            [d.size for d in node_stat_dims])
         try:
           op.outputs[i].set_shape(op.outputs[i].get_shape().merge_with(
               node_stat_shape))
@@ -90,7 +93,7 @@ def _get_logged_ops(graph, run_meta=None):
       entry.float_ops = int(stats.value)
       logged_ops[entry.name] = entry
 
-  for v in graph.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+  for v in graph.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES):
     if v.op.name not in logged_ops:
       entry = tfprof_log_pb2.OpLogEntry()
       entry.name = v.op.name
@@ -99,10 +102,9 @@ def _get_logged_ops(graph, run_meta=None):
     else:
       logged_ops[v.op.name].types.append(TRAINABLE_VARIABLES)
   if op_missing_shape > 0 and not run_meta:
-    sys.stderr.write(
-        '%d ops no flops stats due to incomplete shapes. '
-        'Consider passing run_meta to use run_time shapes.\n' %
-        op_missing_shape)
+    sys.stderr.write('%d ops no flops stats due to incomplete shapes. '
+                     'Consider passing run_meta to use run_time shapes.\n' %
+                     op_missing_shape)
   return logged_ops
 
 
@@ -124,7 +126,7 @@ def _merge_default_with_oplog(graph, op_log=None, run_meta=None):
     all_ops = dict()
     for entry in op_log.log_entries:
       all_ops[entry.name] = entry
-    for op_name, entry in logged_ops.iteritems():
+    for op_name, entry in six.iteritems(logged_ops):
       if op_name in all_ops:
         all_ops[op_name].types.extend(entry.types)
         if entry.float_ops > 0 and all_ops[op_name].float_ops == 0:
@@ -155,5 +157,5 @@ def write_op_log(graph, log_dir, op_log=None, run_meta=None):
   """
   op_log = _merge_default_with_oplog(graph, op_log, run_meta)
 
-  with tf.gfile.Open(os.path.join(log_dir, 'tfprof_log'), 'w') as log:
+  with gfile.Open(os.path.join(log_dir, 'tfprof_log'), 'w') as log:
     log.write(op_log.SerializeToString())

@@ -20,8 +20,9 @@ from sklearn import cross_validation
 from sklearn import datasets
 from sklearn import metrics
 import tensorflow as tf
-from tensorflow.contrib import layers
-from tensorflow.contrib import learn
+
+layers = tf.contrib.layers
+learn = tf.contrib.learn
 
 
 def my_model(features, target):
@@ -34,9 +35,11 @@ def my_model(features, target):
   # each layer having a dropout probability of 0.1.
   normalizer_fn = layers.dropout
   normalizer_params = {'keep_prob': 0.9}
-  features = layers.stack(features, layers.fully_connected, [10, 20, 10],
-                          normalizer_fn=normalizer_fn,
-                          normalizer_params=normalizer_params)
+  features = layers.stack(
+      features,
+      layers.fully_connected, [10, 20, 10],
+      normalizer_fn=normalizer_fn,
+      normalizer_params=normalizer_params)
 
   # Compute logits (1 per class) and compute loss.
   logits = layers.fully_connected(features, 3, activation_fn=None)
@@ -44,12 +47,15 @@ def my_model(features, target):
 
   # Create a tensor for training op.
   train_op = tf.contrib.layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='Adagrad',
       learning_rate=0.1)
 
   return ({
       'class': tf.argmax(logits, 1),
-      'prob': tf.nn.softmax(logits)}, loss, train_op)
+      'prob': tf.nn.softmax(logits)
+  }, loss, train_op)
 
 
 def main(unused_argv):
@@ -61,7 +67,9 @@ def main(unused_argv):
   classifier.fit(x_train, y_train, steps=1000)
 
   y_predicted = [
-      p['class'] for p in classifier.predict(x_test, as_iterable=True)]
+      p['class'] for p in classifier.predict(
+          x_test, as_iterable=True)
+  ]
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 

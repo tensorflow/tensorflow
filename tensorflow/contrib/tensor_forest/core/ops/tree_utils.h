@@ -17,6 +17,7 @@
 
 #include <limits>
 
+#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -51,9 +52,11 @@ T Sum(Tensor counts) {
   return count_sum(0);
 }
 
-// Get the DataColumnTypes number for the given feature.  The default type
-// is stored in index 0, individual feature types start at index 1.
-DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec);
+// Get the DataColumnTypes number for the given feature.
+DataColumnTypes FindDenseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec);
+DataColumnTypes FindSparseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec);
 
 // Given an Eigen::Tensor type, calculate the Gini impurity.
 template <typename T>
@@ -141,17 +144,19 @@ void Initialize(Tensor counts, T val = 0) {
 // Even though our input data is forced into float Tensors, it could have
 // originally been something else (e.g. categorical string data) which
 // we treat differently.
-bool DecideNode(const Tensor& point, int32 feature, float bias,
-                DataColumnTypes type = kDataFloat);
+bool DecideNode(const Tensor& dense_features,
+                const Tensor& sparse_input_indices,
+                const Tensor& sparse_input_values, int32 i, int32 feature,
+                float bias, const tensorforest::TensorForestDataSpec& spec);
 
 // Returns input_data(i, feature) > bias.
 template <typename T>
-bool DecideDenseNode(const T& input_data,
-                     int32 i, int32 feature, float bias,
-                     DataColumnTypes type = kDataFloat) {
-    CHECK_LT(i, input_data.dimensions()[0]);
-    CHECK_LT(feature, input_data.dimensions()[1]);
-    return Decide(input_data(i, feature), bias, type);
+bool DecideDenseNode(const T& input_data, int32 i, int32 feature, float bias,
+                     const tensorforest::TensorForestDataSpec& spec) {
+  CHECK_LT(i, input_data.dimensions()[0]);
+  CHECK_LT(feature, input_data.dimensions()[1]);
+  return Decide(input_data(i, feature), bias,
+                FindDenseFeatureSpec(feature, spec));
 }
 
 // If T is a sparse float matrix represented by sparse_input_indices and
@@ -189,23 +194,22 @@ float FindSparseValue(
   return 0.0;
 }
 
-// Returns t(i, feature) > bias, where t is the sparse tensor represented by
-// sparse_input_indices and sparse_input_values.
-template <typename T1, typename T2>
-bool DecideSparseNode(
-    const T1& sparse_input_indices,
-    const T2& sparse_input_values,
-    int32 i, int32 feature, float bias,
-    DataColumnTypes type = kDataFloat) {
-  return Decide(
-      FindSparseValue(sparse_input_indices, sparse_input_values, i, feature),
-      bias, type);
-}
-
 // Returns left/right decision between the input value and the threshold bias.
 // For floating point types, the decision is value > bias, but for
 // categorical data, it is value != bias.
 bool Decide(float value, float bias, DataColumnTypes type = kDataFloat);
+
+// Returns t(i, feature) > bias, where t is the sparse tensor represented by
+// sparse_input_indices and sparse_input_values.
+template <typename T1, typename T2>
+bool DecideSparseNode(const T1& sparse_input_indices,
+                      const T2& sparse_input_values, int32 i, int32 feature,
+                      float bias,
+                      const tensorforest::TensorForestDataSpec& spec) {
+  const float val =
+      FindSparseValue(sparse_input_indices, sparse_input_values, i, feature);
+  return Decide(val, bias, FindSparseFeatureSpec(feature, spec));
+}
 
 // Returns true if all the splits are initialized. Since they get initialized
 // in order, we can simply infer this from the last split.

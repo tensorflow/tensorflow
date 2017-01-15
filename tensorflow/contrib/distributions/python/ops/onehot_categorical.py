@@ -186,7 +186,7 @@ class _OneHotCategorical(distribution.Distribution):
     return self.logits.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
-    sample_shape = array_ops.concat(0, ([n], array_ops.shape(self.logits)))
+    sample_shape = array_ops.concat(([n], array_ops.shape(self.logits)), 0)
     logits = self.logits
     if logits.get_shape().ndims == 2:
       logits_2d = logits
@@ -215,7 +215,8 @@ class _OneHotCategorical(distribution.Distribution):
     else:
       logits_2d = array_ops.reshape(logits, [-1, self.num_classes])
       x_2d = array_ops.reshape(x, [-1, self.num_classes])
-    ret = -nn_ops.softmax_cross_entropy_with_logits(logits_2d, x_2d)
+    ret = -nn_ops.softmax_cross_entropy_with_logits(labels=x_2d,
+                                                    logits=logits_2d)
     ret = array_ops.reshape(ret, logits_shape)
     return ret
 
@@ -229,7 +230,8 @@ class _OneHotCategorical(distribution.Distribution):
       logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
     histogram_2d = nn_ops.softmax(logits_2d)
     ret = array_ops.reshape(
-        nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
+        nn_ops.softmax_cross_entropy_with_logits(labels=histogram_2d,
+                                                 logits=logits_2d),
         self.batch_shape())
     ret.set_shape(self.get_batch_shape())
     return ret
@@ -256,7 +258,7 @@ def _kl_categorical_categorical(a, b, name=None):
   """
   with ops.name_scope(
       name, "kl_categorical_categorical", [a.logits, b.logits]):
-      # sum(p*ln(p/q))
+    # sum(p*ln(p/q))
     return math_ops.reduce_sum(
         nn_ops.softmax(a.logits)*(nn_ops.log_softmax(a.logits)
             - nn_ops.log_softmax(b.logits)), reduction_indices=[-1])

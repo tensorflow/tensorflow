@@ -128,7 +128,12 @@ void ThreadPool::ParallelForWithWorkerId(
     const std::function<void(int64, int64, int)>& fn) {
   impl_->ParallelFor(total, cost_per_unit,
                      [this, &fn](int64 start, int64 limit) {
-                       fn(start, limit, CurrentThreadId());
+                       // ParallelFor may use the current thread to do some
+                       // work synchronously. When calling CurrentThreadId()
+                       // from outside of the thread pool, we get -1, so we can
+                       // shift every id up by 1.
+                       int id = CurrentThreadId() + 1;
+                       fn(start, limit, id);
                      });
 }
 

@@ -189,7 +189,7 @@ class Categorical(distribution.Distribution):
     samples = math_ops.cast(samples, self.dtype)
     ret = array_ops.reshape(
         array_ops.transpose(samples),
-        array_ops.concat(0, ([n], self.batch_shape())))
+        array_ops.concat(([n], self.batch_shape()), 0))
     return ret
 
   def _log_prob(self, k):
@@ -202,7 +202,8 @@ class Categorical(distribution.Distribution):
       logits_shape = array_ops.shape(logits)[:-1]
       k *= array_ops.ones(logits_shape, dtype=k.dtype)
       k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
-    return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
+    return -nn_ops.sparse_softmax_cross_entropy_with_logits(labels=k,
+                                                            logits=logits)
 
   def _prob(self, k):
     return math_ops.exp(self._log_prob(k))
@@ -214,7 +215,8 @@ class Categorical(distribution.Distribution):
       logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
     histogram_2d = nn_ops.softmax(logits_2d)
     ret = array_ops.reshape(
-        nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
+        nn_ops.softmax_cross_entropy_with_logits(labels=histogram_2d,
+                                                 logits=logits_2d),
         self.batch_shape())
     ret.set_shape(self.get_batch_shape())
     return ret

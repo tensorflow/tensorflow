@@ -30,24 +30,6 @@ using shape_inference::InferenceContext;
 using shape_inference::Shape;
 using tensorforest::CheckTensorBounds;
 
-REGISTER_OP("ScatterAddNdim")
-    .Input("input: Ref(float)")
-    .Input("indices: int32")
-    .Input("deltas: float")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
-    .Doc(R"doc(
-  Add elements in deltas to mutable input according to indices.
-
-  input: A N-dimensional float tensor to mutate.
-  indices:= A 2-D int32 tensor. The size of dimension 0 is the number of
-    deltas, the size of dimension 1 is the rank of the input.  `indices[i]`
-    gives the coordinates of input that `deltas[i]` should add to.  If
-    `indices[i]` does not fully specify a location (it has less indices than
-    there are dimensions in `input`), it is assumed that they are start
-    indices and that deltas contains enough values to fill in the remaining
-    input dimensions.
-  deltas: `deltas[i]` is the value to add to input at index indices[i][:]
-)doc");
 
 class ScatterAddNdim : public OpKernel {
  public:

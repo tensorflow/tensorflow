@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import copy
 
+import six
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug import debug_data
 from tensorflow.python.framework import ops
@@ -79,7 +81,7 @@ class NodeStepper(object):
     a = tf.Variable(1.0, name="a")
     b = tf.Variable(2.0, anme="b")
     c = tf.add(a, b, name="c")
-    d = tf.mul(a, c, name="d")
+    d = tf.multiply(a, c, name="d")
 
     sess = tf.Session()
     sess.run(tf.initialize_all_varialbes())
@@ -174,7 +176,7 @@ class NodeStepper(object):
     fetch_names = []
     fetch_list = []
     for fetch in flattened_fetches:
-      if isinstance(fetch, str):
+      if isinstance(fetch, six.string_types):
         fetch_names.append(fetch)
         fetch_list.append(self._sess.graph.as_graph_element(fetch))
       else:
@@ -345,7 +347,7 @@ class NodeStepper(object):
       (bool) whether the graph element is feedable.
     """
 
-    if not isinstance(name, str):
+    if not isinstance(name, six.string_types):
       raise TypeError("Expected type str; got type %s" % type(name))
 
     elem = self._sess.graph.as_graph_element(name)
@@ -363,7 +365,7 @@ class NodeStepper(object):
         tree to the fetched graph element of this stepper instance.
     """
 
-    if not isinstance(tensor_name, str):
+    if not isinstance(tensor_name, six.string_types):
       raise TypeError("Expected type str; got type %s" % type(tensor_name))
 
     node_name = self._get_node_name(tensor_name)
@@ -442,7 +444,7 @@ class NodeStepper(object):
     # The feeds to be used in the Session.run() call.
     feeds = {}
 
-    if isinstance(target, str):
+    if isinstance(target, six.string_types):
       # Fetch target is a string. Assume it is the name of the Tensor or Op and
       # will attempt to find it in the Session's graph.
       target_name = target
@@ -703,15 +705,22 @@ class NodeStepper(object):
       The same return value as self.cont() as called on the final fetch.
     """
 
-    # Restore variable to their previous values.
-    for var_name in self._cached_variable_values:
+    self.restore_variable_values()
+    return self._sess.run(self._fetches, feed_dict=self._client_feed_dict)
+
+  def restore_variable_values(self):
+    """Restore variables to the initial values.
+
+    "Initial value" refers to the value when this NodeStepper instance was
+    first constructed.
+    """
+
+    for var_name in self._dirty_variables:
       self._sess.run(self._variable_initializers[var_name],
                      feed_dict={
                          self._variable_initial_values[var_name]:
                              self._cached_variable_values[var_name]
                      })
-
-    return self._sess.run(self._fetches, feed_dict=self._client_feed_dict)
 
   def handle_names(self):
     """Return names of the TensorHandles that the debugger is holding.
@@ -800,7 +809,11 @@ class NodeStepper(object):
         or through a TensorHandle.
     """
 
-    if tensor_name in self._override_tensors:
+    if self.is_placeholder(tensor_name):
+      if ":" not in tensor_name:
+        tensor_name += ":0"
+      return self._client_feed_dict[tensor_name]
+    elif tensor_name in self._override_tensors:
       return self._override_tensors[tensor_name]
     elif tensor_name in self._tensor_handles:
       return self._tensor_handles[tensor_name].eval()

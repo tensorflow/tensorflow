@@ -68,6 +68,8 @@ Example:
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
 ```
 
+## Ops
+
 @@get_default_monitors
 @@BaseMonitor
 @@CaptureVariable
@@ -1015,7 +1017,7 @@ class ExportMonitor(EveryN):
 
 
 class CheckpointSaver(BaseMonitor):
-  """Saves checkpoints every N steps."""
+  """Saves checkpoints every N steps or N seconds."""
 
   def __init__(self,
                checkpoint_dir,

@@ -25,10 +25,6 @@
 #   - Anaconda3
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
 
-# All commands shall pass, and all should be visible.
-set -x
-set -e
-
 # Use a temporary directory with a short name.
 export TMPDIR="C:/tmp"
 mkdir -p "$TMPDIR"
@@ -51,3 +47,11 @@ export PATH="/c/Program Files/Anaconda3:$PATH"
 
 # Make sure we have pip in PATH
 export PATH="/c/Program Files/Anaconda3/Scripts:$PATH"
+
+# Add Cuda and Cudnn dll directories into PATH
+export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/bin:$PATH"
+export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPTI/libx64:$PATH"
+export PATH="/c/tools/cuda/bin:$PATH"
+
+# Set the common build options on Windows
+export BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'

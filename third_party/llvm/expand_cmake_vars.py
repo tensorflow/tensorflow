@@ -47,7 +47,7 @@ def _expand_variables(input_str, cmake_vars):
     The expanded string.
   """
   def replace(match):
-    if cmake_vars.has_key(match.group(1)):
+    if match.group(1) in cmake_vars:
       return cmake_vars[match.group(1)]
     return ""
   return _CMAKE_VAR_REGEX.sub(replace, input_str)

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cinttypes>
-#include <unordered_map>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -47,6 +46,15 @@ const string PADDING_VALID_STR = "VALID";
 const string PADDING_SAME_STR = "SAME";
 const string PADDING_NA = "NA";
 const string NULL_OUTPUT_NAME = "NULL";
+
+// This is a temporary workaround to support android build
+// where std::string is not supported even with c++11 option.
+template <typename T>
+static string ToString(T val) {
+  std::stringstream stream;
+  stream << val;
+  return stream.str();
+}
 
 /**
  * graph loading functions
@@ -95,6 +103,7 @@ Status GraphTransferer::LoadGraphFromProto(
       return status;
     }
   }
+  SortParams(output_node_names);
   ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
@@ -263,6 +272,47 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   return status;
 }
 
+void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
+  // TODO(satok): optimize complexity
+  std::unordered_map<int, NodeInputParams*> input_map;
+  for (NodeInputParams& input : node_input_params_list_) {
+    input_map.emplace(input.node_id, &input);
+  }
+
+  // Setup dependency map placeholder
+  std::vector<int> output_node_ids;
+  std::unordered_map<int, std::unordered_set<int>> dependency_map;
+  for (const NodeTransferParams& params : node_transfer_params_list_) {
+    const int node_id = params.node_id;
+    for (const string& output_node_name : output_node_names) {
+      if (params.name == output_node_name) {
+        output_node_ids.emplace_back(node_id);
+      }
+    }
+
+    dependency_map.emplace(std::piecewise_construct, std::make_tuple(node_id),
+                           std::make_tuple());
+    if (params.inputs_size == 0) {
+      continue;
+    }
+    CHECK(input_map.count(node_id) == 1);
+    for (std::tuple<int, int>& id_and_port :
+         input_map.at(node_id)->input_node_id_and_output_port_list) {
+      dependency_map.at(node_id).emplace(std::get<0>(id_and_port));
+    }
+  }
+
+  // Create dependency map traversed from output nodes
+  std::unordered_set<int> completed;
+  for (int output_node_id : output_node_ids) {
+    FillDependencyRec(output_node_id, dependency_map, completed);
+  }
+
+  std::sort(node_transfer_params_list_.begin(),
+            node_transfer_params_list_.end(),
+            TransferParamsComparator(dependency_map));
+}
+
 void GraphTransferer::EnableStrictCheckMode(const bool enable) {
   strict_check_mode_ = enable;
 }
@@ -363,14 +413,16 @@ void GraphTransferer::RegisterConstantNode(
   VLOG(1) << "Register constant node: " << node.name();
   CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string data_name = DATA_NODE_PREFIX + std::to_string(id);
+  const string data_name = DATA_NODE_PREFIX + ToString(id);
   const int output_node_size = node.num_outputs();
   CHECK(output_node_size == 1);
   // TODO(satok): support multiple outputs?
   const int output_index = 0;
   const DataType dt = node.output_type(output_index);
   const size_t max_bytes_per_data = DataTypeSize(dt);
-  CHECK(max_bytes_per_data > 0);
+  CHECK(max_bytes_per_data > 0) << "dt = " << dt << ", " + DataTypeString(dt)
+                                << ", " << max_bytes_per_data << ", "
+                                << (int)(DataTypeSize(dt)) << ",,,,,,,";
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
   shape_inference::ShapeHandle shape_handle = context->output(output_index);
   const shape_inference::DimensionHandle num_elements_dim =
@@ -398,16 +450,25 @@ void GraphTransferer::RegisterConstantNode(
                               {{shape[0], shape[1], shape[2], shape[3]}},
                               data_name,
                               data_size});
+  // TODO(satok): Remove. Determine constant value without dryrun
+  if (!output_tensor_map.empty() && data_size != 0) {
+    const Tensor* tensor = output_tensor_map.at(node.name());
+    CHECK(tensor != nullptr);
+    StringPiece sp = tensor->tensor_data();
+    CHECK(data_size == sp.size());
+    std::vector<uint8>& data = const_node_transfer_params_list_.back().data;
+    data.resize(sp.size());
+    std::memcpy(&data[0], &sp.data()[0], data_size);
+  }
 }
 
 int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
   VLOG(1) << "Cache constant shape.";
   // TODO(satok): Handle non-4dim strides
   CHECK(shape.size() == 4);
-  const string shape_name = CONST_SHAPE_PREFIX + std::to_string(shape.at(0)) +
-                            'x' + std::to_string(shape.at(1)) + 'x' +
-                            std::to_string(shape.at(2)) + 'x' +
-                            std::to_string(shape.at(3));
+  const string shape_name = CONST_SHAPE_PREFIX + ToString(shape.at(0)) + 'x' +
+                            ToString(shape.at(1)) + 'x' +
+                            ToString(shape.at(2)) + 'x' + ToString(shape.at(3));
   if (node_name_to_id_cache_map_.count(shape_name) <= 0) {
     node_name_cache_list_.emplace_back(nullptr);
     const int id = node_name_cache_list_.size() - 1;
@@ -589,10 +650,10 @@ void GraphTransferer::AppendNodeParams(const string& name, const int id,
                                        const int outputs_size) {
   VLOG(1) << "Append node params: " << name;
   // TODO(satok): store padding as Padding?
-  const string output_name = OUTPUTS_NODE_PREFIX + std::to_string(id);
+  const string output_name = OUTPUTS_NODE_PREFIX + ToString(id);
   node_transfer_params_list_.emplace_back(
       NodeTransferParams{name, id, type, type_id, PADDING_PREFIX + padding_str,
-                         INPUTS_NODE_PREFIX + std::to_string(id),
+                         INPUTS_NODE_PREFIX + ToString(id),
                          inputs_size + static_cast<int>(extra_inputs.size()),
                          outputs_size <= 0 ? NULL_OUTPUT_NAME : output_name,
                          static_cast<int>(outputs_size)});
@@ -761,6 +822,73 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
   for (int i = 0; i < SHAPE_ARRAY_SIZE; ++i) {
     CHECK(expected[i] == actual[i]);
   }
+}
+
+GraphTransferer::TransferParamsComparator::TransferParamsComparator(
+    const std::unordered_map<int, std::unordered_set<int>>& dep_map)
+    : dependency_map_(dep_map) {}
+
+bool GraphTransferer::TransferParamsComparator::operator()(
+    const GraphTransferer::NodeTransferParams& obj0,
+    const GraphTransferer::NodeTransferParams& obj1) {
+  const int node_id0 = obj0.node_id;
+  const int node_id1 = obj1.node_id;
+  bool obj0_uses_obj1 = false;
+  if (dependency_map_.count(node_id0)) {
+    obj0_uses_obj1 = dependency_map_.at(node_id0).count(node_id1) > 0;
+  }
+  bool obj1_uses_obj0 = false;
+  if (dependency_map_.count(node_id1)) {
+    obj1_uses_obj0 = dependency_map_.at(node_id1).count(node_id0) > 0;
+  }
+  CHECK(!obj0_uses_obj1 || !obj1_uses_obj0);
+  if (obj0_uses_obj1) {
+    return false;
+  } else if (obj1_uses_obj0) {
+    return true;
+  }
+  return node_id0 > node_id1;
+}
+
+/* static */ void GraphTransferer::FillDependencyRec(
+    const int node_id,
+    std::unordered_map<int, std::unordered_set<int>>& dep_map,
+    std::unordered_set<int>& completed) {
+  if (dep_map.count(node_id) == 0 || dep_map.at(node_id).empty() ||
+      completed.count(node_id) == 1) {
+    return;
+  }
+  CHECK(dep_map.count(node_id) == 1);
+
+  // Complete children's dependency map
+  for (int child_node_id : dep_map.at(node_id)) {
+    CHECK(child_node_id != node_id);
+    if (completed.count(child_node_id) != 0) {
+      continue;
+    }
+    FillDependencyRec(child_node_id, dep_map, completed);
+  }
+
+  // Find additional depending ids
+  std::vector<int> depending_ids;
+  for (int child_node_id : dep_map.at(node_id)) {
+    if (dep_map.count(child_node_id) == 0) {
+      continue;
+    }
+    for (int depending_id : dep_map.at(child_node_id)) {
+      depending_ids.emplace_back(depending_id);
+    }
+  }
+
+  // Insert additional depending ids
+  for (int depending_id : depending_ids) {
+    if (dep_map.at(node_id).count(depending_id) == 0) {
+      dep_map.at(node_id).emplace(depending_id);
+    }
+  }
+
+  // DP: Record completed node id
+  completed.emplace(node_id);
 }
 
 void GraphTransferer::ClearCache() {

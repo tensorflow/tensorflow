@@ -17,40 +17,39 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
+import sys
 import tempfile
 
 import numpy as np
 from six.moves import urllib
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import experiment
+from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python import debug as tf_debug
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_string("data_dir", "/tmp/iris_data",
-                    "Directory to save the training and test data in.")
-flags.DEFINE_string("model_dir", "", "Directory to save the trained model in.")
-flags.DEFINE_integer("train_steps", 10, "Number of steps to run trainer.")
-flags.DEFINE_boolean("debug", False,
-                     "Use debugger to track down bad values during training")
 
 # URLs to download data sets from, if necessary.
 IRIS_TRAINING_DATA_URL = "https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/examples/tutorials/monitors/iris_training.csv"
 IRIS_TEST_DATA_URL = "https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/examples/tutorials/monitors/iris_test.csv"
 
 
-def maybe_download_data():
+def maybe_download_data(data_dir):
   """Download data sets if necessary.
+
+  Args:
+    data_dir: Path to where data should be downloaded.
 
   Returns:
     Paths to the training and test data files.
   """
 
-  if not os.path.isdir(FLAGS.data_dir):
-    os.makedirs(FLAGS.data_dir)
+  if not os.path.isdir(data_dir):
+    os.makedirs(data_dir)
 
-  training_data_path = os.path.join(FLAGS.data_dir,
+  training_data_path = os.path.join(data_dir,
                                     os.path.basename(IRIS_TRAINING_DATA_URL))
   if not os.path.isfile(training_data_path):
     train_file = open(training_data_path, "wt")
@@ -59,8 +58,7 @@ def maybe_download_data():
 
     print("Training data are downloaded to %s" % train_file.name)
 
-  test_data_path = os.path.join(FLAGS.data_dir,
-                                os.path.basename(IRIS_TEST_DATA_URL))
+  test_data_path = os.path.join(data_dir, os.path.basename(IRIS_TEST_DATA_URL))
   if not os.path.isfile(test_data_path):
     test_file = open(test_data_path, "wt")
     urllib.request.urlretrieve(IRIS_TEST_DATA_URL, test_file.name)
@@ -71,8 +69,18 @@ def maybe_download_data():
   return training_data_path, test_data_path
 
 
+_IRIS_INPUT_DIM = 4
+
+
+def iris_input_fn():
+  iris = base.load_iris()
+  features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
+  labels = tf.reshape(tf.constant(iris.target), [-1])
+  return features, labels
+
+
 def main(_):
-  training_data_path, test_data_path = maybe_download_data()
+  training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
 
   # Load datasets.
   training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
@@ -94,22 +102,72 @@ def main(_):
       n_classes=3,
       model_dir=model_dir)
 
-  monitors = [tf_debug.LocalCLIDebugHook()] if FLAGS.debug else None
+  hooks = ([tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type)] if FLAGS.debug
+           else None)
 
-  # Fit model.
-  classifier.fit(x=training_set.data,
-                 y=training_set.target,
-                 steps=FLAGS.train_steps,
-                 monitors=monitors)
+  if not FLAGS.use_experiment:
+    # Fit model.
+    classifier.fit(x=training_set.data,
+                   y=training_set.target,
+                   steps=FLAGS.train_steps,
+                   monitors=hooks)
 
-  # Evaluate accuracy.
-  accuracy_score = classifier.evaluate(
-      x=test_set.data, y=test_set.target)["accuracy"]
-  # TODO(cais): Add debug monitor for evaluate()
+    # Evaluate accuracy.
+    accuracy_score = classifier.evaluate(x=test_set.data,
+                                         y=test_set.target,
+                                         hooks=hooks)["accuracy"]
+  else:
+    ex = experiment.Experiment(classifier,
+                               train_input_fn=iris_input_fn,
+                               eval_input_fn=iris_input_fn,
+                               train_steps=FLAGS.train_steps,
+                               eval_delay_secs=0,
+                               eval_steps=1,
+                               train_monitors=hooks,
+                               eval_hooks=hooks)
+    ex.train()
+    accuracy_score = ex.evaluate()["accuracy"]
 
   print("After training %d steps, Accuracy = %f" %
         (FLAGS.train_steps, accuracy_score))
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--data_dir",
+      type=str,
+      default="/tmp/iris_data",
+      help="Directory to save the training and test data in.")
+  parser.add_argument(
+      "--model_dir",
+      type=str,
+      default="",
+      help="Directory to save the trained model in.")
+  parser.add_argument(
+      "--train_steps",
+      type=int,
+      default=10,
+      help="Number of steps to run trainer.")
+  parser.add_argument(
+      "--use_experiment",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use tf.contrib.learn Experiment to run training and evaluation")
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--debug",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use debugger to track down bad values during training")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

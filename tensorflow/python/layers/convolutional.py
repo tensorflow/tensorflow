@@ -34,7 +34,7 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.layers import base
-from tensorflow.python.layers import conv_utils as utils
+from tensorflow.python.layers import utils
 
 
 class _Conv(base._Layer):  # pylint: disable=protected-access
@@ -90,7 +90,7 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -135,14 +135,14 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -226,7 +226,7 @@ class Conv1D(_Conv):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -262,7 +262,7 @@ def conv1d(inputs,
            activation=None,
            use_bias=True,
            kernel_initializer=None,
-           bias_initializer=init_ops.zeros_initializer,
+           bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
@@ -393,7 +393,7 @@ class Conv2D(_Conv):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -429,7 +429,7 @@ def conv2d(inputs,
            activation=None,
            use_bias=True,
            kernel_initializer=None,
-           bias_initializer=init_ops.zeros_initializer,
+           bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
@@ -566,7 +566,7 @@ class Conv3D(_Conv):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -602,7 +602,7 @@ def conv3d(inputs,
            activation=None,
            use_bias=True,
            kernel_initializer=None,
-           bias_initializer=init_ops.zeros_initializer,
+           bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
            bias_regularizer=None,
            activity_regularizer=None,
@@ -708,6 +708,12 @@ class SeparableConv2D(Conv2D):
       `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
       `(batch, width, height, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, width, height)`.
+    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      the dilation rate to use for dilated convolution.
+      Can be a single integer to specify the same value for
+      all spatial dimensions.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any stride value != 1.
     depth_multiplier: The number of depthwise convolution output channels for
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
@@ -734,12 +740,13 @@ class SeparableConv2D(Conv2D):
                strides=(1, 1),
                padding='valid',
                data_format='channels_last',
+               dilation_rate=(1, 1),
                depth_multiplier=1,
                activation=None,
                use_bias=True,
                depthwise_initializer=None,
                pointwise_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                depthwise_regularizer=None,
                pointwise_regularizer=None,
                bias_regularizer=None,
@@ -753,6 +760,7 @@ class SeparableConv2D(Conv2D):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activation,
         use_bias=use_bias,
         bias_regularizer=bias_regularizer,
@@ -793,21 +801,21 @@ class SeparableConv2D(Conv2D):
         initializer=self.depthwise_initializer,
         regularizer=self.depthwise_regularizer,
         trainable=True,
-        dtype=self._dtype)
+        dtype=self.dtype)
     self.pointwise_kernel = vs.get_variable(
         'pointwise_kernel',
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         regularizer=self.pointwise_regularizer,
         trainable=True,
-        dtype=self._dtype)
+        dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -822,7 +830,8 @@ class SeparableConv2D(Conv2D):
         self.depthwise_kernel,
         self.pointwise_kernel,
         strides=(1,) + self.strides + (1,),
-        padding=self.padding.upper())
+        padding=self.padding.upper(),
+        rate=self.dilation_rate)
 
     if self.data_format == 'channels_first':
       # Reshape to channels first
@@ -845,12 +854,13 @@ def separable_conv2d(inputs,
                      strides=(1, 1),
                      padding='valid',
                      data_format='channels_last',
+                     dilation_rate=(1, 1),
                      depth_multiplier=1,
                      activation=None,
                      use_bias=True,
                      depthwise_initializer=None,
                      pointwise_initializer=None,
-                     bias_initializer=init_ops.zeros_initializer,
+                     bias_initializer=init_ops.zeros_initializer(),
                      depthwise_regularizer=None,
                      pointwise_regularizer=None,
                      bias_regularizer=None,
@@ -884,6 +894,12 @@ def separable_conv2d(inputs,
       `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
       `(batch, width, height, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, width, height)`.
+    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      the dilation rate to use for dilated convolution.
+      Can be a single integer to specify the same value for
+      all spatial dimensions.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any stride value != 1.
     depth_multiplier: The number of depthwise convolution output channels for
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
@@ -915,6 +931,7 @@ def separable_conv2d(inputs,
       strides=strides,
       padding=padding,
       data_format=data_format,
+      dilation_rate=dilation_rate,
       depth_multiplier=depth_multiplier,
       activation=activation,
       use_bias=use_bias,
@@ -979,7 +996,7 @@ class Conv2DTranspose(Conv2D):
                activation=None,
                use_bias=True,
                kernel_initializer=None,
-               bias_initializer=init_ops.zeros_initializer,
+               bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
@@ -1023,14 +1040,14 @@ class Conv2DTranspose(Conv2D):
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=(self.filters,),
                                   initializer=self.bias_initializer,
                                   regularizer=self.bias_regularizer,
                                   trainable=True,
-                                  dtype=self._dtype)
+                                  dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1048,7 +1065,7 @@ class Conv2DTranspose(Conv2D):
 
     def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
       if isinstance(dim_size, ops.Tensor):
-        dim_size = math_ops.mul(dim_size, stride_size)
+        dim_size = math_ops.multiply(dim_size, stride_size)
       elif dim_size is not None:
         dim_size *= stride_size
 
@@ -1067,7 +1084,7 @@ class Conv2DTranspose(Conv2D):
       output_shape = (batch_size, out_height, out_width, self.filters)
       strides = (1, stride_h, stride_w, 1)
 
-    output_shape_tensor = array_ops.pack(output_shape)
+    output_shape_tensor = array_ops.stack(output_shape)
     outputs = nn.conv2d_transpose(
         inputs,
         self.kernel,
@@ -1105,7 +1122,7 @@ def conv2d_transpose(inputs,
                      activation=None,
                      use_bias=True,
                      kernel_initializer=None,
-                     bias_initializer=init_ops.zeros_initializer,
+                     bias_initializer=init_ops.zeros_initializer(),
                      kernel_regularizer=None,
                      bias_regularizer=None,
                      activity_regularizer=None,

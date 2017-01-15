@@ -98,9 +98,8 @@ Every node should have a unique identifier that's not used by any other nodes
 in the graph. If you don't specify one as you're building a graph using the
 Python API, one reflecting the name of operation, such as "MatMul",
 concatenated with a monotonically increasing number, such as "5", will be
-picked for you. an arbitrary one will be picked for you. The name is used when
-defining the connections between nodes, and when setting inputs and outputs for
-the whole graph when it's run.
+picked for you. The name is used when defining the connections between nodes,
+and when setting inputs and outputs for the whole graph when it's run.
 
 ### `op`
 
@@ -118,7 +117,7 @@ inputs might have a list like `["some_node_name", "another_node_name"]`, which
 is equivalent to `["some_node_name:0", "another_node_name:0"]`, and defines the
 node's first input as the first output from the node with the name
 `"some_node_name"`, and a second input from the first output of
-`"another_node_name
+`"another_node_name"`
 
 ### `device`
 

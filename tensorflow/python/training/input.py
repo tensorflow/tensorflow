@@ -27,7 +27,6 @@ import collections
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 
@@ -69,7 +69,7 @@ def match_filenames_once(pattern, name=None):
 def limit_epochs(tensor, num_epochs=None, name=None):
   """Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
-  Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+  Note: creates local counter `epochs`. Use `local_variables_initializer()` to
   initialize local variables.
 
   Args:
@@ -111,7 +111,7 @@ def input_producer(input_tensor,
   """Output the rows of `input_tensor` to a queue for an input pipeline.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     input_tensor: A tensor with the rows to produce. Must be at least
@@ -164,7 +164,7 @@ def input_producer(input_tensor,
         queue_runner.QueueRunner(
             q, [enq], cancel_op=cancel_op))
     if summary_name is not None:
-      summary.scalar("queue/%s/%s" % (q.name, summary_name),
+      summary.scalar(summary_name,
                      math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
     return q
 
@@ -180,7 +180,7 @@ def string_input_producer(string_tensor,
   """Output strings (e.g. filenames) to a queue for an input pipeline.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     string_tensor: A 1-D string tensor with the strings to produce.
@@ -235,7 +235,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
   """Produces the integers from 0 to limit-1 in a queue.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     limit: An int32 scalar tensor.
@@ -657,7 +657,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
-    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+    summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.cast(queue.size(), dtypes.float32) *
                    (1. / capacity))
 
@@ -692,7 +692,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
     queue = _which_queue(dynamic_pad)(
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
-    summary.scalar("queue/%s/fraction_of_%d_full" % (queue.name, capacity),
+    summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.cast(queue.size(), dtypes.float32) *
                    (1. / capacity))
 
@@ -729,8 +729,8 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = (
-        "queue/%sfraction_over_%d_of_%d_full" %
-        (name, min_after_dequeue, capacity - min_after_dequeue))
+        "fraction_over_%d_of_%d_full" %
+        (min_after_dequeue, capacity - min_after_dequeue))
     summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
@@ -766,8 +766,8 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = (
-        "queue/%sfraction_over_%d_of_%d_full" %
-        (name, min_after_dequeue, capacity - min_after_dequeue))
+        "fraction_over_%d_of_%d_full" %
+        (min_after_dequeue, capacity - min_after_dequeue))
     summary.scalar(summary_name, full)
 
     if allow_smaller_final_batch:
@@ -831,7 +831,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   operations that depend on fixed batch_size would fail.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.
@@ -851,7 +851,8 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
     name: (Optional) A name for the operations.
 
   Returns:
-    A list or dictionary of tensors with the same types as `tensors`.
+    A list or dictionary of tensors with the same types as `tensors` (except if
+    the input is a list of one element, then it returns a tensor, not a list).
 
   Raises:
     ValueError: If the `shapes` are not specified, and cannot be
@@ -1123,7 +1124,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   operations that depend on fixed batch_size would fail.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.

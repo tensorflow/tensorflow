@@ -22,12 +22,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
-DebuggerState::DebuggerState(
-    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches)
-    : watches(watches), debug_urls_() {
+DebuggerState::DebuggerState(const DebugOptions& debug_options)
+    : watches(debug_options.debug_tensor_watch_opts()), debug_urls_() {
   for (const DebugTensorWatch& watch : watches) {
     for (const string& url : watch.debug_urls()) {
       debug_urls_.insert(url);
@@ -64,8 +64,15 @@ const string DebuggerState::SummarizeDebugTensorWatches() {
   return oss.str();
 }
 
-Status DebuggerState::InsertNodes(Graph* graph, Device* device) {
-  return DebugNodeInserter::InsertNodes(watches, graph, device);
+Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
+  Status status;
+
+  status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
+  if (status.ok()) {
+    status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
+  }
+
+  return status;
 }
 
 // static

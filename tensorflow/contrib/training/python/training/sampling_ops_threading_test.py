@@ -18,18 +18,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 from tensorflow.contrib.training.python.training import sampling_ops
+from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class SamplingOpsThreadingTest(tf.test.TestCase):
+class SamplingOpsThreadingTest(test.TestCase):
 
   def testMultiThreadedEstimateDataDistribution(self):
     num_classes = 10
 
     # Set up graph.
-    tf.set_random_seed(1234)
-    label = tf.cast(tf.round(tf.random_uniform([1]) * num_classes), tf.int32)
+    random_seed.set_random_seed(1234)
+    label = math_ops.cast(
+        math_ops.round(random_ops.random_uniform([1]) * num_classes),
+        dtypes_lib.int32)
 
     prob_estimate = sampling_ops._estimate_data_distribution(  # pylint: disable=protected-access
         label, num_classes)
@@ -39,21 +49,22 @@ class SamplingOpsThreadingTest(tf.test.TestCase):
 
     # Use queues to run multiple threads over the graph, each of which
     # fetches `prob_estimate`.
-    queue = tf.FIFOQueue(
+    queue = data_flow_ops.FIFOQueue(
         capacity=25,
         dtypes=[prob_estimate.dtype],
         shapes=[prob_estimate.get_shape()])
     enqueue_op = queue.enqueue([prob_estimate])
-    tf.train.add_queue_runner(tf.train.QueueRunner(queue, [enqueue_op] * 25))
+    queue_runner_impl.add_queue_runner(
+        queue_runner_impl.QueueRunner(queue, [enqueue_op] * 25))
     out_tensor = queue.dequeue()
 
     # Run the multi-threaded session.
     with self.test_session() as sess:
       # Need to initialize variables that keep running total of classes seen.
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
 
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(coord=coord)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(coord=coord)
 
       for _ in range(25):
         sess.run([out_tensor])
@@ -63,4 +74,4 @@ class SamplingOpsThreadingTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

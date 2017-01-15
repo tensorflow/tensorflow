@@ -121,7 +121,7 @@ debiased (see docstring in `assign_moving_average` for more details).
 
 shadow variables are created with `trainable=False` and added to the
 `GraphKeys.ALL_VARIABLES` collection.  They will be returned by calls to
-`tf.all_variables()`.
+`tf.global_variables()`.
 
 Returns an op that updates all shadow variables as described above.
 

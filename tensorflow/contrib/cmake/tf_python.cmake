@@ -263,6 +263,9 @@ add_python_module("tensorflow/contrib/grid_rnn")
 add_python_module("tensorflow/contrib/grid_rnn/python")
 add_python_module("tensorflow/contrib/grid_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/grid_rnn/python/ops")
+add_python_module("tensorflow/contrib/image")
+add_python_module("tensorflow/contrib/image/python")
+add_python_module("tensorflow/contrib/image/python/ops")
 add_python_module("tensorflow/contrib/input_pipeline")
 add_python_module("tensorflow/contrib/input_pipeline/python")
 add_python_module("tensorflow/contrib/input_pipeline/python/ops")
@@ -307,6 +310,8 @@ add_python_module("tensorflow/contrib/learn/python/learn/tests")
 add_python_module("tensorflow/contrib/learn/python/learn/tests/dataframe")
 add_python_module("tensorflow/contrib/learn/python/learn/utils")
 add_python_module("tensorflow/contrib/legacy_seq2seq")
+add_python_module("tensorflow/contrib/legacy_seq2seq/python")
+add_python_module("tensorflow/contrib/legacy_seq2seq/python/ops")
 add_python_module("tensorflow/contrib/linalg")
 add_python_module("tensorflow/contrib/linalg/python")
 add_python_module("tensorflow/contrib/linalg/python/ops")
@@ -332,6 +337,9 @@ add_python_module("tensorflow/contrib/metrics/python/metrics")
 add_python_module("tensorflow/contrib/metrics/python/ops")
 add_python_module("tensorflow/contrib/ndlstm")
 add_python_module("tensorflow/contrib/ndlstm/python")
+add_python_module("tensorflow/contrib/nn")
+add_python_module("tensorflow/contrib/nn/python")
+add_python_module("tensorflow/contrib/nn/python/ops")
 add_python_module("tensorflow/contrib/opt")
 add_python_module("tensorflow/contrib/opt/python")
 add_python_module("tensorflow/contrib/opt/python/training")
@@ -398,6 +406,7 @@ add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
 add_python_module("tensorflow/contrib/util")
 
+
 # Additional directories with no Python sources.
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/dist")
@@ -429,6 +438,7 @@ set(tf_python_op_lib_names
 )
 
 function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
+    set(options SHAPE_FUNCTIONS_NOT_REQUIRED)
     set(oneValueArgs DESTINATION)
     set(multiValueArgs ADDITIONAL_LIBRARIES)
     cmake_parse_arguments(GENERATE_PYTHON_OP_LIB
@@ -438,7 +448,12 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
       set(GENERATE_PYTHON_OP_LIB_DESTINATION
           "${python_ops_target_dir}/gen_${tf_python_op_lib_name}.py")
     endif()
-
+    if(GENERATE_PYTHON_OP_LIB_SHAPE_FUNCTIONS_NOT_REQUIRED)
+      set(require_shape_fn 0)
+    else()
+      set(require_shape_fn 1)
+    endif()
+    
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
     # registered ops.
@@ -459,7 +474,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     # containing the wrappers.
     add_custom_command(
       OUTPUT ${GENERATE_PYTHON_OP_LIB_DESTINATION}
-      COMMAND ${tf_python_op_lib_name}_gen_python @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt 1 > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
+      COMMAND ${tf_python_op_lib_name}_gen_python @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
       DEPENDS ${tf_python_op_lib_name}_gen_python
     )
 
@@ -479,7 +494,6 @@ GENERATE_PYTHON_OP_LIB("image_ops")
 GENERATE_PYTHON_OP_LIB("io_ops")
 GENERATE_PYTHON_OP_LIB("linalg_ops")
 GENERATE_PYTHON_OP_LIB("logging_ops")
-GENERATE_PYTHON_OP_LIB("losses")
 GENERATE_PYTHON_OP_LIB("nn_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
@@ -502,6 +516,8 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
+	  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -568,6 +584,7 @@ add_library(pywrap_tensorflow SHARED
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 target_include_directories(pywrap_tensorflow PUBLIC
