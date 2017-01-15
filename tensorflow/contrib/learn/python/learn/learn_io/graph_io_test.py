@@ -727,13 +727,14 @@ class GraphIOTest(test.TestCase):
       self.assertAllEqual(
           [filename.encode("utf-8") + b":2", filename.encode("utf-8") + b":3"],
           out_keys)
-      self.assertAllEqual([lines[1], lines[2]], out_vals)
+      self.assertAllEqual([lines[1].encode("utf-8"), lines[2].encode("utf-8")],
+                          out_vals)
 
       # Second batch will only have one filtered example as that's the only
       # remaining example that satisfies the filtering criterion.
       out_keys, out_vals = session.run((keys, inputs))
       self.assertAllEqual([filename.encode("utf-8") + b":4"], out_keys)
-      self.assertAllEqual([lines[3]], out_vals)
+      self.assertAllEqual([lines[3].encode("utf-8")], out_vals)
 
       # Exhausted input.
       with self.assertRaises(errors.OutOfRangeError):
