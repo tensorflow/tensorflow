@@ -14,6 +14,10 @@
   `tf.reverse(a, [0, 2])`. `tf.reverse_v2()` will remain until 1.0 final.
 * `tf.mul`, `tf.sub` and `tf.neg` are deprecated in favor of `tf.multiply`,
   `tf.subtract` and `tf.negative`.
+* `tf.pack` and `tf.unpack` are deprecated in favor of `tf.stack` and
+  `tf.unstack`.
+* `TensorArray.pack` and `TensorArray.unpack` are getting deprecated in favor of
+  `TensorArray.stack` and `TensorArray.unstack`.
 * The following Python functions have had their arguments changed to use `axis`
   when referring to specific dimensions. We have kept the old keyword arguments
   for compatibility currently, but we will be removing them well before the
@@ -50,6 +54,11 @@
 * Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
   In the Beta release, we will update `tf.concat` to match argument order of
   `tf.concat_v2.
+* tf.image.decode_jpeg by default uses the faster DCT method, sacrificing
+  a little fidelity for improved speed. One can revert to the old
+  behavior by specifying the attribute dct_method='INTEGER_ACCURATE'.
+* `tf.complex_abs` has been removed from the Python interface. `tf.abs`
+  supports complex tensors and should be used instead.
 
 # Release 0.12.0
 
@@ -130,6 +139,9 @@
 * `tf.all_variables`, `tf.VARIABLES` and `tf.initialize_all_variables` renamed
   to `tf.global_variables`, `tf.GLOBAL_VARIABLES` and
   `tf.global_variables_initializer` respectively.
+* `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
+  that must be called with initializer arguments, in your code replace
+  tf.zeros_initializer with tf.zeros_initializer()
 
 ## Bug Fixes and Other Changes
 

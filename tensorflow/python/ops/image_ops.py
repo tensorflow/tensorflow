@@ -162,6 +162,10 @@ type and representation (RGB or HSV).
 @@draw_bounding_boxes
 @@non_max_suppression
 @@sample_distorted_bounding_box
+
+## Denoising
+
+@@total_variation
 """
 from __future__ import absolute_import
 from __future__ import division

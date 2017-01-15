@@ -28,6 +28,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
+from tensorflow.python.training import session_manager
+from tensorflow.python.training import session_run_hook
 
 
 # Please note that the gradients from replicas are averaged instead of summed
@@ -35,7 +37,7 @@ from tensorflow.python.training import queue_runner
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
-class SyncReplicasOptimizerV2(optimizer.Optimizer):
+class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
   In a typical asynchronous training environment, it's common to have some
@@ -96,51 +98,30 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.SyncReplicasOptimizerV2(opt, replicas_to_aggregate=50,
-                                   total_num_replicas=50)
+  opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+                                 total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
   # sync_replicas training, set it to 0.
 
   # Now you can call `minimize()` or `compute_gradients()` and
   # `apply_gradients()` normally
-  grads = opt.minimize(total_loss, global_step=self.global_step)
+  training_op = opt.minimize(total_loss, global_step=self.global_step)
 
 
-  # You can now call get_init_tokens_op() and get_chief_queue_runner().
-  # Note that get_init_tokens_op() must be called before creating session
-  # because it modifies the graph by adding new nodes.
-  init_token_op = opt.get_init_tokens_op()
-  chief_queue_runner = opt.get_chief_queue_runner()
+  # You can create the hook which handles initialization and queues.
+  sync_replicas_hook = opt.make_session_run_hook(is_chief)
   ```
 
   In the training program, every worker will run the train_op as if not
-  synchronized. But one worker (usually the chief) will need to execute the
-  chief_queue_runner and get_init_tokens_op from this optimizer.
+  synchronized.
 
   ```python
-  # When you create the supervisor, you need to add the local_init_op and
-  # ready_for_local_init_op to make sure the local_step is initialized to the
-  # global_step. Here is an example:
-  if is_chief:
-    local_init_op = opt.chief_init_op
-  else:
-    local_init_op = opt.local_step_init_op
-  ready_for_local_init_op = opt.ready_for_local_init_op
-  sv = tf.Supervisor(graph=g,
-                     is_chief=is_chief,
-                     # This initialize local step.
-                     local_init_op=local_init_op,
-                     # This makes sure global step is initialized before using.
-                     ready_for_local_init_op=ready_for_local_init_op,
-                     saver=model.saver)
-
-  # After the session is created by the Supervisor and before the main while
-  # loop:
-  if is_chief and FLAGS.sync_replicas:
-    sv.start_queue_runners(sess, [chief_queue_runner])
-    # Insert initial tokens to the queue.
-    sess.run(init_token_op)
+  with training.MonitoredTrainingSession(
+      master=workers[worker_id].target, is_chief=is_chief,
+      hooks=[sync_replicas_hook]) as mon_sess:
+    while not mon_sess.should_stop():
+      mon_sess.run(training_op)
   ```
 
   @@__init__
@@ -182,7 +163,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
     if total_num_replicas is None:
       total_num_replicas = replicas_to_aggregate
 
-    super(SyncReplicasOptimizerV2, self).__init__(use_locking, name)
+    super(SyncReplicasOptimizer, self).__init__(use_locking, name)
     logging.info(
         "SyncReplicasV2: replicas_to_aggregate=%s; total_num_replicas=%s",
         replicas_to_aggregate, total_num_replicas)
@@ -310,6 +291,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
             data_flow_ops.FIFOQueue(-1,
                                     global_step.dtype.base_dtype,
                                     shapes=(),
+                                    name="sync_token_q",
                                     shared_name="sync_token_q"))
         self._sync_token_queue = sync_token_queue
 
@@ -320,6 +302,7 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
             data_flow_ops.FIFOQueue(1,
                                     types_pb2.DT_INT32,
                                     shapes=(),
+                                    name="dummy_queue",
                                     shared_name="dummy_queue"))
 
       with ops.device(global_step.device), ops.name_scope(""):
@@ -438,3 +421,51 @@ class SyncReplicasOptimizerV2(optimizer.Optimizer):
       init_tokens = control_flow_ops.no_op(name="no_init_tokens")
 
     return init_tokens
+
+  def make_session_run_hook(self, is_chief, num_tokens=-1):
+    """Creates a hook to handle SyncReplicasHook ops such as initialization."""
+    if is_chief:
+      return _SyncReplicasOptimizerHook(self.chief_init_op,
+                                        self.ready_for_local_init_op,
+                                        self.get_chief_queue_runner(),
+                                        self.get_init_tokens_op(num_tokens))
+
+    return _SyncReplicasOptimizerHook(self.local_step_init_op,
+                                      self.ready_for_local_init_op, None, None)
+
+
+class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
+  """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
+
+  def __init__(self, local_init_op, ready_for_local_init_op, q_runner,
+               init_tokens_op):
+    """Creates hook to handle SyncReplicaOptimizer initialization ops.
+
+    Args:
+      local_init_op: Either `SyncReplicasOptimizer.chief_init_op` or
+        `SyncReplicasOptimizer.local_step_init_op`.
+      ready_for_local_init_op: `SyncReplicasOptimizer.ready_for_local_init_op`
+      q_runner: Either `SyncReplicasOptimizer.get_chief_queue_runner` or `None`
+      init_tokens_op: `SyncReplicasOptimizer.get_init_tokens_op` or None
+    """
+    self._local_init_op = local_init_op
+    self._ready_for_local_init_op = ready_for_local_init_op
+    self._q_runner = q_runner
+    self._init_tokens_op = init_tokens_op
+
+  def after_create_session(self, session, coord):
+    """Runs SyncReplicasOptimizer initialization ops."""
+    local_init_success, msg = session_manager._ready(  # pylint: disable=protected-access
+        self._ready_for_local_init_op, session,
+        "Model is not ready for SyncReplicasOptimizer local init.")
+    if not local_init_success:
+      raise RuntimeError(
+          "Init operations did not make model ready for SyncReplicasOptimizer "
+          "local_init. Init op: %s, error: %s" %
+          (self._local_init_op.name, msg))
+    session.run(self._local_init_op)
+    if self._init_tokens_op is not None:
+      session.run(self._init_tokens_op)
+    if self._q_runner is not None:
+      self._q_runner.create_threads(
+          session, coord=coord, daemon=True, start=True)

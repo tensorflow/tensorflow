@@ -82,7 +82,7 @@ class SimplePlacer {
   // Returns true if the device type of 'candidate_device_name' is
   // found in 'devices'.
   bool CanAssignToDevice(const string& candidate_device_name,
-                         const std::vector<Device*> devices) const;
+                         const std::vector<Device*>& devices) const;
 
   // Assigns 'node's devices to 'assigned_device', and logs the
   // placement if the SessionOptions entry in 'options_' requests it.

@@ -194,9 +194,9 @@ class _TargetColumn(object):
   def _weighted_loss(self, loss, weight_tensor):
     """Returns cumulative weighted loss."""
     unweighted_loss = array_ops.reshape(loss, shape=(-1,))
-    weighted_loss = math_ops.mul(unweighted_loss,
-                                 array_ops.reshape(
-                                     weight_tensor, shape=(-1,)))
+    weighted_loss = math_ops.multiply(unweighted_loss,
+                                      array_ops.reshape(
+                                          weight_tensor, shape=(-1,)))
     return weighted_loss
 
   def training_loss(self, logits, target, features, name="training_loss"):
@@ -300,7 +300,7 @@ class _MultiClassTargetColumn(_TargetColumn):
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:
-      logits = array_ops.concat_v2([array_ops.zeros_like(logits), logits], 1)
+      logits = array_ops.concat([array_ops.zeros_like(logits), logits], 1)
 
     if proba:
       return nn.softmax(logits)
@@ -388,7 +388,7 @@ class _BinarySvmTargetColumn(_MultiClassTargetColumn):
       raise ValueError(
           "logits to probabilities is not supported for _BinarySvmTargetColumn")
 
-    logits = array_ops.concat_v2([array_ops.zeros_like(logits), logits], 1)
+    logits = array_ops.concat([array_ops.zeros_like(logits), logits], 1)
     return math_ops.argmax(logits, 1)
 
 
@@ -406,8 +406,8 @@ def _log_loss_with_two_classes(logits, target):
   # sigmoid_cross_entropy_with_logits requires [batch_size, 1] target.
   if len(target.get_shape()) == 1:
     target = array_ops.expand_dims(target, dim=[1])
-  loss_vec = nn.sigmoid_cross_entropy_with_logits(logits,
-                                                  math_ops.to_float(target))
+  loss_vec = nn.sigmoid_cross_entropy_with_logits(
+      labels=math_ops.to_float(target), logits=logits)
   return loss_vec
 
 
@@ -419,7 +419,8 @@ def _softmax_cross_entropy_loss(logits, target):
   # sparse_softmax_cross_entropy_with_logits requires [batch_size] target.
   if len(target.get_shape()) == 2:
     target = array_ops.squeeze(target, squeeze_dims=[1])
-  loss_vec = nn.sparse_softmax_cross_entropy_with_logits(logits, target)
+  loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
+      labels=target, logits=logits)
   return loss_vec
 
 

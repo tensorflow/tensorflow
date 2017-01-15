@@ -52,18 +52,23 @@ import collections
 import math
 import re
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.platform import flags as flags_lib
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.tools import strip_unused_lib
 
-flags = tf.app.flags
+flags = flags_lib
 FLAGS = flags.FLAGS
 
 
-def optimize_for_inference(input_graph_def, input_node_names,
-                           output_node_names, placeholder_type_enum):
+def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
+                           placeholder_type_enum):
   """Applies a series of inference optimizations on the input graph.
 
   Args:
@@ -72,7 +77,8 @@ def optimize_for_inference(input_graph_def, input_node_names,
       inference.
     output_node_names: A list of names of the nodes that produce the final
       results.
-    placeholder_type_enum: Data type of the placeholders used for inputs.
+    placeholder_type_enum: The AttrValue enum for the placeholder data type, or
+        a list that specifies one value per input node name.
 
   Returns:
     An optimized version of the input graph.
@@ -204,78 +210,69 @@ def fold_batch_norms(input_graph_def):
 
     conv_op = node_from_map(input_node_map, node.input[0])
     if conv_op.op != "Conv2D":
-      tf.logging.warning("Didn't find expected Conv2D input to '%s'" %
+      tf_logging.warning("Didn't find expected Conv2D input to '%s'" %
                          node.name)
       continue
 
     weights_op = node_from_map(input_node_map, conv_op.input[1])
     if weights_op.op != "Const":
-      tf.logging.warning("Didn't find expected conv Constant input to '%s',"
+      tf_logging.warning("Didn't find expected conv Constant input to '%s',"
                          " found %s instead. Maybe because freeze_graph wasn't"
-                         " run first?" %
-                         (conv_op.name, weights_op))
+                         " run first?" % (conv_op.name, weights_op))
       continue
     weights = values_from_const(weights_op)
     channel_count = weights.shape[3]
 
     mean_op = node_from_map(input_node_map, node.input[1])
     if mean_op.op != "Const":
-      tf.logging.warning("Didn't find expected mean Constant input to '%s',"
+      tf_logging.warning("Didn't find expected mean Constant input to '%s',"
                          " found %s instead. Maybe because freeze_graph wasn't"
-                         " run first?" %
-                         (node.name, mean_op))
+                         " run first?" % (node.name, mean_op))
       continue
     mean_value = values_from_const(mean_op)
     if mean_value.shape != (channel_count,):
-      tf.logging.warning("Incorrect shape for mean, found %s, expected %s,"
-                         " for node %s" % (str(mean_value.shape),
-                                           str((channel_count,)),
-                                           node.name))
+      tf_logging.warning("Incorrect shape for mean, found %s, expected %s,"
+                         " for node %s" % (str(mean_value.shape), str(
+                             (channel_count,)), node.name))
       continue
 
     var_op = node_from_map(input_node_map, node.input[2])
     if var_op.op != "Const":
-      tf.logging.warning("Didn't find expected var Constant input to '%s',"
+      tf_logging.warning("Didn't find expected var Constant input to '%s',"
                          " found %s instead. Maybe because freeze_graph wasn't"
-                         " run first?" %
-                         (node.name, var_op))
+                         " run first?" % (node.name, var_op))
       continue
     var_value = values_from_const(var_op)
     if var_value.shape != (channel_count,):
-      tf.logging.warning("Incorrect shape for var, found %s, expected %s,"
-                         " for node %s" % (str(var_value.shape),
-                                           str((channel_count,)),
-                                           node.name))
+      tf_logging.warning("Incorrect shape for var, found %s, expected %s,"
+                         " for node %s" % (str(var_value.shape), str(
+                             (channel_count,)), node.name))
       continue
 
     beta_op = node_from_map(input_node_map, node.input[3])
     if beta_op.op != "Const":
-      tf.logging.warning("Didn't find expected beta Constant input to '%s',"
+      tf_logging.warning("Didn't find expected beta Constant input to '%s',"
                          " found %s instead. Maybe because freeze_graph wasn't"
-                         " run first?" %
-                         (node.name, beta_op))
+                         " run first?" % (node.name, beta_op))
       continue
     beta_value = values_from_const(beta_op)
     if beta_value.shape != (channel_count,):
-      tf.logging.warning("Incorrect shape for beta, found %s, expected %s,"
-                         " for node %s" % (str(beta_value.shape),
-                                           str((channel_count,)),
-                                           node.name))
+      tf_logging.warning("Incorrect shape for beta, found %s, expected %s,"
+                         " for node %s" % (str(beta_value.shape), str(
+                             (channel_count,)), node.name))
       continue
 
     gamma_op = node_from_map(input_node_map, node.input[4])
     if gamma_op.op != "Const":
-      tf.logging.warning("Didn't find expected gamma Constant input to '%s',"
+      tf_logging.warning("Didn't find expected gamma Constant input to '%s',"
                          " found %s instead. Maybe because freeze_graph wasn't"
-                         " run first?" %
-                         (node.name, gamma_op))
+                         " run first?" % (node.name, gamma_op))
       continue
     gamma_value = values_from_const(gamma_op)
     if gamma_value.shape != (channel_count,):
-      tf.logging.warning("Incorrect shape for gamma, found %s, expected %s,"
-                         " for node %s" % (str(gamma_value.shape),
-                                           str((channel_count,)),
-                                           node.name))
+      tf_logging.warning("Incorrect shape for gamma, found %s, expected %s,"
+                         " for node %s" % (str(gamma_value.shape), str(
+                             (channel_count,)), node.name))
       continue
 
     variance_epsilon_value = node.attr["variance_epsilon"].f
@@ -289,48 +286,48 @@ def fold_batch_norms(input_graph_def):
     nodes_to_skip[conv_op.name] = True
 
     if scale_after_normalization:
-      scale_value = ((1.0 / np.vectorize(math.sqrt)
-                      (var_value + variance_epsilon_value)) *
-                     gamma_value)
+      scale_value = (
+          (1.0 / np.vectorize(math.sqrt)(var_value + variance_epsilon_value)) *
+          gamma_value)
     else:
-      scale_value = (1.0 / np.vectorize(math.sqrt)
-                     (var_value + variance_epsilon_value))
+      scale_value = (
+          1.0 / np.vectorize(math.sqrt)(var_value + variance_epsilon_value))
     offset_value = (-mean_value * scale_value) + beta_value
     scaled_weights = np.copy(weights)
-    it = np.nditer(scaled_weights, flags=["multi_index"],
-                   op_flags=["readwrite"])
+    it = np.nditer(
+        scaled_weights, flags=["multi_index"], op_flags=["readwrite"])
     while not it.finished:
       current_scale = scale_value[it.multi_index[3]]
       it[0] *= current_scale
       it.iternext()
-    scaled_weights_op = tf.NodeDef()
+    scaled_weights_op = node_def_pb2.NodeDef()
     scaled_weights_op.op = "Const"
     scaled_weights_op.name = weights_op.name
     scaled_weights_op.attr["dtype"].CopyFrom(weights_op.attr["dtype"])
-    scaled_weights_op.attr["value"].CopyFrom(tf.AttrValue(
-        tensor=tensor_util.make_tensor_proto(
+    scaled_weights_op.attr["value"].CopyFrom(
+        attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
             scaled_weights, weights.dtype.type, weights.shape)))
-    new_conv_op = tf.NodeDef()
+    new_conv_op = node_def_pb2.NodeDef()
     new_conv_op.CopyFrom(conv_op)
-    offset_op = tf.NodeDef()
+    offset_op = node_def_pb2.NodeDef()
     offset_op.op = "Const"
     offset_op.name = conv_op.name + "_bn_offset"
     offset_op.attr["dtype"].CopyFrom(mean_op.attr["dtype"])
-    offset_op.attr["value"].CopyFrom(tf.AttrValue(
-        tensor=tensor_util.make_tensor_proto(
+    offset_op.attr["value"].CopyFrom(
+        attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
             offset_value, mean_value.dtype.type, offset_value.shape)))
-    bias_add_op = tf.NodeDef()
+    bias_add_op = node_def_pb2.NodeDef()
     bias_add_op.op = "BiasAdd"
     bias_add_op.name = node.name
     bias_add_op.attr["T"].CopyFrom(conv_op.attr["T"])
     bias_add_op.input.extend([new_conv_op.name, offset_op.name])
     new_ops.extend([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
 
-  result_graph_def = tf.GraphDef()
+  result_graph_def = graph_pb2.GraphDef()
   for node in input_graph_def.node:
     if node.name in nodes_to_skip:
       continue
-    new_node = tf.NodeDef()
+    new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
     result_graph_def.node.extend([new_node])
 
@@ -402,7 +399,7 @@ def fuse_resize_and_conv(input_graph_def, output_node_names):
     if resize_op:
       node_reference_count[resize_op.name] -= 1
 
-    fused_conv_op = tf.NodeDef()
+    fused_conv_op = node_def_pb2.NodeDef()
     if resize_op:
       fused_conv_op.op = "FusedResizeAndPadConv2D"
     else:
@@ -414,36 +411,38 @@ def fuse_resize_and_conv(input_graph_def, output_node_names):
     else:
       # If there was no MirrorPad op, then create settings that make the padding
       # stage of the fused operation a no-op.
-      paddings_op = tf.NodeDef()
+      paddings_op = node_def_pb2.NodeDef()
       paddings_op.op = "Const"
       paddings_op.name = conv_op.name + "_dummy_paddings"
-      paddings_op.attr["dtype"].CopyFrom(tf.AttrValue(
-          type=tf.int32.as_datatype_enum))
-      paddings_op.attr["value"].CopyFrom(tf.AttrValue(
-          tensor=tensor_util.make_tensor_proto(
-              [0, 0, 0, 0, 0, 0, 0, 0], tf.int32, [4, 2])))
+      paddings_op.attr["dtype"].CopyFrom(
+          attr_value_pb2.AttrValue(type=dtypes.int32.as_datatype_enum))
+      paddings_op.attr["value"].CopyFrom(
+          attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
+              [0, 0, 0, 0, 0, 0, 0, 0], dtypes.int32, [4, 2])))
       new_ops.extend([paddings_op])
       mirror_paddings_name = paddings_op.name
-      mirror_paddings_mode = tf.AttrValue(s=b"REFLECT")
+      mirror_paddings_mode = attr_value_pb2.AttrValue(s=b"REFLECT")
     if resize_op:
-      fused_conv_op.input.extend([resize_op.input[0], resize_op.input[1],
-                                  mirror_paddings_name, conv_op.input[1]])
-      fused_conv_op.attr["resize_align_corners"].CopyFrom(
-          resize_op.attr["align_corners"])
+      fused_conv_op.input.extend([
+          resize_op.input[0], resize_op.input[1], mirror_paddings_name,
+          conv_op.input[1]
+      ])
+      fused_conv_op.attr["resize_align_corners"].CopyFrom(resize_op.attr[
+          "align_corners"])
     else:
-      fused_conv_op.input.extend([mirror_pad_op.input[0], mirror_paddings_name,
-                                  conv_op.input[1]])
+      fused_conv_op.input.extend(
+          [mirror_pad_op.input[0], mirror_paddings_name, conv_op.input[1]])
     fused_conv_op.attr["T"].CopyFrom(conv_op.attr["T"])
     fused_conv_op.attr["mode"].CopyFrom(mirror_paddings_mode)
     fused_conv_op.attr["strides"].CopyFrom(conv_op.attr["strides"])
     fused_conv_op.attr["padding"].CopyFrom(conv_op.attr["padding"])
     new_ops.extend([fused_conv_op])
 
-  result_graph_def = tf.GraphDef()
+  result_graph_def = graph_pb2.GraphDef()
   for node in input_graph_def.node:
     if node_reference_count[node.name] < 1:
       continue
-    new_node = tf.NodeDef()
+    new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
     result_graph_def.node.extend([new_node])
 

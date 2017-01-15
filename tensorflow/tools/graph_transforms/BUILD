@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
@@ -42,6 +43,7 @@ tf_cc_test(
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -52,9 +54,27 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "fold_constants_lib",
+    name = "transforms_lib",
     srcs = [
+        "add_default_attributes.cc",
+        "fold_batch_norms.cc",
         "fold_constants_lib.cc",
+        "fold_old_batch_norms.cc",
+        "freeze_requantization_ranges.cc",
+        "fuse_convolutions.cc",
+        "insert_logging.cc",
+        "obsfucate_names.cc",
+        "quantize_nodes.cc",
+        "quantize_weights.cc",
+        "remove_attribute.cc",
+        "remove_device.cc",
+        "remove_nodes.cc",
+        "rename_attribute.cc",
+        "rename_op.cc",
+        "round_weights.cc",
+        "set_device.cc",
+        "sort_by_execution_order.cc",
+        "strip_unused_nodes.cc",
     ],
     hdrs = [
         "fold_constants_lib.h",
@@ -70,15 +90,98 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/kernels:quantized_ops",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "transforms_test",
+    size = "small",
+    srcs = [
+        "add_default_attributes_test.cc",
+        "fold_batch_norms_test.cc",
+        "fold_constants_test.cc",
+        "fold_old_batch_norms_test.cc",
+        "freeze_requantization_ranges_test.cc",
+        "fuse_convolutions_test.cc",
+        "insert_logging_test.cc",
+        "obsfucate_names_test.cc",
+        "quantize_nodes_test.cc",
+        "quantize_weights_test.cc",
+        "remove_attribute_test.cc",
+        "remove_device_test.cc",
+        "remove_nodes_test.cc",
+        "rename_attribute_test.cc",
+        "rename_op_test.cc",
+        "round_weights_test.cc",
+        "set_device_test.cc",
+        "sort_by_execution_order_test.cc",
+        "strip_unused_nodes_test.cc",
+    ],
+    deps = [
+        ":transform_utils",
+        ":transforms_lib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:quantized_ops",
+    ],
+)
+
+cc_library(
+    name = "transform_graph_lib",
+    srcs = ["transform_graph.cc"],
+    hdrs = ["transform_graph.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transform_utils",
+        ":transforms_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+# This library includes a main function, to make it easy to create other
+# versions of the tool linked against different operator libs.
+cc_library(
+    name = "transform_graph_main_lib",
+    srcs = ["transform_graph_main.cc"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transform_graph_lib",
+        ":transforms_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_binary(
+    name = "transform_graph",
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transform_graph_main_lib",
     ],
 )
 
 tf_cc_test(
-    name = "fold_constants_test",
-    size = "small",
-    srcs = ["fold_constants_test.cc"],
+    name = "transform_graph_test",
+    size = "medium",
+    srcs = ["transform_graph_test.cc"],
     deps = [
-        ":fold_constants_lib",
+        ":transform_graph_lib",
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:sendrecv_ops",
@@ -95,23 +198,39 @@ tf_cc_test(
 # This library includes a main function, to make it easy to create other
 # versions of the tool linked against different operator libs.
 cc_library(
-    name = "fold_constants_main_lib",
-    srcs = ["fold_constants_tool.cc"],
+    name = "summarize_graph_main_lib",
+    srcs = ["summarize_graph_main.cc"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":fold_constants_lib",
+        ":transform_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
 )
 
 cc_binary(
-    name = "fold_constants_tool",
+    name = "summarize_graph",
     copts = tf_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        ":fold_constants_main_lib",
+        ":summarize_graph_main_lib",
+    ],
+)
+
+cc_binary(
+    name = "compare_graphs",
+    srcs = ["compare_graphs.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transform_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
     ],
 )

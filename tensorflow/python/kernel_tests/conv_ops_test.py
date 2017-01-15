@@ -24,8 +24,7 @@ import time
 
 import numpy as np
 
-# TODO(mrry): Remove this hack which makes dlopen() in
-#             sparse_feature_cross_op.py not crash in the open source world.
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
 if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
@@ -181,8 +180,8 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if test.is_gpu_available():
-    # "NCHW" format is not currently supported on CPU.
+  if test.is_gpu_available(cuda_only=True):
+    # "NCHW" format is only supported on CUDA.
     test_configs += [("NCHW", True)]
   return test_configs
 

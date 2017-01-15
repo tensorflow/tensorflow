@@ -94,7 +94,6 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
 "tensorflow/python/framework/device_test.py:"\
 "tensorflow/python/framework/file_system_test.py:"\
-"tensorflow/python/kernel_tests/seq2seq_test.py:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
@@ -260,7 +259,7 @@ cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
 
 # Run tests
 DIR0=$(pwd)
-ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
+ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
 
 

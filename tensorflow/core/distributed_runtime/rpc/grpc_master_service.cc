@@ -104,6 +104,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(CreateSession, true);
     ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(PartialRunSetup, false);
       ENQUEUE_REQUEST(RunStep, true);
     }
     ENQUEUE_REQUEST(CloseSession, false);
@@ -158,16 +159,30 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(ExtendSession, false);
   }
 
+  // RPC handler for setting up a partial run call.
+  void PartialRunSetupHandler(
+      MasterCall<PartialRunSetupRequest, PartialRunSetupResponse>* call) {
+    master_impl_->PartialRunSetup(&call->request, &call->response,
+                                  [call](const Status& status) {
+                                    call->SendResponse(ToGrpcStatus(status));
+                                  });
+    ENQUEUE_REQUEST(PartialRunSetup, false);
+  }
+
   // RPC handler for running one step in a session.
   void RunStepHandler(MasterCall<RunStepRequest, RunStepResponse>* call) {
     CallOptions* call_opts = new CallOptions;
+    RunStepRequestWrapper* wrapped_request =
+        new ProtoRunStepRequest(&call->request);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunStep(call_opts, &call->request, &call->response,
-                          [call, call_opts](const Status& status) {
-                            call->ClearCancelCallback();
-                            delete call_opts;
-                            call->SendResponse(ToGrpcStatus(status));
-                          });
+    master_impl_->RunStep(
+        call_opts, wrapped_request, &call->response,
+        [call, call_opts, wrapped_request](const Status& status) {
+          call->ClearCancelCallback();
+          delete call_opts;
+          delete wrapped_request;
+          call->SendResponse(ToGrpcStatus(status));
+        });
     ENQUEUE_REQUEST(RunStep, true);
   }
 

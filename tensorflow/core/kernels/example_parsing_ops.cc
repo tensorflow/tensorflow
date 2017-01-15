@@ -488,12 +488,13 @@ class SingleSequenceExampleParserOp : public OpKernel {
           const Feature& f = fl.feature(t);
           bool types_match;
           OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-          OP_REQUIRES(ctx, types_match,
-                      errors::InvalidArgument(
-                          "Name: ", name, ", Feature List: ", key, ", Index: ",
-                          t, ".  Data types don't match. ", "Expected type: ",
-                          DataTypeString(dtype), "  Feature is: ",
-                          ProtoDebugString(f)));
+          OP_REQUIRES(
+              ctx, f.kind_case() == Feature::KIND_NOT_SET || types_match,
+              errors::InvalidArgument("Name: ", name, ", Feature List: ", key,
+                                      ", Index: ", t,
+                                      ".  Data types don't match. ",
+                                      "Expected type: ", DataTypeString(dtype),
+                                      "  Feature is: ", ProtoDebugString(f)));
           sparse_values_tmp.push_back(FeatureSparseCopy(t, key, dtype, f));
         }
       } else {

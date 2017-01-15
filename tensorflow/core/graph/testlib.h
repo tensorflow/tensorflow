@@ -100,6 +100,9 @@ Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins);
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
 
+// Reverses <axis> dimensions of <tensor>>
+Node* Reverse(Graph* g, Node* tensor, Node* axis);
+
 // Generates random unit uniform distribution of the input shape.
 Node* RandomUniform(Graph* g, Node* input, DataType dtype);
 
@@ -166,6 +169,9 @@ Node* Cast(Graph* g, Node* in, DataType dst);
 
 // Perform gather op on params "in0" with indices "in1".
 Node* Gather(Graph* g, Node* in0, Node* in1);
+
+// Computes broadcasted shape from the given input shapes.
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
 
 // Computes the args needed broadcast gradient function.
 Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);

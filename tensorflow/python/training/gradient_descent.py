@@ -52,8 +52,10 @@ class GradientDescentOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, handle):
-    return resource_variable_ops.assign_add_variable_op(
-        handle, -grad * self._learning_rate)
+    return training_ops.resource_apply_gradient_descent(
+        handle, math_ops.cast(self._learning_rate_tensor,
+                              grad.dtype.base_dtype),
+        grad, use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, handle, indices):
     return resource_variable_ops.resource_scatter_add(

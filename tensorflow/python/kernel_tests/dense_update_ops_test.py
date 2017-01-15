@@ -153,7 +153,7 @@ class AssignOpTest(test.TestCase):
       p = variables.Variable(zeros_t)
       assigns = [
           state_ops.assign(
-              p, math_ops.mul(ones_t, float(i)), use_locking=True)
+              p, math_ops.multiply(ones_t, float(i)), use_locking=True)
           for i in range(1, 21)
       ]
       p.initializer.run()

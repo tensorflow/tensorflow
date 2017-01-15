@@ -56,7 +56,6 @@ class DsoLoader {
  private:
   // Registered rpaths (singleton vector) and a mutex that guards it.
   static std::vector<string>* GetRpaths();
-  static mutex rpath_mutex_;
 
   // Descriptive boolean wrapper to indicate whether symbols are made available
   // to resolve in later-loaded libraries.

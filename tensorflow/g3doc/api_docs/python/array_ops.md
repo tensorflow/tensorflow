@@ -239,6 +239,45 @@ of a tensor and change the shape of a tensor.
 
 - - -
 
+### `tf.broadcast_dynamic_shape(shape_x, shape_y)` {#broadcast_dynamic_shape}
+
+Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
+
+##### Args:
+
+
+*  <b>`shape_x`</b>: A rank 1 integer `Tensor`, representing the shape of x.
+*  <b>`shape_y`</b>: A rank 1 integer `Tensor`, representing the shape of x.
+
+##### Returns:
+
+  A rank 1 integer `Tensor` representing the broadcasted shape.
+
+
+- - -
+
+### `tf.broadcast_static_shape(shape_x, shape_y)` {#broadcast_static_shape}
+
+Returns the broadcasted static shape between `shape_x` and `shape_y`.
+
+##### Args:
+
+
+*  <b>`shape_x`</b>: A `TensorShape`
+*  <b>`shape_y`</b>: A `TensorShape`
+
+##### Returns:
+
+  A `TensorShape` representing the broadcasted shape.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the two shapes can not be broadcasted.
+
+
+- - -
+
 ### `tf.shape(input, name=None, out_type=tf.int32)` {#shape}
 
 Returns the shape of a tensor.
@@ -746,7 +785,7 @@ tf.shape(split0) ==> [5, 4]
 tf.shape(split1) ==> [5, 15]
 tf.shape(split2) ==> [5, 11]
 # Split 'value' into 3 tensors along dimension 1
-split0, split1, split2 = tf.split(value=1, num_or_size_splits=3, axis=value)
+split0, split1, split2 = tf.split(value, num_or_size_splits=3, axis=1)
 tf.shape(split0) ==> [5, 10]
 ```
 
@@ -865,72 +904,7 @@ pad(t, paddings, "SYMMETRIC") ==> [[2, 1, 1, 2, 3, 3, 2],
 
 - - -
 
-### `tf.concat(*args, **kwargs)` {#concat}
-
-Concatenates tensors along one dimension. (deprecated)
-
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
-Instructions for updating:
-This op will be removed after the deprecation date. Please switch to tf.concat_v2().
-
-Concatenates the list of tensors `values` along dimension `concat_dim`.  If
-`values[i].shape = [D0, D1, ... Dconcat_dim(i), ...Dn]`, the concatenated
-result has shape
-
-    [D0, D1, ... Rconcat_dim, ...Dn]
-
-where
-
-    Rconcat_dim = sum(Dconcat_dim(i))
-
-That is, the data from the input tensors is joined along the `concat_dim`
-dimension.
-
-The number of dimensions of the input tensors must match, and all dimensions
-except `concat_dim` must be equal.
-
-For example:
-
-```python
-t1 = [[1, 2, 3], [4, 5, 6]]
-t2 = [[7, 8, 9], [10, 11, 12]]
-tf.concat(0, [t1, t2]) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-tf.concat(1, [t1, t2]) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
-
-# tensor t3 with shape [2, 3]
-# tensor t4 with shape [2, 3]
-tf.shape(tf.concat(0, [t3, t4])) ==> [4, 3]
-tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
-```
-
-Note: If you are concatenating along a new axis consider using pack.
-E.g.
-
-```python
-tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
-```
-
-can be rewritten as
-
-```python
-tf.pack(tensors, axis=axis)
-```
-
-##### Args:
-
-
-*  <b>`concat_dim`</b>: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
-*  <b>`values`</b>: A list of `Tensor` objects or a single `Tensor`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` resulting from concatenation of the input tensors.
-
-
-- - -
-
-### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
+### `tf.concat(values, axis, name='concat')` {#concat}
 
 Concatenates tensors along one dimension.
 
@@ -955,26 +929,26 @@ For example:
 ```python
 t1 = [[1, 2, 3], [4, 5, 6]]
 t2 = [[7, 8, 9], [10, 11, 12]]
-tf.concat_v2([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-tf.concat_v2([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+tf.concat([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+tf.concat([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
 
 # tensor t3 with shape [2, 3]
 # tensor t4 with shape [2, 3]
-tf.shape(tf.concat_v2([t3, t4], 0)) ==> [4, 3]
-tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
+tf.shape(tf.concat([t3, t4], 0)) ==> [4, 3]
+tf.shape(tf.concat([t3, t4], 1)) ==> [2, 6]
 ```
 
-Note: If you are concatenating along a new axis consider using pack.
+Note: If you are concatenating along a new axis consider using stack.
 E.g.
 
 ```python
-tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
+tf.concat([tf.expand_dims(t, axis) for t in tensors], axis)
 ```
 
 can be rewritten as
 
 ```python
-tf.pack(tensors, axis=axis)
+tf.stack(tensors, axis=axis)
 ```
 
 ##### Args:
@@ -1038,21 +1012,16 @@ This is the opposite of unstack.  The numpy equivalent is
 
 - - -
 
-### `tf.pack(*args, **kwargs)` {#pack}
+### `tf.parallel_stack(values, name='parallel_stack')` {#parallel_stack}
 
-Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor. (deprecated)
+Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor in parallel.
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
-Instructions for updating:
-This op will be removed after the deprecation date. Please switch to tf.stack().
+Requires that the shape of inputs be known at graph construction time.
 
 Packs the list of tensors in `values` into a tensor with rank one higher than
-each tensor in `values`, by packing them along the `axis` dimension.
-Given a list of length `N` of tensors of shape `(A, B, C)`;
-
-if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
-Etc.
+each tensor in `values`, by packing them along the first dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`; the `output`
+tensor will have the shape `(N, A, B, C)`.
 
 For example:
 
@@ -1060,31 +1029,29 @@ For example:
 # 'x' is [1, 4]
 # 'y' is [2, 5]
 # 'z' is [3, 6]
-pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+parallel_stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]
 ```
 
-This is the opposite of unpack.  The numpy equivalent is
+The difference between stack and parallel_stack is that stack requires all
+of the inputs be computed before the operation will begin but doesn't require
+that the input shapes be known during graph construction.  Parallel stack
+will copy pieces of the input into the output as they become available, in
+some situations this can provide a performance benefit.
 
-    tf.pack([x, y, z]) = np.asarray([x, y, z])
+This is the opposite of unstack.  The numpy equivalent is
+
+    tf.parallel_stack([x, y, z]) = np.asarray([x, y, z])
 
 ##### Args:
 
 
 *  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
-*  <b>`axis`</b>: An `int`. The axis to pack along. Defaults to the first dimension.
-    Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 
 
-*  <b>`output`</b>: A packed `Tensor` with the same type as `values`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
 
 
 - - -
@@ -1124,55 +1091,6 @@ This is the opposite of pack.  The numpy equivalent is
 ##### Returns:
 
   The list of `Tensor` objects unstacked from `value`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `num` is unspecified and cannot be inferred.
-*  <b>`ValueError`</b>: If `axis` is out of the range [-R, R).
-
-
-- - -
-
-### `tf.unpack(*args, **kwargs)` {#unpack}
-
-Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors. (deprecated)
-
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-14.
-Instructions for updating:
-This op will be removed after the deprecation date. Please switch to tf.unstack().
-
-Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
-If `num` is not specified (the default), it is inferred from `value`'s shape.
-If `value.shape[axis]` is not known, `ValueError` is raised.
-
-For example, given a tensor of shape `(A, B, C, D)`;
-
-If `axis == 0` then the i'th tensor in `output` is the slice
-  `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
-  (Note that the dimension unpacked along is gone, unlike `split`).
-
-If `axis == 1` then the i'th tensor in `output` is the slice
-  `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
-Etc.
-
-This is the opposite of pack.  The numpy equivalent is
-
-    tf.unpack(x, n) = list(x)
-
-##### Args:
-
-
-*  <b>`value`</b>: A rank `R > 0` `Tensor` to be unpacked.
-*  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
-    if `None` (the default).
-*  <b>`axis`</b>: An `int`. The axis to unpack along. Defaults to the first
-    dimension. Supports negative indexes.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  The list of `Tensor` objects unpacked from `value`.
 
 ##### Raises:
 
@@ -2126,7 +2044,7 @@ The attr `block_size` indicates the input block size and how the data is moved.
 
   * Chunks of data of size `block_size * block_size` from depth are rearranged
     into non-overlapping blocks of size `block_size x block_size`
-  * The width the output tensor is `input_depth * block_size`, whereas the
+  * The width the output tensor is `input_width * block_size`, whereas the
     height is `input_height * block_size`.
   * The depth of the input tensor must be divisible by
     `block_size * block_size`.
@@ -2646,8 +2564,8 @@ where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
 
 ##### Returns:
 
-  Tensor populated by entries in `tensor` corresponding to `True` values in
-    `mask`.
+  (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
+  to `True` values in `mask`.
 
 ##### Raises:
 
@@ -3211,5 +3129,14 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
     `sum_per_d(gradients * (inputs < min))`.
 *  <b>`backprop_wrt_max`</b>: A `Tensor` of type `float32`. Backpropagated gradients w.r.t. max parameter, shape `[d]`:
     `sum_per_d(gradients * (inputs > max))`.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
+
+
 
 

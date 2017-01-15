@@ -1,0 +1,72 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "tensorflow/compiler/aot/flags.h"
+
+namespace tensorflow {
+namespace tfcompile {
+
+void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
+  const std::vector<Flag> tmp = {
+      {"graph", &flags->graph,
+       "Input GraphDef file.  If the file ends in '.pbtxt' it is expected to "
+       "be in the human-readable proto text format, otherwise it is expected "
+       "to be in the proto binary format."},
+      {"config", &flags->config,
+       "Input file containing Config proto.  If the file ends in '.pbtxt' it "
+       "is expected to be in the human-readable proto text format, otherwise "
+       "it is expected to be in the proto binary format."},
+      {"dump_fetch_nodes", &flags->dump_fetch_nodes,
+       "If set, only flags related to fetches are processed, and the resulting "
+       "fetch nodes will be dumped to stdout in a comma-separated list.  "
+       "Typically used to format arguments for other tools, e.g. "
+       "freeze_graph."},
+      {"debug_dir", &flags->debug_dir,
+       "Specifies a directory to dump debugging information, including "
+       "rewritten graphs and the XLA HLO module."},
+      // Flags controlling the XLA ahead-of-time compilation, that correspond to
+      // the fields of xla::cpu::CpuAotCompilationOptions.
+      //
+      // TODO(toddw): The following flags also need to be supported:
+      //   --xla_cpu_llvm_opt_level
+      //   --xla_cpu_llvm_cl_opts
+      {"target_triple", &flags->target_triple,
+       "Target platform, similar to the clang -target flag.  The general "
+       "format is <arch><sub>-<vendor>-<sys>-<abi>.  "
+       "http://clang.llvm.org/docs/CrossCompilation.html#target-triple."},
+      {"target_cpu", &flags->target_cpu,
+       "Target cpu, similar to the clang -mcpu flag.  "
+       "http://clang.llvm.org/docs/CrossCompilation.html#cpu-fpu-abi"},
+      {"target_features", &flags->target_features,
+       "Target features, e.g. +avx2, +neon, etc."},
+      {"entry_point", &flags->entry_point,
+       "Name of the generated function.  If multiple generated object files "
+       "will be linked into the same binary, each will need a unique entry "
+       "point."},
+      {"cpp_class", &flags->cpp_class,
+       "Name of the generated C++ class, wrapping the generated function.  The "
+       "syntax of this flag is [[<optional_namespace>::],...]<class_name>.  "
+       "This mirrors the C++ syntax for referring to a class, where multiple "
+       "namespaces may precede the class name, separated by double-colons.  "
+       "The class will be generated in the given namespace(s), or if no "
+       "namespaces are given, within the global namespace."},
+      {"out_object", &flags->out_object, "Output object file name."},
+      {"out_header", &flags->out_header, "Output header file name."},
+  };
+  flag_list->insert(flag_list->end(), tmp.begin(), tmp.end());
+}
+
+}  // namespace tfcompile
+}  // namespace tensorflow

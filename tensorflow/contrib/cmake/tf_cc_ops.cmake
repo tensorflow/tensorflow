@@ -93,8 +93,6 @@ file(GLOB_RECURSE tf_cc_srcs
     "${tensorflow_source_dir}/tensorflow/cc/client/*.cc"
     "${tensorflow_source_dir}/tensorflow/cc/gradients/*.h"
     "${tensorflow_source_dir}/tensorflow/cc/gradients/*.cc"
-    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.h"
-    "${tensorflow_source_dir}/tensorflow/cc/saved_model/*.cc"
     "${tensorflow_source_dir}/tensorflow/cc/training/*.h"
     "${tensorflow_source_dir}/tensorflow/cc/training/*.cc"
 )

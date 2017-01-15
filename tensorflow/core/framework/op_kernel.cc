@@ -267,6 +267,24 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
   return Status::OK();
 }
 
+Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
+  int start, stop;
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
+  if (stop != start + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  const TensorValue& value((*params_->inputs)[start]);
+  if (value.is_ref()) {
+    *dtype = MakeRefType(value->dtype());
+  } else {
+    *dtype = value->dtype();
+  }
+  return Status::OK();
+}
+
 Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));

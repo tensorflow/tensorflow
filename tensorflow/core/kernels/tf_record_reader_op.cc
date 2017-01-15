@@ -97,5 +97,7 @@ class TFRecordReaderOp : public ReaderOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("TFRecordReader").Device(DEVICE_CPU),
                         TFRecordReaderOp);
+REGISTER_KERNEL_BUILDER(Name("TFRecordReaderV2").Device(DEVICE_CPU),
+                        TFRecordReaderOp);
 
 }  // namespace tensorflow

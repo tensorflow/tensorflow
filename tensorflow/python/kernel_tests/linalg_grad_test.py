@@ -183,7 +183,7 @@ if __name__ == '__main__':
   for dtype in np.float32, np.float64:
     for rows in 2, 5, 10:
       for cols in 2, 5, 10:
-        for l2_regularization in 0.0, 0.001, 1.0:
+        for l2_regularization in 1e-6, 0.001, 1.0:
           shape = (rows, cols)
           name = '%s_%s_%s' % (dtype.__name__, '_'.join(map(str, shape)),
                                l2_regularization)

@@ -29,7 +29,7 @@ methods.  We will document these methods soon.
 
 - - -
 
-### `tf.test.main()` {#main}
+### `tf.test.main(argv=None)` {#main}
 
 Runs all unit tests.
 
@@ -492,7 +492,7 @@ then compares them using self._AssertProtoEqual().
 
 - - -
 
-#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=19, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
+#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=21, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
 
 
 
@@ -791,7 +791,15 @@ Fail immediately, with the given message.
 
 #### `tf.test.TestCase.get_temp_dir()` {#TestCase.get_temp_dir}
 
+Returns a unique temporary directory for the test to use.
 
+Across different test runs, this method will return a different folder.
+This will ensure that across different runs tests will not be able to
+pollute each others environment.
+
+##### Returns:
+
+  string, the path to the unique temporary directory created for this test.
 
 
 - - -
@@ -976,6 +984,13 @@ Returns whether TensorFlow can access a GPU.
   True iff a gpu device of the requested kind is available.
 
 
+- - -
+
+### `tf.test.gpu_device_name()` {#gpu_device_name}
+
+Returns the name of a GPU device if available or the empty string.
+
+
 
 ## Gradient checking
 
@@ -1104,7 +1119,7 @@ Report a benchmark.
 
 - - -
 
-#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
+#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, store_memory_usage=True, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
 
 Run an op or tensor in the given session.  Report the results.
 
@@ -1121,6 +1136,8 @@ Run an op or tensor in the given session.  Report the results.
     store the trace of iteration in the benchmark report.
     The trace will be stored as a string in Google Chrome trace format
     in the extras field "full_trace_chrome_format".
+*  <b>`store_memory_usage`</b>: Boolean, whether to run an extra untimed iteration,
+    calculate memory usage, and store that in extras fields.
 *  <b>`name`</b>: (optional) Override the BenchmarkEntry name with `name`.
     Otherwise it is inferred from the top-level method name.
 *  <b>`extras`</b>: (optional) Dict mapping string keys to additional benchmark info.

@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -204,6 +205,20 @@ class DenseTest(test.TestCase):
     core_layers.dense(inputs, 2, name='my_dense', reuse=True)
     vars2 = variables.trainable_variables()
     self.assertEqual(vars1, vars2)
+
+  def testFunctionalDenseInitializerFromScope(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          'scope', initializer=init_ops.ones_initializer()):
+        inputs = random_ops.random_uniform((5, 3), seed=1)
+        core_layers.dense(inputs, 2)
+        sess.run(variables.global_variables_initializer())
+        weights = sess.run(variables.trainable_variables())
+        self.assertEqual(len(weights), 2)
+        # Check that the matrix weights got initialized to ones (from scope).
+        self.assertAllClose(weights[0], np.ones((3, 2)))
+        # Check that the bias still got initialized to zeros.
+        self.assertAllClose(weights[1], np.zeros((2)))
 
   def testFunctionalDenseWithCustomGetter(self):
     called = [0]

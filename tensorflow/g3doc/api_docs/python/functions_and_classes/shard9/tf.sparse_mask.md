@@ -29,9 +29,10 @@ tf.shape(b.values) => [2, 10]
 
 ##### Args:
 
-  * `a`: An `IndexedSlices` instance.
-  * `mask_indices`: Indices of elements to mask.
-  * `name`: A name for the operation (optional).
+
+*  <b>`a`</b>: An `IndexedSlices` instance.
+*  <b>`mask_indices`</b>: Indices of elements to mask.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 

@@ -8,11 +8,11 @@ github source.
 The TensorFlow Python API supports Python 2.7 and Python 3.3+.
 
 The GPU version works best with Cuda Toolkit 8.0 and
-cuDNN v5.  Other versions are supported (Cuda toolkit >= 7.0 and
+cuDNN v5.1.  Other versions are supported (Cuda toolkit >= 7.0 and
 cuDNN >= v3) only when installing from sources.
 Please see [Cuda installation](#optional-install-cuda-gpus-on-linux) for
-details. For Mac OS X, please see [Setup GPU for
-Mac](#optional-setup-gpu-for-mac).
+details. For Mac OS X, please see 
+[Setup GPU for Mac](#optional-setup-gpu-for-mac).
 
 ## Overview
 
@@ -43,8 +43,8 @@ If you encounter installation errors, see
 [Pip](https://en.wikipedia.org/wiki/Pip_(package_manager)) is a package
 management system used to install and manage software packages written in
 Python. We provide pip packages for TensorFlow on Linux, Mac OS X, and
-Windows. For Windows instructions, please see [Pip installation on
-Windows](#pip-installation-on-windows).
+Windows. For Windows instructions, please see 
+[Pip installation on Windows](#pip-installation-on-windows).
 
 The packages that will be installed or upgraded during the pip install are
 listed in the [REQUIRED_PACKAGES section of
@@ -61,58 +61,54 @@ $ sudo easy_install pip
 $ sudo easy_install --upgrade six
 ```
 
-We have also uploaded the CPU version of the binaries to Pypi, so you can
-simply install on Linux, Mac or Windows with:
+We have also uploaded the binaries to Pypi, so you can
+simply install tensorflow on Linux, Mac or Windows with pip install. Note you will need pip version 8.1 or later for the following commands to work on Linux :
 
 ```bash
 $ pip install tensorflow
 ```
 
-Note that you will need pip version 8.1 or later for the above command to work on Linux.
+For installing the version with GPU support, please use:
 
-For Windows users, you can also install the GPU version of the binary with:
 ```bash
 $ pip install tensorflow-gpu
 ```
-Unfortunately, this command is not yet available for Linux or Mac GPU binaries
-due to their sizes exceeding the Pypi limit.
 
-If the above commands do not work on your system or you want to install the GPU version
-of the binary on Linux or Mac, you can follow these instructions:
+If the above commands do not work on your system, you can follow these instructions:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp27-none-linux_x86_64.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 2.7
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp27-none-linux_x86_64.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only, Python 2.7:
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.0rc1-py2-none-any.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.1-py2-none-any.whl
 
 # Mac OS X, GPU enabled, Python 2.7:
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.0rc1-py2-none-any.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.1-py2-none-any.whl
 
 # Ubuntu/Linux 64-bit, CPU only, Python 3.4
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp34-cp34m-linux_x86_64.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.4
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp34-cp34m-linux_x86_64.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, CPU only, Python 3.5
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp35-cp35m-linux_x86_64.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp35-cp35m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.5
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp35-cp35m-linux_x86_64.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp35-cp35m-linux_x86_64.whl
 
 # Mac OS X, CPU only, Python 3.4 or 3.5:
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.0rc1-py3-none-any.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.1-py3-none-any.whl
 
 # Mac OS X, GPU enabled, Python 3.4 or 3.5:
-$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.0rc1-py3-none-any.whl
+$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.1-py3-none-any.whl
 ```
 
 Install TensorFlow:
@@ -154,14 +150,14 @@ Both distributions include pip. To install the CPU-only version of
 TensorFlow, enter the following command at a command prompt:
 
 ```bat
-C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-0.12.0rc1-cp35-cp35m-win_amd64.whl
+C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-0.12.1-cp35-cp35m-win_amd64.whl
 ```
 
 To install the GPU version of TensorFlow, enter the following command
 at a command prompt:
 
 ```bat
-C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-0.12.0rc1-cp35-cp35m-win_amd64.whl
+C:\> pip install --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-0.12.1-cp35-cp35m-win_amd64.whl
 ```
 
 You can now [test your installation](#test-the-tensorflow-installation).
@@ -216,37 +212,37 @@ Now, install TensorFlow just as you would for a regular Pip installation. First 
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp27-none-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 2.7
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp27-none-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only, Python 2.7:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.0rc1-py2-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.1-py2-none-any.whl
 
 # Mac OS X, GPU enabled, Python 2.7:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.0rc1-py2-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.1-py2-none-any.whl
 
 # Ubuntu/Linux 64-bit, CPU only, Python 3.4
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp34-cp34m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.4
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp34-cp34m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, CPU only, Python 3.5
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp35-cp35m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp35-cp35m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.5
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp35-cp35m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp35-cp35m-linux_x86_64.whl
 
 # Mac OS X, CPU only, Python 3.4 or 3.5:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.0rc1-py3-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.1-py3-none-any.whl
 
 # Mac OS X, GPU enabled, Python 3.4 or 3.5:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.0rc1-py3-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.1-py3-none-any.whl
 ```
 
 Finally install TensorFlow:
@@ -368,37 +364,37 @@ select the correct binary to install:
 
 ```bash
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp27-none-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp27-none-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 2.7
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp27-none-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp27-none-linux_x86_64.whl
 
 # Mac OS X, CPU only, Python 2.7:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.0rc1-py2-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.1-py2-none-any.whl
 
 # Mac OS X, GPU enabled, Python 2.7:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.0rc1-py2-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.1-py2-none-any.whl
 
 # Ubuntu/Linux 64-bit, CPU only, Python 3.4
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp34-cp34m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.4
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp34-cp34m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp34-cp34m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, CPU only, Python 3.5
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.0rc1-cp35-cp35m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.12.1-cp35-cp35m-linux_x86_64.whl
 
 # Ubuntu/Linux 64-bit, GPU enabled, Python 3.5
 # Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see "Installing from sources" below.
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.0rc1-cp35-cp35m-linux_x86_64.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-0.12.1-cp35-cp35m-linux_x86_64.whl
 
 # Mac OS X, CPU only, Python 3.4 or 3.5:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.0rc1-py3-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-0.12.1-py3-none-any.whl
 
 # Mac OS X, GPU enabled, Python 3.4 or 3.5:
-(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.0rc1-py3-none-any.whl
+(tensorflow)$ export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-0.12.1-py3-none-any.whl
 ```
 
 Finally install TensorFlow:
@@ -466,7 +462,7 @@ code.
 code.
 
 We also have tags with `latest` replaced by a released version (e.g.,
-`0.12.0-rc1-gpu`).
+`0.12.1-gpu`).
 
 With Docker the installation is as follows:
 
@@ -504,14 +500,8 @@ For NVidia GPU support install latest NVidia drivers and
 $ nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
 ```
 
-If you have a problem running `nvidia-docker`, then using the default config, we
-include a
-[script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/docker_run_gpu.sh)
-in the repo with these flags, so the command-line would look like
-
-```bash
-$ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
-```
+If you run into a problem running `nvidia-docker`, Please report an issue
+[here](https://github.com/NVIDIA/nvidia-docker/issues). 
 
 For more details see [TensorFlow docker
 readme](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/docker).
@@ -524,7 +514,7 @@ the Docker container.
 ### (Optional, Linux) Enable GPU Support
 
 If you installed the GPU version of TensorFlow, you must also install the Cuda
-Toolkit 8.0 and cuDNN v5.  Please see [Cuda
+Toolkit 8.0 and cuDNN v5.1.  Please see [Cuda
 installation](#optional-install-cuda-gpus-on-linux).
 
 You also need to set the `LD_LIBRARY_PATH` and `CUDA_HOME` environment
@@ -638,7 +628,7 @@ Install the toolkit into e.g. `/usr/local/cuda`.
 
 [https://developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn)
 
-Download cuDNN v5.
+Download cuDNN v5.1.
 
 Uncompress and copy the cuDNN files into the toolkit directory. Assuming the
 toolkit is installed in `/usr/local/cuda`, run the following commands (edited
@@ -649,6 +639,12 @@ tar xvzf cudnn-8.0-linux-x64-v5.1-ga.tgz
 sudo cp -P cuda/include/cudnn.h /usr/local/cuda/include/
 sudo cp -P cuda/lib64/libcudnn* /usr/local/cuda/lib64/
 sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
+```
+
+##### Install other dependencies
+
+```bash
+$ sudo apt-get install libcupti-dev
 ```
 
 #### Optional: Install OpenCL (Experimental, Linux only)
@@ -755,7 +751,7 @@ export PATH="$CUDA_HOME/bin:$PATH"
 ```
 
 Finally, you will also want to install the [CUDA Deep Neural
-Network](https://developer.nvidia.com/cudnn) (cuDNN v5) library which currently
+Network](https://developer.nvidia.com/cudnn) (cuDNN v5.1) library which currently
 requires an [Accelerated Computing Developer
 Program](https://developer.nvidia.com/accelerated-computing-developer) account.
 Once you have it downloaded locally, you can unzip and move the header and
@@ -862,13 +858,16 @@ default and if you want to limit RAM usage you can add `--local_resources
 ```bash
 $ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
 
-# To build with GPU support:
+# To build with support for CUDA:
 $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
+# Alternatively, to build with support for OpenCL:
+$ bazel build -c opt --config=sycl //tensorflow/tools/pip_package:build_pip_package
 
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
 # The name of the .whl file will depend on your platform.
-$ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.12.0rc1-py2-none-any.whl
+$ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.12.1-py2-none-any.whl
 ```
 
 ## Optimizing CPU performance
@@ -981,20 +980,20 @@ package:
 
 ```bash
 # Ubuntu/Linux 64-bit:
-$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0-cp27-none-linux_x86_64.whl
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp27-none-linux_x86_64.whl
 
 # Mac OS X:
-$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp27-cp27m-macosx_10_11_x86_64.whl
+$ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp27-none-macosx_10_11_x86_64.whl
 ```
 
 And for Python 3.5:
 
 ```bash
 # Ubuntu/Linux 64-bit:
-$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0-cp35-cp35m-linux_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp35-none-linux_x86_64.whl
 
 # Mac OS X:
-$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp35-cp35m-macosx_10_11_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp35-none-macosx_10_11_x86_64.whl
 ```
 
 If your system/configuration is not listed above, you can use the following
@@ -1202,7 +1201,7 @@ Traceback (most recent call last):
 TypeError: __init__() got an unexpected keyword argument 'syntax'
 ```
 
-This is due to a conflict between protobuf versions (we require protobuf 3.0.0).
+This is due to a conflict between protobuf versions (we require protobuf 3.1.0).
 The best current solution is to make sure older versions of protobuf are not
 installed, such as:
 
@@ -1250,3 +1249,26 @@ RuntimeError: Broken toolchain: cannot link a simple C program
 ```
 
 This is typically because you have the Xcode build tools installed, but you still need to accept the license agreements.  To resolve it, accept the license agreement by opening Xcode, or by running `xcodebuild -license` from the command line.
+
+### Import Error
+When importing tensorflow, you may see an "ImportError" raised.  Below
+are some possible examples and solutions:
+
+```
+ImportError: /lib64/libc.so.6: version `GLIBC_2.16' not found (required by ..._pywrap_tensorflow.so)
+```
+
+This can occur if your operating system libraries are too old for
+our provided pip package binaries.  Solution: Try
+[building from sources](#installing-from-sources).
+
+```
+ImportError: cannot import name pywrap_tensorflow
+```
+
+This can occur if you happen to be in the tensorflow source code directory
+and try to import tensorflow: the order of search path prefers the current
+directory, and so tries to import directly from the source code instead of
+your installed tensorflow package.  Solution: don't import tensorflow
+from the tensorflow source code root directory, if you are.
+

@@ -45,7 +45,7 @@ def main():
       # strip asan for the device
       computecpp_device_compiler_flags = [flag for flag in compiler_flags if not flag.startswith(('-fsanitize'))]
       computecpp_device_compiler_flags = ['-sycl-compress-name', '-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-isystem',
-      COMPUTECPP_INCLUDE, '-std=c++11', '-sycl', '-emit-llvm', '-no-serial-memop'] + computecpp_device_compiler_flags
+      COMPUTECPP_INCLUDE, '-std=c++11', '-sycl', '-emit-llvm', '-no-serial-memop', '-Xclang', '-cl-denorms-are-zero', '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt'] + computecpp_device_compiler_flags
 
       x = subprocess.call([COMPUTECPP_DRIVER] + computecpp_device_compiler_flags )
       if(x == 0):

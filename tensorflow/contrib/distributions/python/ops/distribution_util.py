@@ -126,10 +126,10 @@ def same_dynamic_shape(a, b):
       # static shape inference may break the equality comparison between
       # shape(a) and shape(b) in math_ops.equal.
       lambda: math_ops.reduce_all(math_ops.equal(
-          array_ops.concat_v2((
+          array_ops.concat((
               array_ops.shape(a),
               array_ops.shape(b)), 0),
-          array_ops.concat_v2((
+          array_ops.concat((
               array_ops.shape(b),
               array_ops.shape(a)), 0))),
       lambda: constant_op.constant(False))
@@ -371,7 +371,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
-      perm = array_ops.concat_v2((last, first), 0)
+      perm = array_ops.concat((last, first), 0)
       return array_ops.transpose(x, perm=perm)
 
 
@@ -427,7 +427,7 @@ def pick_vector(cond,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
-        array_ops.concat_v2((true_vector, false_vector), 0),
+        array_ops.concat((true_vector, false_vector), 0),
         [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
@@ -558,7 +558,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     # Gather up, reshape, and return.
     y = array_ops.reshape(x, [-1, d])
     y = array_ops.gather_nd(y, idx)
-    y = array_ops.reshape(y, array_ops.concat_v2([batch_shape, [n, n]], 0))
+    y = array_ops.reshape(y, array_ops.concat([batch_shape, [n, n]], 0))
     y = array_ops.matrix_band_part(y, -1, 0)
     y.set_shape(y.get_shape().merge_with(final_shape))
     return y

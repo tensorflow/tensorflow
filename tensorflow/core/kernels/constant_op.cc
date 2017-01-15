@@ -36,8 +36,9 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-  OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
-                          *proto, AllocatorAttributes(), &tensor_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->device()->MakeTensorFromProto(
+                     *proto, AllocatorAttributes(), &tensor_));
   OP_REQUIRES(
       ctx, ctx->output_type(0) == tensor_.dtype(),
       errors::InvalidArgument("Type mismatch between value (",
@@ -115,7 +116,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif //TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -137,7 +138,7 @@ struct FillFunctor<SYCLDevice, T> {
     To32Bit(out).device(d) = To32Bit(out).constant(in());
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 
@@ -192,7 +193,7 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL(GPU, Eigen::half);
@@ -304,4 +305,9 @@ REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
                         PlaceholderOp);
 
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
+                        PlaceholderOp);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

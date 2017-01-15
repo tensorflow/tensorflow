@@ -28,12 +28,10 @@ filegroup(
     srcs = glob(
         [
             "core/ops/*.cc",
-            "data/*.cc",
             "ops/*.cc",
         ],
         exclude = [
             "core/ops/*_test.cc",
-            "data/*_test.cc",
         ],
     ),
 )
@@ -70,11 +68,10 @@ py_library(
 py_library(
     name = "data_ops_py",
     srcs = [
-        "data/data_ops.py",
+        "python/ops/data_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
         ":tensor_forest_ops_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -101,26 +98,39 @@ tf_custom_op_library(
         "core/ops/count_extremely_random_stats_op.cc",
         "core/ops/finished_nodes_op.cc",
         "core/ops/grow_tree_op.cc",
+        "core/ops/reinterpret_string_to_float_op.cc",
         "core/ops/sample_inputs_op.cc",
         "core/ops/scatter_add_ndim_op.cc",
         "core/ops/topn_ops.cc",
         "core/ops/tree_predictions_op.cc",
         "core/ops/update_fertile_slots_op.cc",
-        "data/reinterpret_string_to_float_op.cc",
         "ops/tensor_forest_ops.cc",
     ],
     deps = [":tree_utils"],
 )
 
 py_library(
-    name = "tensor_forest_ops_py",
+    name = "init_py",
     srcs = [
         "__init__.py",
-        "python/ops/tensor_forest_ops.py",
+        "client/__init__.py",
+        "python/__init__.py",
     ],
-    data = [
-        ":python/ops/_tensor_forest_ops.so",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":data_ops_py",
+        ":eval_metrics",
+        ":random_forest",
+        ":tensor_forest_ops_py",
+        ":tensor_forest_py",
     ],
+)
+
+py_library(
+    name = "tensor_forest_ops_py",
+    srcs = ["python/ops/tensor_forest_ops.py"],
+    data = ["python/ops/_tensor_forest_ops.so"],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -140,10 +150,12 @@ py_library(
     srcs = ["client/eval_metrics.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -154,9 +166,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":eval_metrics",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -174,6 +187,7 @@ cc_library(
     name = "tree_utils",
     srcs = ["core/ops/tree_utils.cc"],
     hdrs = [
+        "core/ops/data_spec.h",
         "core/ops/tree_utils.h",
     ],
     deps = [
@@ -202,9 +216,9 @@ py_test(
     srcs = ["python/kernel_tests/count_extremely_random_stats_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
+        ":data_ops_py",
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -217,9 +231,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -242,10 +257,11 @@ py_test(
     srcs = ["python/kernel_tests/sample_inputs_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":data_ops_py",
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -256,9 +272,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -319,7 +335,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -351,6 +368,14 @@ py_library(
     deps = [
         ":constants",
         ":tensor_forest_ops_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -358,14 +383,47 @@ py_test(
     name = "topn_test",
     size = "small",
     srcs = ["python/topn_test.py"],
+    shard_count = 10,
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
         ":tensor_forest_ops_py",
         ":topn_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "random_forest",
+    srcs = ["client/random_forest.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_lib",
+        ":data_ops_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
+    ],
+)
+
+py_test(
+    name = "random_forest_test",
+    size = "medium",
+    srcs = ["client/random_forest_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_forest",
+        ":tensor_forest_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
     ],
 )

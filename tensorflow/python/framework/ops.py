@@ -1444,6 +1444,9 @@ class Operation(object):
   def __str__(self):
     return str(self._node_def)
 
+  def __repr__(self):
+    return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
+
   @property
   def outputs(self):
     """The list of `Tensor` objects representing the outputs of this op."""
@@ -1605,7 +1608,7 @@ class RegisterGradient(object):
   ```python
   @tf.RegisterGradient("Sub")
   def _sub_grad(unused_op, grad):
-    return grad, tf.neg(grad)
+    return grad, tf.negative(grad)
   ```
 
   The decorator argument `op_type` is the string type of an
@@ -2296,6 +2299,9 @@ class Graph(object):
     if (function.grad_func_name is not None) and (
         function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
 
   @property

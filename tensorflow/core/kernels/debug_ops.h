@@ -127,7 +127,7 @@ class DebugNanCountOp : public OpKernel {
       const T* input_flat = input.template flat<T>().data();
 
       for (int64 i = 0; i < input_shape.num_elements(); ++i) {
-        if (Eigen::numext::isnan(input_flat[i])) {
+        if (Eigen::numext::isnan(static_cast<double>(input_flat[i]))) {
           nan_count++;
         }
       }
@@ -188,7 +188,6 @@ class DebugNumericSummaryOp : public OpKernel {
       const T* input_flat = input.template flat<T>().data();
 
       element_count = input_shape.num_elements();
-      const double element_count_double = static_cast<double>(element_count);
       for (int64 i = 0; i < element_count; ++i) {
         T x = input_flat[i];
         if (Eigen::numext::isnan(x)) {

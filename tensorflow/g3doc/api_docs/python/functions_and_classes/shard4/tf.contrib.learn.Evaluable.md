@@ -1,7 +1,7 @@
 Interface for objects that are evaluatable by, e.g., `Experiment`.
 - - -
 
-#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None)` {#Evaluable.evaluate}
+#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#Evaluable.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -60,6 +60,8 @@ for which this evaluation was performed.
     different data sets, such as on training data vs test data.
 *  <b>`checkpoint_path`</b>: Path of a specific checkpoint to evaluate. If `None`, the
     latest checkpoint in `model_dir` is used.
+*  <b>`hooks`</b>: List of `SessionRunHook` subclass instances. Used for callbacks
+    inside the evaluation call.
 
 ##### Returns:
 

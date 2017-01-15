@@ -79,9 +79,10 @@ can have speed penalty, specially in distributed settings.
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
 *  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
-    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
-    `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
-    good training performance but poor validation and/or test performance.
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
+    Lower `decay` value (recommend trying `decay`=0.9) if model experiences
+    reasonably good training performance but poor validation and/or test
+    performance. Try zero_debias_moving_mean=True for improved stability.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -113,6 +114,8 @@ can have speed penalty, specially in distributed settings.
     example selection.)
 *  <b>`fused`</b>: Use nn.fused_batch_norm if True, nn.batch_normalization otherwise.
 *  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
+*  <b>`zero_debias_moving_mean`</b>: Use zero_debias for moving_mean. It creates a new
+    pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -1765,7 +1768,8 @@ Example:
       columns_to_tensors=columns_to_tensor,
       feature_columns=feature_columns,
       num_outputs=1)
-  loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
+  loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=labels,
+                                                 logits=logits)
   ```
 
 ##### Args:

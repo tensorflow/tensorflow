@@ -35,6 +35,13 @@ The reference to the TensorArray.
 The flow `Tensor` forcing ops leading to this TensorArray state.
 
 
+- - -
+
+#### `tf.TensorArray.dtype` {#TensorArray.dtype}
+
+The data type of this TensorArray.
+
+
 
 - - -
 
@@ -76,7 +83,7 @@ must all match.
 
 - - -
 
-#### `tf.TensorArray.pack(*args, **kwargs)` {#TensorArray.pack}
+#### `tf.TensorArray.stack(name=None)` {#TensorArray.stack}
 
 Return the values in the TensorArray as a stacked `Tensor`.
 
@@ -164,7 +171,7 @@ Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
 
 - - -
 
-#### `tf.TensorArray.unpack(*args, **kwargs)` {#TensorArray.unpack}
+#### `tf.TensorArray.unstack(value, name=None)` {#TensorArray.unstack}
 
 Unstack the values of a `Tensor` in the TensorArray.
 
@@ -211,6 +218,20 @@ Split the values of a `Tensor` into the TensorArray.
 
 
 *  <b>`ValueError`</b>: if the shape inference fails.
+
+
+
+- - -
+
+#### `tf.TensorArray.identity()` {#TensorArray.identity}
+
+Returns a TensorArray with the same content and properties.
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the control dependencies
+  from the contexts will become control dependencies for writes, reads, etc.
+  Use this object all for subsequent operations.
 
 
 
@@ -277,61 +298,9 @@ Close the current TensorArray.
 
 - - -
 
-#### `tf.TensorArray.dtype` {#TensorArray.dtype}
-
-The data type of this TensorArray.
-
-
-- - -
-
 #### `tf.TensorArray.size(name=None)` {#TensorArray.size}
 
 Return the size of the TensorArray.
-
-
-- - -
-
-#### `tf.TensorArray.stack(name=None)` {#TensorArray.stack}
-
-Return the values in the TensorArray as a stacked `Tensor`.
-
-All of the values must have been written and their shapes must all match.
-If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  All the tensors in the TensorArray stacked into one tensor.
-
-
-- - -
-
-#### `tf.TensorArray.unstack(value, name=None)` {#TensorArray.unstack}
-
-Unstack the values of a `Tensor` in the TensorArray.
-
-If input value shapes have rank-`R`, then the output TensorArray will
-contain elements whose shapes are rank-`(R-1)`.
-
-##### Args:
-
-
-*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A new TensorArray object with flow that ensures the unstack occurs.
-  Use this object all for subsequent operations.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if the shape inference fails.
 
 
 

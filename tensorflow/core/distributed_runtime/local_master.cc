@@ -22,6 +22,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+Status WaitForNotification(CallOptions* call_options, Notification* n) {
+  int64 timeout_in_ms = call_options->GetTimeout();
+  if (timeout_in_ms > 0) {
+    bool notified = WaitForNotificationWithTimeout(n, timeout_in_ms);
+    if (!notified) {
+      call_options->StartCancel();
+      // The call has borrowed pointers to the request and response
+      // messages, so we must still wait for the call to complete.
+      n->WaitForNotification();
+      return errors::DeadlineExceeded("Operation timed out.");
+    }
+  } else {
+    n->WaitForNotification();
+  }
+  return Status::OK();
+}
+}
+
 LocalMaster::LocalMaster(Master* master_impl) : master_impl_(master_impl) {}
 
 Status LocalMaster::CreateSession(CallOptions* call_options,
@@ -33,7 +53,7 @@ Status LocalMaster::CreateSession(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
 }
 
@@ -46,7 +66,7 @@ Status LocalMaster::ExtendSession(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
 }
 
@@ -59,12 +79,12 @@ Status LocalMaster::PartialRunSetup(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
 }
 
 Status LocalMaster::RunStep(CallOptions* call_options,
-                            const RunStepRequest* request,
+                            RunStepRequestWrapper* request,
                             RunStepResponse* response) {
   Notification n;
   Status ret;
@@ -73,8 +93,12 @@ Status LocalMaster::RunStep(CallOptions* call_options,
                           ret.Update(s);
                           n.Notify();
                         });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
+}
+
+MutableRunStepRequestWrapper* LocalMaster::CreateRunStepRequest() {
+  return new InMemoryRunStepRequest;
 }
 
 Status LocalMaster::CloseSession(CallOptions* call_options,
@@ -86,7 +110,7 @@ Status LocalMaster::CloseSession(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
 }
 
@@ -99,7 +123,7 @@ Status LocalMaster::ListDevices(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
 }
 
@@ -112,7 +136,7 @@ Status LocalMaster::Reset(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(WaitForNotification(call_options, &n));
   return ret;
 }
 

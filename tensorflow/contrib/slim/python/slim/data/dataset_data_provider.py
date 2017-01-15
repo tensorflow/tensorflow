@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -50,8 +50,14 @@ from tensorflow.contrib.slim.python.slim.data import parallel_reader
 
 class DatasetDataProvider(data_provider.DataProvider):
 
-  def __init__(self, dataset, num_readers=1, shuffle=True, num_epochs=None,
-               common_queue_capacity=256, common_queue_min=128, seed=None):
+  def __init__(self,
+               dataset,
+               num_readers=1,
+               shuffle=True,
+               num_epochs=None,
+               common_queue_capacity=256,
+               common_queue_min=128,
+               seed=None):
     """Creates a DatasetDataProvider.
 
     Args:

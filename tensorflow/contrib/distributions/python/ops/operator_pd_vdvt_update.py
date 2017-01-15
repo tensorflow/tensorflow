@@ -147,7 +147,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
         v_rank = array_ops.rank(v)
         v_batch_shape = array_ops.strided_slice(v_shape, [0], [v_rank - 2])
         r = array_ops.gather(v_shape, v_rank - 1)  # Last dim of v
-        id_shape = array_ops.concat_v2((v_batch_shape, [r, r]), 0)
+        id_shape = array_ops.concat((v_batch_shape, [r, r]), 0)
       return operator_pd_identity.OperatorPDIdentity(
           id_shape, v.dtype, verify_pd=self._verify_pd)
 

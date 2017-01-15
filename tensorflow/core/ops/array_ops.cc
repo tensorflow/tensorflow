@@ -324,7 +324,7 @@ Concatenates tensors along one dimension.
 values: List of `N` Tensors to concatenate. Their ranks and types must match,
   and their sizes must match in all dimensions except `concat_dim`.
 axis: 0-D.  The dimension along which to concatenate.  Must be in the
-  range [0, rank(values)).
+  range [-rank(values), rank(values)).
 output: A `Tensor` with the concatenation of values stacked along the
   `concat_dim` dimension.  This tensor's shape matches that of `values` except
   in `concat_dim` where it has the sum of the sizes.
@@ -1157,6 +1157,152 @@ value: 0-D (scalar). Value to fill the returned tensor.
 @compatibility(numpy)
 Equivalent to np.full
 @end_compatibility
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("Empty")
+    .Input("shape: Tshape")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .Attr("init: bool = false")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Creates an empty Tensor with shape `shape` and type `dtype`.
+
+The memory can optionally be initialized. This is usually useful in
+conjunction with inplace operations.
+
+shape: 1-D `Tensor` indicating the shape of the output.
+dtype: The element type of the returned tensor.
+init: `bool` indicating whether or not to zero the allocated memory.
+output: An empty Tensor of the specified type.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("InplaceUpdate")
+    .Input("value: T")
+    .Input("loc: Tshape")
+    .Input("update: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Updates input `value` at `loc` with `update`.
+
+If `loc` is None, `value` and `update` must be the same size.
+```
+value = update
+```
+
+If `loc` is a scalar, `value` has rank 1 higher than `update`
+```
+value[i, :] = update
+```
+
+If `loc` is a vector, `value` has the same rank as `update`
+```
+value[loc, :] = update
+```
+
+If you use this function you will almost certainly want to add
+a control dependency as done in the implementation of parallel_stack to
+avoid race conditions.
+
+value: A `Tensor` object that will be updated in-place.
+loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
+     such that value[loc, :] is updated.
+update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+        otherwise of rank equal to `value` that contains the new values
+        for `value`.
+output: `value` that has been updated accordingly.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("InplaceAdd")
+    .Input("value: T")
+    .Input("loc: Tshape")
+    .Input("update: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Updates input `value` at `loc` by adding `update` elementwise.
+
+If `loc` is None, `value` and `update` must be the same size.
+```
+value += update
+```
+
+If `loc` is a scalar, `value` has rank 1 higher than `update`
+```
+value[i, :] += update
+```
+
+If `loc` is a vector, `value` has the same rank as `update`
+```
+value[loc, :] += update
+```
+
+If you use this function you will almost certainly want to add
+a control dependency as done in the implementation of parallel_stack to
+avoid race conditions.
+
+value: A `Tensor` object that will be updated in-place.
+loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
+     such that value[loc, :] is updated.
+update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+        otherwise of rank equal to `value` that contains the new values
+        that will be added to `value`.
+output: `value` where `update` has been added as appropriate.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("InplaceSubtract")
+    .Input("value: T")
+    .Input("loc: Tshape")
+    .Input("update: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Updates input `value` at `loc` by subtracting `update` elementwise.
+
+If `loc` is None, `value` and `update` must be the same size.
+```
+value -= update
+```
+
+If `loc` is a scalar, `value` has rank 1 higher than `update`
+```
+value[i, :] -= update
+```
+
+If `loc` is a vector, `value` has the same rank as `update`
+```
+value[loc, :] -= update
+```
+
+If you use this function you will almost certainly want to add
+a control dependency as done in the implementation of parallel_stack to
+avoid race conditions.
+
+value: A `Tensor` object that will be updated in-place.
+loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
+     such that value[loc, :] is updated.
+update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
+        otherwise of rank equal to `value` that contains the new values
+        that will be subtracted from `value`.
+output: `value` where `update` has been subtracted as appropriate.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -2365,6 +2511,39 @@ where(input) ==> [[0, 0, 0],
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("BroadcastArgs")
+    .Input("s0: T")
+    .Input("s1: T")
+    .Output("r0: T")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ShapeHandle shape_x = c->input(0);
+      ShapeHandle shape_y = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(shape_x, 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(shape_y, 1, &unused));
+
+      if (!c->ValueKnown(c->Dim(shape_x, 0)) ||
+          !c->ValueKnown(c->Dim(shape_y, 0))) {
+        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+        return Status::OK();
+      }
+
+      int64 x_dim = c->Value(c->Dim(shape_x, 0));
+      int64 y_dim = c->Value(c->Dim(shape_y, 0));
+
+      // Broadcasted shape is going to be as large as the largest dimension.
+      c->set_output(0, c->Vector(std::max(x_dim, y_dim)));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Return the shape of s0 op s1 with broadcast.
+
+Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("BroadcastGradientArgs")
     .Input("s0: T")
     .Input("s1: T")
@@ -2650,7 +2829,7 @@ REGISTER_OP("PlaceholderWithDefault")
       return Status::OK();
     })
     .Doc(R"doc(
-A placeholder op that passes though `input` when its output is not fed.
+A placeholder op that passes through `input` when its output is not fed.
 
 input: The default value to produce when `output` is not fed.
 output: A placeholder tensor that defaults to `input` if it is not fed.

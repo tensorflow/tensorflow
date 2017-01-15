@@ -23,7 +23,6 @@ import random
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -31,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 # pylint: disable=g-import-not-at-top
@@ -230,8 +230,9 @@ def enqueue_data(data,
       queue_shapes = [(), data.shape[1:]]
       get_feed_fn = _ArrayFeedFn
     elif isinstance(data, collections.OrderedDict):
-      types = [dtypes.int64] + [dtypes.as_dtype(col.dtype)
-                                for col in data.values()]
+      types = [dtypes.int64] + [
+          dtypes.as_dtype(col.dtype) for col in data.values()
+      ]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):

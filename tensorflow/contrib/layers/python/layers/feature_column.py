@@ -242,12 +242,14 @@ class _FeatureColumn(object):
   # pylint: disable=unused-argument
   def _wide_embedding_lookup_arguments(self, input_tensor):
     """Returns arguments to look up embeddings for this column."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No wide embedding lookup arguments for column {}.".format(self))
 
   # pylint: disable=unused-argument
   def _to_dense_tensor(self, input_tensor):
     """Returns a dense tensor representing this column's values."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No dense tensor representation for column {}.".format(self))
 
   def _checkpoint_path(self):
     """Returns None, or a (path,tensor_name) to load a checkpoint from."""
@@ -893,15 +895,18 @@ class _OneHotColumn(_FeatureColumn,
       This is not yet supported.
     """
 
-    if (self.sparse_id_column.weight_tensor(transformed_input_tensor) is
-        not None):
-      raise ValueError("one_hot_column does not yet support "
-                       "weighted_sparse_column. Column: {}".format(self))
-
     # Reshape ID column to `output_rank`.
     sparse_id_column = self.sparse_id_column.id_tensor(transformed_input_tensor)
     # pylint: disable=protected-access
     sparse_id_column = layers._inner_flatten(sparse_id_column, output_rank)
+
+    weight_tensor = self.sparse_id_column.weight_tensor(
+        transformed_input_tensor)
+    if weight_tensor is not None:
+      weighted_column = sparse_ops.sparse_merge(sp_ids=sparse_id_column,
+                                                sp_values=weight_tensor,
+                                                vocab_size=self.length)
+      return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
                                                         default_value=-1)

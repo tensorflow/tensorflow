@@ -24,6 +24,7 @@ import traceback
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ["make_template"]
@@ -199,9 +200,9 @@ class Template(object):
       with variable_scope.variable_scope(
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
-        self._var_scope = vs
+        self._variable_scope = vs
     else:
-      self._var_scope = None
+      self._variable_scope = None
     # This variable keeps track of whether the template has been called yet,
     # which is not the same as whether the scope has been created.
     self._variables_created = False
@@ -251,18 +252,18 @@ class Template(object):
       raise
 
   def __call__(self, *args, **kwargs):
-    if self._var_scope:
+    if self._variable_scope:
       if self._variables_created:
         # This is not the first visit to __call__, so variables have already
         # been created, and we want to reuse them.
-        with variable_scope.variable_scope(self._var_scope, reuse=True):
+        with variable_scope.variable_scope(self._variable_scope, reuse=True):
           return self._call_func(args, kwargs, check_for_new_variables=True)
       else:
         # This is the first visit to __call__, but the scope has already been
         # created in the constructor. Set _variables_created so that subsequent
         # calls take the if branch above.
         self._variables_created = True
-        with variable_scope.variable_scope(self._var_scope):
+        with variable_scope.variable_scope(self._variable_scope):
           return self._call_func(args, kwargs, check_for_new_variables=False)
     else:
       # The scope was not created at construction time, so create it here.
@@ -271,10 +272,18 @@ class Template(object):
       with variable_scope.variable_scope(
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
-        self._var_scope = vs
+        self._variable_scope = vs
         return self._call_func(args, kwargs, check_for_new_variables=False)
 
   @property
+  def variable_scope(self):
+    """Returns the variable scope object created by this Template."""
+    return self._variable_scope
+
+  @property
+  @deprecated(
+      "2017-02-21", "The .var_scope property is deprecated. Please change your "
+      "code to use the .variable_scope property")
   def var_scope(self):
     """Returns the variable scope object created by this Template."""
-    return self._var_scope
+    return self._variable_scope

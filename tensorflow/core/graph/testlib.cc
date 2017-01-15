@@ -254,6 +254,10 @@ Node* Identity(Graph* g, Node* input, int index) {
 
 Node* Add(Graph* g, Node* in0, Node* in1) { return Binary(g, "Add", in0, in1); }
 
+Node* Reverse(Graph* g, Node* tensor, Node* axis) {
+  return Binary(g, "ReverseV2", tensor, axis);
+}
+
 Node* Error(Graph* g, Node* input, const string& errmsg) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Error")
@@ -398,6 +402,15 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cast")
                   .Input(in)
                   .Attr("DstT", dst)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
+                  .Input(s0)
+                  .Input(s1)
                   .Finalize(g, &ret));
   return ret;
 }

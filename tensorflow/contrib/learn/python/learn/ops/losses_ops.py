@@ -71,5 +71,5 @@ def softmax_classifier(tensor_in,
   with ops.name_scope(name, 'softmax_classifier', [tensor_in, labels]):
     logits = nn.xw_plus_b(tensor_in, weights, biases)
     if class_weight is not None:
-      logits = math_ops.mul(logits, class_weight)
+      logits = math_ops.multiply(logits, class_weight)
     return nn.softmax(logits), loss_ops.softmax_cross_entropy(logits, labels)

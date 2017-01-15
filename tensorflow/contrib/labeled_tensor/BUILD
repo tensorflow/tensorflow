@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -46,7 +47,8 @@ py_library(
     deps = [
         ":_typecheck",
         ":core",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -61,7 +63,11 @@ py_test(
         ":_typecheck",
         ":core",
         ":test_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -90,7 +96,11 @@ py_test(
         ":io_ops",
         ":ops",
         ":test_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
@@ -100,6 +110,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":core",
+        "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/python:nn",
     ],
 )
@@ -115,7 +126,8 @@ py_test(
         ":core",
         ":nn",
         ":test_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
     ],
 )
 
@@ -132,6 +144,7 @@ py_library(
         "//tensorflow/python:numerics",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -146,7 +159,12 @@ py_test(
         ":core",
         ":ops",
         ":test_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -174,7 +192,10 @@ py_test(
         ":ops",
         ":sugar",
         ":test_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
     ],
 )
 

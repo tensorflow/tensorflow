@@ -32,6 +32,18 @@ REGISTER(BinaryOp, CPU, "Sub", functor::sub, int32);
                           .TypeConstraint<TYPE>("T"),                 \
                           BinaryOp<SYCLDevice, functor::sub<TYPE>>);
   REGISTER_SYCL_KERNEL(float);
+  REGISTER_SYCL_KERNEL(double);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Sub")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::sub<int32>>);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA

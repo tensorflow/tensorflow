@@ -58,6 +58,8 @@ Example:
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
 ```
 
+## Ops
+
 - - -
 
 ### `tf.contrib.learn.monitors.get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100, output_dir=None, summary_writer=None)` {#get_default_monitors}
@@ -479,7 +481,7 @@ Returns the values captured so far.
 
 ### `class tf.contrib.learn.monitors.CheckpointSaver` {#CheckpointSaver}
 
-Saves checkpoints every N steps.
+Saves checkpoints every N steps or N seconds.
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaver.__init__}
@@ -2630,7 +2632,7 @@ Wraps monitors into a SessionRunHook.
 
 - - -
 
-#### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.after_create_session(session)` {#RunHookAdapterForMonitors.after_create_session}
+#### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.after_create_session(session, coord)` {#RunHookAdapterForMonitors.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -2639,13 +2641,14 @@ has two essential differences with the situation in which `begin` is called:
 
 * When this is called, the graph is finalized and ops can no longer be added
     to the graph.
-* This method will be called as a result of recovering a wrapped session,
-    instead of at the beginning of the overall session.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
 
 ##### Args:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
