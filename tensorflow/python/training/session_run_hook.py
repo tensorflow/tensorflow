@@ -34,6 +34,7 @@ There are a few pre-defined monitors:
  - LoggingTensorHook: outputs one or more tensor values to log
  - NanTensorHook: Request stop if given `Tensor` contains Nans.
  - SummarySaverHook: saves summaries to a summary writer
+ - ProfilerHook: Captures profiling information for later visualization.
 
 For more specific needs, you can create custom hooks:
   class ExampleHook(SessionRunHook):
