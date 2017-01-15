@@ -119,6 +119,7 @@
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
   * [`scatter_update`](../../api_docs/python/state_ops.md#scatter_update)
   * [`sparse_mask`](../../api_docs/python/state_ops.md#sparse_mask)
+  * [`tables_initializer`](../../api_docs/python/state_ops.md#tables_initializer)
   * [`trainable_variables`](../../api_docs/python/state_ops.md#trainable_variables)
   * [`truncated_normal_initializer`](../../api_docs/python/state_ops.md#truncated_normal_initializer)
   * [`uniform_unit_scaling_initializer`](../../api_docs/python/state_ops.md#uniform_unit_scaling_initializer)
