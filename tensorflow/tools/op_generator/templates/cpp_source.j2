@@ -1,0 +1,81 @@
+#include "{{cpp_header_file}}"
+
+#include "tensorflow/core/framework/shape_inference.h"
+
+{{project_namespace_start}}
+{{op_namespace_start}}
+
+using tensorflow::shape_inference::InferenceContext;
+using tensorflow::shape_inference::ShapeHandle;
+using tensorflow::shape_inference::DimensionHandle;
+using tensorflow::Status;
+
+auto shape_function = [](InferenceContext* c) {
+    // Dummies for tests
+    ShapeHandle input;
+    DimensionHandle d;
+
+    {% for item in op_inputs -%}
+    // TODO. Check shape and dimension sizes for '{{item.name}}'
+    ShapeHandle in_{{item.name}} = c->input({{loop.index0}});
+    // Assert '{{item.name}}' number of dimensions
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(in_{{item.name}}, {{ item.shape | length }}, &input),
+        "{{item.name}} must have shape {{item.shape|list}} but is " + c->DebugString(in_{{item.name}}));
+    {% for dim in item.shape if dim is not none -%}
+    // Assert '{{item.name}}' dimension '{{loop.index0}}' size
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithValue(c->Dim(in_{{item.name}}, {{loop.index0}}), {{dim}}, &d),
+        "{{item.name}} must have shape {{item.shape|list}} but is " + c->DebugString(in_{{item.name}}));
+    {% endfor %}
+    {% endfor %}
+
+    // TODO: Supply a proper shapes for output variables here,
+    // usually derived from input shapes
+    // ShapeHandle output_1 = c->MakeShape({
+    //      c->Dim(input_1, 0),  // input_1 dimension 0
+    //      c->Dim(input_2, 1)}); // input_2 dimension 1""")
+
+    {% for item in op_outputs -%}
+    ShapeHandle out_{{item.name}} = c->MakeShape({ {{ item.shape | join(", ")}} });
+    {% endfor %}
+    {% for item in op_outputs -%}
+    c->set_output({{loop.index0}}, out_{{item.name}});
+    {% endfor %}
+
+    // printf("output shape %s\\n", c->DebugString(out).c_str());;
+
+    return Status::OK();
+};
+
+// Register the {{op_name}} operator.
+REGISTER_OP("{{op_name}}")
+    {% for item in op_inputs -%}
+    .Input("{{item.name}}: {{item.type}}")
+    {% endfor %}
+    {%- for item in op_outputs -%}
+    .Output("{{item.name}}: {{item.type}}")
+    {% endfor %}
+    {%- for item in op_type_attrs -%}
+    .Attr("{{item.original}}")
+    {% endfor -%}
+    {%- for item in op_other_attrs -%}
+    .Attr("{{item}}")
+    {% endfor -%}
+    .Doc(R"doc({{op_doc}})doc")
+    .SetShapeFn(shape_function);
+
+{% for perm in op_type_perms %}
+{% set template_specialise = ['CPUDevice'] + perm -%}
+// Register a CPU kernel for {{op_name}}
+// handling permutation {{perm}}
+REGISTER_KERNEL_BUILDER(
+    Name("{{op_name}}")
+    {% for t in perm -%}
+    .TypeConstraint<{{t}}>("{{op_type_attrs[loop.index0].name}}")
+    {% endfor -%}
+    .Device(tensorflow::DEVICE_CPU),
+    {{op_name}}<{{template_specialise | join(", ")}}>);
+{% endfor %}
+
+
+{{op_namespace_stop}}
+{{project_namespace_stop}}

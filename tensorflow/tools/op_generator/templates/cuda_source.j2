@@ -1,0 +1,25 @@
+#if GOOGLE_CUDA
+
+#include "{{cuda_header_file}}"
+
+{{project_namespace_start}}
+{{op_namespace_start}}
+
+{% for perm in op_type_perms %}
+{% set template_specialise = ['GPUDevice'] + perm -%}
+// Register a GPU kernel for {{op_name}}
+// handling permutation {{perm}}
+REGISTER_KERNEL_BUILDER(
+    Name("{{op_name}}")
+    {% for t in perm -%}
+    .TypeConstraint<{{t}}>("{{op_type_attrs[loop.index0].name}}")
+    {% endfor -%}
+    .Device(tensorflow::DEVICE_GPU),
+    {{op_name}}<{{template_specialise | join(", ")}}>);
+{% endfor %}
+
+
+{{op_namespace_stop}}
+{{project_namespace_stop}}
+
+#endif // #if GOOGLE_CUDA
