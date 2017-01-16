@@ -1,0 +1,167 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="tf-smoothing-input.html">
+<link rel="import" href="../tf-dashboard-common/tf-option-selector.html">
+<link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../paper-menu/paper-menu.html">
+<link rel="import" href="../paper-item/paper-item.html">
+<link rel="import" href="../tf-dashboard-common/dashboard-style.html">
+
+<!--
+tf-sidebar creates an input component for exponential smoothing.
+-->
+<dom-module id="tf-scalar-dashboard-sidebar">
+  <template>
+    <tf-sidebar-helper
+      backend="[[backend]]"
+      categories="{{categories}}"
+      color-scale="[[colorScale]]"
+      run2tag="[[run2tag]]"
+      runs="[[runs]]"
+      selected-runs="{{selectedRuns}}"
+      >
+      <div class="sidebar-section">
+        <paper-checkbox
+          id="download-option"
+          checked="{{showDownloadLinks}}"
+          >Data download links</paper-checkbox>
+        <div id="tooltip-sorting">
+          <div id="tooltip-sorting-label">Tooltip sorting method:</div>
+          <paper-dropdown-menu
+            no-label-float
+            selected-item-label="{{tooltipSortingMethod}}"
+            >
+            <paper-menu class="dropdown-content" selected="0">
+              <paper-item>default</paper-item>
+              <paper-item>descending</paper-item>
+              <paper-item>ascending</paper-item>
+              <paper-item>nearest</paper-item>
+            </paper-menu>
+          </paper-dropdown-menu>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <tf-smoothing-input
+          weight="{{smoothingWeight}}"
+          step="0.001"
+          min="0"
+          max="1"
+          ></tf-smoothing-input>
+      </div>
+      <div class="sidebar-section">
+        <tf-option-selector
+          id="xTypeSelector"
+          name="Horizontal Axis"
+          selected-id="{{xType}}"
+          >
+          <paper-button id="step">step</paper-button>
+          <paper-button id="relative">relative</paper-button>
+          <paper-button id="wall_time">wall</paper-button>
+        </tf-option-selector>
+      </div>
+    </tf-sidebar-helper>
+    <style is="custom-style" include="dashboard-style"></style>
+    <style>
+      #tooltip-sorting {
+        display: flex;
+        font-size: 14px;
+        margin-top: 5px;
+      }
+
+      #tooltip-sorting-label {
+        margin-top: 13px;
+        margin-left: 28px;
+      }
+
+      #tooltip-sorting paper-dropdown-menu {
+        margin-left: 10px;
+        --paper-input-container-focus-color: var(--tb-orange-strong);
+        width: 105px;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-scalar-dashboard-sidebar",
+
+      properties: {
+        /**
+         * The backend object used to issue requests.
+         */
+        backend: Object,
+
+        /**
+         * This is an output of the categories that the user selected to
+         * separate the different tags. Each category here should be given its
+         * own collapsible pane.
+         */
+        categories: {
+          type: Array,
+          notify: true,
+        },
+
+        /**
+         * Input of the colors that are used for the user's runs.
+         */
+        colorScale: Object,
+
+        /**
+         * Map from runs to the valid tags that have them.
+         */
+        run2tag: Object,
+
+        /**
+         * Input of all valid runs that can be selected by the user.
+         */
+        runs: Array,
+
+        /**
+         * Outputs an array with the runs that are selected by the user (i.e.
+         * valid to be displayed).
+         */
+        selectedRuns: {
+          type: Array,
+          notify: true,
+        },
+
+        showDownloadLinks: {
+          type: Boolean,
+          notify: true
+        },
+
+        smoothingWeight: {
+          type: Number,
+          notify: true
+        },
+
+        tooltipSortingMethod: {
+          type: String,
+          notify: true
+        },
+
+        xType: {
+          type: String,
+          notify: true
+        }
+      },
+    });
+  </script>
+</dom-module>

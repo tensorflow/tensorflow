@@ -72,16 +72,16 @@ module VZ.ChartHelpers {
 
   export interface XComponents {
     /* tslint:disable */
-    scale: Plottable.Scales.Linear|Plottable.Scales.Time,
-        axis: Plottable.Axes.Numeric|Plottable.Axes.Time,
-        accessor: Plottable.Accessor<number|Date>,
+    scale: Plottable.QuantitativeScale<number|Date>,
+    axis: Plottable.Axes.Numeric|Plottable.Axes.Time,
+    accessor: Plottable.Accessor<number|Date>,
     /* tslint:enable */
   }
 
   export let stepFormatter =
       Plottable.Formatters.siSuffix(STEP_FORMATTER_PRECISION);
-  export function stepX(): XComponents {
-    let scale = new Plottable.Scales.Linear();
+  export function stepX(xScaleType: string): XComponents {
+    let scale = getScaleFromType(xScaleType);
     let axis = new Plottable.Axes.Numeric(scale, 'bottom');
     axis.formatter(stepFormatter);
     return {
@@ -140,8 +140,8 @@ module VZ.ChartHelpers {
     let seconds = Math.floor(n);
     return ret + seconds + 's';
   };
-  export function relativeX(): XComponents {
-    let scale = new Plottable.Scales.Linear();
+  export function relativeX(xScaleType): XComponents {
+    let scale = getScaleFromType(xScaleType);
     return {
       scale: scale,
       axis: new Plottable.Axes.Numeric(scale, 'bottom'),
@@ -153,16 +153,27 @@ module VZ.ChartHelpers {
   // or null, etc. False for Infinity or -Infinity
   export let isNaN = (x) => +x !== x;
 
-  export function getXComponents(xType: string): XComponents {
+  export function getXComponents(xType: string, xScaleType: string = 'linear'): XComponents {
     switch (xType) {
       case 'step':
-        return stepX();
+        return stepX(xScaleType);
       case 'wall_time':
         return wallX();
       case 'relative':
-        return relativeX();
+        return relativeX(xScaleType);
       default:
         throw new Error('invalid xType: ' + xType);
+    }
+  }
+
+  export function getScaleFromType(scaleType: string):
+      Plottable.QuantitativeScale<number> {
+    if (scaleType === 'log') {
+      return new Plottable.Scales.ModifiedLog();
+    } else if (scaleType === 'linear') {
+      return new Plottable.Scales.Linear();
+    } else {
+      throw new Error('Unrecognized scale type ' + scaleType);
     }
   }
 }
