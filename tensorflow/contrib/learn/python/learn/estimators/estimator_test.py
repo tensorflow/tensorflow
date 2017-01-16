@@ -135,24 +135,33 @@ def extract(data, key):
     return data
 
 
+def extract(data, key):
+  if isinstance(data, dict):
+    assert key in data
+    return data[key]
+  else:
+    return data
+
+
 def linear_model_params_fn(features, labels, mode, params):
   features = extract(features, 'input')
   labels = extract(labels, 'labels')
 
   assert mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
                   model_fn.ModeKeys.INFER)
+
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
       loss,
       variables.get_global_step(),
-      optimizer='Adagrad',
-      learning_rate=params['learning_rate'])
+      optimizer='Adagrad',learning_rate=params['learning_rate'])
   return prediction, loss, train_op
 
 
 def linear_model_fn(features, labels, mode):
   features = extract(features, 'input')
   labels = extract(labels, 'labels')
+
   assert mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
                   model_fn.ModeKeys.INFER)
   if isinstance(features, dict):
@@ -160,6 +169,7 @@ def linear_model_fn(features, labels, mode):
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
       loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+
   return prediction, loss, train_op
 
 
@@ -177,6 +187,7 @@ def linear_model_fn_with_model_fn_ops(features, labels, mode):
 def logistic_model_no_mode_fn(features, labels):
   features = extract(features, 'input')
   labels = extract(labels, 'labels')
+
   labels = array_ops.one_hot(labels, 3, 1, 0)
   prediction, loss = (models.logistic_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
@@ -478,9 +489,9 @@ class EstimatorTest(test.TestCase):
         y=float64_target,
         metrics={'MSE': metric_ops.streaming_mean_squared_error})
     del est
+
     # Create another estimator object with the same output dir.
     est2 = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
-
     # Check we can evaluate and predict.
     scores2 = est2.evaluate(
         x=boston_input,
