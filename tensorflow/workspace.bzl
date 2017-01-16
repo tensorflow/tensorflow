@@ -368,7 +368,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@nanopb_git//:nanopb",
   )
 
-  native.new_http_archive(
+ native.new_http_archive(
       name = "zlib_archive",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/zlib.net/zlib-1.2.8.tar.gz",
