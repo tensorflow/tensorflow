@@ -72,7 +72,9 @@ SSIZE_T pread(HANDLE hfile, char* src, size_t num_bytes, uint64_t offset) {
 
   BOOL read_result = ::ReadFile(hfile, src, static_cast<DWORD>(num_bytes),
                                 &bytes_read, &overlapped);
-  if ((FALSE == read_result) &&
+  if (TRUE == read_result) {
+    result = bytes_read;
+  } else if ((FALSE == read_result) &&
       ((last_error = GetLastError()) != ERROR_IO_PENDING)) {
     result = (last_error == ERROR_HANDLE_EOF) ? 0 : -1;
   } else {

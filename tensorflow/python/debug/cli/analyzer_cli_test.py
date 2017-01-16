@@ -1608,7 +1608,8 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
       self.assertEqual("  dtype: int32", output.lines[1])
       self.assertEqual("  shape: ()", output.lines[2])
       self.assertEqual("", output.lines[3])
-      self.assertEqual("array(%d, dtype=int32)" % i, output.lines[4])
+      self.assertTrue(output.lines[4].startswith("array(%d" % i))
+      self.assertTrue(output.lines[4].endswith(")"))
 
   def testMultipleDumpsPrintTensorInvalidNumber(self):
     output = self._registry.dispatch_command("pt",

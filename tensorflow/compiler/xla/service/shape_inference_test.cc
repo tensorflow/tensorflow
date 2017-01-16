@@ -1125,8 +1125,8 @@ TEST_F(ShapeInferenceTest, Transpose) {
       ShapeInference::InferTransposeShape(a_shape, {1, 2, 3, 0});
   EXPECT_IS_OK(inferred_shape_and_status);
   Shape inferred_shape = inferred_shape_and_status.ValueOrDie();
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape,
-                               ShapeUtil::MakeShape(F32, {3, 4, 5, 2})));
+  EXPECT_TRUE(ShapeUtil::Compatible(inferred_shape,
+                                    ShapeUtil::MakeShape(F32, {3, 4, 5, 2})));
 }
 
 }  // namespace

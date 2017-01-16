@@ -2910,7 +2910,7 @@ Save the list of files matching pattern, so it is only computed once.
 
 Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
-Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+Note: creates local counter `epochs`. Use `local_variables_initializer()` to
 initialize local variables.
 
 ##### Args:
@@ -2938,7 +2938,7 @@ initialize local variables.
 Output the rows of `input_tensor` to a queue for an input pipeline.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2983,7 +2983,7 @@ Note: if `num_epochs` is not `None`, this function creates local counter
 Produces the integers from 0 to limit-1 in a queue.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3052,7 +3052,7 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 Output strings (e.g. filenames) to a queue for an input pipeline.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3156,7 +3156,7 @@ In addition, all output tensors' static shapes, as accessed via the
 operations that depend on fixed batch_size would fail.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3422,7 +3422,7 @@ In addition, all output tensors' static shapes, as accessed via the
 operations that depend on fixed batch_size would fail.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 

@@ -128,10 +128,11 @@ class Compiler {
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
-  virtual StatusOr<std::unique_ptr<AotCompilationResult>> CompileAheadOfTime(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-      const AotCompilationOptions& options) = 0;
+  virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(
+      std::vector<std::unique_ptr<HloModule>> module,
+      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
+      HloDumper dump_hlo, const AotCompilationOptions& options) = 0;
 
   /////
   // The Compiler class also serves as a point to register compiler objects

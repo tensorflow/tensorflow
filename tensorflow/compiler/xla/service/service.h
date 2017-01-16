@@ -162,7 +162,15 @@ class Service : public ServiceInterface {
       const TransferToInfeedRequest* arg,
       TransferToInfeedResponse* result) override;
 
-  // Resets the device, clearing all existing state on the device.
+  // Resets devices, clearing all existing state on all the devices associated
+  // with this service (including memory allocated on the devices).
+  //
+  // ResetDevice may only be called where no previous Execution state on the
+  // device is used by the next Execution.
+  //
+  // ResetDevice should be called before an Execution that expect the device to
+  // be in the reset state. For example, if the prior Execution modifies device
+  // state (e.g., architectural state) that the next Execution depends on.
   tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                  ResetDeviceResponse* result) override;
 
