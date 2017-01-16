@@ -253,7 +253,13 @@ def _VerifyGeneratedGradients(grads, op):
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-
+  for grad in grads:
+    if grad is None:
+      continue
+    if not (grad.dtype.is_floating or grad.dtype.is_quantized or
+            grad.dtype.is_integer or grad.dtype.is_complex):
+      raise ValueError("Gradient type %s generated for op %s is not numeric" %
+                       (dtypes.as_dtype(grad.dtype).name, op.node_def))
 
 def _StopOps(from_ops, pending_count):
   """The set of ops that terminate the gradient computation.
