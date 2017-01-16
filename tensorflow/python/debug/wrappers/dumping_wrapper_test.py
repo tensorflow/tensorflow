@@ -24,6 +24,7 @@ import tempfile
 
 from tensorflow.python.client import session
 from tensorflow.python.debug import debug_data
+from tensorflow.python.debug import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
@@ -258,6 +259,16 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(repr(self.inc_v), dump.run_fetches_info)
       self.assertEqual(repr(None), dump.run_feed_keys_info)
+
+  def testCallingInvokeNodeStepperOnDumpingWrapperRaisesException(self):
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess, session_root=self.session_root, log_usage=False)
+    node_stepper = stepper.NodeStepper(self.sess, self.inc_v)
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        r"NonInteractiveDebugWrapperSession does not support node-stepper "
+        r"mode\."):
+      sess.invoke_node_stepper(node_stepper)
 
 
 if __name__ == "__main__":
