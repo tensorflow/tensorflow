@@ -225,12 +225,6 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y), constant_op.constant(
                 1, dtype=y.dtype))
-    else:
-      if grad_y.dtype != y.dtype:
-        raise ValueError("Y and ys_grad must be of the same type, "
-                         "not y: %s, ys_grad: %s " %
-                         (dtypes.as_dtype(y.dtype).name,
-                          dtypes.as_dtype(grad_y.dtype).name))
   return grad_ys
 
 
