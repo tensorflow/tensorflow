@@ -261,6 +261,8 @@ def get_matching_files(filename):
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
   """
+  if filename and filename[0] not in (".", "/"):
+    filename = os.path.join(".", filename)
   with errors.raise_exception_on_not_ok_status() as status:
     # Convert each element to string, since the return values of the
     # vector of string should be interpreted as strings, not bytes.
