@@ -1338,6 +1338,13 @@ class FlattenTest(test.TestCase):
                                    'must have a least 2 dimensions'):
         _layers.flatten(inputs)
 
+  def testUnknownLastDim(self):
+    with ops.Graph().as_default() as g, self.test_session(g):
+      inputs = array_ops.placeholder(dtype=dtypes.float32)
+      inputs.set_shape(tensor_shape.TensorShape((5, None)))
+      output = _layers.flatten(inputs)
+      self.assertEqual(output.get_shape().as_list(), [5, None])
+
   def testCollectOutputs(self):
     height, width = 3, 3
     with self.test_session():
