@@ -241,7 +241,7 @@ def _IsTrainable(tensor):
 
 
 def _VerifyGeneratedGradients(grads, op):
-  """Verify that gradients are valid in number and type.
+  """Verify that gradients are valid in number.
 
   Args:
     grads: List of generated gradients.
@@ -253,15 +253,6 @@ def _VerifyGeneratedGradients(grads, op):
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-  for i in xrange(len(grads)):
-    grad = grads[i]
-    inp = op.inputs[i]
-    if grad is not None:
-      if not grad.dtype.is_compatible_with(inp.dtype):
-        raise ValueError("Gradient type %s generated for op %s does "
-                         "not match input type %s" %
-                         (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                          dtypes.as_dtype(inp.dtype).name))
 
 
 def _StopOps(from_ops, pending_count):
