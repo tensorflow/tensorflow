@@ -653,10 +653,10 @@ class StreamingDataFeeder(DataFeeder):
         if holder is None:
           return None
         if isinstance(holder, dict):
-          assert (isinstance(data, dict))
           for k, v in list(holder.items()):
             num_classes = n_classes[k] if (n_classes is not None and k in n_classes) else None
-            holder[k] = put_data_array(holder[k], index, data[k], num_classes)
+            holder[k] = put_data_array(holder[k], index, None if data is None else data[k], num_classes)
+
         else:
           holder = put_data_array(holder, index, data, n_classes)
         return holder
