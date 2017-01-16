@@ -263,7 +263,7 @@ def _legacy_train_model(estimator,
     random_seed_lib.set_random_seed(estimator.config.tf_random_seed)
     global_step = framework.create_global_step(g)
     features, labels = input_fn()
-    estimator._check_inputs(features, labels)  # pylint: disable=protected-access
+    estimator._check_inputs(features, labels, model_fn_lib.ModeKeys.TRAIN)  # pylint: disable=protected-access
 
     # The default return type of _get_train_ops is ModelFnOps. But there are
     # some subclasses of tf.contrib.learn.Estimator which override this
