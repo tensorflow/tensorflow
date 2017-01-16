@@ -15,7 +15,6 @@ limitations under the License.
 
 #if TENSORFLOW_USE_SYCL
 
-#define EIGEN_USE_SYCL
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/common_runtime/sycl/sycl_device_context.h"
@@ -96,6 +95,7 @@ void SYCLDeviceContext::CopyCPUTensorToDevice(const Tensor *cpu_tensor,
       assert(false && "unsupported type");
     }
   }
+  device->eigen_sycl_device()->synchronize();
   done(Status::OK());
 }
 
@@ -173,6 +173,7 @@ void SYCLDeviceContext::CopyDeviceTensorToCPU(const Tensor *device_tensor,
       assert(false && "unsupported type");
     }
   }
+  device->eigen_sycl_device()->synchronize();
   done(Status::OK());
 }
 

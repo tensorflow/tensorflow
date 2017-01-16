@@ -185,6 +185,17 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return Status::OK();
 }
 
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<NameAttrList>* value) {
+  const AttrValue* attr_value;
+  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
+  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
+  for (const auto& v : attr_value->list().func()) {
+    value->emplace_back(v);
+  }
+  return Status::OK();
+}
+
 namespace {  // Helper for InOutTypesForNode().
 
 Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,

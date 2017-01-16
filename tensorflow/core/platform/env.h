@@ -204,6 +204,10 @@ class Env {
   /// replaced.
   Status RenameFile(const string& src, const string& target);
 
+  /// \brief Returns the absolute path of the current executable. It resolves
+  /// symlinks if there is any.
+  string GetExecutablePath();
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.

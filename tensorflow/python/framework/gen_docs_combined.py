@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import collections
 import os.path
 import sys
@@ -25,17 +26,13 @@ import sys
 import tensorflow as tf
 
 from tensorflow.contrib import ffmpeg
+from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
 
-
-tf.flags.DEFINE_string("out_dir", None,
-                       "Directory to which docs should be written.")
-tf.flags.DEFINE_boolean("print_hidden_regex", False,
-                        "Dump a regular expression matching any hidden symbol")
-FLAGS = tf.flags.FLAGS
+FLAGS = None
 
 
 PREFIX_TEXT = """
@@ -50,9 +47,9 @@ def module_names():
       "tf.errors",
       "tf.image",
       "tf.nn",
-      "tf.nn.rnn_cell",
       "tf.train",
       "tf.python_io",
+      "tf.saved_model",
       "tf.summary",
       "tf.test",
       "tf.contrib.bayesflow.entropy",
@@ -71,13 +68,16 @@ def module_names():
       "tf.contrib.layers",
       "tf.contrib.learn",
       "tf.contrib.learn.monitors",
+      "tf.contrib.legacy_seq2seq",
       "tf.contrib.linalg",
       "tf.contrib.losses",
       "tf.contrib.metrics",
+      "tf.contrib.opt",
       "tf.contrib.rnn",
       "tf.contrib.solvers",
       "tf.contrib.training",
       "tf.contrib.util",
+      "tf_debug",
   ]
 
 
@@ -88,6 +88,8 @@ def find_module(base_module, name):
   # to size concerns.
   elif name == "tf.contrib.ffmpeg":
     return ffmpeg
+  elif name == "tf_debug":
+    return tf_debug
   elif name.startswith("tf."):
     subname = name[3:]
     subnames = subname.split(".")
@@ -184,7 +186,6 @@ def all_libraries(module_to_name, members, documented):
                                "batch_norm_with_global_normalization_grad",
                                "all_candidate_sampler", "seq2seq"],
               prefix=PREFIX_TEXT),
-      library("rnn_cell", "Neural Network RNN Cells", tf.nn.rnn_cell),
       library("client", "Running Graphs", client_lib),
       library("train",
               "Training",
@@ -228,15 +229,19 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.learn.monitors", "Monitors (contrib)",
               tf.contrib.learn.monitors),
+      library("contrib.legacy_seq2seq", "Sequence to Sequence (contrib)",
+              tf.contrib.legacy_seq2seq),
       library("contrib.linalg", "Linear Algebra (contrib)",
               tf.contrib.linalg),
       library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
-      library("contrib.rnn", "RNN (contrib)", tf.contrib.rnn),
+      library("contrib.opt", "Optimization (contrib)", tf.contrib.opt),
+      library("contrib.rnn", "RNN and Cells (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.training", "Training (contrib)", tf.contrib.training),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),
+      library("tf_debug", "TensorFlow Debugger", tf_debug),
   ])
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
@@ -246,7 +251,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
-                   "ClusterDef", "JobDef", "ServerDef"]
+                   "ClusterDef", "JobDef", "ServerDef", "TensorInfo"]
 
 # TODO(skleinfeld, deannarubin) Address shortname
 # conflict between tf.contrib.learn.NanLossDuringTrainingError and
@@ -259,7 +264,8 @@ EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
                      "tf.contrib.framework.assert_global_step",
                      "tf.contrib.framework.get_global_step",
                      "tf.contrib.learn.NanLossDuringTrainingError",
-                     "tf.contrib.layers.stack"])
+                     "tf.contrib.layers.stack",
+                     "tf.confusion_matrix"])
 
 
 def main(unused_argv):
@@ -300,4 +306,19 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--out_dir",
+      type=str,
+      default=None,
+      help="Directory to which docs should be written.")
+  parser.add_argument(
+      "--print_hidden_regex",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Dump a regular expression matching any hidden symbol")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

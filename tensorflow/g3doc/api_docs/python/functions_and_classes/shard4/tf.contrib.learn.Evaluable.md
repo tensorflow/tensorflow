@@ -1,7 +1,7 @@
 Interface for objects that are evaluatable by, e.g., `Experiment`.
 - - -
 
-#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#Evaluable.evaluate}
+#### `tf.contrib.learn.Evaluable.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None, checkpoint_path=None, hooks=None)` {#Evaluable.evaluate}
 
 Evaluates given model with provided evaluation data.
 
@@ -20,12 +20,14 @@ for which this evaluation was performed.
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] containing the input samples
-     for fitting the model. Can be iterator that returns arrays of features.
-     If set, `input_fn` must be `None`.
+*  <b>`x`</b>: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
+     containing the input samples for fitting the model. Can be iterator that returns
+     arrays of features or dictionary of array of features. If set, `input_fn` must
+     be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
      label values (class labels in classification, real numbers in
-     regression). Can be iterator that returns array of labels. If set,
+     regression) or dictionary of multiple vectors/matrices. Can be iterator
+     that returns array of targets or dictionary of array of targets. If set,
      `input_fn` must be `None`. Note: For classification, label values must
      be integers representing the class index (i.e. values from 0 to
      n_classes-1).
@@ -56,9 +58,20 @@ for which this evaluation was performed.
 
 *  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluations on
     different data sets, such as on training data vs test data.
+*  <b>`checkpoint_path`</b>: Path of a specific checkpoint to evaluate. If `None`, the
+    latest checkpoint in `model_dir` is used.
+*  <b>`hooks`</b>: List of `SessionRunHook` subclass instances. Used for callbacks
+    inside the evaluation call.
 
 ##### Returns:
 
   Returns `dict` with evaluation results.
+
+
+- - -
+
+#### `tf.contrib.learn.Evaluable.model_dir` {#Evaluable.model_dir}
+
+Returns a path in which the eval process will look for checkpoints.
 
 

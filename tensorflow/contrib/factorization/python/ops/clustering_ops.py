@@ -12,22 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Clustering Operations."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
-from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
 # pylint: enable=wildcard-import
+
+from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
+from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
 from tensorflow.contrib.util import loader
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 from tensorflow.python.platform import resource_loader
 
@@ -103,11 +111,11 @@ class KMeans(object):
     if distance_metric == SQUARED_EUCLIDEAN_DISTANCE:
       return cls._compute_euclidean_distance(inputs, clusters)
     elif distance_metric == COSINE_DISTANCE:
-      return cls._compute_cosine_distance(inputs, clusters,
-                                          inputs_normalized=True)
+      return cls._compute_cosine_distance(
+          inputs, clusters, inputs_normalized=True)
     else:
-      assert False, ('Unsupported distance metric passed to Kmeans %s'
-                     % str(distance_metric))
+      assert False, ('Unsupported distance metric passed to Kmeans %s' %
+                     str(distance_metric))
 
   @classmethod
   def _compute_euclidean_distance(cls, inputs, clusters):
@@ -126,11 +134,11 @@ class KMeans(object):
       with ops.colocate_with(inp):
         # Computes Euclidean distance. Note the first and third terms are
         # broadcast additions.
-        squared_distance = (tf.reduce_sum(tf.square(inp), 1, keep_dims=True) -
-                            2 * tf.matmul(inp, clusters, transpose_b=True) +
-                            tf.transpose(tf.reduce_sum(tf.square(clusters),
-                                                       1,
-                                                       keep_dims=True)))
+        squared_distance = (math_ops.reduce_sum(
+            math_ops.square(inp), 1, keep_dims=True) - 2 * math_ops.matmul(
+                inp, clusters, transpose_b=True) + array_ops.transpose(
+                    math_ops.reduce_sum(
+                        math_ops.square(clusters), 1, keep_dims=True)))
         output.append(squared_distance)
 
     return output
@@ -153,12 +161,12 @@ class KMeans(object):
     output = []
     if not inputs_normalized:
       with ops.colocate_with(clusters):
-        clusters = tf.nn.l2_normalize(clusters, dim=1)
+        clusters = nn_impl.l2_normalize(clusters, dim=1)
     for inp in inputs:
       with ops.colocate_with(inp):
         if not inputs_normalized:
-          inp = tf.nn.l2_normalize(inp, dim=1)
-        output.append(1 - tf.matmul(inp, clusters, transpose_b=True))
+          inp = nn_impl.l2_normalize(inp, dim=1)
+        output.append(1 - math_ops.matmul(inp, clusters, transpose_b=True))
     return output
 
   def _infer_graph(self, inputs, clusters):
@@ -188,14 +196,15 @@ class KMeans(object):
       # TODO(ands): Support COSINE distance in nearest_neighbors and remove
       # this.
       with ops.colocate_with(clusters):
-        clusters = tf.nn.l2_normalize(clusters, dim=1)
+        clusters = nn_impl.l2_normalize(clusters, dim=1)
     for inp, score in zip(inputs, scores):
       with ops.colocate_with(inp):
         (indices,
          distances) = gen_clustering_ops.nearest_neighbors(inp, clusters, 1)
         if self._distance_metric == COSINE_DISTANCE:
           distances *= 0.5
-        output.append((score, tf.squeeze(distances), tf.squeeze(indices)))
+        output.append(
+            (score, array_ops.squeeze(distances), array_ops.squeeze(indices)))
     return zip(*output)
 
   def _init_clusters_random(self):
@@ -204,19 +213,20 @@ class KMeans(object):
     Returns:
       Tensor of randomly initialized clusters.
     """
-    num_data = tf.add_n([tf.shape(inp)[0] for inp in self._inputs])
+    num_data = math_ops.add_n([array_ops.shape(inp)[0] for inp in self._inputs])
     # Note that for mini-batch k-means, we should ensure that the batch size of
     # data used during initialization is sufficiently large to avoid duplicated
     # clusters.
-    with tf.control_dependencies(
-        [tf.assert_less_equal(self._num_clusters, num_data)]):
-      indices = tf.random_uniform(tf.reshape(self._num_clusters, [-1]),
-                                  minval=0,
-                                  maxval=tf.cast(num_data, tf.int64),
-                                  seed=self._random_seed,
-                                  dtype=tf.int64)
-      clusters_init = embedding_lookup(self._inputs, indices,
-                                       partition_strategy='div')
+    with ops.control_dependencies(
+        [check_ops.assert_less_equal(self._num_clusters, num_data)]):
+      indices = random_ops.random_uniform(
+          array_ops.reshape(self._num_clusters, [-1]),
+          minval=0,
+          maxval=math_ops.cast(num_data, dtypes.int64),
+          seed=self._random_seed,
+          dtype=dtypes.int64)
+      clusters_init = embedding_lookup(
+          self._inputs, indices, partition_strategy='div')
       return clusters_init
 
   def _clusters_l2_normalized(self):
@@ -248,14 +258,14 @@ class KMeans(object):
     else:
       assert False, 'Unsupported init passed to Kmeans %s' % str(init)
     if self._distance_metric == COSINE_DISTANCE and clusters_init is not None:
-      clusters_init = tf.nn.l2_normalize(clusters_init, dim=1)
+      clusters_init = nn_impl.l2_normalize(clusters_init, dim=1)
     clusters_init = clusters_init if clusters_init is not None else []
-    cluster_centers = tf.Variable(clusters_init,
-                                  name='clusters',
-                                  validate_shape=False)
-    cluster_counts = (tf.Variable(tf.zeros([self._num_clusters],
-                                           dtype=tf.int64))
-                      if self._use_mini_batch else None)
+    cluster_centers = variables.Variable(
+        clusters_init, name='clusters', validate_shape=False)
+    cluster_counts = (variables.Variable(
+        array_ops.ones(
+            [self._num_clusters], dtype=dtypes.int64)) if self._use_mini_batch
+                      else None)
     return cluster_centers, cluster_counts
 
   @classmethod
@@ -264,7 +274,7 @@ class KMeans(object):
     output = []
     for inp in inputs:
       with ops.colocate_with(inp):
-        output.append(tf.nn.l2_normalize(inp, dim=1))
+        output.append(nn_impl.l2_normalize(inp, dim=1))
     return output
 
   def training_graph(self):
@@ -290,22 +300,22 @@ class KMeans(object):
     if self._distance_metric == COSINE_DISTANCE:
       inputs = self._l2_normalize_data(inputs)
       if not self._clusters_l2_normalized():
-        cluster_centers = tf.nn.l2_normalize(cluster_centers, dim=1)
+        cluster_centers = nn_impl.l2_normalize(cluster_centers, dim=1)
 
     all_scores, scores, cluster_idx = self._infer_graph(inputs, cluster_centers)
     if self._use_mini_batch:
-      training_op = self._mini_batch_training_op(
-          inputs, cluster_idx, cluster_centers, cluster_centers_var,
-          total_counts)
+      training_op = self._mini_batch_training_op(inputs, cluster_idx,
+                                                 cluster_centers,
+                                                 cluster_centers_var,
+                                                 total_counts)
     else:
       assert cluster_centers == cluster_centers_var
       training_op = self._full_batch_training_op(inputs, cluster_idx,
                                                  cluster_centers_var)
     return all_scores, cluster_idx, scores, training_op
 
-  def _mini_batch_training_op(self, inputs, cluster_idx_list,
-                              cluster_centers, cluster_centers_var,
-                              total_counts):
+  def _mini_batch_training_op(self, inputs, cluster_idx_list, cluster_centers,
+                              cluster_centers_var, total_counts):
     """Creates an op for training for mini batch case.
 
     Args:
@@ -324,19 +334,20 @@ class KMeans(object):
     for inp, cluster_idx in zip(inputs, cluster_idx_list):
       with ops.colocate_with(inp):
         assert total_counts is not None
-        cluster_idx = tf.reshape(cluster_idx, [-1])
+        cluster_idx = array_ops.reshape(cluster_idx, [-1])
         # Dedupe the unique ids of cluster_centers being updated so that updates
         # can be locally aggregated.
-        unique_ids, unique_idx = tf.unique(cluster_idx)
-        num_unique_cluster_idx = tf.size(unique_ids)
+        unique_ids, unique_idx = array_ops.unique(cluster_idx)
+        num_unique_cluster_idx = array_ops.size(unique_ids)
         # Fetch the old values of counts and cluster_centers.
         with ops.colocate_with(total_counts):
-          old_counts = tf.gather(total_counts, unique_ids)
+          old_counts = array_ops.gather(total_counts, unique_ids)
         with ops.colocate_with(cluster_centers):
-          old_cluster_centers = tf.gather(cluster_centers, unique_ids)
+          old_cluster_centers = array_ops.gather(cluster_centers, unique_ids)
         # Locally aggregate the increment to counts.
-        count_updates = tf.unsorted_segment_sum(
-            tf.ones_like(unique_idx, dtype=total_counts.dtype),
+        count_updates = math_ops.unsorted_segment_sum(
+            array_ops.ones_like(
+                unique_idx, dtype=total_counts.dtype),
             unique_idx,
             num_unique_cluster_idx)
         # Locally compute the sum of inputs mapped to each id.
@@ -344,36 +355,34 @@ class KMeans(object):
         # d_1,...d_k newly assigned to it, we recompute the new value as
         # x += (sum_i(d_i) - k * x) / (n + k).
         # Compute sum_i(d_i), see comment above.
-        cluster_center_updates = tf.unsorted_segment_sum(
-            inp,
-            unique_idx,
-            num_unique_cluster_idx)
+        cluster_center_updates = math_ops.unsorted_segment_sum(
+            inp, unique_idx, num_unique_cluster_idx)
         # Shape to enable broadcasting count_updates and learning_rate to inp.
         # It extends the shape with 1's to match the rank of inp.
-        broadcast_shape = tf.concat(
-            0,
-            [tf.reshape(num_unique_cluster_idx, [1]),
-             tf.ones(tf.reshape(tf.rank(inp) - 1, [1]), dtype=tf.int32)])
+        broadcast_shape = array_ops.concat(
+            [
+                array_ops.reshape(num_unique_cluster_idx, [1]), array_ops.ones(
+                    array_ops.reshape(array_ops.rank(inp) - 1, [1]),
+                    dtype=dtypes.int32)
+            ],
+            0)
         # Subtract k * x, see comment above.
-        cluster_center_updates -= tf.cast(
-            tf.reshape(count_updates, broadcast_shape),
+        cluster_center_updates -= math_ops.cast(
+            array_ops.reshape(count_updates, broadcast_shape),
             inp.dtype) * old_cluster_centers
-        learning_rate = tf.reciprocal(tf.cast(old_counts + count_updates,
-                                              inp.dtype))
-        learning_rate = tf.reshape(learning_rate, broadcast_shape)
+        learning_rate = math_ops.reciprocal(
+            math_ops.cast(old_counts + count_updates, inp.dtype))
+        learning_rate = array_ops.reshape(learning_rate, broadcast_shape)
         # scale by 1 / (n + k), see comment above.
         cluster_center_updates *= learning_rate
         # Apply the updates.
-      update_counts = tf.scatter_add(
-          total_counts,
-          unique_ids,
-          count_updates)
-      update_cluster_centers = tf.scatter_add(
-          cluster_centers_var,
-          unique_ids,
-          cluster_center_updates)
+      update_counts = state_ops.scatter_add(total_counts, unique_ids,
+                                            count_updates)
+      update_cluster_centers = state_ops.scatter_add(cluster_centers_var,
+                                                     unique_ids,
+                                                     cluster_center_updates)
       update_ops.extend([update_counts, update_cluster_centers])
-    return tf.group(*update_ops)
+    return control_flow_ops.group(*update_ops)
 
   def _full_batch_training_op(self, inputs, cluster_idx_list, cluster_centers):
     """Creates an op for training for full batch case.
@@ -390,19 +399,20 @@ class KMeans(object):
     """
     cluster_sums = []
     cluster_counts = []
-    epsilon = tf.constant(1e-6, dtype=inputs[0].dtype)
+    epsilon = constant_op.constant(1e-6, dtype=inputs[0].dtype)
     for inp, cluster_idx in zip(inputs, cluster_idx_list):
       with ops.colocate_with(inp):
-        cluster_sums.append(tf.unsorted_segment_sum(inp,
-                                                    cluster_idx,
-                                                    self._num_clusters))
-        cluster_counts.append(tf.unsorted_segment_sum(
-            tf.reshape(tf.ones(tf.reshape(tf.shape(inp)[0], [-1])), [-1, 1]),
-            cluster_idx,
-            self._num_clusters))
+        cluster_sums.append(
+            math_ops.unsorted_segment_sum(inp, cluster_idx, self._num_clusters))
+        cluster_counts.append(
+            math_ops.unsorted_segment_sum(
+                array_ops.reshape(
+                    array_ops.ones(
+                        array_ops.reshape(array_ops.shape(inp)[0], [-1])),
+                    [-1, 1]), cluster_idx, self._num_clusters))
     with ops.colocate_with(cluster_centers):
-      new_clusters_centers = tf.add_n(cluster_sums) / (
-          tf.cast(tf.add_n(cluster_counts), cluster_sums[0].dtype) + epsilon)
+      new_clusters_centers = math_ops.add_n(cluster_sums) / (math_ops.cast(
+          math_ops.add_n(cluster_counts), cluster_sums[0].dtype) + epsilon)
       if self._clusters_l2_normalized():
-        new_clusters_centers = tf.nn.l2_normalize(new_clusters_centers, dim=1)
-    return tf.assign(cluster_centers, new_clusters_centers)
+        new_clusters_centers = nn_impl.l2_normalize(new_clusters_centers, dim=1)
+    return state_ops.assign(cluster_centers, new_clusters_centers)

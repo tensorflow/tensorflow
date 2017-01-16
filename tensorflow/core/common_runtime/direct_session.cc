@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -395,12 +396,12 @@ Status DirectSession::Run(const RunOptions& run_options,
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
 
-#ifndef NOTFDBG
   // EXPERIMENTAL: Options that allow the client to insert nodes into partition
   // graphs for debugging.
-  run_state_args.debugger_state.reset(
-      new DebuggerState(run_options.debug_tensor_watch_opts()));
-#endif
+  if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
+    run_state_args.debugger_state =
+        DebuggerStateRegistry::CreateState(run_options.debug_options());
+  }
 
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
@@ -409,7 +410,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Create a run state and start execution.
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
-  RunState run_state(input_tensor_names, output_names, args.step_id, &devices_);
+  RunState run_state(args.step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
   CancellationManager step_cancellation_manager;
 
@@ -880,12 +881,10 @@ Status DirectSession::GetOrCreateExecutors(
   std::sort(tn_sorted.begin(), tn_sorted.end());
 
   string debug_tensor_watches_summary;
-#ifndef NOTFDBG
   if (run_state_args->debugger_state) {
     debug_tensor_watches_summary =
         run_state_args->debugger_state->SummarizeDebugTensorWatches();
   }
-#endif
   const string key = strings::StrCat(
       str_util::Join(inputs_sorted, ","), "->",
       str_util::Join(outputs_sorted, ","), "/", str_util::Join(tn_sorted, ","),
@@ -985,12 +984,10 @@ Status DirectSession::GetOrCreateExecutors(
     optimizer.Optimize(lib, options_.env, device, &partition_graph);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
-#ifndef NOTFDBG
     if (run_state_args->debugger_state) {
-      TF_RETURN_IF_ERROR(run_state_args->debugger_state->InsertNodes(
+      TF_RETURN_IF_ERROR(run_state_args->debugger_state->DecorateGraphForDebug(
           partition_graph, params.device));
     }
-#endif
     iter->second.reset(partition_graph);
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
@@ -1173,10 +1170,10 @@ Status DirectSession::CreateGraphs(
   return ::tensorflow::Status::OK();
 }
 
-DirectSession::RunState::RunState(const std::vector<string>& input_names,
-                                  const std::vector<string>& output_names,
-                                  int64 step_id,
-                                  const std::vector<Device*>* devices)
+DirectSession::RunState::RunState(
+    const std::vector<string>& pending_input_names,
+    const std::vector<string>& pending_output_names, int64 step_id,
+    const std::vector<Device*>* devices)
     : step_container(step_id, [devices](const string& name) {
         for (auto d : *devices) {
           if (!d->resource_manager()->Cleanup(name).ok()) {
@@ -1185,13 +1182,17 @@ DirectSession::RunState::RunState(const std::vector<string>& input_names,
         }
       }) {
   // Initially all the feeds and fetches are pending.
-  for (auto& name : input_names) {
+  for (auto& name : pending_input_names) {
     pending_inputs.emplace(name);
   }
-  for (auto& name : output_names) {
+  for (auto& name : pending_output_names) {
     pending_outputs.emplace(name);
   }
 }
+
+DirectSession::RunState::RunState(int64 step_id,
+                                  const std::vector<Device*>* devices)
+    : RunState({}, {}, step_id, devices) {}
 
 DirectSession::RunState::~RunState() {
   if (rendez != nullptr) {
@@ -1214,6 +1215,10 @@ void DirectSession::WaitForNotification(RunState* run_state,
       run_state->status.Update(status);
     }
     cm->StartCancel();
+    // We must wait for the executors to complete, because they have borrowed
+    // references to `cm` and other per-step state. After this notification, it
+    // is safe to clean up the step.
+    run_state->executors_done.WaitForNotification();
   }
 }
 

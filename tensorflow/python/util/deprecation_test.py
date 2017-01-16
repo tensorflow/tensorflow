@@ -19,12 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 
 
-class DeprecationTest(tf.test.TestCase):
+class DeprecationTest(test.TestCase):
 
   def _assert_subset(self, expected_subset, actual_set):
     self.assertTrue(
@@ -45,7 +45,7 @@ class DeprecationTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, "instructions"):
       deprecation.deprecated(date, "")
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -71,14 +71,12 @@ class DeprecationTest(tf.test.TestCase):
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      " % (date, instructions),
-        _fn.__doc__)
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _fn(1, 2))
@@ -87,7 +85,7 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_one_line_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -103,8 +101,7 @@ class DeprecationTest(tf.test.TestCase):
         "fn doc. (deprecated)"
         "\n"
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
-        "\nInstructions for updating:\n%s" % (date, instructions),
-        _fn.__doc__)
+        "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _fn(1, 2))
@@ -113,7 +110,7 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_no_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -129,8 +126,7 @@ class DeprecationTest(tf.test.TestCase):
         "\n"
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
-        "\n%s" % (date, instructions),
-        _fn.__doc__)
+        "\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _fn(1, 2))
@@ -139,7 +135,7 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_instance_fn_with_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -169,13 +165,12 @@ class DeprecationTest(tf.test.TestCase):
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n        Args:"
-        "\n          arg0: Arg 0."
-        "\n          arg1: Arg 1."
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
         "\n"
-        "\n        Returns:"
-        "\n          Sum of args."
-        "\n        " % (date, instructions),
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions),
         getattr(_Object, "_fn").__doc__)
 
     # Assert calling new fn issues log warning.
@@ -185,7 +180,7 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_instance_fn_with_one_line_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -215,7 +210,7 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_instance_fn_no_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -235,8 +230,7 @@ class DeprecationTest(tf.test.TestCase):
         "\n"
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
-        "\n%s" % (date, instructions),
-        getattr(_Object, "_fn").__doc__)
+        "\n%s" % (date, instructions), getattr(_Object, "_fn").__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _Object()._fn(1, 2))
@@ -261,7 +255,7 @@ class DeprecationTest(tf.test.TestCase):
         def _prop(self):
           return "prop_wrong_order"
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_prop_with_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -289,10 +283,8 @@ class DeprecationTest(tf.test.TestCase):
         "\nInstructions for updating:"
         "\n%s"
         "\n"
-        "\n        Returns:"
-        "\n          String."
-        "\n        " % (date, instructions),
-        getattr(_Object, "_prop").__doc__)
+        "\nReturns:"
+        "\n  String." % (date, instructions), getattr(_Object, "_prop").__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual("prop_with_doc", _Object()._prop)
@@ -301,7 +293,7 @@ class DeprecationTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_prop_no_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -322,8 +314,7 @@ class DeprecationTest(tf.test.TestCase):
         "\n"
         "\nTHIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
-        "\n%s" % (date, instructions),
-        getattr(_Object, "_prop").__doc__)
+        "\n%s" % (date, instructions), getattr(_Object, "_prop").__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual("prop_no_doc", _Object()._prop)
@@ -333,7 +324,7 @@ class DeprecationTest(tf.test.TestCase):
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
 
-class DeprecatedArgsTest(tf.test.TestCase):
+class DeprecatedArgsTest(test.TestCase):
 
   def _assert_subset(self, expected_subset, actual_set):
     self.assertTrue(
@@ -367,7 +358,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, "not present.*\\['missing'\\]"):
       deprecation.deprecated_args(date, instructions, "missing")(_fn)
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -394,15 +385,13 @@ class DeprecatedArgsTest(tf.test.TestCase):
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
-        "\n        deprecated: Deprecated!"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n  deprecated: Deprecated!"
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      " % (date, instructions),
-        _fn.__doc__)
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions), _fn.__doc__)
 
     # Assert calls without the deprecated argument log nothing.
     self.assertEqual(3, _fn(1, 2))
@@ -415,7 +404,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_one_line_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -431,8 +420,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
         "fn doc. (deprecated arguments)"
         "\n"
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
-        "\nInstructions for updating:\n%s" % (date, instructions),
-        _fn.__doc__)
+        "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calls without the deprecated argument log nothing.
     self.assertEqual(3, _fn(1, 2))
@@ -445,7 +433,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_no_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -461,8 +449,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
         "\n"
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
         "\nInstructions for updating:"
-        "\n%s" % (date, instructions),
-        _fn.__doc__)
+        "\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calls without the deprecated argument log nothing.
     self.assertEqual(3, _fn(1, 2))
@@ -475,7 +462,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_varargs(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -495,7 +482,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_kwargs(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -515,7 +502,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions]), set(args[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_positional_and_named(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -538,16 +525,13 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertRegexpMatches(args1[0], r"deprecated and will be removed after")
     self._assert_subset(set([date, instructions, "d2"]), set(args2[1:]))
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_positional_and_named_with_ok_vals(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
 
-    @deprecation.deprecated_args(
-        date,
-        instructions,
-        ("d1", None),
-        ("d2", "my_ok_val"))
+    @deprecation.deprecated_args(date, instructions, ("d1", None),
+                                 ("d2", "my_ok_val"))
     def _fn(arg0, d1=None, arg1=2, d2=None):
       return arg0 + arg1 if d1 else arg1 + arg0 if d2 else arg0 * arg1
 
@@ -572,7 +556,7 @@ class DeprecatedArgsTest(tf.test.TestCase):
     self.assertEqual(0, mock_warning.call_count)
 
 
-class DeprecatedArgValuesTest(tf.test.TestCase):
+class DeprecatedArgValuesTest(test.TestCase):
 
   def _assert_subset(self, expected_subset, actual_set):
     self.assertTrue(
@@ -582,26 +566,21 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
   def test_deprecated_illegal_args(self):
     instructions = "This is how you update..."
     with self.assertRaisesRegexp(ValueError, "date"):
-      deprecation.deprecated_arg_values(
-          None, instructions, deprecated=True)
+      deprecation.deprecated_arg_values(None, instructions, deprecated=True)
     with self.assertRaisesRegexp(ValueError, "date"):
-      deprecation.deprecated_arg_values(
-          "", instructions, deprecated=True)
+      deprecation.deprecated_arg_values("", instructions, deprecated=True)
     with self.assertRaisesRegexp(ValueError, "YYYY-MM-DD"):
       deprecation.deprecated_arg_values(
           "07-04-2016", instructions, deprecated=True)
     date = "2016-07-04"
     with self.assertRaisesRegexp(ValueError, "instructions"):
-      deprecation.deprecated_arg_values(
-          date, None, deprecated=True)
+      deprecation.deprecated_arg_values(date, None, deprecated=True)
     with self.assertRaisesRegexp(ValueError, "instructions"):
-      deprecation.deprecated_arg_values(
-          date, "", deprecated=True)
+      deprecation.deprecated_arg_values(date, "", deprecated=True)
     with self.assertRaisesRegexp(ValueError, "argument", deprecated=True):
-      deprecation.deprecated_arg_values(
-          date, instructions)
+      deprecation.deprecated_arg_values(date, instructions)
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -628,15 +607,13 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
         "\nInstructions for updating:\n%s"
         "\n"
-        "\n      Args:"
-        "\n        arg0: Arg 0."
-        "\n        arg1: Arg 1."
-        "\n        deprecated: Deprecated!"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n  deprecated: Deprecated!"
         "\n"
-        "\n      Returns:"
-        "\n        Sum of args."
-        "\n      " % (date, instructions),
-        _fn.__doc__)
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn with non-deprecated value logs nothing.
     self.assertEqual(3, _fn(1, 2, deprecated=False))
@@ -653,7 +630,7 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
     self.assertEqual(3, _fn(1, 2))
     self.assertEqual(2, mock_warning.call_count)
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_with_one_line_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -669,8 +646,7 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
         "fn doc. (deprecated arguments)"
         "\n"
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
-        "\nInstructions for updating:\n%s" % (date, instructions),
-        _fn.__doc__)
+        "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn with non-deprecated value logs nothing.
     self.assertEqual(3, _fn(1, 2, deprecated=False))
@@ -687,7 +663,7 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
     self.assertEqual(3, _fn(1, 2))
     self.assertEqual(2, mock_warning.call_count)
 
-  @tf.test.mock.patch.object(logging, "warning", autospec=True)
+  @test.mock.patch.object(logging, "warning", autospec=True)
   def test_static_fn_no_doc(self, mock_warning):
     date = "2016-07-04"
     instructions = "This is how you update..."
@@ -703,8 +679,7 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
         "\n"
         "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
         "\nInstructions for updating:"
-        "\n%s" % (date, instructions),
-        _fn.__doc__)
+        "\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calling new fn with non-deprecated value logs nothing.
     self.assertEqual(3, _fn(1, 2, deprecated=False))
@@ -722,5 +697,40 @@ class DeprecatedArgValuesTest(tf.test.TestCase):
     self.assertEqual(2, mock_warning.call_count)
 
 
+class DeprecationArgumentsTest(test.TestCase):
+
+  def testDeprecatedArgumentLookup(self):
+    good_value = 3
+    self.assertEqual(
+        deprecation.deprecated_argument_lookup("val_new", good_value, "val_old",
+                                               None), good_value)
+    self.assertEqual(
+        deprecation.deprecated_argument_lookup("val_new", None, "val_old",
+                                               good_value), good_value)
+    with self.assertRaisesRegexp(ValueError,
+                                 "Cannot specify both 'val_old' and 'val_new'"):
+      self.assertEqual(
+          deprecation.deprecated_argument_lookup("val_new", good_value,
+                                                 "val_old", good_value),
+          good_value)
+
+  def testRewriteArgumentDocstring(self):
+    docs = """Add `a` and `b`
+
+    Args:
+      a: first arg
+      b: second arg
+    """
+    new_docs = deprecation.rewrite_argument_docstring(
+        deprecation.rewrite_argument_docstring(docs, "a", "left"), "b", "right")
+    new_docs_ref = """Add `left` and `right`
+
+    Args:
+      left: first arg
+      right: second arg
+    """
+    self.assertEqual(new_docs, new_docs_ref)
+
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

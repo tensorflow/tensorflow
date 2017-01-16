@@ -22,6 +22,779 @@ To apply a `Bijector`, use `distributions.TransformedDistribution`.
 
 - - -
 
+### `class tf.contrib.distributions.bijector.Affine` {#Affine}
+
+Bijector which computes `Y = g(X; shift, scale) = matmul(scale, X) + shift` where `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
+
+Write `A @ X` for `matmul(A, X)`. In TF parlance, the `scale` term is
+logically equivalent to:
+
+```python
+scale = (
+  scale_identity_multiplier * tf.diag(tf.ones(d)) +
+  tf.diag(scale_diag) +
+  scale_tril +
+  scale_perturb_factor @ diag(scale_perturb_diag) @
+    tf.transpose([scale_perturb_factor])
+)
+```
+
+The `scale` term is applied without necessarily materializing constituent
+matrices, i.e., the matmul is [matrix-free](
+https://en.wikipedia.org/wiki/Matrix-free_methods) when possible.
+
+Examples:
+
+```python
+# Y = X
+b = Affine()
+
+# Y = X + shift
+b = Affine(shift=[1., 2, 3])
+
+# Y = 2 * I @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_identity_multiplier=2.)
+
+# Y = tf.diag(d1) @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_diag=[-1., 2, 1])         # Implicitly 3x3.
+
+# Y = (I + v * v.T) @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_perturb_factor=[[1., 0],
+                                 [0, 1],
+                                 [1, 1]])
+
+# Y = (diag(d1) + v * diag(d2) * v.T) @ X.T + shift
+b = Affine(shift=[1., 2, 3],
+           scale_diag=[1., 3, 3],          # Implicitly 3x3.
+           scale_perturb_diag=[2., 1],     # Implicitly 2x2.
+           scale_perturb_factor=[[1., 0],
+                                 [0, 1],
+                                 [1, 1]])
+
+```
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.__init__(shift=None, scale_identity_multiplier=None, scale_diag=None, scale_tril=None, scale_perturb_factor=None, scale_perturb_diag=None, event_ndims=1, validate_args=False, name='affine')` {#Affine.__init__}
+
+Instantiates the `Affine` bijector.
+
+This `Bijector` is initialized with `shift` `Tensor` and `scale` arguments,
+giving the forward operation:
+
+```none
+Y = g(X) = scale @ X + shift
+```
+
+where the `scale` term is logically equivalent to:
+
+```python
+scale = (
+  scale_identity_multiplier * tf.diag(tf.ones(d)) +
+  tf.diag(scale_diag) +
+  scale_tril +
+  scale_perturb_factor @ diag(scale_perturb_diag) @
+    tf.transpose([scale_perturb_factor])
+)
+```
+
+If none of `scale_identity_multiplier`, `scale_diag`, or `scale_tril` are
+specified then `scale += IdentityMatrix`. Otherwise specifying a
+`scale` argument has the semantics of `scale += Expand(arg)`, i.e.,
+`scale_diag != None` means `scale += tf.diag(scale_diag)`.
+
+##### Args:
+
+
+*  <b>`shift`</b>: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
+*  <b>`scale_identity_multiplier`</b>: floating point rank 0 `Tensor` representing a
+    scaling done to the identity matrix.
+    When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+    `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+    to `scale`.
+*  <b>`scale_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ... k], which represents a k x k
+    diagonal matrix.
+    When `None` no diagonal term is added to `scale`.
+*  <b>`scale_tril`</b>: Numeric `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
+    lower triangular matrix.
+    When `None` no `scale_tril` term is added to `scale`.
+*  <b>`scale_perturb_factor`</b>: Numeric `Tensor` representing factor matrix with
+    last two dimensions of shape `(k, r)`.
+    When `None`, no rank-r update is added to `scale`.
+*  <b>`scale_perturb_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
+    `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
+    r x r Diagonal matrix.
+    When `None` low rank updates will take the form `scale_perturb_factor *
+    scale_perturb_factor.T`.
+*  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
+    associated with a particular draw from the distribution. Must be 0 or 1.
+*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
+    for correctness.
+*  <b>`name`</b>: `String` name given to ops managed by this object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `perturb_diag` is specified but not `perturb_factor`.
+*  <b>`TypeError`</b>: if `shift` has different `dtype` from `scale` arguments.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.dtype` {#Affine.dtype}
+
+dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.forward(x, name='forward', **condition_kwargs)` {#Affine.forward}
+
+Returns the forward `Bijector` evaluation, i.e., X = g(Y).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.forward_event_shape(input_shape, name='forward_event_shape')` {#Affine.forward_event_shape}
+
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
+    passed into `forward` function.
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
+    shape after applying `forward`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Affine.forward_log_det_jacobian}
+
+Returns both the forward_log_det_jacobian.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.get_forward_event_shape(input_shape)` {#Affine.get_forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
+    applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.get_inverse_event_shape(output_shape)` {#Affine.get_inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
+    applying `inverse`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.graph_parents` {#Affine.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.inverse(y, name='inverse', **condition_kwargs)` {#Affine.inverse}
+
+Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Affine.inverse_and_inverse_log_det_jacobian}
+
+Returns both the inverse evaluation and inverse_log_det_jacobian.
+
+Enables possibly more efficient calculation when both inverse and
+corresponding Jacobian are needed.
+
+See `inverse()`, `inverse_log_det_jacobian()` for more details.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Affine.inverse_event_shape}
+
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
+    passed into `inverse` function.
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
+    shape after applying `inverse`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Affine.inverse_log_det_jacobian}
+
+Returns the (log o det o Jacobian o inverse)(y).
+
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
+
+Note that `forward_log_det_jacobian` is the negative of this function.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.is_constant_jacobian` {#Affine.is_constant_jacobian}
+
+Returns true iff the Jacobian is not a function of x.
+
+Note: Jacobian is either constant for both forward and inverse or neither.
+
+##### Returns:
+
+  `Boolean`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.name` {#Affine.name}
+
+Returns the string name of this `Bijector`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.scale` {#Affine.scale}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.shaper` {#Affine.shaper}
+
+Returns shape object used to manage shape constraints.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.shift` {#Affine.shift}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.validate_args` {#Affine.validate_args}
+
+Returns True if Tensor arguments will be validated.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.bijector.AffineLinearOperator` {#AffineLinearOperator}
+
+Bijector which computes `Y = g(X; shift, scale) = scale @ X.T + shift`.
+
+`shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
+
+If `X` is a scalar then the forward transformation is: `scale * X + shift`
+where `*` denotes the scalar product.
+
+Note: we don't always simply transpose `X` (but write it this way for
+brevity).  Actually the input `X` undergoes the following transformation
+before being premultiplied by `scale`:
+
+1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
+   `new_sample_shape = [1]`. Otherwise do nothing.
+2. The sample shape is flattened to have one dimension, i.e.,
+   `new_sample_shape = [n]` where `n = tf.reduce_prod(old_sample_shape)`.
+3. The sample dim is cyclically rotated left by 1, i.e.,
+   `new_shape = [B1,...,Bb, k, n]` where `n` is as above, `k` is the
+   event_shape, and `B1,...,Bb` are the batch shapes for each of `b` batch
+   dimensions.
+
+(For more details see `shape.make_batch_of_event_sample_matrices`.)
+
+The result of the above transformation is that `X` can be regarded as a batch
+of matrices where each column is a draw from the distribution.  After
+premultiplying by `scale`, we take the inverse of this procedure.  The input
+`Y` also undergoes the same transformation before/after premultiplying by
+`inv(scale)`.
+
+Example Use:
+
+```python
+linalg = tf.contrib.linalg
+
+x = [1., 2, 3]
+
+shift = [-1., 0., 1]
+diag = [1., 2, 3]
+scale = linalg.LinearOperatorDiag(diag)
+affine = AffineLinearOperator(shift, scale)
+# In this case, `forward` is equivalent to:
+# diag * scale + shift
+y = affine.forward(x)  # [0., 4, 10]
+
+shift = [2., 3, 1]
+tril = [[1., 0, 0],
+        [2, 1, 0],
+        [3, 2, 1]]
+scale = linalg.LinearOperatorTriL(tril)
+affine = AffineLinearOperator(shift, scale)
+# In this case, `forward` is equivalent to:
+# np.squeeze(np.matmul(tril, np.expand_dims(x, -1)), -1) + shift
+y = affine.forward(x)  # [3., 7, 11]
+```
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.__init__(shift=None, scale=None, event_ndims=1, validate_args=False, name='affine_linear_operator')` {#AffineLinearOperator.__init__}
+
+Instantiates the `AffineLinearOperator` bijector.
+
+##### Args:
+
+
+*  <b>`shift`</b>: Numeric `Tensor`.
+*  <b>`scale`</b>: Subclass of `LinearOperator`.  Represents the (batch) positive
+    definite matrix `M` in `R^{k x k}`.
+*  <b>`event_ndims`</b>: Scalar `integer` `Tensor` indicating the number of dimensions
+    associated with a particular draw from the distribution. Must be 0 or 1.
+*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
+    for correctness.
+*  <b>`name`</b>: `String` name given to ops managed by this object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `event_ndims` is not 0 or 1.
+*  <b>`TypeError`</b>: if `scale` is not a `LinearOperator`.
+*  <b>`TypeError`</b>: if `shift.dtype` does not match `scale.dtype`.
+*  <b>`ValueError`</b>: if not `scale.is_non_singular`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.dtype` {#AffineLinearOperator.dtype}
+
+dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward(x, name='forward', **condition_kwargs)` {#AffineLinearOperator.forward}
+
+Returns the forward `Bijector` evaluation, i.e., X = g(Y).
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_event_shape(input_shape, name='forward_event_shape')` {#AffineLinearOperator.forward_event_shape}
+
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
+    passed into `forward` function.
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
+    shape after applying `forward`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.forward_log_det_jacobian}
+
+Returns both the forward_log_det_jacobian.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.get_forward_event_shape(input_shape)` {#AffineLinearOperator.get_forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
+    applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.get_inverse_event_shape(output_shape)` {#AffineLinearOperator.get_inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
+    applying `inverse`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.graph_parents` {#AffineLinearOperator.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse(y, name='inverse', **condition_kwargs)` {#AffineLinearOperator.inverse}
+
+Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.inverse_and_inverse_log_det_jacobian}
+
+Returns both the inverse evaluation and inverse_log_det_jacobian.
+
+Enables possibly more efficient calculation when both inverse and
+corresponding Jacobian are needed.
+
+See `inverse()`, `inverse_log_det_jacobian()` for more details.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
+    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_event_shape(output_shape, name='inverse_event_shape')` {#AffineLinearOperator.inverse_event_shape}
+
+Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
+    passed into `inverse` function.
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
+    shape after applying `inverse`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.inverse_log_det_jacobian}
+
+Returns the (log o det o Jacobian o inverse)(y).
+
+Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
+
+Note that `forward_log_det_jacobian` is the negative of this function.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
+*  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+
+##### Returns:
+
+  `Tensor`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
+    `self.dtype`.
+*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
+    `_inverse_and_inverse_log_det_jacobian` are implemented.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.is_constant_jacobian` {#AffineLinearOperator.is_constant_jacobian}
+
+Returns true iff the Jacobian is not a function of x.
+
+Note: Jacobian is either constant for both forward and inverse or neither.
+
+##### Returns:
+
+  `Boolean`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.name` {#AffineLinearOperator.name}
+
+Returns the string name of this `Bijector`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
+
+The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.shaper` {#AffineLinearOperator.shaper}
+
+Returns shape object used to manage shape constraints.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
+
+The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.validate_args` {#AffineLinearOperator.validate_args}
+
+Returns True if Tensor arguments will be validated.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.bijector.Bijector` {#Bijector}
 
 Interface for transforming a `Distribution` sample.
@@ -120,7 +893,7 @@ Example transformations:
           return math_ops.reduce_sum(x, reduction_indices=event_dims)
       ```
 
-  - "ScaleAndShift"
+  - "Affine"
 
     ```
     Y = g(X) = sqrtSigma * X + mu
@@ -158,7 +931,7 @@ Subclass Requirements:
 
 - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
   like `QuantizedDistribution`) then depending on your use, you may not need
-  to implement all of `_forward` and `_inverese` functions.  Examples:
+  to implement all of `_forward` and `_inverse` functions.  Examples:
     1. Sampling (e.g., `sample`) only requires `_forward`.
     2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
        `_inverse` (and related).
@@ -235,7 +1008,7 @@ https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
   the `_inverse` implementation.
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, parameters=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
+#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
 
 Constructs Bijector.
 
@@ -258,7 +1031,7 @@ See `Bijector` subclass docstring for more details and specific examples.
 
 *  <b>`batch_ndims`</b>: number of dimensions associated with batch coordinates.
 *  <b>`event_ndims`</b>: number of dimensions associated with event coordinates.
-*  <b>`parameters`</b>: Dictionary of parameters used by this `Bijector`
+*  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Bijector`.
 *  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is not a
     function of the input.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
@@ -391,6 +1164,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Bijector.graph_parents` {#Bijector.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Bijector.inverse(y, name='inverse', **condition_kwargs)` {#Bijector.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -514,13 +1294,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Bijector.name` {#Bijector.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Bijector.parameters` {#Bijector.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -724,6 +1497,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Chain.graph_parents` {#Chain.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Chain.inverse(y, name='inverse', **condition_kwargs)` {#Chain.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -851,13 +1631,6 @@ Returns the string name of this `Bijector`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Chain.parameters` {#Chain.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
-
-
-- - -
-
 #### `tf.contrib.distributions.bijector.Chain.shaper` {#Chain.shaper}
 
 Returns shape object used to manage shape constraints.
@@ -875,7 +1648,7 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.CholeskyOuterProduct` {#CholeskyOuterProduct}
 
-Bijector which computes Y = g(X) = X X^T where X is a lower-triangular, positive-diagonal matrix.
+Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
 
 `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -885,7 +1658,7 @@ Examples:
 
 ```python
 bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x^T
+# Result: [[1, 1], [1, 5]], i.e., x x.T
 
 bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
 # Result: [[1, 0], [2, 1]], i.e., chol(y).
@@ -1034,6 +1807,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.graph_parents` {#CholeskyOuterProduct.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.inverse(y, name='inverse', **condition_kwargs)` {#CholeskyOuterProduct.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -1157,13 +1937,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.parameters` {#CholeskyOuterProduct.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -1341,6 +2114,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Exp.graph_parents` {#Exp.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Exp.inverse(y, name='inverse', **condition_kwargs)` {#Exp.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -1464,13 +2244,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Exp.name` {#Exp.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.parameters` {#Exp.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -1640,6 +2413,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Identity.graph_parents` {#Identity.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Identity.inverse(y, name='inverse', **condition_kwargs)` {#Identity.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -1763,13 +2543,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Identity.name` {#Identity.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Identity.parameters` {#Identity.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -1957,6 +2730,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Inline.graph_parents` {#Inline.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Inline.inverse(y, name='inverse', **condition_kwargs)` {#Inline.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -2080,13 +2860,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Inline.name` {#Inline.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Inline.parameters` {#Inline.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -2273,6 +3046,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Invert.graph_parents` {#Invert.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Invert.inverse(y, name='inverse', **condition_kwargs)` {#Invert.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -2400,13 +3180,6 @@ Returns the string name of this `Bijector`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Invert.parameters` {#Invert.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
-
-
-- - -
-
 #### `tf.contrib.distributions.bijector.Invert.shaper` {#Invert.shaper}
 
 Returns shape object used to manage shape constraints.
@@ -2415,371 +3188,6 @@ Returns shape object used to manage shape constraints.
 - - -
 
 #### `tf.contrib.distributions.bijector.Invert.validate_args` {#Invert.validate_args}
-
-Returns True if Tensor arguments will be validated.
-
-
-
-- - -
-
-### `class tf.contrib.distributions.bijector.ScaleAndShift` {#ScaleAndShift}
-
-Bijector which computes Y = g(X; shift, scale) = matmul(scale, X) + shift.
-
-`scale` is either a non-zero scalar, or a lower triangular matrix with
-non-zero diagonal.  This means the `Bijector` will be invertible and
-computation of determinant and inverse will be efficient.
-
-As a result, the mean and covariance are transformed:
-
-```
-E[Y] = matmul(scale, E[X])
-Cov[Y] = matmul(scale, matmul(Cov[X], scale, transpose_b=True))
-```
-
-Example Use:
-
-```python
-# No batch, scalar
-mu = 0     # shape=[]
-sigma = 1  # shape=[], treated like a 1x1 matrix.
-b = ScaleAndShift(shift=mu, scale=sigma)
-# b.shaper.batch_ndims == 0
-# b.shaper.event_ndims == 0
-
-# One batch, scalar.
-mu = ...    # shape=[b], b>0
-sigma = ... # shape=[b], b>0, treated like a batch of 1x1 matrices
-b = ScaleAndShift(shift=mu, scale=sigma)
-# b.shaper.batch_ndims == 1
-# b.shaper.event_ndims == 0
-
-# No batch, multivariate.
-mu = ...    # shape=[d],    d>0
-sigma = ... # shape=[d, d], d>0, treated like a single dxd matrix.
-b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
-# b.shaper.batch_ndims == 0
-# b.shaper.event_ndims == 1
-
-# (B1*B2*...*Bb)-batch, multivariate.
-mu = ...    # shape=[B1,...,Bb, d],    b>0, d>0
-sigma = ... # shape=[B1,...,Bb, d, d], b>0, d>0
-b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
-# b.shaper.batch_ndims == b
-# b.shaper.event_ndims == 1
-
-# Mu is broadcast:
-mu = 1
-sigma = [I, I]  # I is a 3x3 identity matrix.
-b = ScaleAndShift(shift=mu, scale=sigma, event_ndims=1)
-x = numpy.ones(S + sigma.shape)
-b.forward(x) # == x + 1
-```
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.__init__(shift, scale, event_ndims=0, validate_args=False, name='scale_and_shift')` {#ScaleAndShift.__init__}
-
-Instantiates the `ScaleAndShift` bijector.
-
-This `Bijector` is initialized with `scale` and `shift` `Tensors`, giving
-the forward operation:
-
-```Y = g(X) = matmul(scale, X) + shift```
-
-##### Args:
-
-
-*  <b>`shift`</b>: Numeric `Tensor`.
-*  <b>`scale`</b>: Numeric `Tensor` of same `dtype` as `shift`.  If `event_ndims = 0`,
-    `scale` is treated like a `1x1` matrix or a batch thereof.
-    Otherwise, the last two dimensions of `scale` define a matrix.
-    `scale` must have non-negative diagonal entries.  The upper triangular
-    part of `scale` is ignored, effectively making it lower triangular.
-*  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
-    associated with a particular draw from the distribution.  Must be 0 or 1
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.dtype` {#ScaleAndShift.dtype}
-
-dtype of `Tensor`s transformable by this distribution.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward(x, name='forward', **condition_kwargs)` {#ScaleAndShift.forward}
-
-Returns the forward `Bijector` evaluation, i.e., X = g(Y).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `x.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if `_forward` is not implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward_event_shape(input_shape, name='forward_event_shape')` {#ScaleAndShift.forward_event_shape}
-
-Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
-
-##### Args:
-
-
-*  <b>`input_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
-    passed into `forward` function.
-*  <b>`name`</b>: name to give to the op
-
-##### Returns:
-
-
-*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `forward`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.forward_log_det_jacobian}
-
-Returns both the forward_log_det_jacobian.
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
-    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.get_forward_event_shape(input_shape)` {#ScaleAndShift.get_forward_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `forward_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `forward` function.
-
-##### Returns:
-
-
-*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `forward`. Possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.get_inverse_event_shape(output_shape)` {#ScaleAndShift.get_inverse_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `inverse_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `inverse` function.
-
-##### Returns:
-
-
-*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `inverse`. Possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse(y, name='inverse', **condition_kwargs)` {#ScaleAndShift.inverse}
-
-Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
-
-##### Args:
-
-
-*  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_inverse` nor
-    `_inverse_and_inverse_log_det_jacobian` are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.inverse_and_inverse_log_det_jacobian}
-
-Returns both the inverse evaluation and inverse_log_det_jacobian.
-
-Enables possibly more efficient calculation when both inverse and
-corresponding Jacobian are needed.
-
-See `inverse()`, `inverse_log_det_jacobian()` for more details.
-
-##### Args:
-
-
-*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_inverse_and_inverse_log_det_jacobian`
-    nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_event_shape(output_shape, name='inverse_event_shape')` {#ScaleAndShift.inverse_event_shape}
-
-Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
-
-##### Args:
-
-
-*  <b>`output_shape`</b>: `Tensor`, `int32` vector indicating event-portion shape
-    passed into `inverse` function.
-*  <b>`name`</b>: name to give to the op
-
-##### Returns:
-
-
-*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `inverse`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#ScaleAndShift.inverse_log_det_jacobian}
-
-Returns the (log o det o Jacobian o inverse)(y).
-
-Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
-
-Note that `forward_log_det_jacobian` is the negative of this function.
-
-##### Args:
-
-
-*  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `self.dtype` is specified and `y.dtype` is not
-    `self.dtype`.
-*  <b>`NotImplementedError`</b>: if neither `_inverse_log_det_jacobian` nor
-    `_inverse_and_inverse_log_det_jacobian` are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.is_constant_jacobian` {#ScaleAndShift.is_constant_jacobian}
-
-Returns true iff the Jacobian is not a function of x.
-
-Note: Jacobian is either constant for both forward and inverse or neither.
-
-##### Returns:
-
-  `Boolean`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.name` {#ScaleAndShift.name}
-
-Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.parameters` {#ScaleAndShift.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.scale` {#ScaleAndShift.scale}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.shaper` {#ScaleAndShift.shaper}
-
-Returns shape object used to manage shape constraints.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.shift` {#ScaleAndShift.shift}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.ScaleAndShift.validate_args` {#ScaleAndShift.validate_args}
 
 Returns True if Tensor arguments will be validated.
 
@@ -2923,6 +3331,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.SigmoidCentered.graph_parents` {#SigmoidCentered.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.SigmoidCentered.inverse(y, name='inverse', **condition_kwargs)` {#SigmoidCentered.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -3046,13 +3461,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SigmoidCentered.name` {#SigmoidCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SigmoidCentered.parameters` {#SigmoidCentered.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -3230,6 +3638,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.SoftmaxCentered.graph_parents` {#SoftmaxCentered.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.inverse(y, name='inverse', **condition_kwargs)` {#SoftmaxCentered.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -3353,13 +3768,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.name` {#SoftmaxCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SoftmaxCentered.parameters` {#SoftmaxCentered.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -3534,6 +3942,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Softplus.graph_parents` {#Softplus.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Softplus.inverse(y, name='inverse', **condition_kwargs)` {#Softplus.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -3657,13 +4072,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Softplus.name` {#Softplus.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Softplus.parameters` {#Softplus.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -
@@ -3839,6 +4247,13 @@ Same meaning as `inverse_event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.PowerTransform.graph_parents` {#PowerTransform.graph_parents}
+
+Returns this `Bijector`'s graph_parents as a Python list.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.PowerTransform.inverse(y, name='inverse', **condition_kwargs)` {#PowerTransform.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
@@ -3962,13 +4377,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.PowerTransform.name` {#PowerTransform.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.PowerTransform.parameters` {#PowerTransform.parameters}
-
-Returns this `Bijector`'s parameters as a name/value dictionary.
 
 
 - - -

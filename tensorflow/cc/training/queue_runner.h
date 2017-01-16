@@ -75,7 +75,7 @@ class QueueRunner : public RunnerInterface {
   Status GetStatus();
 
  private:
-  QueueRunner() : coord_(nullptr) {}
+  QueueRunner() : coord_(nullptr), stopped_(false) {}
 
   // Initializes the instance with the QueueRunnerDef proto.
   Status Init(const QueueRunnerDef& queue_runner_def);
@@ -92,6 +92,8 @@ class QueueRunner : public RunnerInterface {
                static_cast<int>(status.code())) > 0;
   }
 
+  bool IsRunning() const override { return !stopped_; }
+
   string queue_name_;
   std::vector<string> enqueue_op_names_;
   string close_op_name_;
@@ -107,6 +109,8 @@ class QueueRunner : public RunnerInterface {
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
+
+  std::atomic<bool> stopped_;
 
   mutex cb_mu_;
   std::vector<std::function<void(Status)>> callbacks_;

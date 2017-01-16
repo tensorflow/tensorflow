@@ -7,6 +7,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
@@ -31,7 +32,9 @@ tf_cuda_library(
     name = "stream_executor",
     deps = [
         "//tensorflow/stream_executor",
-    ] + select({
+    ] + if_cuda(
+        ["//tensorflow/stream_executor:cuda_platform"],
+    ) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
@@ -41,6 +44,7 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:cuda_platform",
     ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],

@@ -35,6 +35,13 @@ The reference to the TensorArray.
 The flow `Tensor` forcing ops leading to this TensorArray state.
 
 
+- - -
+
+#### `tf.TensorArray.dtype` {#TensorArray.dtype}
+
+The data type of this TensorArray.
+
+
 
 - - -
 
@@ -76,11 +83,12 @@ must all match.
 
 - - -
 
-#### `tf.TensorArray.pack(name=None)` {#TensorArray.pack}
+#### `tf.TensorArray.stack(name=None)` {#TensorArray.stack}
 
-Return the values in the TensorArray as a packed `Tensor`.
+Return the values in the TensorArray as a stacked `Tensor`.
 
 All of the values must have been written and their shapes must all match.
+If input shapes have rank-`R`, then output shape will have rank-`(R+1)`.
 
 ##### Args:
 
@@ -89,7 +97,7 @@ All of the values must have been written and their shapes must all match.
 
 ##### Returns:
 
-  All the tensors in the TensorArray packed into one tensor.
+  All the tensors in the TensorArray stacked into one tensor.
 
 
 - - -
@@ -163,19 +171,22 @@ Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
 
 - - -
 
-#### `tf.TensorArray.unpack(value, name=None)` {#TensorArray.unpack}
+#### `tf.TensorArray.unstack(value, name=None)` {#TensorArray.unstack}
 
-Pack the values of a `Tensor` in the TensorArray.
+Unstack the values of a `Tensor` in the TensorArray.
+
+If input value shapes have rank-`R`, then the output TensorArray will
+contain elements whose shapes are rank-`(R-1)`.
 
 ##### Args:
 
 
-*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
+*  <b>`value`</b>: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A new TensorArray object with flow that ensures the unpack occurs.
+  A new TensorArray object with flow that ensures the unstack occurs.
   Use this object all for subsequent operations.
 
 ##### Raises:
@@ -212,6 +223,20 @@ Split the values of a `Tensor` into the TensorArray.
 
 - - -
 
+#### `tf.TensorArray.identity()` {#TensorArray.identity}
+
+Returns a TensorArray with the same content and properties.
+
+##### Returns:
+
+  A new TensorArray object with flow that ensures the control dependencies
+  from the contexts will become control dependencies for writes, reads, etc.
+  Use this object all for subsequent operations.
+
+
+
+- - -
+
 #### `tf.TensorArray.grad(source, flow=None, name=None)` {#TensorArray.grad}
 
 
@@ -221,7 +246,7 @@ Split the values of a `Tensor` into the TensorArray.
 #### Other Methods
 - - -
 
-#### `tf.TensorArray.__init__(dtype, size=None, dynamic_size=None, clear_after_read=None, tensor_array_name=None, handle=None, flow=None, infer_shape=True, elem_shape=None, name=None)` {#TensorArray.__init__}
+#### `tf.TensorArray.__init__(dtype, size=None, dynamic_size=None, clear_after_read=None, tensor_array_name=None, handle=None, flow=None, infer_shape=True, element_shape=None, name=None)` {#TensorArray.__init__}
 
 Construct a new TensorArray or wrap an existing TensorArray handle.
 
@@ -252,8 +277,9 @@ is created within a `while_loop`.
     `TensorArray.flow`.
 *  <b>`infer_shape`</b>: (optional, default: True) If True, shape inference
     is enabled.  In this case, all elements must have the same shape.
-*  <b>`elem_shape`</b>: (optional, default: None) A TensorShape object specifying
-    the shape of all the elements of the TensorArray.
+*  <b>`element_shape`</b>: (optional, default: None) A `TensorShape` object specifying
+    the shape constraints of each of the elements of the TensorArray.
+    Need not be fully defined.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Raises:
@@ -268,13 +294,6 @@ is created within a `while_loop`.
 #### `tf.TensorArray.close(name=None)` {#TensorArray.close}
 
 Close the current TensorArray.
-
-
-- - -
-
-#### `tf.TensorArray.dtype` {#TensorArray.dtype}
-
-The data type of this TensorArray.
 
 
 - - -

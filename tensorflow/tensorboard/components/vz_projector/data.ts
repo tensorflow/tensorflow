@@ -18,7 +18,7 @@ import {SpriteMetadata} from './data-provider';
 import * as knn from './knn';
 import * as logging from './logging';
 import * as scatterPlot from './scatterPlot';
-import {getSearchPredicate, runAsyncTask, shuffle} from './util';
+import * as util from './util';
 import * as vector from './vector';
 
 export type DistanceFunction = (a: number[], b: number[]) => number;
@@ -78,21 +78,9 @@ export interface DataPoint {
   projections: {[key: string]: number};
 }
 
-/** Checks to see if the browser supports webgl. */
-function hasWebGLSupport(): boolean {
-  try {
-    let c = document.createElement('canvas');
-    let gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-    return gl != null && typeof weblas !== 'undefined';
-  } catch (e) {
-    return false;
-  }
-}
-
-const WEBGL_SUPPORT = hasWebGLSupport();
 const IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
 /** Controls whether nearest neighbors computation is done on the GPU or CPU. */
-const KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
+const KNN_GPU_ENABLED = util.hasWebGLSupport() && !IS_FIREFOX;
 
 export const TSNE_SAMPLE_SIZE = 10000;
 export const PCA_SAMPLE_SIZE = 50000;
@@ -136,7 +124,7 @@ export class DataSet {
   constructor(
       points: DataPoint[], spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
-    this.shuffledDataIndices = shuffle(d3.range(this.points.length));
+    this.shuffledDataIndices = util.shuffle(d3.range(this.points.length));
     this.traces = this.computeTraces(points);
     this.dim = [this.points.length, this.points[0].vector.length];
     this.spriteAndMetadataInfo = spriteAndMetadataInfo;
@@ -247,7 +235,7 @@ export class DataSet {
     if (this.projections.has('pca-0')) {
       return Promise.resolve<void>(null);
     }
-    return runAsyncTask('Computing PCA...', () => {
+    return util.runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.
       let dim = this.points[0].vector.length;
       let vectors = this.shuffledDataIndices.map(i => this.points[i].vector);
@@ -345,21 +333,51 @@ export class DataSet {
     }
     knnComputation.then(nearest => {
       this.nearest = nearest;
-      runAsyncTask('Initializing T-SNE...', () => {
-        this.tsne.initDataDist(this.nearest);
-      }).then(step);
+      util.runAsyncTask('Initializing T-SNE...', () => {
+            this.tsne.initDataDist(this.nearest);
+          }).then(step);
     });
   }
 
-  mergeMetadata(metadata: SpriteAndMetadataInfo) {
+  /**
+   * Merges metadata to the dataset and returns whether it succeeded.
+   */
+  mergeMetadata(metadata: SpriteAndMetadataInfo): boolean {
     if (metadata.pointsInfo.length !== this.points.length) {
-      logging.setWarningMessage(
-          `Number of tensors (${this.points.length}) do not match` +
-          ` the number of lines in metadata (${metadata.pointsInfo.length}).`);
+      let errorMessage = `Number of tensors (${this.points.length}) do not` +
+          ` match the number of lines in metadata` +
+          ` (${metadata.pointsInfo.length}).`;
+
+      if (metadata.stats.length === 1 &&
+          this.points.length + 1 === metadata.pointsInfo.length) {
+        // If there is only one column of metadata and the number of points is
+        // exactly one less than the number of metadata lines, this is due to an
+        // unnecessary header line in the metadata and we can show a meaningful
+        // error.
+        logging.setErrorMessage(
+            errorMessage + ' Single column metadata should not have a header ' +
+                'row.',
+            'merging metadata');
+        return false;
+      } else if (
+          metadata.stats.length > 1 &&
+          this.points.length - 1 === metadata.pointsInfo.length) {
+        // If there are multiple columns of metadata and the number of points is
+        // exactly one greater than the number of lines in the metadata, this
+        // means there is a missing metadata header.
+        logging.setErrorMessage(
+            errorMessage + ' Multi-column metadata should have a header ' +
+                'row with column labels.',
+            'merging metadata');
+        return false;
+      }
+
+      logging.setWarningMessage(errorMessage);
     }
     this.spriteAndMetadataInfo = metadata;
     metadata.pointsInfo.slice(0, this.points.length)
         .forEach((m, i) => this.points[i].metadata = m);
+    return true;
   }
 
   stopTSNE() {
@@ -384,7 +402,7 @@ export class DataSet {
    * Search the dataset based on a metadata field.
    */
   query(query: string, inRegexMode: boolean, fieldName: string): number[] {
-    let predicate = getSearchPredicate(query, inRegexMode, fieldName);
+    let predicate = util.getSearchPredicate(query, inRegexMode, fieldName);
     let matches: number[] = [];
     this.points.forEach((point, id) => {
       if (predicate(point)) {
@@ -413,6 +431,7 @@ export interface ColorOption {
   /** Threshold values and their colors. Defined for gradient color map. */
   thresholds?: {value: number, color: string}[];
   isSeparator?: boolean;
+  tooManyUniqueValues?: boolean;
 }
 
 /**
@@ -466,6 +485,7 @@ export class State {
 
   /** Color by option. */
   selectedColorOptionName: string;
+  forceCategoricalColoring: boolean;
 
   /** Label by option. */
   selectedLabelOption: string;

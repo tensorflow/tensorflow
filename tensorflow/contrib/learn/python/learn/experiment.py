@@ -21,19 +21,21 @@ from __future__ import print_function
 
 import contextlib
 import math
+import os
 import time
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
-
+from tensorflow.python.util import compat
 
 __all__ = ["Experiment"]
 
@@ -48,7 +50,7 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behaviour.
-  @deprecated_arg_values(
+  @deprecated_args(
       "2016-10-23",
       "local_eval_frequency is deprecated as local_run will be renamed to "
       "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
@@ -57,7 +59,7 @@ class Experiment(object):
       "available. In contrast, the default for local_eval_frequency is None, "
       "resulting in evaluation occurring only after training has completed. "
       "min_eval_frequency is ignored when calling the deprecated local_run.",
-      local_eval_frequency=None)
+      "local_eval_frequency")
   def __init__(self,
                estimator,
                train_input_fn,
@@ -66,11 +68,14 @@ class Experiment(object):
                train_steps=None,
                eval_steps=100,
                train_monitors=None,
+               eval_hooks=None,
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
-               delay_workers_by_global_step=False):
+               delay_workers_by_global_step=False,
+               export_strategies=None,
+               continuous_eval_predicate_fn=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -91,6 +96,8 @@ class Experiment(object):
         is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
+      eval_hooks: A list of `SessionRunHook` hooks to pass to the
+        `Estimator`'s `evaluate` function.
       local_eval_frequency: Frequency of running eval in steps,
         when running locally. If `None`, runs evaluation only at the end of
         training.
@@ -103,31 +110,127 @@ class Experiment(object):
         occur if no new snapshot is available, hence, this is the minimum.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
+      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      continuous_eval_predicate_fn: A predicate function determining whether to
+        continue eval after each iteration. `predicate_fn` takes the evaluation
+        results as arguments. At the beginning of evaluation, the passed eval
+        results will be None so it's expected that the predicate function
+        handles that gracefully. When `predicate_fn` is not specified,
+        continuous eval will run in an infinite loop.
 
     Raises:
-      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`.
+      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
+        or if export_strategies has the wrong type.
     """
     if not isinstance(estimator, evaluable.Evaluable):
       raise ValueError("`estimator` must implement `Evaluable`.")
     if not isinstance(estimator, trainable.Trainable):
       raise ValueError("`estimator` must implement `Trainable`.")
     super(Experiment, self).__init__()
+    # Immutable fields.
     self._estimator = estimator
     self._train_input_fn = train_input_fn
     self._eval_input_fn = eval_input_fn
     self._eval_metrics = eval_metrics
     self._train_steps = train_steps
     self._eval_steps = eval_steps
-    self._train_monitors = train_monitors or []
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
+    # Mutable fields, using the setters.
+    self.train_monitors = train_monitors
+    self.eval_hooks = eval_hooks
+    self.export_strategies = export_strategies
+    self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
 
   @property
   def estimator(self):
     return self._estimator
+
+  @property
+  def train_input_fn(self):
+    return self._train_input_fn
+
+  @property
+  def eval_input_fn(self):
+    return self._eval_input_fn
+
+  @property
+  def eval_metrics(self):
+    return self._eval_metrics
+
+  @property
+  def train_steps(self):
+    return self._train_steps
+
+  @property
+  def eval_steps(self):
+    return self._eval_steps
+
+  @property
+  def train_monitors(self):
+    return self._train_monitors
+
+  @train_monitors.setter
+  def train_monitors(self, value):
+    self._train_monitors = value or []
+
+  @property
+  def eval_hooks(self):
+    return self._eval_hooks
+
+  @eval_hooks.setter
+  def eval_hooks(self, value):
+    self._eval_hooks = value or []
+
+  @property
+  def local_eval_frequency(self):
+    return self._local_eval_frequency
+
+  @property
+  def eval_delay_secs(self):
+    return self._eval_delay_secs
+
+  @property
+  def continuous_eval_throttle_secs(self):
+    return self._continuous_eval_throttle_secs
+
+  @property
+  def min_eval_frequency(self):
+    return self._min_eval_frequency
+
+  @property
+  def delay_workers_by_global_step(self):
+    return self._delay_workers_by_global_step
+
+  @property
+  def continuous_eval_predicate_fn(self):
+    return self._continuous_eval_predicate_fn
+
+  @continuous_eval_predicate_fn.setter
+  def continuous_eval_predicate_fn(self, value):
+    if value is not None and not callable(value):
+      raise ValueError(
+          "`continuous_eval_predicate_fn` must be a callable, or None.")
+    self._continuous_eval_predicate_fn = value
+
+  @property
+  def export_strategies(self):
+    return self._export_strategies
+
+  @export_strategies.setter
+  def export_strategies(self, value):
+    if value is None:
+      self._export_strategies = []
+    elif isinstance(value, list):
+      self._export_strategies = value
+    elif isinstance(value, export_strategy.ExportStrategy):
+      self._export_strategies = [value]
+    else:
+      raise ValueError("`export_strategies` must be an ExportStrategy, "
+                       "a list of ExportStrategies, or None.")
 
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.
@@ -203,7 +306,8 @@ class Experiment(object):
     return self._estimator.evaluate(input_fn=self._eval_input_fn,
                                     steps=self._eval_steps,
                                     metrics=self._eval_metrics,
-                                    name="one_pass")
+                                    name="one_pass",
+                                    hooks=self._eval_hooks)
 
   @deprecated(
       "2016-10-23",
@@ -219,7 +323,8 @@ class Experiment(object):
                        input_fn,
                        name,
                        delay_secs,
-                       throttle_delay_secs):
+                       throttle_delay_secs,
+                       evaluate_checkpoint_only_once=True):
     """Run continuous eval.
 
     Runs infinite eval on the evaluation data set. This function starts
@@ -235,6 +340,8 @@ class Experiment(object):
       throttle_delay_secs: Do not re-evaluate unless the last evaluation was
         started at least this many seconds ago. If None, defaults to
         self._continuous_eval_throttle_secs.
+      evaluate_checkpoint_only_once: Whether to skip evaluation of checkpoints
+        that have already been evaluated. Default is `True`.
     """
     if delay_secs is None:
       delay_secs = self._eval_delay_secs
@@ -245,21 +352,43 @@ class Experiment(object):
       logging.info("Waiting %f secs before starting eval.", delay_secs)
       time.sleep(delay_secs)
 
-    last_fitted_error_time = 0
-    while True:
+    previous_path = None
+    eval_result = None
+    last_warning_time = 0
+    while (not self.continuous_eval_predicate_fn or
+           self.continuous_eval_predicate_fn(eval_result)):
       start = time.time()
-      try:
-        self._estimator.evaluate(input_fn=input_fn,
-                                 steps=self._eval_steps,
-                                 metrics=self._eval_metrics,
-                                 name=name)
-      except NotFittedError:
+
+      error_msg = None
+      latest_path = saver.latest_checkpoint(self._estimator.model_dir)
+      if not latest_path:
+        error_msg = ("Estimator is not fitted yet. "
+                     "Will start an evaluation when a checkpoint is ready.")
+      elif evaluate_checkpoint_only_once and latest_path == previous_path:
+        error_msg = "No new checkpoint ready for evaluation."
+
+      if error_msg:
         # Print warning message every 10 mins.
-        if time.time() - last_fitted_error_time > 600:
-          logging.warning(
-              "Estimator is not fitted yet. "
-              "Will start an evaluation when a checkpoint will be ready.")
-          last_fitted_error_time = time.time()
+        eval_result = {}
+        if time.time() - last_warning_time > 600:
+          logging.warning(error_msg)
+          last_warning_time = time.time()
+      else:
+        eval_result = self._estimator.evaluate(input_fn=input_fn,
+                                               steps=self._eval_steps,
+                                               metrics=self._eval_metrics,
+                                               name=name,
+                                               checkpoint_path=latest_path)
+        # Ensure eval result is not None for next round of evaluation.
+        if not eval_result:
+          eval_result = {}
+
+        # TODO(soergel): further throttle how often export happens?
+        self._maybe_export(eval_result)
+
+        # Clear warning timer and update last evaluated checkpoint
+        last_warning_time = 0
+        previous_path = latest_path
 
       duration = time.time() - start
       if duration < throttle_delay_secs:
@@ -268,19 +397,25 @@ class Experiment(object):
                      difference)
         time.sleep(difference)
 
-  def continuous_eval(self, delay_secs=None, throttle_delay_secs=None):
-    self._continuous_eval(self._eval_input_fn,
-                          name="continuous",
-                          delay_secs=delay_secs,
-                          throttle_delay_secs=throttle_delay_secs)
+  def continuous_eval(self,
+                      delay_secs=None,
+                      throttle_delay_secs=None,
+                      evaluate_checkpoint_only_once=True):
+    self._continuous_eval(
+        self._eval_input_fn,
+        name="continuous",
+        delay_secs=delay_secs,
+        throttle_delay_secs=throttle_delay_secs,
+        evaluate_checkpoint_only_once=evaluate_checkpoint_only_once)
 
   def continuous_eval_on_train_data(self,
                                     delay_secs=None,
                                     throttle_delay_secs=None):
-    self._continuous_eval(self._train_input_fn,
-                          name="continuous_on_train_data",
-                          delay_secs=delay_secs,
-                          throttle_delay_secs=throttle_delay_secs)
+    self._continuous_eval(
+        self._train_input_fn,
+        name="continuous_on_train_data",
+        delay_secs=delay_secs,
+        throttle_delay_secs=throttle_delay_secs)
 
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
@@ -323,11 +458,32 @@ class Experiment(object):
         )]
       self.train(delay_secs=0)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=self._eval_steps,
-                                    metrics=self._eval_metrics,
-                                    name=eval_dir_suffix)
+    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                           steps=self._eval_steps,
+                                           metrics=self._eval_metrics,
+                                           name=eval_dir_suffix)
+    export_results = self._maybe_export(eval_result)
+    return eval_result, export_results
 
+  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+    """Export the Estimator using export_fn, if defined."""
+    export_dir_base = os.path.join(
+        compat.as_bytes(self._estimator.model_dir),
+        compat.as_bytes("export"))
+
+    export_results = []
+    for strategy in self._export_strategies:
+      # TODO(soergel): possibly, allow users to decide whether to export here
+      # based on the eval_result (e.g., to keep the best export).
+
+      export_results.append(
+          strategy.export(
+              self._estimator,
+              os.path.join(
+                  compat.as_bytes(export_dir_base),
+                  compat.as_bytes(strategy.name))))
+
+    return export_results
 
   def run_std_server(self):
     """Starts a TensorFlow server and joins the serving thread.
@@ -380,7 +536,14 @@ def _new_attr_context(obj, attr):
   This creates a context in which an object's attribute can be changed.
   Once the context is exited, the attribute reverts to its original value.
 
-  Example usage:
+  Args:
+    obj: An object whose attribute to restore at the end of the context.
+    attr: An attribute to remember and restore at the end of the context.
+
+  Yields:
+    Context.
+
+  Example:
     my_obj.x = 1
     with _new_attr_context(my_obj, "x"):
       my_obj.x = 2

@@ -97,4 +97,29 @@ TEST(StateOpsTest, Variable_ShapeFn) {
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "[1,2,3]");
 }
+
+TEST(StateOpsTest, VariableV2_ShapeFn) {
+  ShapeInferenceTestOp op("VariableV2");
+  TensorShapeProto shape_proto;
+
+  // Unknown rank.
+  shape_proto.set_unknown_rank(true);
+  TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
+                   .Attr("shape", shape_proto)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "?");
+
+  // Scalar shape.
+  TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
+                   .Attr("shape", TensorShape({}))
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[]");
+
+  // Specified shape.
+  TensorShape({1, 2, 3}).AsProto(&shape_proto);
+  TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
+                   .Attr("shape", shape_proto)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[1,2,3]");
+}
 }  // end namespace tensorflow

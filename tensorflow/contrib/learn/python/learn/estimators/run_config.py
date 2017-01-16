@@ -21,9 +21,8 @@ from __future__ import print_function
 import json
 import os
 
-from tensorflow.python import ConfigProto
-from tensorflow.python import GPUOptions
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.training import server_lib
 
 
 class Environment(object):
@@ -84,7 +83,7 @@ class ClusterConfig(object):
                  'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
       os.environ['TF_CONFIG'] = json.dumps({
           {'cluster': cluster,
-           'task_id': {'type': 'worker', 'index': 1}}})
+           'task': {'type': 'worker', 'index': 1}}})
       config = ClusterConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
@@ -108,7 +107,7 @@ class ClusterConfig(object):
     self._task_type = task_env.get('type', None)
     self._task_id = self.get_task_id()
 
-    self._cluster_spec = ClusterSpec(config.get('cluster', {}))
+    self._cluster_spec = server_lib.ClusterSpec(config.get('cluster', {}))
     self._master = (master if master is not None else
                     _get_master(self._cluster_spec, self._task_type,
                                 self._task_id) or '')
@@ -234,23 +233,51 @@ class RunConfig(ClusterConfig):
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
 
-    gpu_options = GPUOptions(
+    gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
-    self.tf_config = ConfigProto(
+    self._tf_config = config_pb2.ConfigProto(
         log_device_placement=log_device_placement,
         inter_op_parallelism_threads=num_cores,
         intra_op_parallelism_threads=num_cores,
         gpu_options=gpu_options)
 
-    self.tf_random_seed = tf_random_seed
-    self.save_summary_steps = save_summary_steps
-    self.save_checkpoints_secs = save_checkpoints_secs
-    self.save_checkpoints_steps = save_checkpoints_steps
+    self._tf_random_seed = tf_random_seed
+    self._save_summary_steps = save_summary_steps
+    self._save_checkpoints_secs = save_checkpoints_secs
+    self._save_checkpoints_steps = save_checkpoints_steps
 
     # TODO(weiho): Remove these after ModelFn refactoring, when users can
     # create Scaffold and Saver in their model_fn to set these.
-    self.keep_checkpoint_max = keep_checkpoint_max
-    self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._keep_checkpoint_max = keep_checkpoint_max
+    self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+
+  @property
+  def tf_config(self):
+    return self._tf_config
+
+  @property
+  def tf_random_seed(self):
+    return self._tf_random_seed
+
+  @property
+  def save_summary_steps(self):
+    return self._save_summary_steps
+
+  @property
+  def save_checkpoints_secs(self):
+    return self._save_checkpoints_secs
+
+  @property
+  def save_checkpoints_steps(self):
+    return self._save_checkpoints_steps
+
+  @property
+  def keep_checkpoint_max(self):
+    return self._keep_checkpoint_max
+
+  @property
+  def keep_checkpoint_every_n_hours(self):
+    return self._keep_checkpoint_every_n_hours
 
 
 def _count_ps(cluster_spec):

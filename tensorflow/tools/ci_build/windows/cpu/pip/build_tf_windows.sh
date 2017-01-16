@@ -35,25 +35,35 @@ script_dir=$(dirname $0)
 cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/pip}.
 
 # Setting up the environment variables Bazel and ./configure needs
-source "tensorflow/tools/ci_build/windows/cpu/bazel/common_env.sh" \
+source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
   || { echo "Failed to source common_env.sh" >&2; exit 1; }
 
-# bazel clean --expunge doesn't work on Windows yet.
-# Clean the output base manually to ensure build correctness
-bazel clean
-output_base=$(bazel info output_base)
-bazel shutdown
-# Sleep 5s to wait for jvm shutdown completely
-# otherwise rm will fail with device or resource busy error
-sleep 5
-rm -rf ${output_base}
+# load bazel_test_lib.sh
+source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
+  || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
-export TF_NEED_CUDA=0
-echo "" | ./configure
+clean_output_base
 
-BUILD_OPTS='-c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
+run_configure_for_cpu_build
 
-bazel build $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package $PWD
+# Create a python test directory to avoid package name conflict
+PY_TEST_DIR="py_test_dir"
+create_python_test_dir "${PY_TEST_DIR}"
 
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}"
+
+# Running python tests on Windows needs pip package installed
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+reinstall_tensorflow_pip ${PIP_NAME}
+
+failing_cpu_py_tests=$(get_failing_cpu_py_tests ${PY_TEST_DIR})
+
+passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/...) - (${failing_cpu_py_tests})" |
+  # We need to strip \r so that the result could be store into a variable under MSYS
+  tr '\r' ' ')
+
+# Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
+# which will result testing system installed tensorflow
+bazel test -c opt $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors

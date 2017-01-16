@@ -67,6 +67,7 @@ tensorflow/core/kernels/reduction_ops_min.cc
 tensorflow/core/kernels/reduction_ops_mean.cc
 tensorflow/core/kernels/reduction_ops_max.cc
 tensorflow/core/kernels/reduction_ops_common.cc
+tensorflow/core/kernels/reduction_ops_any.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
@@ -88,6 +89,7 @@ tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/matmul_op.cc
 tensorflow/core/kernels/lrn_op.cc
 tensorflow/core/kernels/logging_ops.cc
+tensorflow/core/kernels/inplace_ops.cc
 tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc
@@ -100,15 +102,19 @@ tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
+tensorflow/core/kernels/depthtospace_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
+tensorflow/core/kernels/xsmm_conv2d.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
+tensorflow/core/kernels/cwise_op_pow.cc
 tensorflow/core/kernels/cwise_op_sub.cc
 tensorflow/core/kernels/cwise_op_squared_difference.cc
 tensorflow/core/kernels/cwise_op_square.cc
 tensorflow/core/kernels/cwise_op_sqrt.cc
 tensorflow/core/kernels/cwise_op_sigmoid.cc
+tensorflow/core/kernels/cwise_op_sign.cc
 tensorflow/core/kernels/cwise_op_select.cc
 tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_reciprocal.cc
@@ -117,6 +123,7 @@ tensorflow/core/kernels/cwise_op_mul_2.cc
 tensorflow/core/kernels/cwise_op_mul_1.cc
 tensorflow/core/kernels/cwise_op_minimum.cc
 tensorflow/core/kernels/cwise_op_maximum.cc
+tensorflow/core/kernels/cwise_op_logical_not.cc
 tensorflow/core/kernels/cwise_op_logical_and.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
@@ -130,6 +137,7 @@ tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_add_1.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
+tensorflow/core/kernels/crop_and_resize_op.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/conv_ops_fused.cc
 tensorflow/core/kernels/conv_ops.cc
@@ -171,6 +179,7 @@ tensorflow/core/kernels/quantized_batch_norm_op.cc
 tensorflow/core/kernels/quantized_bias_add_op.cc
 tensorflow/core/kernels/quantized_concat_op.cc
 tensorflow/core/kernels/quantized_conv_ops.cc
+tensorflow/core/kernels/quantized_instance_norm.cc
 tensorflow/core/kernels/quantized_matmul_op.cc
 tensorflow/core/kernels/quantized_pooling_ops.cc
 tensorflow/core/kernels/quantized_reshape_op.cc

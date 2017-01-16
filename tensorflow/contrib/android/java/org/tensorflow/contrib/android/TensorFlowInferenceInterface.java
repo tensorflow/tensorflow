@@ -77,22 +77,30 @@ public class TensorFlowInferenceInterface {
   public native int runInference(String[] outputNames);
 
   /**
+   * Whether to collect and log stats to logcat during inference via StepStats and StatSummarizer.
+   * This should only be enabled when needed, as it will add overhead.
+   */
+  public native void enableStatLogging(boolean enabled);
+
+  /** Returns the last stat summary string if logging is enabled. */
+  public native String getStatString();
+
+  /**
    * Cleans up the native variables associated with this Object. initializeTensorFlow() can then
    * be called again to initialize a new session.
-   *
    */
   public native void close();
 
   // Methods for creating a native Tensor and filling it with values.
   public native void fillNodeFloat(String inputName, int[] dims, float[] values);
-
   public native void fillNodeInt(String inputName, int[] dims, int[] values);
-
   public native void fillNodeDouble(String inputName, int[] dims, double[] values);
+  public native void fillNodeByte(String inputName, int[] dims, byte[] values);
 
   public native void readNodeFloat(String outputName, float[] values);
   public native void readNodeInt(String outputName, int[] values);
   public native void readNodeDouble(String outputName, double[] values);
+  public native void readNodeByte(String outputName, byte[] values);
 
   /**
    * Canary method solely for determining if the tensorflow_inference native library should be

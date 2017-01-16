@@ -33,6 +33,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/java/src/main/native",
     ],
     alwayslink = 1,
 )
@@ -62,7 +63,7 @@ android_library(
 )
 
 # Build the native .so.
-# bazel build //tensorflow/contrib/android:libtensorflow.so \
+# bazel build //tensorflow/contrib/android:libtensorflow_inference.so \
 #   --crosstool_top=//external:android/crosstool \
 #   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
 #   --cpu=armeabi-v7a
@@ -72,13 +73,15 @@ cc_binary(
     name = "libtensorflow_inference.so",
     srcs = [],
     copts = tf_copts(),
-    linkopts = [
+    linkopts = if_android([
         "-landroid",
+        "-llog",
+        "-lm",
         "-z defs",
         "-s",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
         LINKER_SCRIPT,
-    ],
+    ]),
     linkshared = 1,
     linkstatic = 1,
     tags = [

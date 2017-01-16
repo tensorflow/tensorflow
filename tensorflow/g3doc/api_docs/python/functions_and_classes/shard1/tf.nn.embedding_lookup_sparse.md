@@ -15,7 +15,8 @@ is the sum of the size of params along dimension 0.
 *  <b>`params`</b>: A single tensor representing the complete embedding tensor,
     or a list of P tensors all of same shape except for the first dimension,
     representing sharded embedding tensors.  Alternatively, a
-    `PartitionedVariable`, created by partitioning along dimension 0.
+    `PartitionedVariable`, created by partitioning along dimension 0. Each
+    element must be appropriately sized for the given `partition_strategy`.
 *  <b>`sp_ids`</b>: N x M SparseTensor of int64 ids (typically from FeatureValueToId),
     where N is typically batch size and M is arbitrary.
 *  <b>`sp_weights`</b>: either a SparseTensor of float / double weights, or None to

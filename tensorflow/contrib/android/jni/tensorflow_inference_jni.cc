@@ -53,6 +53,9 @@ struct SessionVariables {
   int num_runs = 0;
   int64 timing_total_us = 0;
 
+  bool log_stats = false;
+  StatSummarizer* summarizer = nullptr;
+
   InputMap input_tensors;
   std::vector<std::string> output_tensor_names;
   std::vector<tensorflow::Tensor> output_tensors;
@@ -109,17 +112,14 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
 
   LOG(INFO) << "Loading Tensorflow.";
 
-  LOG(INFO) << "Making new SessionOptions.";
   tensorflow::SessionOptions options;
   tensorflow::ConfigProto& config = options.config;
-  LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 
   tensorflow::Session* session = tensorflow::NewSession(options);
   vars->session.reset(session);
   LOG(INFO) << "Session created.";
 
   tensorflow::GraphDef tensorflow_graph;
-  LOG(INFO) << "Graph created.";
 
   AAssetManager* const asset_manager =
       AAssetManager_fromJava(env, java_asset_manager);
@@ -127,19 +127,25 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
 
   LOG(INFO) << "Reading file to proto: " << model_str;
   ReadFileToProtoOrDie(asset_manager, model_str.c_str(), &tensorflow_graph);
+  CHECK(tensorflow_graph.node_size() > 0) << "Problem loading GraphDef!";
 
-  LOG(INFO) << "Creating session.";
+  LOG(INFO) << "GraphDef loaded from " << model_str << " with "
+            << tensorflow_graph.node_size() << " nodes.";
+
+  // Whether or not stat logging is currently enabled, the StatSummarizer must
+  // be initialized here with the GraphDef while it is available.
+  vars->summarizer = new StatSummarizer(tensorflow_graph);
+
+  LOG(INFO) << "Creating TensorFlow graph from GraphDef.";
   tensorflow::Status s = session->Create(tensorflow_graph);
 
   // Clear the proto to save memory space.
   tensorflow_graph.Clear();
 
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    LOG(ERROR) << "Could not create TensorFlow graph: " << s;
     return s.code();
   }
-
-  LOG(INFO) << "Tensorflow graph loaded from: " << model_str;
 
   const int64 end_time = CurrentWallTimeUs();
   LOG(INFO) << "Initialization done in " << (end_time - start_time) / 1000.0
@@ -194,8 +200,28 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
   }
 
   vars->output_tensors.clear();
-  s = vars->session->Run(input_tensors, vars->output_tensor_names, {},
-                         &(vars->output_tensors));
+
+  if (vars->log_stats) {
+    RunOptions run_options;
+    run_options.set_trace_level(RunOptions::FULL_TRACE);
+    RunMetadata run_metadata;
+
+    s = vars->session->Run(run_options, input_tensors,
+                           vars->output_tensor_names, {},
+                           &(vars->output_tensors), &run_metadata);
+
+    assert(run_metadata.has_step_stats());
+    const StepStats& step_stats = run_metadata.step_stats();
+    vars->summarizer->ProcessStepStats(step_stats);
+
+    // Print the full output string, not just the abbreviated one returned by
+    // getStatString().
+    vars->summarizer->PrintStepStats();
+  } else {
+    s = vars->session->Run(input_tensors, vars->output_tensor_names, {},
+                           &(vars->output_tensors));
+  }
+
   end_time = CurrentWallTimeUs();
   const int64 elapsed_time_inf = end_time - start_time;
   vars->timing_total_us += elapsed_time_inf;
@@ -209,6 +235,24 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
   return s.code();
 }
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(enableStatLogging)(
+    JNIEnv* env, jobject thiz, jboolean enableStatLogging) {
+  SessionVariables* vars = GetSessionVars(env, thiz);
+  vars->log_stats = enableStatLogging;
+}
+
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(getStatString)(JNIEnv* env,
+                                                           jobject thiz) {
+  // Return an abbreviated stat string suitable for displaying on screen.
+  SessionVariables* vars = GetSessionVars(env, thiz);
+  std::stringstream ss;
+  ss << vars->summarizer->GetStatsByMetric("Top 10 CPU",
+                                           StatSummarizer::BY_TIME, 10);
+  ss << vars->summarizer->GetStatsByNodeType();
+  ss << vars->summarizer->ShortSummary();
+  return env->NewStringUTF(ss.str().c_str());
+}
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
   SessionVariables* vars = GetSessionVars(env, thiz);
 
@@ -216,6 +260,8 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
   if (!s.ok()) {
     LOG(ERROR) << "Error closing session: " << s;
   }
+
+  delete vars->summarizer;
 
   mutex_lock l(mutex_);
   std::map<int64, SessionVariables*>& sessions = *GetSessionsSingleton();
@@ -226,7 +272,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
 }
 
 // TODO(andrewharp): Use memcpy to fill/read nodes.
-#define FILL_NODE_METHOD(DTYPE, JAVA_DTYPE, TENSOR_DTYPE)                  \
+#define FILL_NODE_METHOD(DTYPE, JAVA_DTYPE, CTYPE, TENSOR_DTYPE)           \
   FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                 \
     SessionVariables* vars = GetSessionVars(env, thiz);                    \
     jboolean iCopied = JNI_FALSE;                                          \
@@ -238,7 +284,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     }                                                                      \
     env->ReleaseIntArrayElements(dims, dim_vals, JNI_ABORT);               \
     tensorflow::Tensor input_tensor(TENSOR_DTYPE, shape);                  \
-    auto tensor_mapped = input_tensor.flat<JAVA_DTYPE>();                  \
+    auto tensor_mapped = input_tensor.flat<CTYPE>();                       \
     j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied); \
     j##JAVA_DTYPE* value_ptr = values;                                     \
     const int array_size = env->GetArrayLength(arr);                       \
@@ -254,14 +300,14 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     vars->input_tensors[input_name] = input_pair;                          \
   }
 
-#define READ_NODE_METHOD(DTYPE, JAVA_DTYPE)                                \
+#define READ_NODE_METHOD(DTYPE, JAVA_DTYPE, CTYPE)                         \
   READ_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                 \
     SessionVariables* vars = GetSessionVars(env, thiz);                    \
     Tensor* t = GetTensor(env, thiz, node_name_jstring);                   \
     if (t == nullptr) {                                                    \
       return -1;                                                           \
     }                                                                      \
-    auto tensor_mapped = t->flat<JAVA_DTYPE>();                            \
+    auto tensor_mapped = t->flat<CTYPE>();                                 \
     jboolean iCopied = JNI_FALSE;                                          \
     j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied); \
     j##JAVA_DTYPE* value_ptr = values;                                     \
@@ -274,10 +320,12 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     return 0;                                                              \
   }
 
-FILL_NODE_METHOD(Float, float, tensorflow::DT_FLOAT)
-FILL_NODE_METHOD(Int, int, tensorflow::DT_INT32)
-FILL_NODE_METHOD(Double, double, tensorflow::DT_DOUBLE)
+FILL_NODE_METHOD(Float, float, float, tensorflow::DT_FLOAT)
+FILL_NODE_METHOD(Int, int, int, tensorflow::DT_INT32)
+FILL_NODE_METHOD(Double, double, double, tensorflow::DT_DOUBLE)
+FILL_NODE_METHOD(Byte, byte, uint8_t, tensorflow::DT_UINT8)
 
-READ_NODE_METHOD(Float, float)
-READ_NODE_METHOD(Int, int)
-READ_NODE_METHOD(Double, double)
+READ_NODE_METHOD(Float, float, float)
+READ_NODE_METHOD(Int, int, int)
+READ_NODE_METHOD(Double, double, double)
+READ_NODE_METHOD(Byte, byte, uint8_t)

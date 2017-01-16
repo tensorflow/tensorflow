@@ -232,7 +232,7 @@ class Mixture(distribution.Distribution):
           cat_lp + d_lp
           for (cat_lp, d_lp) in zip(cat_log_probs, distribution_log_probs)
       ]
-      concat_log_probs = array_ops.pack(final_log_probs, 0)
+      concat_log_probs = array_ops.stack(final_log_probs, 0)
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
 
@@ -244,7 +244,7 @@ class Mixture(distribution.Distribution):
       n = ops.convert_to_tensor(n, name="n")
       static_n = tensor_util.constant_value(n)
       n = int(static_n) if static_n is not None else n
-      cat_samples = self.cat.sample_n(n, seed=seed)
+      cat_samples = self.cat.sample(n, seed=seed)
 
       static_samples_shape = cat_samples.get_shape()
       if static_samples_shape.is_fully_defined():
@@ -308,7 +308,7 @@ class Mixture(distribution.Distribution):
       for c in range(self.num_components):
         n_class = array_ops.size(partitioned_samples_indices[c])
         seed = distribution_util.gen_new_seed(seed, "mixture")
-        samples_class_c = self.components[c].sample_n(n_class, seed=seed)
+        samples_class_c = self.components[c].sample(n_class, seed=seed)
 
         # Pull out the correct batch entries from each index.
         # To do this, we may have to flatten the batch shape.
@@ -330,7 +330,7 @@ class Mixture(distribution.Distribution):
             partitioned_batch_indices[c])
         samples_class_c = array_ops.reshape(
             samples_class_c,
-            array_ops.concat(0, ([n_class * batch_size], event_shape)))
+            array_ops.concat(([n_class * batch_size], event_shape), 0))
         samples_class_c = array_ops.gather(
             samples_class_c, lookup_partitioned_batch_indices,
             name="samples_class_c_gather")
@@ -341,8 +341,8 @@ class Mixture(distribution.Distribution):
           indices=partitioned_samples_indices, data=samples_class)
       # Reshape back to proper sample, batch, and event shape.
       ret = array_ops.reshape(lhs_flat_ret,
-                              array_ops.concat(0, (samples_shape,
-                                                   self.event_shape())))
+                              array_ops.concat((samples_shape,
+                                                self.event_shape()), 0))
       ret.set_shape(
           tensor_shape.TensorShape(static_samples_shape).concatenate(
               self.get_event_shape()))
@@ -401,6 +401,5 @@ class Mixture(distribution.Distribution):
     """Get a list of num_components batchwise probabilities."""
     which_softmax = nn_ops.log_softmax if log_probs else nn_ops.softmax
     cat_probs = which_softmax(self.cat.logits)
-    cat_probs = array_ops.unpack(
-        cat_probs, num=self.num_components, axis=-1)
+    cat_probs = array_ops.unstack(cat_probs, num=self.num_components, axis=-1)
     return cat_probs

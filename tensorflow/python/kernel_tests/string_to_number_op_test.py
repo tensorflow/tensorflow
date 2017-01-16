@@ -12,60 +12,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for StringToNumber op from parsing_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import test
 
 _ERROR_MESSAGE = "StringToNumberOp could not correctly convert string: "
 
 
-class StringToNumberOpTest(tf.test.TestCase):
+class StringToNumberOpTest(test.TestCase):
 
   def testToFloat(self):
     with self.test_session():
-      input_string = tf.placeholder(tf.string)
-      output = tf.string_to_number(
-          input_string,
-          out_type=tf.float32)
+      input_string = array_ops.placeholder(dtypes.string)
+      output = parsing_ops.string_to_number(
+          input_string, out_type=dtypes.float32)
 
       result = output.eval(feed_dict={
-          input_string: ["0",
-                         "3",
-                         "-1",
-                         "1.12",
-                         "0xF",
-                         "   -10.5",
-                         "3.40282e+38",
-                         # The next two exceed maximum value for float, so we
-                         # expect +/-INF to be returned instead.
-                         "3.40283e+38",
-                         "-3.40283e+38",
-                         "NAN",
-                         "INF"]
+          input_string: [
+              "0",
+              "3",
+              "-1",
+              "1.12",
+              "0xF",
+              "   -10.5",
+              "3.40282e+38",
+              # The next two exceed maximum value for float, so we
+              # expect +/-INF to be returned instead.
+              "3.40283e+38",
+              "-3.40283e+38",
+              "NAN",
+              "INF"
+          ]
       })
 
-      self.assertAllClose([0, 3, -1, 1.12, 0xF, -10.5, 3.40282e+38,
-                           float("INF"), float("-INF"), float("NAN"),
-                           float("INF")], result)
+      self.assertAllClose([
+          0, 3, -1, 1.12, 0xF, -10.5, 3.40282e+38, float("INF"), float("-INF"),
+          float("NAN"), float("INF")
+      ], result)
 
       with self.assertRaisesOpError(_ERROR_MESSAGE + "10foobar"):
         output.eval(feed_dict={input_string: ["10foobar"]})
 
   def testToInt32(self):
     with self.test_session():
-      input_string = tf.placeholder(tf.string)
-      output = tf.string_to_number(
-          input_string,
-          out_type=tf.int32)
+      input_string = array_ops.placeholder(dtypes.string)
+      output = parsing_ops.string_to_number(input_string, out_type=dtypes.int32)
 
       result = output.eval(feed_dict={
-          input_string: ["0", "3", "-1", "    -10", "-2147483648", "2147483647"]
+          input_string:
+              ["0", "3", "-1", "    -10", "-2147483648", "2147483647"]
       })
 
       self.assertAllEqual([0, 3, -1, -10, -2147483648, 2147483647], result)
@@ -80,4 +82,4 @@ class StringToNumberOpTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

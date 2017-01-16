@@ -43,4 +43,4 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 
 :: Run all python tests if the installation succeeded.
 echo Running tests...
-ctest -C Release --output-on-failure
+ctest -C Release --output-on-failure -j 32

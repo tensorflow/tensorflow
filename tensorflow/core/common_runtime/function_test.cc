@@ -229,6 +229,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 TEST_F(FunctionLibraryRuntimeTest, IsStateful) {
   Init({});
   EXPECT_TRUE(lib_->IsStateful("Variable"));
+  EXPECT_TRUE(lib_->IsStateful("VariableV2"));
   EXPECT_FALSE(lib_->IsStateful("Matmul"));
 }
 
@@ -358,37 +359,6 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   delete g;
 }
 
-TEST_F(FunctionLibraryRuntimeTest, ManySwapsOld) {
-  auto func = FDH::Define(  // Creates a FunctionDef using FunctionDef::Nodes
-      // Name
-      "ManySwapsFirst",
-      // Args
-      {"x: float", "y: float"},
-      // Return values
-      {"o: float"},
-      // attr def
-      {},
-      // Nodes
-      {{{"a0", "b0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}},
-       {{"a1", "b1"}, "Swap", {"a0", "b0"}, {{"T", DT_FLOAT}}},
-       {{"a2", "b2"}, "Swap", {"a1", "b1"}, {{"T", DT_FLOAT}}},
-       {{"a3", "b3"}, "Swap", {"a2", "b2"}, {{"T", DT_FLOAT}}},
-       {{"a4", "b4"}, "Swap", {"a3", "b3"}, {{"T", DT_FLOAT}}},
-       {{"a5", "b5"}, "Swap", {"a4", "b4"}, {{"T", DT_FLOAT}}},
-       {{"o"}, "Identity", {"a5"}, {{"T", DT_FLOAT}}}});
-  Init({test::function::Swap(), func});
-  Graph* g = GetFuncBody("ManySwapsFirst", {});
-  ASSERT_TRUE(g != nullptr);
-  OptimizeGraph(lib_, &g);
-  const char* e0 = R"P(
-(n3:float, n2:float) -> (n3:float) {
-}
-)P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
-}
-
-// Like the above test, but using NodeDefs in the FunctionDef.
 TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
   auto func = FDH::Create(  // Creates a FunctionDef using NodeDefs
       // Name
@@ -422,7 +392,7 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
-  auto func = FDH::Define(
+  auto func = FDH::Create(
       // Name
       "ManySwapsFirst",
       // Args
@@ -437,11 +407,12 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
       // y2 depends on the 2nd swap.  The 2nd swap has data dependency
       // on the 1st swap. The optimization should maintain the control
       // dependencies.
-      {{{"a0", "b0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}, {"x2"}},
-       {{"a1", "b1"}, "Swap", {"a0", "b0"}, {{"T", DT_FLOAT}}},
+      {{{"a0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}, {"x2"}},
+       {{"a1"}, "Swap", {"a0:o0:0", "a0:o1:0"}, {{"T", DT_FLOAT}}},
        {{"x2"}, "Mul", {"x", "x"}, {{"T", DT_FLOAT}}},
        {{"y2"}, "Mul", {"y", "y"}, {{"T", DT_FLOAT}}, {"a1"}},
-       {{"o"}, "Add", {"x2", "y2"}, {{"T", DT_FLOAT}}}});
+       {{"o"}, "Add", {"x2:z:0", "y2:z:0"}, {{"T", DT_FLOAT}}}},
+      {{"o", "o:z:0"}});
   Init({test::function::Swap(), func});
   Graph* g = GetFuncBody("ManySwapsFirst", {});
   ASSERT_TRUE(g != nullptr);
@@ -607,7 +578,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   auto grad =
       FDH::Define("TestGrad", {"x:float", "y:float"}, {"dx:float", "dy:float"},
                   {}, {FDH::Const<float>("dz", 1),
-                       {{"grad"},
+                       {{"grad0", "grad1"},
                         "SymbolicGradient",
                         {"x", "y", "dz"},
                         {
@@ -615,8 +586,8 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
                             {"Tin", DataTypeSlice{T, T, T}},
                             {"Tout", DataTypeSlice{T, T}},
                         }},
-                       {{"dx"}, "Identity", {"grad:0"}, {{"T", DT_FLOAT}}},
-                       {{"dy"}, "Identity", {"grad:1"}, {{"T", DT_FLOAT}}}});
+                       {{"dx"}, "Identity", {"grad0"}, {{"T", DT_FLOAT}}},
+                       {{"dy"}, "Identity", {"grad1"}, {{"T", DT_FLOAT}}}});
 
   Init({test, grad});
 
@@ -659,19 +630,19 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
 (n4:float, n3:float) -> (n25:float, n23:float) {
-  n11 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
   n2 = Const[dtype=float, value=Tensor<type: float shape: [] values: 1>]()
-  n7 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  n8 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  n7 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
   n19 = Shape[T=float, out_type=int32](n3)
-  n8 = Add[T=float](n4, n3)
+  n9 = Add[T=float](n4, n3)
   n20 = Shape[T=float, out_type=int32](n4)
-  n9 = Rank[T=float](n8)
-  n14 = Shape[T=float, out_type=int32](n8)
+  n10 = Rank[T=float](n9)
+  n14 = Shape[T=float, out_type=int32](n9)
   n21 = BroadcastGradientArgs[T=int32](n20, n19)
-  n10 = Range[Tidx=int32](n7, n9, n11)
-  n12 = Shape[T=int32, out_type=int32](n10)
-  n13 = Fill[T=int32](n12, n11)
-  n15 = DynamicStitch[N=2, T=int32](n10, n10, n14, n13)
+  n11 = Range[Tidx=int32](n8, n10, n7)
+  n12 = Shape[T=int32, out_type=int32](n11)
+  n13 = Fill[T=int32](n12, n7)
+  n15 = DynamicStitch[N=2, T=int32](n11, n11, n14, n13)
   n16 = Reshape[T=float, Tshape=int32](n2, n15)
   n17 = Div[T=int32](n14, n15)
   n18 = Tile[T=float, Tmultiples=int32](n16, n17)
@@ -764,14 +735,14 @@ TEST(OptimizationTest, RemoveIdentityNodes_Ref) {
       {},
       // Nodes
       {// variable
-       {{"v"}, "Variable", {}, {{"dtype", T}, {"shape", TensorShape({})}}},
+       {{"v"}, "VariableV2", {}, {{"dtype", T}, {"shape", TensorShape({})}}},
        // read the variable. Shouldn't be removed.
        {{"v_read"}, "Identity", {"v"}, {{"T", T}}},
        // returns v + v
        {{"ret"}, "Add", {"v_read", "v_read"}, {{"T", T}}}});
   const char* e0 = R"S(
 () -> (n2:float) {
-  n0 = Variable[container="", dtype=float, shape=[], shared_name=""]()
+  n0 = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
   n1 = Identity[T=float](n0)
   n2 = Add[T=float](n1, n1)
 }
@@ -780,7 +751,7 @@ TEST(OptimizationTest, RemoveIdentityNodes_Ref) {
 
   const char* e1 = R"S(
 () -> (n2:float) {
-  n0 = Variable[container="", dtype=float, shape=[], shared_name=""]()
+  n0 = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
   n1 = Identity[T=float](n0)
   n2 = Add[T=float](n1, n1)
 }
@@ -841,33 +812,38 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
 }
 
 TEST(OptimizationTest, RemoveListArrayConverter) {
-  auto func = FDH::Define(
+  auto func = FDH::Create(
       // Name
       "Test",
       // Args
       {"i: float"},
-      // Return values
+      // Return signature
       {"o: float"},
       // Attrs
       {},
       // Nodes
       {FDH::Const("zero", 0),
-       {{"s"}, "Split", {"zero", "i"}, {{"num_split", 4}, {"T", DT_FLOAT}}},
+       {{"s"},
+        "Split",
+        {"zero:output:0", "i"},
+        {{"num_split", 4}, {"T", DT_FLOAT}}},
        {{"a"},
         "_ArrayToList",
-        {"s"},
+        {"s:output"},
         {{"N", 4},
          {"T", DT_FLOAT},
          {"out_types", DataTypeSlice{DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT}}}},
-       {{"l"}, "Mul", {"a:0", "a:1"}, {{"T", DT_FLOAT}}},
-       {{"r"}, "Mul", {"a:2", "a:3"}, {{"T", DT_FLOAT}}},
+       {{"l"}, "Mul", {"a:output:0", "a:output:1"}, {{"T", DT_FLOAT}}},
+       {{"r"}, "Mul", {"a:output:2", "a:output:3"}, {{"T", DT_FLOAT}}},
        {{"x"},
         "_ListToArray",
-        {"l", "r"},
+        {"l:z", "r:z"},
         {{"N", 2},
          {"T", DT_FLOAT},
          {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}}}},
-       {{"o"}, "AddN", {"x"}, {{"N", 2}, {"T", DT_FLOAT}}}});
+       {{"o"}, "AddN", {"x:output"}, {{"N", 2}, {"T", DT_FLOAT}}}},
+      // Return values
+      {{"o", "o:sum"}});
 
   const char* e0 = R"P(
 (n0:float) -> (n7:float) {
@@ -915,7 +891,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
 }
 
 TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
-  auto func = FDH::Define(
+  auto func = FDH::Create(
       // Name
       "Test",
       // Args
@@ -934,10 +910,11 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
         {"dummy"}},
        {{"o"},
         "AddN",
-        {"x"},
+        {"x:output"},
         {{"N", 2}, {"T", DT_FLOAT}},
         // Control dep
-        {"x"}}});
+        {"x"}}},
+      {{"o", "o:sum"}});
 
   const char* e0 = R"P(
 (n0:float) -> (n3:float) {

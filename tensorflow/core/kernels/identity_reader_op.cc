@@ -68,5 +68,7 @@ class IdentityReaderOp : public ReaderOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("IdentityReader").Device(DEVICE_CPU),
                         IdentityReaderOp);
+REGISTER_KERNEL_BUILDER(Name("IdentityReaderV2").Device(DEVICE_CPU),
+                        IdentityReaderOp);
 
 }  // namespace tensorflow

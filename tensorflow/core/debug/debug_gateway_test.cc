@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_map>
 
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -228,7 +229,8 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
 
   const string debug_identity = "DebugIdentity";
   const string debug_nan_count = "DebugNanCount";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(y_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
@@ -409,7 +411,7 @@ TEST_F(SessionDebugMinusAXTest,
     run_opts.set_output_partition_graphs(true);
 
     DebugTensorWatch* tensor_watch_opts =
-        run_opts.add_debug_tensor_watch_opts();
+        run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
     tensor_watch_opts->set_output_slot(0);
     tensor_watch_opts->add_debug_ops(debug_identity);
 
@@ -561,7 +563,8 @@ TEST_F(SessionDebugOutputSlotWithoutOngoingEdgeTest,
   RunOptions run_opts;
   run_opts.set_output_partition_graphs(true);
 
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(c_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops("DebugIdentity");
@@ -659,7 +662,8 @@ TEST_F(SessionDebugVariableTest, WatchUninitializedVariableWithDebugOps) {
   // Set up DebugTensorWatch for an uninitialized tensor (in node var).
   RunOptions run_opts;
   const string debug_identity = "DebugIdentity";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(var_node_name_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
@@ -746,7 +750,8 @@ TEST_F(SessionDebugVariableTest, VariableAssignWithDebugOps) {
   run_opts.set_output_partition_graphs(true);
   const string debug_identity = "DebugIdentity";
   const string debug_nan_count = "DebugNanCount";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(var_node_name_);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
@@ -904,7 +909,8 @@ TEST_F(SessionDebugGPUSwitchTest, RunSwitchWithHostMemoryDebugOp) {
   const string watched_tensor = strings::StrCat(pred_node_name_, "/_1");
 
   const string debug_identity = "DebugIdentity";
-  DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();
+  DebugTensorWatch* tensor_watch_opts =
+      run_opts.mutable_debug_options()->add_debug_tensor_watch_opts();
   tensor_watch_opts->set_node_name(watched_tensor);
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);

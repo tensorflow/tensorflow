@@ -20,26 +20,26 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
-class DebuggerState {
+class DebuggerState : public DebuggerStateInterface {
  public:
-  DebuggerState(
-      const protobuf::RepeatedPtrField<DebugTensorWatch>& debug_tensor_watches);
+  DebuggerState(const DebugOptions& debug_options);
   virtual ~DebuggerState();
 
   // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
-  const string SummarizeDebugTensorWatches();
+  const string SummarizeDebugTensorWatches() override;
 
   // Insert special-purpose debug nodes to graph. See the documentation of
   // DebugNodeInserter::InsertNodes() for details.
-  Status InsertNodes(Graph* graph, Device* device);
+  Status DecorateGraphForDebug(Graph* graph, Device* device) override;
 
   const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
 

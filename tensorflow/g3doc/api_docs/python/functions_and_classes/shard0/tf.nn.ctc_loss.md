@@ -1,4 +1,4 @@
-### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
+### `tf.nn.ctc_loss(labels, inputs, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
 
 Computes the CTC (Connectionist Temporal Classification) Loss.
 
@@ -68,17 +68,17 @@ Here is a table of the (roughly) expected first order behavior:
 ##### Args:
 
 
+*  <b>`labels`</b>: An `int32` `SparseTensor`.
+    `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
+    the id for (batch b, time t).
+    `labels.values[i]` must take on values in `[0, num_labels)`.
+    See `core/ops/ctc_ops.cc` for more details.
 *  <b>`inputs`</b>: 3-D `float` `Tensor`.
     If time_major == False, this will be a `Tensor` shaped:
       `[batch_size x max_time x num_classes]`.
     If time_major == True (default), this will be a `Tensor` shaped:
       `[max_time x batch_size x num_classes]`.
     The logits.
-*  <b>`labels`</b>: An `int32` `SparseTensor`.
-    `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-    the id for (batch b, time t).
-    `labels.values[i]` must take on values in `[0, num_labels)`.
-    See `core/ops/ctc_ops.cc` for more details.
 *  <b>`sequence_length`</b>: 1-D `int32` vector, size `[batch_size]`.
     The sequence lengths.
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.

@@ -46,16 +46,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-
-# pylint: disable=unused-import
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
+from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
@@ -108,6 +112,43 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+
+def _reduce_join_reduction_dims(x, axis, reduction_indices):
+  """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
+  # TODO(aselle): Remove this after deprecation
+  if reduction_indices is not None:
+    if axis is not None:
+      raise ValueError("Can't specify both 'axis' and 'reduction_indices'.")
+    axis = reduction_indices
+  if axis is not None:
+    return axis
+  else:
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+      return constant_op.constant(
+          np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
+
+    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+    return math_ops.range(array_ops.rank(x) - 1, -1, -1)
+
+
+def reduce_join(inputs, axis=None,
+                keep_dims=False,
+                separator="",
+                name=None,
+                reduction_indices=None):
+  reduction_indices = _reduce_join_reduction_dims(
+      inputs, axis, reduction_indices)
+  return gen_string_ops.reduce_join(
+      inputs=inputs,
+      reduction_indices=reduction_indices,
+      keep_dims=keep_dims,
+      separator=separator,
+      name=name)
+
+
+reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
+    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
 
 ops.NotDifferentiable("StringToHashBucket")
 ops.NotDifferentiable("StringToHashBucketFast")

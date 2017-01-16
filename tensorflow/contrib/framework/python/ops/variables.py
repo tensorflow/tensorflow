@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.contrib.util import loader
@@ -46,6 +48,7 @@ __all__ = ['add_model_variable',
            'assign_from_values',
            'assign_from_values_fn',
            'create_global_step',
+           'filter_variables',
            'get_global_step',
            'get_or_create_global_step',
            'get_local_variables',
@@ -130,9 +133,13 @@ def create_global_step(graph=None):
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
     collections = [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP]
-    return variable(ops.GraphKeys.GLOBAL_STEP, shape=[], dtype=dtypes.int64,
-                    initializer=init_ops.zeros_initializer, trainable=False,
-                    collections=collections)
+    return variable(
+        ops.GraphKeys.GLOBAL_STEP,
+        shape=[],
+        dtype=dtypes.int64,
+        initializer=init_ops.zeros_initializer(),
+        trainable=False,
+        collections=collections)
 
 
 def get_or_create_global_step(graph=None):
@@ -624,3 +631,63 @@ class VariableDeviceChooser(object):
       device_spec.job = self._job_name
       device_spec.task = task_id
     return device_spec.to_string()
+
+
+def filter_variables(var_list, include_patterns=None, exclude_patterns=None,
+                     reg_search=True):
+  """Filter a list of variables using regular expressions.
+
+  First includes variables according to the list of include_patterns.
+  Afterwards, eliminates variables according to the list of exclude_patterns.
+
+  For example, one can obtain a list of variables with the weights of all
+  convolutional layers (depending on the network definition) by:
+
+  ```python
+  variables = tf.contrib.framework.get_model_variables()
+  conv_weight_variables = tf.contrib.framework.filter_variables(
+      variables,
+      include_patterns=['Conv'],
+      exclude_patterns=['biases', 'Logits'])
+  ```
+
+  Args:
+    var_list: list of variables.
+    include_patterns: list of regular expressions to include. Defaults to None,
+        which means all variables are selected according to the include rules.
+        A variable is included if it matches any of the include_patterns.
+    exclude_patterns: list of regular expressions to exclude. Defaults to None,
+        which means all variables are selected according to the exclude rules.
+        A variable is excluded if it matches any of the exclude_patterns.
+    reg_search: boolean. If True (default), performs re.search to find matches
+        (i.e. pattern can match any substring of the variable name). If False,
+        performs re.match (i.e. regexp should match from the beginning of the
+        variable name).
+
+  Returns:
+    filtered list of variables.
+  """
+  if reg_search:
+    reg_exp_func = re.search
+  else:
+    reg_exp_func = re.match
+
+  # First include variables.
+  if include_patterns is None:
+    included_variables = list(var_list)
+  else:
+    included_variables = []
+    for var in var_list:
+      if any(reg_exp_func(ptrn, var.name) for ptrn in include_patterns):
+        included_variables.append(var)
+
+  # Afterwards, exclude variables.
+  if exclude_patterns is None:
+    filtered_variables = included_variables
+  else:
+    filtered_variables = []
+    for var in included_variables:
+      if not any(reg_exp_func(ptrn, var.name) for ptrn in exclude_patterns):
+        filtered_variables.append(var)
+
+  return filtered_variables

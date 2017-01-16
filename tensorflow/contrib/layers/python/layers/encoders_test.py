@@ -18,52 +18,61 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.layers.python.layers import encoders
+from tensorflow.contrib.layers.python.ops import sparse_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
 def _get_const_var(name, shape, value):
-  return tf.get_variable(name,
-                         shape,
-                         initializer=tf.constant_initializer(value))
+  return variable_scope.get_variable(
+      name, shape, initializer=init_ops.constant_initializer(value))
 
 
-class EncodersTest(tf.test.TestCase):
+class EncodersTest(test.TestCase):
 
   def testBowEncoderSparse(self):
     with self.test_session() as sess:
       docs = [[0, 1], [2, 3]]
       enc = encoders.bow_encoder(docs, 4, 3)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual([2, 3], enc.eval().shape)
 
   def testBowEncoderSparseTensor(self):
     with self.test_session() as sess:
       docs = [[0, 1], [2, 3]]
-      sparse_docs = tf.contrib.layers.sparse_ops.dense_to_sparse_tensor(docs)
+      sparse_docs = sparse_ops.dense_to_sparse_tensor(docs)
       enc = encoders.bow_encoder(sparse_docs, 4, 3)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual([2, 3], enc.eval().shape)
 
   def testBowEncoderSparseEmptyRow(self):
     with self.test_session() as sess:
       docs = [[0, 1], [2, 3], [0, 0]]
       enc = encoders.bow_encoder(docs, 4, 5)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual([3, 5], enc.eval().shape)
 
   def testBowEncoderDense(self):
     with self.test_session() as sess:
       docs = [[0, 1], [2, 3], [0, 0], [0, 0]]
       enc = encoders.bow_encoder(docs, 4, 3, sparse_lookup=False)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual([4, 3], enc.eval().shape)
 
   def testBowEncoderSparseTensorDenseLookup(self):
     with self.test_session():
       docs = [[0, 1]]
-      sparse_docs = tf.contrib.layers.sparse_ops.dense_to_sparse_tensor(docs)
+      sparse_docs = sparse_ops.dense_to_sparse_tensor(docs)
       with self.assertRaises(TypeError):
         encoders.bow_encoder(sparse_docs, 4, 3, sparse_lookup=False)
 
@@ -72,18 +81,18 @@ class EncodersTest(tf.test.TestCase):
       docs = [[0, 1], [2, 3]]
       enc_1 = encoders.bow_encoder(docs, 4, 3, scope='test')
       enc_2 = encoders.bow_encoder(docs, 4, 3, scope='test', reuse=True)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       avg_1, avg_2 = sess.run([enc_1, enc_2])
       self.assertAllEqual(avg_1, avg_2)
 
   def testBowEncodersSharingEmbeddingsInheritedScopes(self):
     with self.test_session() as sess:
       docs = [[0, 1], [2, 3]]
-      with tf.variable_scope('test'):
+      with variable_scope.variable_scope('test'):
         enc_1 = encoders.bow_encoder(docs, 4, 3)
-      with tf.variable_scope('test', reuse=True):
+      with variable_scope.variable_scope('test', reuse=True):
         enc_2 = encoders.bow_encoder(docs, 4, 3)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       avg_1, avg_2 = sess.run([enc_1, enc_2])
       self.assertAllEqual(avg_1, avg_2)
 
@@ -91,36 +100,36 @@ class EncodersTest(tf.test.TestCase):
     with self.test_session() as sess:
       docs = [[0, 1], [2, 3]]
       enc_1 = encoders.bow_encoder(docs, 4, 3, scope='bow')
-      tf.get_variable_scope().reuse_variables()
+      variable_scope.get_variable_scope().reuse_variables()
       enc_2 = encoders.bow_encoder(docs, 4, 3, scope='bow')
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       avg_1, avg_2 = sess.run([enc_1, enc_2])
       self.assertAllEqual(avg_1, avg_2)
 
   def testBowEncoderReuseEmbeddingsVariable(self):
     with self.test_session() as sess:
       docs = [[1, 1], [2, 3]]
-      with tf.variable_scope('test'):
+      with variable_scope.variable_scope('test'):
         v = _get_const_var('embeddings', (4, 3),
                            [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]])
         self.assertEqual(v.name, 'test/embeddings:0')
       enc = encoders.bow_encoder(docs, 4, 3, scope='test', reuse=True)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllClose([[3., 4., 5.], [7.5, 8.5, 9.5]], enc.eval())
 
   def testEmbedSequence(self):
     with self.test_session() as sess:
       docs = [[1, 1], [2, 3]]
-      with tf.variable_scope('test'):
+      with variable_scope.variable_scope('test'):
         v = _get_const_var('embeddings', (4, 3),
                            [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]])
         self.assertEqual(v.name, 'test/embeddings:0')
       emb = encoders.embed_sequence(docs, 4, 3, scope='test', reuse=True)
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllClose(
           [[[3., 4., 5.], [3., 4., 5.]], [[6., 7., 8.], [9., 10., 11.]]],
           emb.eval())
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

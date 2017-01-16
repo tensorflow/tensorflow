@@ -11,7 +11,6 @@ py_library(
     name = "deprecated_py",
     srcs = [
         "__init__.py",
-        "summaries.py",
     ],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python:logging_ops"],
@@ -23,7 +22,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":deprecated_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
     ],
 )
 

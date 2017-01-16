@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Utils for writing tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class Base(tf.test.TestCase):
+class Base(test.TestCase):
   """A class with some useful methods for testing."""
 
   def eval(self, tensors):
     with self.test_session() as sess:
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
 
       try:
         results = sess.run(tensors)

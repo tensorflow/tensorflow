@@ -53,7 +53,7 @@ In addition, all output tensors' static shapes, as accessed via the
 operations that depend on fixed batch_size would fail.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 

@@ -17,12 +17,17 @@ package org.tensorflow;
 
 /** Static utility methods describing the TensorFlow runtime. */
 public final class TensorFlow {
+  /** Returns the version of the underlying TensorFlow runtime. */
+  public static native String version();
+
   private TensorFlow() {}
 
-  static {
-    System.loadLibrary("tensorflow-jni");
+  /** Load the TensorFlow runtime C library. */
+  static void init() {
+    System.loadLibrary("tensorflow_jni");
   }
 
-  /** Returns the version of the underlying TensorFlow runtime. */
-  public static native String getVersion();
+  static {
+    init();
+  }
 }

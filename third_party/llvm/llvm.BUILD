@@ -4,13 +4,18 @@
 
 licenses(["notice"])
 
+exports_files(["LICENSE.TXT"])
+
 load(
     "@//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
-    "expand_header_template",
     "llvm_target_cmake_vars",
     "cmake_var_string",
+)
+load(
+    "@//third_party:common.bzl",
+    "template_rule",
 )
 
 package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
@@ -99,6 +104,8 @@ cmake_vars = {
     # LLVM features
     "ENABLE_BACKTRACES": 1,
     "LLVM_BINDIR": "/dev/null",
+    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
+    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
     "LLVM_ENABLE_THREADS": 1,
     "LLVM_ENABLE_ZLIB": 1,
     "LLVM_HAS_ATOMICS": 1,
@@ -173,49 +180,56 @@ expand_cmake_vars(
     dst = "include/llvm/Config/llvm-config.h",
 )
 
+expand_cmake_vars(
+    name = "abi_breaking_gen",
+    src = "include/llvm/Config/abi-breaking.h.cmake",
+    cmake_vars = all_cmake_vars,
+    dst = "include/llvm/Config/abi-breaking.h",
+)
+
 # Performs macro expansions on .def.in files
-expand_header_template(
+template_rule(
     name = "targets_def_gen",
+    src = "include/llvm/Config/Targets.def.in",
     out = "include/llvm/Config/Targets.def",
     substitutions = {
         "@LLVM_ENUM_TARGETS@": "\n".join(
             ["LLVM_TARGET({})".format(t) for t in llvm_targets],
         ),
     },
-    template = "include/llvm/Config/Targets.def.in",
 )
 
-expand_header_template(
+template_rule(
     name = "asm_parsers_def_gen",
+    src = "include/llvm/Config/AsmParsers.def.in",
     out = "include/llvm/Config/AsmParsers.def",
     substitutions = {
         "@LLVM_ENUM_ASM_PARSERS@": "\n".join(
             ["LLVM_ASM_PARSER({})".format(t) for t in llvm_target_asm_parsers],
         ),
     },
-    template = "include/llvm/Config/AsmParsers.def.in",
 )
 
-expand_header_template(
+template_rule(
     name = "asm_printers_def_gen",
+    src = "include/llvm/Config/AsmPrinters.def.in",
     out = "include/llvm/Config/AsmPrinters.def",
     substitutions = {
         "@LLVM_ENUM_ASM_PRINTERS@": "\n".join(
             ["LLVM_ASM_PRINTER({})".format(t) for t in llvm_target_asm_printers],
         ),
     },
-    template = "include/llvm/Config/AsmPrinters.def.in",
 )
 
-expand_header_template(
+template_rule(
     name = "disassemblers_def_gen",
+    src = "include/llvm/Config/Disassemblers.def.in",
     out = "include/llvm/Config/Disassemblers.def",
     substitutions = {
         "@LLVM_ENUM_DISASSEMBLERS@": "\n".join(
             ["LLVM_DISASSEMBLER({})".format(t) for t in llvm_target_disassemblers],
         ),
     },
-    template = "include/llvm/Config/Disassemblers.def.in",
 )
 
 # A common library that all LLVM targets depend on.
@@ -226,6 +240,7 @@ cc_library(
         "include/llvm/Config/AsmPrinters.def",
         "include/llvm/Config/Disassemblers.def",
         "include/llvm/Config/Targets.def",
+        "include/llvm/Config/abi-breaking.h",
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
     ],
@@ -280,6 +295,7 @@ cc_binary(
         "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
     ],
     linkopts = [
+        "-lm",
         "-ldl",
         "-lpthread",
     ],
@@ -300,6 +316,7 @@ cc_binary(
     ]),
     linkopts = [
         "-ldl",
+        "-lm",
         "-lpthread",
     ],
     stamp = 0,
@@ -321,6 +338,7 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/AArch64/AArch64GenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),
@@ -811,7 +829,6 @@ cc_library(
         ":mc_parser",
         ":support",
         ":target",
-        ":transform_utils",
     ],
 )
 
@@ -880,9 +897,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
-        ":instrumentation",
         ":mc",
-        ":profile_data",
         ":scalar",
         ":support",
         ":target",
@@ -1088,6 +1103,7 @@ cc_library(
     ]),
     deps = [
         ":analysis",
+        ":bit_writer",
         ":config",
         ":core",
         ":inst_combine",
@@ -1568,6 +1584,7 @@ cc_library(
         "include/llvm/ExecutionEngine/RTDyldMemoryManager.h",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
         "lib/ExecutionEngine/RuntimeDyld/Targets/*.h",
+        "lib/ExecutionEngine/RuntimeDyld/Targets/*.cpp",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
     ]),
     hdrs = glob([
@@ -1662,6 +1679,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
+        "@zlib_archive//:zlib",
     ],
 )
 
@@ -1930,4 +1948,3 @@ cc_library(
         ":support",
     ],
 )
-

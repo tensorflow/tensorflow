@@ -12,24 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for random_crop."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import test
 
 
-class RandomCropTest(tf.test.TestCase):
+class RandomCropTest(test.TestCase):
 
   def testNoOp(self):
     # No random cropping is performed since the size is value.shape.
     for shape in (2, 1, 1), (2, 1, 3), (4, 5, 3):
       value = np.arange(0, np.prod(shape), dtype=np.int32).reshape(shape)
       with self.test_session():
-        crop = tf.random_crop(value, shape).eval()
+        crop = random_ops.random_crop(value, shape).eval()
         self.assertAllEqual(crop, value)
 
   def testContains(self):
@@ -37,9 +39,10 @@ class RandomCropTest(tf.test.TestCase):
       shape = (3, 5, 7)
       target = (2, 3, 4)
       value = np.random.randint(1000000, size=shape)
-      value_set = set(tuple(value[i:i + 2, j:j + 3, k:k + 4].ravel())
-                      for i in range(2) for j in range(3) for k in range(4))
-      crop = tf.random_crop(value, size=target)
+      value_set = set(
+          tuple(value[i:i + 2, j:j + 3, k:k + 4].ravel())
+          for i in range(2) for j in range(3) for k in range(4))
+      crop = random_ops.random_crop(value, size=target)
       for _ in range(20):
         y = crop.eval()
         self.assertAllEqual(y.shape, target)
@@ -55,7 +58,7 @@ class RandomCropTest(tf.test.TestCase):
     value = np.arange(size).reshape(shape)
 
     with self.test_session():
-      crop = tf.random_crop(value, single, seed=7)
+      crop = random_ops.random_crop(value, single, seed=7)
       counts = np.zeros(size, dtype=np.int32)
       for _ in range(num_samples):
         y = crop.eval()
@@ -72,4 +75,4 @@ class RandomCropTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

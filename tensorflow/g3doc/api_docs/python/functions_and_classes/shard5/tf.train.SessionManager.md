@@ -48,15 +48,16 @@ The `local_init_op` is an `Operation` that is run always after a new session
 was created. If `None`, this step is skipped.
 
 The `ready_op` is an `Operation` used to check if the model is ready.  The
-model is considered ready if that operation returns an empty string tensor.
-If the operation returns non empty string tensor, the elements are
-concatenated and used to indicate to the user why the model is not ready.
+model is considered ready if that operation returns an empty 1D string
+tensor. If the operation returns a non empty 1D string tensor, the elements
+are concatenated and used to indicate to the user why the model is not
+ready.
 
 The `ready_for_local_init_op` is an `Operation` used to check if the model
 is ready to run local_init_op.  The model is considered ready if that
-operation returns an empty string tensor. If the operation returns non empty
-string tensor, the elements are concatenated and used to indicate to the
-user why the model is not ready.
+operation returns an empty 1D string tensor. If the operation returns a non
+empty 1D string tensor, the elements are concatenated and used to indicate
+to the user why the model is not ready.
 
 If `ready_op` is `None`, the model is not checked for readiness.
 
@@ -84,7 +85,7 @@ be initialized or restored.  Defaults to 30 seconds.
 
 - - -
 
-#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
+#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, checkpoint_filename_with_path=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
 
 Creates a `Session`. Makes sure the model is ready to be used.
 
@@ -110,7 +111,9 @@ or `init_fn` or `local_init_op` are passed.
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
 *  <b>`init_op`</b>: Optional `Operation` used to initialize the model.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
-*  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
+*  <b>`checkpoint_dir`</b>: Path to the checkpoint files. The latest checkpoint in the
+    dir will be used to restore.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
@@ -130,10 +133,16 @@ or `init_fn` or `local_init_op` are passed.
 
 *  <b>`RuntimeError`</b>: If the model cannot be initialized or recovered.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both checkpoint_dir and checkpoint_filename_with_path are
+    set.
+
 
 - - -
 
-#### `tf.train.SessionManager.recover_session(master, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None)` {#SessionManager.recover_session}
+#### `tf.train.SessionManager.recover_session(master, saver=None, checkpoint_dir=None, checkpoint_filename_with_path=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None)` {#SessionManager.recover_session}
 
 Creates a `Session`, recovering if possible.
 
@@ -145,7 +154,9 @@ and can be recovered from a checkpoint, recover it.
 
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
-*  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
+*  <b>`checkpoint_dir`</b>: Path to the checkpoint files. The latest checkpoint in the
+    dir will be used to restore.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
@@ -154,6 +165,12 @@ and can be recovered from a checkpoint, recover it.
 
   A pair (sess, initialized) where 'initialized' is `True` if
   the session could be recovered and initialized, `False` otherwise.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both checkpoint_dir and checkpoint_filename_with_path are
+    set.
 
 
 - - -
