@@ -1330,7 +1330,7 @@ class Estimator(BaseEstimator):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
-      self._check_inputs(features, labels)
+      self._check_inputs(features, labels, model_fn_lib.ModeKeys.TRAIN)
       model_fn_ops = self._call_legacy_get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend([
