@@ -236,7 +236,7 @@ class PoolingTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
       err_g_margin = 1e-3
-      err_gg_margin = 1e-2
+      err_gg_margin = 1.5e-2
       if pool_func == nn_ops.avg_pool3d:
         func_name = "avg_pool3d"
         x_init_value = None
