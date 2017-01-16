@@ -36,7 +36,6 @@ from tensorflow.python.layers import  normalization as normalization_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1202,13 +1201,13 @@ def flatten(inputs,
     ValueError: if inputs.dense_shape is wrong.
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    inputs_rank = inputs.get_shape().ndims
+    if (inputs_rank is None) or (inputs_rank < 2):
+      raise ValueError('Inputs must have a least 2 dimensions.')
 
     inputs_shape = array_ops.shape(inputs)
-    inputs_rank = array_ops.rank(inputs)
 
-    assertion = [control_flow_ops.Assert(inputs_rank > 1,
-                 ['Inputs must have a least 2 dimensions.'])]
-    inputs = control_flow_ops.with_dependencies(assertion, inputs)
     batch_dim = array_ops.slice(inputs_shape, [0], [1])
     spatial_dims = array_ops.slice(inputs_shape, [1], [inputs_rank - 1])
 
@@ -1224,6 +1223,8 @@ def flatten(inputs,
     if all(spatial_dims):
       outputs.set_shape([batch_dim,
                         functools.reduce(lambda x, y: x * y, spatial_dims)])
+    else:
+      outputs.set_shape([batch_dim, None])
 
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
