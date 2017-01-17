@@ -375,16 +375,17 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
 template <class Device, class T>
 class MaxPoolingGradGradOp : public OpKernel {
  public:
-  explicit MaxPoolingGradGradOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit MaxPoolingGradGradOp(OpKernelConstruction* context)
+      : OpKernel(context) {
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(
-                context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument("Default MaxPoolinGradGradOp only supports NHWC ",
-                                        "on device type ",
-                                        DeviceTypeString(context->device_type())));
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument(
+            "Default MaxPoolinGradGradOp only supports NHWC ",
+            "on device type ", DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -414,8 +415,9 @@ class MaxPoolingGradGradOp : public OpKernel {
     OP_REQUIRES(context, tensor_out.dims() == 4,
                 errors::InvalidArgument("tensor_out must be 4-dimensional"));
     // For maxpooling, out_grad_backprop should have 4 dimensions.
-    OP_REQUIRES(context, out_grad_backprop.dims() == 4,
-                errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
+    OP_REQUIRES(
+        context, out_grad_backprop.dims() == 4,
+        errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
 
     PoolParameters params{context,  ksize_,      stride_,
                           padding_, FORMAT_NHWC, tensor_in.shape()};
@@ -437,9 +439,9 @@ class MaxPoolingGradGradOp : public OpKernel {
                               const PoolParameters& params,
                               const Padding& padding) {
     typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-      ConstEigenMatrixMap;
+        ConstEigenMatrixMap;
     typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
-      EigenMatrixMap;
+        EigenMatrixMap;
 
     ConstEigenMatrixMap in_mat(
         tensor_in.flat<T>().data(), params.depth,
@@ -455,7 +457,7 @@ class MaxPoolingGradGradOp : public OpKernel {
         params.out_width * params.out_height * params.tensor_in_batch);
 
     const DeviceBase::CpuWorkerThreads& worker_threads =
-      *(context->device()->tensorflow_cpu_worker_threads());
+        *(context->device()->tensorflow_cpu_worker_threads());
 
     // The following code basically does the following:
     // 1. Flattens the input, output, top_diff and bottom_diff tensors into
@@ -474,7 +476,8 @@ class MaxPoolingGradGradOp : public OpKernel {
     //    and updates the column(s) corresponding to the maximum values in
     //    tensor_out_as_matrix with the corresponding values in
     //    top_diff_as_matrix.
-    auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](int64 start, int64 limit) {
+    auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](
+        int64 start, int64 limit) {
 
       const int32 depth = params.depth;
       const int32 in_rows = params.tensor_in_rows;
@@ -491,8 +494,9 @@ class MaxPoolingGradGradOp : public OpKernel {
       {
         // Initializes the output grad backprop tensor with 0.
         const int32 output_image_size = out_height * out_width * params.depth;
-        EigenMatrixMap bottom_diff_shard(bottom_diff_mat.data() + start * output_image_size,
-                                         1, (limit - start) * output_image_size);
+        EigenMatrixMap bottom_diff_shard(
+            bottom_diff_mat.data() + start * output_image_size, 1,
+            (limit - start) * output_image_size);
         bottom_diff_shard.setZero();
       }
 
@@ -549,7 +553,8 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
  public:
   typedef Eigen::GpuDevice Device;
 
-  explicit MaxPoolingGradGradOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit MaxPoolingGradGradOp(OpKernelConstruction* context)
+      : OpKernel(context) {
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
@@ -581,28 +586,29 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     OP_REQUIRES(context, tensor_out.dims() == 4,
                 errors::InvalidArgument("tensor_out must be 4-dimensional"));
     // For maxpooling, out_grad_backprop should have 4 dimensions.
-    OP_REQUIRES(context, out_grad_backprop.dims() == 4,
-                errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
+    OP_REQUIRES(
+        context, out_grad_backprop.dims() == 4,
+        errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
 
     TensorShape input_shape = tensor_in.shape();
     TensorShape output_shape = tensor_out.shape();
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, output_shape, &output));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (!context->status().ok()) {
       return;
     }
 
-    PoolParameters params{context, ksize_, stride_,
+    PoolParameters params{context,  ksize_,       stride_,
                           padding_, data_format_, input_shape};
 
     functor::MaxPoolGradBackwardNoMask<T>()(
-      data_format_, tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
-      params.tensor_in_batch, params.out_height, params.out_width, params.depth,
-      params.tensor_in_rows, params.tensor_in_cols, params.window_rows,
-      params.window_cols, params.row_stride, params.col_stride, params.pad_rows,
-      params.pad_cols, out_grad_backprop.flat<T>().data(),
-      output->flat<T>().data(), context->eigen_device<Eigen::GpuDevice>());
+        data_format_, tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
+        params.tensor_in_batch, params.out_height, params.out_width,
+        params.depth, params.tensor_in_rows, params.tensor_in_cols,
+        params.window_rows, params.window_cols, params.row_stride,
+        params.col_stride, params.pad_rows, params.pad_cols,
+        out_grad_backprop.flat<T>().data(), output->flat<T>().data(),
+        context->eigen_device<Eigen::GpuDevice>());
   }
 
  private:
@@ -807,8 +813,8 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
     Tensor* grad_out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &grad_out));
 
-    LaunchMaxPoolingGradGradWithArgmax<Device, T>::launch(context, params, grad_in,
-                                                          argmax, grad_out);
+    LaunchMaxPoolingGradGradWithArgmax<Device, T>::launch(
+        context, params, grad_in, argmax, grad_out);
   }
 
  private:
@@ -947,7 +953,8 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
                            params.tensor_in_cols * params.depth;
     const int output_size = params.tensor_in_batch * params.out_height *
                             params.out_width * params.depth;
-    const int top_offset = params.tensor_in_rows * params.tensor_in_cols * params.depth;
+    const int top_offset =
+        params.tensor_in_rows * params.tensor_in_cols * params.depth;
     const int bottom_offset =
         params.out_width * params.out_height * params.depth;
     bool status = functor::MaxPoolGradBackwardWithArgmax<T>()(
