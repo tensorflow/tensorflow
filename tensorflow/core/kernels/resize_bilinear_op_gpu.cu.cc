@@ -149,7 +149,8 @@ namespace functor {
 // Partial specialization of ResizeBilinear functor for a GPUDevice.
 template <typename T>
 struct ResizeBilinear<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor images,
+  void operator()(OpKernelContext* context, const GPUDevice& d,
+                  typename TTypes<T, 4>::ConstTensor images,
                   const float height_scale, const float width_scale,
                   typename TTypes<float, 4>::Tensor output) {
     const int batch = images.dimension(0);
