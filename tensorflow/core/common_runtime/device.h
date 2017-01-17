@@ -111,10 +111,10 @@ class Device : public DeviceBase {
   //
   // 'library' provides access to the function library which is shared
   // between all device partitions.
-  // 'graphdef' supplies the partition of the graph assigned to this
+  // 'graph' supplies the partition of the graph assigned to this
   // device.
   virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   GraphDef* /*graphdef*/) {
+                                   std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 

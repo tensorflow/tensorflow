@@ -186,7 +186,7 @@ class _OneHotCategorical(distribution.Distribution):
     return self.logits.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
-    sample_shape = array_ops.concat_v2(([n], array_ops.shape(self.logits)), 0)
+    sample_shape = array_ops.concat(([n], array_ops.shape(self.logits)), 0)
     logits = self.logits
     if logits.get_shape().ndims == 2:
       logits_2d = logits

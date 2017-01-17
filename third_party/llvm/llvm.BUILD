@@ -104,6 +104,8 @@ cmake_vars = {
     # LLVM features
     "ENABLE_BACKTRACES": 1,
     "LLVM_BINDIR": "/dev/null",
+    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
+    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
     "LLVM_ENABLE_THREADS": 1,
     "LLVM_ENABLE_ZLIB": 1,
     "LLVM_HAS_ATOMICS": 1,
@@ -178,6 +180,13 @@ expand_cmake_vars(
     dst = "include/llvm/Config/llvm-config.h",
 )
 
+expand_cmake_vars(
+    name = "abi_breaking_gen",
+    src = "include/llvm/Config/abi-breaking.h.cmake",
+    cmake_vars = all_cmake_vars,
+    dst = "include/llvm/Config/abi-breaking.h",
+)
+
 # Performs macro expansions on .def.in files
 template_rule(
     name = "targets_def_gen",
@@ -231,6 +240,7 @@ cc_library(
         "include/llvm/Config/AsmPrinters.def",
         "include/llvm/Config/Disassemblers.def",
         "include/llvm/Config/Targets.def",
+        "include/llvm/Config/abi-breaking.h",
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
     ],
@@ -328,6 +338,7 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/AArch64/AArch64GenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),
@@ -818,7 +829,6 @@ cc_library(
         ":mc_parser",
         ":support",
         ":target",
-        ":transform_utils",
     ],
 )
 
@@ -887,9 +897,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
-        ":instrumentation",
         ":mc",
-        ":profile_data",
         ":scalar",
         ":support",
         ":target",
@@ -1095,6 +1103,7 @@ cc_library(
     ]),
     deps = [
         ":analysis",
+        ":bit_writer",
         ":config",
         ":core",
         ":inst_combine",
@@ -1575,6 +1584,7 @@ cc_library(
         "include/llvm/ExecutionEngine/RTDyldMemoryManager.h",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
         "lib/ExecutionEngine/RuntimeDyld/Targets/*.h",
+        "lib/ExecutionEngine/RuntimeDyld/Targets/*.cpp",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
     ]),
     hdrs = glob([

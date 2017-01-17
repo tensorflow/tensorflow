@@ -346,9 +346,9 @@ class GmmAlgorithm(object):
         1)
     self._w_mul_x.append(w_mul_x)
     # Partial covariances.
-    x = array_ops.concat_v2([shard for _ in range(self._num_classes)], 0)
+    x = array_ops.concat([shard for _ in range(self._num_classes)], 0)
     x_trans = array_ops.transpose(x, perm=[0, 2, 1])
-    x_mul_w = array_ops.concat_v2([
+    x_mul_w = array_ops.concat([
         array_ops.expand_dims(x_trans[k, :, :] * self._w[shard_id][:, k], 0)
         for k in range(self._num_classes)
     ], 0)
@@ -395,7 +395,7 @@ class GmmAlgorithm(object):
           elif self._covariance_type == DIAG_COVARIANCE:
             new_covs.append(
                 array_ops.expand_dims(array_ops.diag_part(new_cov), 0))
-        new_covs = array_ops.concat_v2(new_covs, 0)
+        new_covs = array_ops.concat(new_covs, 0)
         if 'c' in self._params:
           # Train operations don't need to take care of the means
           # because covariances already depend on it.
@@ -430,14 +430,14 @@ class GmmAlgorithm(object):
                         diff, perm=[0, 2, 1]))))
       self._all_scores.append(
           array_ops.reshape(
-              array_ops.concat_v2(all_scores, 1),
+              array_ops.concat(all_scores, 1),
               array_ops.stack([self._num_examples, self._num_classes])))
 
     # Distance to the associated class.
-    self._all_scores = array_ops.concat_v2(self._all_scores, 0)
-    assignments = array_ops.concat_v2(self.assignments(), 0)
+    self._all_scores = array_ops.concat(self._all_scores, 0)
+    assignments = array_ops.concat(self.assignments(), 0)
     rows = math_ops.to_int64(math_ops.range(0, self._num_examples))
-    indices = array_ops.concat_v2(
+    indices = array_ops.concat(
         [array_ops.expand_dims(rows, 1), array_ops.expand_dims(assignments, 1)],
         1)
     self._scores = array_ops.gather_nd(self._all_scores, indices)

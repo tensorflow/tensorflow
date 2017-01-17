@@ -425,6 +425,10 @@ class Im2ColConvFunctor {
                                          gemmlowp::DefaultL8R8BitDepthParams>(
             &context, lhs, rhs, &result, -input_offset, -filter_offset,
             empty_pipeline);
+        // Since gemmlowp uses assembly to write to the output, msan won't
+        // detect the output buffer as written to, so we mark it manually.
+        TF_ANNOTATE_MEMORY_IS_INITIALIZED(output_data_as_int32,
+                                          m * n * sizeof(int32));
       } else {
         ReferenceGemm<T1, T2, T3>(
             transpose_a, transpose_b, transpose_c, m, n, k, im2col_buffer,

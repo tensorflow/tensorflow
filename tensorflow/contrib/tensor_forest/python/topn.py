@@ -122,8 +122,8 @@ class TopN(object):
           self.sl_ids, ids)
       u1 = state_ops.scatter_update(
           self.sl_ids,
-          array_ops.concat_v2([[0], shortlist_ids_to_remove], 0),
-          array_ops.concat_v2(
+          array_ops.concat([[0], shortlist_ids_to_remove], 0),
+          array_ops.concat(
               [new_length, array_ops.ones_like(shortlist_ids_to_remove) * -1],
               0))
       u2 = state_ops.scatter_update(
@@ -143,9 +143,9 @@ class TopN(object):
       new_length = math_ops.reduce_sum(
           math_ops.to_int32(math_ops.greater(new_scores, dtypes.float32.min)))
       u1 = self.sl_ids.assign(
-          math_ops.to_int64(array_ops.concat_v2([[new_length], new_ids], 0)))
+          math_ops.to_int64(array_ops.concat([[new_length], new_ids], 0)))
       u2 = self.sl_scores.assign(
-          array_ops.concat_v2([[smallest_new_score], new_scores], 0))
+          array_ops.concat([[smallest_new_score], new_scores], 0))
       self.last_ops = [u1, u2]
       return control_flow_ops.group(u1, u2)
 

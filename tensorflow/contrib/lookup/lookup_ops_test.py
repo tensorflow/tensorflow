@@ -125,7 +125,7 @@ class HashTableOpTest(test.TestCase):
       table3 = lookup_ops.HashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual(3, table1.size().eval())
       self.assertAllEqual(3, table2.size().eval())
       self.assertAllEqual(3, table3.size().eval())
@@ -1148,7 +1148,7 @@ class StringToIndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
 
   def test_string_to_index_table_from_file_with_default_value(self):
@@ -1160,7 +1160,7 @@ class StringToIndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, default_value), ids.eval())
 
   def test_string_to_index_table_from_file_with_oov_buckets(self):
@@ -1172,7 +1172,7 @@ class StringToIndexTableFromFile(test.TestCase):
           constant_op.constant(["salad", "surgery", "tarkus", "toccata"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual(
           (
               1,  # From vocabulary file.
@@ -1195,7 +1195,7 @@ class StringToIndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, -1, -1), ids.eval())
       self.assertEqual(2, table.size().eval())
 
@@ -1222,7 +1222,7 @@ class StringToIndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, -1), ids.eval())
       self.assertEqual(3, table.size().eval())
 
@@ -1255,7 +1255,7 @@ class StringToIndexTableFromTensor(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
 
   def test_string_to_index_table_from_tensor_with_default_value(self):
@@ -1266,7 +1266,7 @@ class StringToIndexTableFromTensor(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       self.assertRaises(errors_impl.OpError, ids.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, default_value), ids.eval())
 
   def test_string_to_index_table_from_tensor_with_only_oov_buckets(self):
@@ -1301,7 +1301,7 @@ class StringToIndexTest(test.TestCase):
       indices = lookup_ops.string_to_index(feats, mapping=mapping_strings)
 
       self.assertRaises(errors_impl.OpError, indices.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
 
       self.assertAllEqual((1, 2, -1), indices.eval())
 
@@ -1312,7 +1312,7 @@ class StringToIndexTest(test.TestCase):
       indices = lookup_ops.string_to_index(feats, mapping=mapping_strings)
 
       self.assertRaises(errors_impl.OpError,
-                        data_flow_ops.initialize_all_tables().run)
+                        data_flow_ops.tables_initializer().run)
 
   def test_string_to_index_with_default_value(self):
     default_value = -42
@@ -1323,7 +1323,7 @@ class StringToIndexTest(test.TestCase):
           feats, mapping=mapping_strings, default_value=default_value)
       self.assertRaises(errors_impl.OpError, indices.eval)
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, default_value), indices.eval())
 
 
@@ -1342,7 +1342,7 @@ class IndexToStringTableFromFileTest(test.TestCase):
           vocabulary_file=vocabulary_file)
       features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
       self.assertRaises(errors_impl.OpError, features.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
                           features.eval())
 
@@ -1354,7 +1354,7 @@ class IndexToStringTableFromFileTest(test.TestCase):
           vocabulary_file=vocabulary_file, default_value=default_value)
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
       self.assertRaises(errors_impl.OpError, features.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", default_value),
                           features.eval())
 
@@ -1368,7 +1368,7 @@ class IndexToStringTableFromFileTest(test.TestCase):
           default_value=default_value)
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
       self.assertRaises(errors_impl.OpError, features.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", default_value, default_value),
                           features.eval())
 
@@ -1380,7 +1380,7 @@ class IndexToStringTableFromFileTest(test.TestCase):
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
 
       self.assertRaises(errors_impl.OpError, features.eval)
-      init = data_flow_ops.initialize_all_tables()
+      init = data_flow_ops.tables_initializer()
       self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                               "Invalid vocab_size", init.run)
 
@@ -1392,7 +1392,7 @@ class IndexToStringTableFromFileTest(test.TestCase):
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
 
       self.assertRaises(errors_impl.OpError, features.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", b"UNK"), features.eval())
 
 
@@ -1407,7 +1407,7 @@ class IndexToStringTableFromTensorTest(test.TestCase):
       indices = constant_op.constant([0, 1, 2, 3], dtypes.int64)
       features = table.lookup(indices)
       self.assertRaises(errors_impl.OpError, features.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
 
       self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
                           features.eval())
@@ -1419,7 +1419,7 @@ class IndexToStringTableFromTensorTest(test.TestCase):
           mapping=mapping_strings)
       indices = constant_op.constant([0, 1, 4], dtypes.int64)
       features = table.lookup(indices)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"hello", b"hello", b"UNK"), features.eval())
 
   def test_index_to_string_with_default_value(self):
@@ -1432,7 +1432,7 @@ class IndexToStringTableFromTensorTest(test.TestCase):
       features = table.lookup(indices)
       self.assertRaises(errors_impl.OpError, features.eval)
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", default_value),
                           features.eval())
 
@@ -1446,7 +1446,7 @@ class IndexToStringTest(test.TestCase):
       feats = lookup_ops.index_to_string(indices, mapping=mapping_strings)
 
       self.assertRaises(errors_impl.OpError, feats.eval)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
 
       self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
                           feats.eval())
@@ -1456,11 +1456,11 @@ class IndexToStringTest(test.TestCase):
       mapping_strings = constant_op.constant(["hello", "hello"])
       indices = constant_op.constant([0, 1, 4], dtypes.int64)
       feats = lookup_ops.index_to_string(indices, mapping=mapping_strings)
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"hello", b"hello", b"UNK"), feats.eval())
 
       self.assertRaises(errors_impl.OpError,
-                        data_flow_ops.initialize_all_tables().run)
+                        data_flow_ops.tables_initializer().run)
 
   def test_index_to_string_with_default_value(self):
     default_value = b"NONE"
@@ -1471,7 +1471,7 @@ class IndexToStringTest(test.TestCase):
           indices, mapping=mapping_strings, default_value=default_value)
       self.assertRaises(errors_impl.OpError, feats.eval)
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", default_value), feats.eval())
 
 
@@ -1615,7 +1615,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           default_value,
           shared_name=shared_name)
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
 
       input_string = constant_op.constant(["brain", "salad", "tank"])
 
@@ -1847,7 +1847,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           hasher_spec=lookup_ops.StrongHashSpec((1, 2)),
           name="table2")
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
 
       input_string = constant_op.constant(
           ["fruit", "brain", "salad", "surgery", "UNK"])
@@ -1933,7 +1933,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               default_value2),
           oov_buckets)
 
-      data_flow_ops.initialize_all_tables().run()
+      data_flow_ops.tables_initializer().run()
 
       input_string_1 = constant_op.constant(
           ["brain", "salad", "surgery", "UNK"])

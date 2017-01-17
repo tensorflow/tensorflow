@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -73,9 +74,29 @@ struct ImportGraphDefOptions {
   // named "animals/bunny" in *g.
   string prefix;
 
-  // TODO(ashankar): Enable node rebinding (in Python's import_graph_def
-  // this is achieved by providing an input_map).
+  // Maps tensors in `gdef` to existing tensors in `g`. Inputs in `gdef`
+  // corresponding to `input_map` keys will be remapped to the nodes in `g`
+  // corresponding to the values.
   //
+  // Keys should not include `prefix`, i.e., a key TensorId's name should be the
+  // name as it originally appears in `gdef`.
+  //
+  // If this is non-empty, ImportGraphDef must be called with the shape refiner
+  // used to create the existing nodes referenced in `input_map`.
+  // TODO(skyewm): can we remove this requirement? How do we access the original
+  // shape refiner?
+  //
+  // TODO(skyewm): add functionality to retrieve unused `input_map` keys
+  std::map<TensorId, TensorId> input_map;
+
+  // The names of existing nodes in `g` that the imported graph should have
+  // control dependencies on.
+  //
+  // Note that to avoid creating many redundant control edges, ImportGraphDef()
+  // won't add control edges to nodes that will inherit the dependencies from
+  // other nodes in `gdef`.
+  std::vector<string> control_dependencies;
+
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the

@@ -342,9 +342,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
-  Graph* g = GetFuncBody("XTimes16", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g(GetFuncBody("XTimes16", {{"T", DT_FLOAT}}));
   ASSERT_TRUE(g != nullptr);
-  ExpandInlineFunctions(lib_, g);
+  ExpandInlineFunctions(lib_, g.get());
   OptimizeGraph(lib_, &g);
   const char* e0 = R"P(
 (n2:float) -> (n7:float) {
@@ -355,8 +355,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   n7 = Mul[T=float](n6, n8)
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
+  EXPECT_EQ(e0, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
@@ -380,15 +379,14 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
       // Return
       {{"o", "g:output"}});
   Init({test::function::Swap(), func});
-  Graph* g = GetFuncBody("ManySwapsNodeDef", {});
+  std::unique_ptr<Graph> g(GetFuncBody("ManySwapsNodeDef", {}));
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(lib_, &g);
   const char* e0 = R"P(
 (n3:float, n2:float) -> (n3:float) {
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
+  EXPECT_EQ(e0, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
@@ -414,7 +412,7 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
        {{"o"}, "Add", {"x2:z:0", "y2:z:0"}, {{"T", DT_FLOAT}}}},
       {{"o", "o:z:0"}});
   Init({test::function::Swap(), func});
-  Graph* g = GetFuncBody("ManySwapsFirst", {});
+  std::unique_ptr<Graph> g(GetFuncBody("ManySwapsFirst", {}));
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(lib_, &g);
 
@@ -431,8 +429,7 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
   n6 = Add[T=float](n4, n5)
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
+  EXPECT_EQ(e0, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Error_NotFound) {
@@ -489,7 +486,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
 )P";
   EXPECT_EQ(e0, DebugString(f));
   delete f;
-  auto g = GetGradBody("XTimesTwo", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g(GetGradBody("XTimesTwo", {{"T", DT_FLOAT}}));
   const char* e1 = R"P(
 (n4:float, n6:float) -> (n7:float) {
   n2 = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
@@ -498,7 +495,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   n7 = SymbolicGradient[Tin={float, float, float}, Tout={float, float}, f=Mul[T=float]](n4, n3, n6)
 }
 )P";
-  EXPECT_EQ(e1, DebugString(g));
+  EXPECT_EQ(e1, DebugString(g.get()));
 
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
@@ -512,9 +509,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   n9 = Reshape[T=float, Tshape=int32](n8, n6)
 }
 )P";
-  EXPECT_EQ(e2, DebugString(g));
-
-  delete g;
+  EXPECT_EQ(e2, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {
@@ -591,7 +586,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 
   Init({test, grad});
 
-  Graph* g = GetFuncBody("TestGrad", {});
+  std::unique_ptr<Graph> g(GetFuncBody("TestGrad", {}));
   ASSERT_TRUE(g != nullptr);
   const char* e0 = R"P(
 (n4:float, n3:float) -> (n8:float, n6:float) {
@@ -601,9 +596,9 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n8 = Identity[T=float](n5)
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
+  EXPECT_EQ(e0, DebugString(g.get()));
 
-  ExpandInlineFunctions(lib_, g);
+  ExpandInlineFunctions(lib_, g.get());
   const char* e1 = R"P(
 (n4:float, n3:float) -> (n8:float, n6:float) {
   n10 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
@@ -625,7 +620,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n8 = Identity[T=float](n27)
 }
 )P";
-  EXPECT_EQ(e1, DebugString(g));
+  EXPECT_EQ(e1, DebugString(g.get()));
 
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
@@ -652,8 +647,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n23 = Reshape[T=float, Tshape=int32](n22, n19)
 }
 )P";
-  EXPECT_EQ(e2, DebugString(g));
-  delete g;
+  EXPECT_EQ(e2, DebugString(g.get()));
 }
 
 namespace {

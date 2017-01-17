@@ -23,13 +23,8 @@ function bazel_clean_and_fetch() {
   # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
   if ! is_windows; then
     bazel clean --expunge
-    # TODO(https://github.com/bazelbuild/bazel/issues/2220) Remove the nested `bazel query`.
-    bazel fetch $(bazel query "//tensorflow/... -//tensorflow/examples/android/...")
-  else
-    # TODO(pcloudy): Also filter out //tensorflow/examples/android/... on Windows after
-    # https://github.com/bazelbuild/bazel/issues/2248 is fixed.
-    bazel fetch //tensorflow/...
   fi
+  bazel fetch "//tensorflow/... -//tensorflow/examples/android/..."
 }
 
 ## Set up python-related environment settings
@@ -54,10 +49,37 @@ while true; do
   # Retry
 done
 
+## Set up architecture-dependent optimization flags.
+if [ -z "$CC_OPT_FLAGS" ]; then
+  default_cc_opt_flags="-march=native"
+  read -p "Please specify optimization flags to use during compilation [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
+  if [ -z "$CC_OPT_FLAGS" ]; then
+    CC_OPT_FLAGS=$default_cc_opt_flags
+  fi
+fi
+
 if is_windows; then
   TF_NEED_GCP=0
   TF_NEED_HDFS=0
+  TF_NEED_JEMALLOC=0
   TF_NEED_OPENCL=0
+fi
+
+while [ "$TF_NEED_JEMALLOC" == "" ]; do
+  read -p "Do you wish to use jemalloc as the malloc implementation? "\
+"(Linux only) [Y/n] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "jemalloc enabled on Linux"; TF_NEED_JEMALLOC=1;;
+    [Nn]* ) echo "jemalloc disabled on Linux"; TF_NEED_JEMALLOC=0;;
+    "" ) echo "jemalloc enabled on Linux"; TF_NEED_JEMALLOC=1;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [ "$TF_NEED_JEMALLOC" == "1" ]; then
+  sed -i -e "s/WITH_JEMALLOC = False/WITH_JEMALLOC = True/" tensorflow/core/platform/default/build_config.bzl
+else
+  sed -i -e "s/WITH_JEMALLOC = True/WITH_JEMALLOC = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_GCP" == "" ]; do
@@ -112,8 +134,34 @@ else
   sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
+## Enable XLA.
+while [ "$TF_ENABLE_XLA" == "" ]; do
+  read -p "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=1;;
+    [Nn]* ) echo "No XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
+    "" ) echo "No XLA support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [ "$TF_ENABLE_XLA" == "1" ]; then
+  # Update Bazel build configuration.
+  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+else
+  # Update Bazel build configuration.
+  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+fi
+
+
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
+
+# Append CC optimization flags to bazel.rc
+echo >> tools/bazel.rc
+for opt in $CC_OPT_FLAGS; do
+  echo "build:opt --cxxopt=$opt --copt=$opt" >> tools/bazel.rc
+done
 
 # Run the gen_git_source to create links where bazel can track dependencies for
 # git hash propagation
@@ -289,7 +337,11 @@ while true; do
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
   else
-    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    if [ "$OSNAME" == "Darwin" ]; then
+      TF_CUDNN_EXT=".${TF_CUDNN_VERSION}.dylib"
+    else
+      TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    fi
   fi
 
   if is_windows; then

@@ -122,6 +122,8 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result);
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int64>* result);
+bool SplitAndParseAsFloats(StringPiece text, char delim,
+                           std::vector<float>* result);
 
 // ------------------------------------------------------------------
 // Implementation details below

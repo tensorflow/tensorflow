@@ -85,8 +85,8 @@ def horizontal_lstm(images, num_filters_out, scope=None):
     with variable_scope.variable_scope("rl"):
       hidden_sequence_rl = (lstm1d.ndlstm_base(
           sequence, num_filters_out - num_filters_out // 2, reverse=1))
-    output_sequence = array_ops.concat_v2(
-        [hidden_sequence_lr, hidden_sequence_rl], 2)
+    output_sequence = array_ops.concat([hidden_sequence_lr, hidden_sequence_rl],
+                                       2)
     output = sequence_to_images(output_sequence, batch_size)
     return output
 

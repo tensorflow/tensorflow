@@ -8,9 +8,11 @@ Fields:
     be `dtype` and its length must always match that of the `index_key`
     feature.
   dtype: Data type of the `value_key` feature.
-  size: Each value in the `index_key` feature must be in `[0, size)`.
-  already_sorted: A boolean to specify whether the values in `index_key` are
-    already sorted. If so skip sorting, False by default (optional).
+  size: A Python int to specify a dimension of the dense shape. Each value in
+    the `index_key` feature must be in `[0, size)`.
+  already_sorted: A Python boolean to specify whether the values in
+    `index_key` are already sorted. If so skip sorting.
+    False by default (optional).
 - - -
 
 #### `tf.SparseFeature.__getnewargs__()` {#SparseFeature.__getnewargs__}

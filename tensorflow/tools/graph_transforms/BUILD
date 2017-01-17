@@ -43,6 +43,7 @@ tf_cc_test(
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -55,10 +56,13 @@ tf_cc_test(
 cc_library(
     name = "transforms_lib",
     srcs = [
+        "add_default_attributes.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
+        "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
+        "insert_logging.cc",
         "obsfucate_names.cc",
         "quantize_nodes.cc",
         "quantize_weights.cc",
@@ -68,6 +72,7 @@ cc_library(
         "rename_attribute.cc",
         "rename_op.cc",
         "round_weights.cc",
+        "set_device.cc",
         "sort_by_execution_order.cc",
         "strip_unused_nodes.cc",
     ],
@@ -80,6 +85,7 @@ cc_library(
         ":transform_utils",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -93,10 +99,13 @@ tf_cc_test(
     name = "transforms_test",
     size = "small",
     srcs = [
+        "add_default_attributes_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",
+        "freeze_requantization_ranges_test.cc",
         "fuse_convolutions_test.cc",
+        "insert_logging_test.cc",
         "obsfucate_names_test.cc",
         "quantize_nodes_test.cc",
         "quantize_weights_test.cc",
@@ -106,6 +115,7 @@ tf_cc_test(
         "rename_attribute_test.cc",
         "rename_op_test.cc",
         "round_weights_test.cc",
+        "set_device_test.cc",
         "sort_by_execution_order_test.cc",
         "strip_unused_nodes_test.cc",
     ],
@@ -207,5 +217,20 @@ cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":summarize_graph_main_lib",
+    ],
+)
+
+cc_binary(
+    name = "compare_graphs",
+    srcs = ["compare_graphs.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":transform_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
     ],
 )

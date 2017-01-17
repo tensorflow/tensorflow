@@ -4,6 +4,7 @@
 package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -86,6 +87,7 @@ filegroup(
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
+        "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
@@ -94,7 +96,7 @@ filegroup(
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@zlib_archive//:zlib.h",
-    ],
+    ] + tf_additional_license_deps(),
 )
 
 sh_binary(

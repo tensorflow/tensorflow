@@ -30,12 +30,22 @@ py_library(
     name = "python",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/contrib/learn:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/tensorboard/scripts:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
+    ],
     deps = [
         ":array_ops",
         ":check_ops",
         ":client",
         ":client_testlib",
+        ":cloud_ops",
         ":confusion_matrix",
         ":control_flow_ops",
         ":errors",
@@ -66,8 +76,10 @@ py_library(
         ":ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
+        ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
     ]),
@@ -108,6 +120,38 @@ py_library(
     srcs = ["platform/googletest.py"],
     srcs_version = "PY2AND3",
     deps = [":platform_benchmark"],
+)
+
+py_library(
+    name = "cloud_ops",
+    srcs = [
+        "ops/cloud/__init__.py",
+        "ops/cloud/bigquery_reader_ops.py",
+        "ops/cloud/cloud.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cloud_ops_gen",
+        ":framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "bigquery_reader_ops_test",
+    size = "small",
+    srcs = ["ops/cloud/bigquery_reader_ops_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":cloud_ops",
+        ":data_flow_ops",
+        ":io_ops",
+        ":parsing_ops",
+        ":util",
+        "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+        "//tensorflow/core:cloud_ops_op_lib",
+    ],
+    tags = ["manual"],
 )
 
 tf_py_test(
@@ -779,6 +823,11 @@ tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "cloud_ops_gen",
+    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1506,6 +1555,21 @@ py_library(
 )
 
 py_library(
+    name = "weights_broadcast_ops",
+    srcs = [
+        "ops/weights_broadcast_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+        ":sets",
+    ],
+)
+
+py_library(
     name = "metrics",
     srcs = [
         "ops/metrics.py",
@@ -1527,6 +1591,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        ":weights_broadcast_ops",
     ],
 )
 

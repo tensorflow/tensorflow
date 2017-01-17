@@ -66,6 +66,7 @@ android_binary(
         "//tensorflow/examples/android/assets:asset_files",
         "@inception5h//:model_files",
         "@mobile_multibox//:model_files",
+        "@stylize//:model_files",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.demo",

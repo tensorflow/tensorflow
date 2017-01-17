@@ -1041,7 +1041,7 @@ def grayscale_to_rgb(images, name=None):
     shape_list = (
         [array_ops.ones(rank_1,
                         dtype=dtypes.int32)] + [array_ops.expand_dims(3, 0)])
-    multiples = array_ops.concat_v2(shape_list, 0)
+    multiples = array_ops.concat(shape_list, 0)
     rgb = array_ops.tile(images, multiples, name=name)
     rgb.set_shape(images.get_shape()[:-1].concatenate([3]))
     return rgb
@@ -1124,7 +1124,7 @@ def adjust_hue(image, delta, name=None):
       # floating point number since delta is [-0.5, 0.5].
       hue = math_ops.mod(hue + (delta + 1.), 1.)
 
-      hsv_altered = array_ops.concat_v2([hue, saturation, value], 2)
+      hsv_altered = array_ops.concat([hue, saturation, value], 2)
       rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
     else:
       rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
@@ -1191,6 +1191,16 @@ def adjust_saturation(image, saturation_factor, name=None):
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
 
+    # TODO(zhengxq): we will switch to the fused version after we add a GPU
+    # kernel for that.
+    fused = os.environ.get('TF_ADJUST_SATURATION_FUSED', '')
+    fused = fused.lower() in ('true', 't', '1')
+
+    if fused:
+      return convert_image_dtype(
+          gen_image_ops.adjust_saturation(flt_image, saturation_factor),
+          orig_dtype)
+
     hsv = gen_image_ops.rgb_to_hsv(flt_image)
 
     hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
@@ -1200,7 +1210,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     saturation *= saturation_factor
     saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
 
-    hsv_altered = array_ops.concat_v2([hue, saturation, value], 2)
+    hsv_altered = array_ops.concat([hue, saturation, value], 2)
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
@@ -1259,3 +1269,73 @@ def decode_image(contents, channels=None, name=None):
 
     is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff\xe0', name='is_jpeg')
     return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
+
+
+def total_variation(images, name=None):
+  """Calculate and return the total variation for one or more images.
+
+  The total variation is the sum of the absolute differences for neighboring
+  pixel-values in the input images. This measures how much noise is in the
+  images.
+
+  This can be used as a loss-function during optimization so as to suppress
+  noise in images. If you have a batch of images, then you should calculate
+  the scalar loss-value as the sum:
+  `loss = tf.reduce_sum(tf.image.total_variation(images))`
+
+  This implements the anisotropic 2-D version of the formula described here:
+
+  https://en.wikipedia.org/wiki/Total_variation_denoising
+
+  Args:
+    images: 4-D Tensor of shape `[batch, height, width, channels]` or
+            3-D Tensor of shape `[height, width, channels]`.
+
+    name: A name for the operation (optional).
+
+  Raises:
+    ValueError: if images.shape is not a 3-D or 4-D vector.
+
+  Returns:
+    The total variation of `images`.
+
+    If `images` was 4-D, return a 1-D float Tensor of shape `[batch]` with the
+    total variation for each image in the batch.
+    If `images` was 3-D, return a scalar float with the total variation for
+    that image.
+  """
+
+  with ops.name_scope(name, 'total_variation'):
+    ndims = images.get_shape().ndims
+
+    if ndims == 3:
+      # The input is a single image with shape [height, width, channels].
+
+      # Calculate the difference of neighboring pixel-values.
+      # The images are shifted one pixel along the height and width by slicing.
+      pixel_dif1 = images[1:, :, :] - images[:-1, :, :]
+      pixel_dif2 = images[:, 1:, :] - images[:, :-1, :]
+
+      # Sum for all axis. (None is an alias for all axis.)
+      sum_axis = None
+    elif ndims == 4:
+      # The input is a batch of images with shape:
+      # [batch, height, width, channels].
+
+      # Calculate the difference of neighboring pixel-values.
+      # The images are shifted one pixel along the height and width by slicing.
+      pixel_dif1 = images[:, 1:, :, :] - images[:, :-1, :, :]
+      pixel_dif2 = images[:, :, 1:, :] - images[:, :, :-1, :]
+
+      # Only sum for the last 3 axis.
+      # This results in a 1-D tensor with the total variation for each image.
+      sum_axis = [1, 2, 3]
+    else:
+      raise ValueError('\'images\' must be either 3 or 4-dimensional.')
+
+    # Calculate the total variation by taking the absolute value of the
+    # pixel-differences and summing over the appropriate axis.
+    tot_var = math_ops.reduce_sum(math_ops.abs(pixel_dif1), axis=sum_axis) + \
+              math_ops.reduce_sum(math_ops.abs(pixel_dif2), axis=sum_axis)
+
+  return tot_var

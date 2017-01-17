@@ -124,7 +124,7 @@ def attention_decoder_fn_train(encoder_state,
         cell_output = attention
 
       # combine cell_input and attention
-      next_input = array_ops.concat_v2([cell_input, attention], 1)
+      next_input = array_ops.concat([cell_input, attention], 1)
 
       return (None, cell_state, next_input, cell_output, context_state)
 
@@ -297,7 +297,7 @@ def attention_decoder_fn_inference(output_fn,
         cell_input = array_ops.gather(embeddings, next_input_id)
 
       # combine cell_input and attention
-      next_input = array_ops.concat_v2([cell_input, attention], 1)
+      next_input = array_ops.concat([cell_input, attention], 1)
 
       # if time > maxlen, return all true vector
       done = control_flow_ops.cond(
@@ -392,7 +392,7 @@ def _create_attention_construct_fn(name, num_units, attention_score_fn, reuse):
     def construct_fn(attention_query, attention_keys, attention_values):
       context = attention_score_fn(attention_query, attention_keys,
                                    attention_values)
-      concat_input = array_ops.concat_v2([attention_query, context], 1)
+      concat_input = array_ops.concat([attention_query, context], 1)
       attention = layers.linear(
           concat_input, num_units, biases_initializer=None, scope=scope)
       return attention
