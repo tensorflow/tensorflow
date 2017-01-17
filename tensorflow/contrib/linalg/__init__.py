@@ -31,6 +31,7 @@ Subclasses of `LinearOperator` provide a access to common methods on a
 
 @@LinearOperatorDiag
 @@LinearOperatorIdentity
+@@LinearOperatorScaledIdentity
 @@LinearOperatorMatrix
 @@LinearOperatorTriL
 
