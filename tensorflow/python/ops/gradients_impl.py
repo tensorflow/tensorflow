@@ -229,21 +229,21 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
       continue
     if y.dtype.is_real or y.dtype.is_integer:
       if not grad_y.dtype.is_real and not grad_y.dtype.is_integer:
-          raise TypeError("Gradient type %s generated for real or "
-                           "integer-valued tensor %s with type %s must be "
-                           "real or integer" %
-                           (dtypes.as_dtype(grad_y.dtype).name, y,
-                            dtypes.as_dtype(y.dtype).name))
+        raise TypeError("Gradient type %s generated for real or "
+                         "integer-valued tensor %s with type %s must be "
+                         "real or integer" %
+                         (dtypes.as_dtype(grad_y.dtype).name, y,
+                          dtypes.as_dtype(y.dtype).name))
     elif y.dtype.is_complex:
       if not grad_y.dtype.is_complex:
-          raise TypeError("Gradient type %s generated for complex-valued "
-                           "tensor %s with type %s must be real" %
-                           (dtypes.as_dtype(grad_y.dtype).name, y,
-                            dtypes.as_dtype(y.dtype).name))
+        raise TypeError("Gradient type %s generated for complex-valued "
+                         "tensor %s with type %s must be real" %
+                         (dtypes.as_dtype(grad_y.dtype).name, y,
+                          dtypes.as_dtype(y.dtype).name))
     else:
       raise TypeError("Tensor %s with type %s must be numeric "
-                       "to obtain a default gradient" %
-                       (y, dtypes.as_dtype(y.dtype).name))
+                      "to obtain a default gradient" %
+                      (y, dtypes.as_dtype(y.dtype).name))
   return grad_ys
 
 
