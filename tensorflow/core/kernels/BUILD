@@ -439,7 +439,6 @@ ARRAY_DEPS = [
 cc_library(
     name = "array_not_windows",
     deps = [
-        ":debug_ops",
         ":immutable_constant_op",
     ],
 )
@@ -478,6 +477,7 @@ cc_library(
         ":bitcast_op",
         ":concat_op",
         ":constant_op",
+        ":debug_ops",
         ":depth_space_ops",
         ":diag_op",
         ":edit_distance_op",
