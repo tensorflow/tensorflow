@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -26,8 +25,7 @@ namespace functor {
 
 template <typename Device, typename T>
 struct ResizeBilinear {
-  void operator()(OpKernelContext* context, const Device& d,
-                  typename TTypes<T, 4>::ConstTensor images,
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor images,
                   const float height_scale, const float width_scale,
                   typename TTypes<float, 4>::Tensor resized_images);
 };
