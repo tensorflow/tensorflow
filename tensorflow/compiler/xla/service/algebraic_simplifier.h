@@ -26,9 +26,11 @@ namespace xla {
 // A pass which performs AlgebraicSimplications.
 class AlgebraicSimplifier : public HloPass {
  public:
-  // Given two shapes, determines if it is valid to bitcast between them.
-  // Precondition: the two shapes have layouts and have the same number of
-  // elements.
+  // Given two shapes, determines if it is valid to bitcast between them after
+  // considering platform dependent effects on layout like alignment
+  // restrictions.
+  // Precondition: the two shapes have layouts, the same number of
+  // elements and ShapeUtil::ReshapeIsBitcast returns true.
   using ValidBitcastCallback = std::function<bool(const Shape&, const Shape&)>;
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during

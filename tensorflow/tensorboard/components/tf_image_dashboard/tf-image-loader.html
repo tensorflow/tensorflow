@@ -16,7 +16,6 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../paper-slider/paper-slider.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-imports/d3.html">
 
@@ -29,29 +28,15 @@ future for loading older images.
 <dom-module id="tf-image-loader">
   <template>
     <div id="image-annotation">
-      <template is="dom-if" if="[[_hasAtLeastOneStep]]">
-        step
-        <span class="step-value">
-          [[_stepValue]]
-        </span>
-        <template is="dom-if" if="[[_currentWallTime]]">
-          ([[_currentWallTime]])
-        </template>
-      </template>
-      <template is="dom-if" if="[[_hasMultipleSteps]]">
-        <paper-slider
-          id="steps"
-          immediate-value="{{_stepIndex}}"
-          max="[[_maxStepIndex]]"
-          max-markers="[[_maxStepIndex]]"
-          snaps
-          step="1"
-          value="{{_stepIndex}}"></paper-slider>
+      step [[step]]
+      <template is="dom-if" if="[[wallTime]]">
+        ([[wallTime]])
       </template>
     </div>
-
-    <img id="img" src="">
-
+    <img
+      id="img"
+      src="[[imageUrl]]"
+      on-error="reload">
     <style>
       :host {
         display: block;
@@ -67,21 +52,7 @@ future for loading older images.
         margin: -10px 0 10px 0;
       }
 
-      #image-annotation .step-value {
-        font-weight: bold;
-      }
-
-      #steps {
-        height: 15px;
-        margin: 0 0 0 -15px;
-        /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
-         * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
-         * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2. */
-        width: calc(100% + 31px);
-      }
-
       img {
-        border: 1px solid #f5f5f5;
         image-rendering: -moz-crisp-edges;
         image-rendering: pixelated;
         display: block;
@@ -95,105 +66,32 @@ future for loading older images.
       is: "tf-image-loader",
       properties: {
         colorScale: Object,
+        imageUrl: String,
         run: String,
-        // This is an array of Tensorboard Image&Datum objects (See backend.ts for details). The
-        // properties of objects in this array are
-        // {
-        //   width: number,
-        //   height: number,
-        //   wall_time: Date,
-        //   step: number,
-        //   url: string,
-        // }
-        _steps: {
-          type: Array,
-          value: [],
-          notify: true,
-        },
-        _stepIndex: {
-          type: Number,
-          notify: true,
-        },
-        _hasAtLeastOneStep: {
-          type: Boolean,
-          computed: "_computeHasAtLeastOneStep(_steps)",
-        },
-        _hasMultipleSteps: {
-          type: Boolean,
-          computed: "_computeHasMultipleSteps(_steps)",
-        },
-        _stepValue: {
-          type: Number,
-          computed: "_computeStepValue(_stepIndex)",
-        },
-        _currentWallTime: {
-          type: Number,
-          computed: "_computeCurrentWallTime(_stepIndex)",
-        },
-        _maxStepIndex: {
-          type: Number,
-          computed: "_computeMaxStepIndex(_steps)",
-        },
-      },
-      observers: [
-        "_onStepIndexChanged(_stepIndex)",
-      ],
-      redraw: function() {
-        // Other dashboards logic requires a redraw method to be defined. redraw is called at
-        // various places such as when the image is expanded.
-        this.setSeriesData(this.run, this._steps);
+        step: Number,
+        wallTime: String,
       },
       setVisibleSeries: function(runs) {
         // Do nothing.
       },
-      setSeriesData: function(run, steps) {
-        this.set("run", run);
-        this.set("_steps", steps);
-        this.set("_stepIndex", steps.length - 1);
+      setSeriesData: function(run, data) {
+        var last = _.last(data);
+        this.redraw(last);
 
         // Update the border color based on the run.
-        var color = this.colorScale.scale(run);
-        this.$$("#image-annotation").style.borderColor = color;
+        this.$$('#image-annotation').style.borderColor = this.colorScale.scale(run);
+      },
+      redraw: function(imageData) {
+        var url = imageData.url || this.imageUrl;
+        this.imageUrl = ""; // Force redraw
+        this.imageUrl = url;
 
-        // Set the color for the slider that lets the user select a step.
-        // These values should all be changed from their defaults set by paper-slider.
-        var mixins = [
-          "--paper-slider-active-color",
-          "--paper-slider-secondary-color",
-          "--paper-slider-knob-color",
-          "--paper-slider-knob-start-color",
-          "--paper-slider-knob-start-border-color",
-        ];
-
-        for (var i = 0; i < mixins.length; i++) {
-          this.customStyle[mixins[i]] = color;
+        // Update the step if the value fetched is a valid number >= 0
+        // (not null, NaN, etc).
+        this.step = imageData.step >= 0 ? imageData.step : this.step;
+        if (imageData.wall_time) {
+          this.wallTime = imageData.wall_time.toString();
         }
-      },
-      _onStepIndexChanged: function(stepIndex) {
-        // We manually change the image URL (instead of binding to the image's src attribute)
-        // because we would like to clear the image URL before setting the src to the new URL. If
-        // we avoid doing that, the user might be misled into believing that the new image has
-        // finished loading (and that it looks identical to the previous image).
-        if (!this._steps.length) {
-          return;
-        }
-        this.$.img.src = "";
-        this.$.img.src = this._steps[stepIndex].url;
-      },
-      _computeHasAtLeastOneStep: function(steps) {
-        return steps.length > 0;
-      },
-      _computeHasMultipleSteps: function(steps) {
-        return steps.length > 1;
-      },
-      _computeStepValue: function(stepIndex) {
-        return this._steps[stepIndex].step;
-      },
-      _computeCurrentWallTime: function(stepIndex) {
-        return this._steps[stepIndex].wall_time.toString();
-      },
-      _computeMaxStepIndex: function(steps) {
-        return steps.length - 1;
       },
     });
   </script>
