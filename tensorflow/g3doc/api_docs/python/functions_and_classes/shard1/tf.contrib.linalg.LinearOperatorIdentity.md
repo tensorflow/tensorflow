@@ -226,7 +226,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorIdentity.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorIdentity.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -276,7 +276,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorIdentity.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorIdentity.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -369,7 +369,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorIdentity.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorIdentity.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -405,7 +405,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.shape_dynamic(name='shape_dynamic')` {#LinearOperatorIdentity.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.shape_tensor(name='shape_tensor')` {#LinearOperatorIdentity.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -486,7 +486,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorIdentity.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorIdentity.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
