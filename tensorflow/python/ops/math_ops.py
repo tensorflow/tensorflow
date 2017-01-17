@@ -260,6 +260,8 @@ def argmax(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name)
 
 
@@ -273,6 +275,8 @@ def argmin(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name)
 
 
