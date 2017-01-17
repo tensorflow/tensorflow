@@ -46,9 +46,20 @@ function build_libtensorflow_tarball() {
   fi
   bazel clean --expunge
   yes "" | ./configure
-
-  bazel build ${BAZEL_OPTS} //tensorflow/tools/lib_package:libtensorflow.tar.gz
+  
+  # TODO(ashankar): Once 
+  # https://github.com/tensorflow/tensorflow/commit/1b32b698eddc10c0d85b0b8cf838f42023394de7  
+  # can be undone, i.e., when bazel supports pkg_tar with python3+ then all of this below
+  # can be replaced with something like:
+  # bazel build ${BAZEL_OPTS} //tensorflow/tools/lib_package:libtensorflow.tar.gz
+  
+  bazel build ${BAZEL_OPTS} //tensorflow:libtensorflow.so
   DIR=lib_package
-  mkdir -p ${DIR}
-  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz
+  rm -rf ${DIR}
+  mkdir -p ${DIR}/build/lib
+  mkdir -p ${DIR}/build/include/tensorflow/c
+  cp bazel-bin/tensorflow/libtensorflow.so ${DIR}/build/lib
+  cp tensorflow/c/c_api.h ${DIR}/build/include/tensorflow/c
+  tar -C ${DIR}/build -cvf ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz include/tensorflow/c/c_api.h lib/libtensorflow.so
+  rm -rf ${DIR}/build
 }
