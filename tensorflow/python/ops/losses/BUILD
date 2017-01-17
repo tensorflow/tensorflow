@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//tensorflow/python:weights_broadcast_ops",
     ],
 )
 

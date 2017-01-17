@@ -23,8 +23,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
-from tensorflow.python.platform import tf_logging as logging
 
 
 def _scale_losses(losses, weights):
@@ -46,13 +46,8 @@ def _scale_losses(losses, weights):
     A scalar tf.float32 `Tensor` whose value represents the sum of the scaled
       `losses`.
   """
-  # First, compute the sum of the losses over all elements:
-  start_index = max(0, weights.get_shape().ndims)
-  reduction_indices = list(range(start_index, losses.get_shape().ndims))
-  reduced_losses = math_ops.reduce_sum(losses,
-                                       reduction_indices=reduction_indices)
-  reduced_losses = math_ops.multiply(reduced_losses, weights)
-  return math_ops.reduce_sum(reduced_losses)
+  weighted_losses = math_ops.multiply(losses, weights)
+  return math_ops.reduce_sum(weighted_losses)
 
 
 def _safe_div(numerator, denominator, name="value"):
@@ -117,35 +112,18 @@ def _num_present(losses, weights, per_batch=False):
       `per_batch` is `True`, the value is returned as a tensor of size
       `[batch_size]`. Otherwise, a single scalar tensor is returned.
   """
-  # If weights is a scalar, its easy to compute:
-  if weights.get_shape().ndims == 0:
-    if losses.get_shape().ndims == 0:
-      batch_size = 1
-    else:
-      batch_size = array_ops.reshape(array_ops.slice(array_ops.shape(losses),
-                                                     [0], [1]), [])
-    num_per_batch = math_ops.div(math_ops.to_float(array_ops.size(losses)),
-                                 math_ops.to_float(batch_size))
-    num_per_batch = array_ops.where(math_ops.equal(weights, 0),
-                                    0.0, num_per_batch)
-    num_per_batch = math_ops.multiply(array_ops.ones(
-        array_ops.reshape(batch_size, [1])), num_per_batch)
-    return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
-
-  # First, count the number of nonzero weights.
-  if weights.get_shape().ndims >= 1:
-    reduction_indices = list(range(1, weights.get_shape().ndims))
-    num_nonzero_per_batch = math_ops.reduce_sum(
-        math_ops.to_float(math_ops.not_equal(weights, 0)),
-        reduction_indices=reduction_indices)
-
-  # Next, determine the number of elements that weight would broadcast to:
-  broadcast_dims = array_ops.slice(array_ops.shape(losses),
-                                   [weights.get_shape().ndims], [-1])
-  num_to_broadcast = math_ops.to_float(math_ops.reduce_prod(broadcast_dims))
-
-  num_per_batch = math_ops.multiply(num_nonzero_per_batch, num_to_broadcast)
-  return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
+  with ops.name_scope(None, "num_present", (losses, weights)) as scope:
+    weights = math_ops.to_float(weights)
+    present = array_ops.where(
+        math_ops.equal(weights, 0.0),
+        array_ops.zeros_like(weights),
+        array_ops.ones_like(weights))
+    present = weights_broadcast_ops.broadcast_weights(present, losses)
+    if per_batch:
+      return math_ops.reduce_sum(
+          present, axis=math_ops.range(1, array_ops.rank(present)),
+          keep_dims=True, name=scope)
+    return math_ops.reduce_sum(present, name=scope)
 
 
 def compute_weighted_loss(
@@ -173,52 +151,20 @@ def compute_weighted_loss(
       `losses`, or if the number of dimensions (rank) of either `losses` or
       `weights` is missing.
   """
-  with ops.name_scope(scope, "weighted_loss", [losses, weights]):
-    losses = ops.convert_to_tensor(losses)
-    input_dtype = losses.dtype
-    losses = math_ops.to_float(losses)
-    weights = math_ops.to_float(ops.convert_to_tensor(weights))
-
-    losses_shape = losses.get_shape()
-    if losses_shape.ndims is None:
-      raise ValueError("losses.get_shape().ndims cannot be None")
-    weights_shape = weights.get_shape()
-    if weights_shape.ndims is None:
-      raise ValueError("weight.get_shape().ndims cannot be None")
-
-    # TODO(b/33556118): Remove `ndims > 1` check so shapes [] and [1] behave the
-    # same.
-    if weights_shape.ndims > 1 and weights_shape.dims[-1].is_compatible_with(1):
-      weights = array_ops.squeeze(weights, [-1])
-
-    # TODO(b/33556118): Remove this when we require weights shape be either
-    # scalar or the same as losses.
-    weights_dims = weights_shape.as_list()
-    losses_dims = losses_shape.as_list()
-    if len(weights_dims) > len(losses_dims):
-      raise ValueError(
-          "Invalid weights shape %s can not be broadcast to losses %s." % (
-              weights_shape, losses_shape))
-    for i in range(len(weights_dims)):
-      if ((losses_dims[i] is not None) and (losses_dims[i] == 1) and
-          (weights_dims[i] is not None) and (weights_dims[i] != 1)):
-        raise ValueError(
-            "Invalid weights shape %s can not be broadcast to losses %s." % (
-                weights_shape, losses_shape))
-    for i in range(len(weights_dims)):
-      if ((losses_dims[i] is not None) and (losses_dims[i] != 1) and
-          (weights_dims[i] is not None) and (weights_dims[i] == 1)):
-        logging.warn(
-            "WARNING: Weights %s with dimension 1 will result in a sum"
-            ", not average, across dimension %d.", weights_shape, i)
-
-    total_loss = _scale_losses(losses, weights)
-    num_present = _num_present(losses, weights)
-    mean_loss = _safe_mean(total_loss, num_present)
-    # Convert the result back to the input type.
-    mean_loss = math_ops.cast(mean_loss, input_dtype)
-    util.add_loss(mean_loss, loss_collection)
-    return mean_loss
+  with ops.name_scope(scope, "weighted_loss", (losses, weights)):
+    with ops.control_dependencies((
+        weights_broadcast_ops.assert_broadcastable(weights, losses),)):
+      losses = ops.convert_to_tensor(losses)
+      input_dtype = losses.dtype
+      losses = math_ops.to_float(losses)
+      weights = math_ops.to_float(weights)
+      total_loss = _scale_losses(losses, weights)
+      num_present = _num_present(losses, weights)
+      mean_loss = _safe_mean(total_loss, num_present)
+      # Convert the result back to the input type.
+      mean_loss = math_ops.cast(mean_loss, input_dtype)
+      util.add_loss(mean_loss, loss_collection)
+      return mean_loss
 
 
 def absolute_difference(
@@ -303,7 +249,7 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(dim,), keep_dims=True)
     return compute_weighted_loss(losses, weights, scope, loss_collection)
 
 
@@ -434,41 +380,39 @@ def mean_pairwise_squared_error(labels, predictions, weights=1.0, scope=None,
   """
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
+    weights = math_ops.to_float(weights)
     labels = math_ops.to_float(labels)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    weights = math_ops.to_float(ops.convert_to_tensor(weights))
+    with ops.control_dependencies((
+        weights_broadcast_ops.assert_broadcastable(weights, labels),)):
+      predictions = math_ops.to_float(predictions)
+      predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    diffs = math_ops.subtract(predictions, labels)
+      diffs = math_ops.subtract(predictions, labels)
 
-    # Need to verify here since the function doesn't use compute_weighted_loss
-    if diffs.get_shape().ndims is None:
-      raise ValueError("diffs.get_shape().ndims cannot be None")
-    if weights.get_shape().ndims is None:
-      raise ValueError("weights.get_shape().ndims cannot be None")
+      reduction_indices = math_ops.range(1, array_ops.rank(diffs))
 
-    reduction_indices = list(range(1, diffs.get_shape().ndims))
+      sum_squares_diff_per_batch = math_ops.reduce_sum(
+          math_ops.square(diffs), reduction_indices=reduction_indices,
+          keep_dims=True)
+      num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
-    sum_squares_diff_per_batch = math_ops.reduce_sum(
-        math_ops.square(diffs),
-        reduction_indices=reduction_indices)
-    num_present_per_batch = _num_present(diffs, weights, per_batch=True)
+      term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
+                              num_present_per_batch)
 
-    term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
-                            num_present_per_batch)
+      sum_diff = math_ops.reduce_sum(
+          diffs, reduction_indices=reduction_indices, keep_dims=True)
+      term2 = 2.0 * _safe_div(math_ops.square(sum_diff),
+                              math_ops.square(num_present_per_batch))
 
-    sum_diff = math_ops.reduce_sum(diffs, reduction_indices=reduction_indices)
-    term2 = 2.0 * _safe_div(math_ops.square(sum_diff),
-                            math_ops.square(num_present_per_batch))
+      loss = _scale_losses(term1 - term2, weights)
 
-    loss = _scale_losses(term1 - term2, weights)
-
-    mean_loss = array_ops.where(math_ops.reduce_sum(num_present_per_batch) > 0,
-                                loss,
-                                array_ops.zeros_like(loss),
-                                name="value")
-    util.add_loss(mean_loss, loss_collection)
-    return mean_loss
+      mean_loss = array_ops.where(
+          math_ops.reduce_sum(num_present_per_batch) > 0,
+          loss,
+          array_ops.zeros_like(loss),
+          name="value")
+      util.add_loss(mean_loss, loss_collection)
+      return mean_loss
 
 
 def mean_squared_error(labels, predictions, weights=1.0, scope=None,
@@ -642,7 +586,7 @@ def sparse_softmax_cross_entropy(labels, logits, weights=1.0, scope=None,
     labels: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
       `int64` in the range `[0, num_classes)`.
     logits: [batch_size, num_classes] logits outputs of the network .
-    weights: Coefficients for the loss. This must be of shape `[batch_size]` or
+    weights: Coefficients for the loss. This must be scalar or of shape
       `[batch_size, 1]`.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -655,12 +599,13 @@ def sparse_softmax_cross_entropy(labels, logits, weights=1.0, scope=None,
       if `weights` is None.
   """
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
-                      [logits, labels, weights]) as scope:
+                      (logits, labels, weights)) as scope:
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
 
     losses = nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
                                                          logits=logits,
                                                          name="xentropy")
     # Reshape losses to [batch_size, 1] to be consistent with weights.
+    # TODO(ptucker): reshape to (-1, 1) more efficient?
     losses = array_ops.reshape(losses, shape=[array_ops.shape(losses)[0], 1])
     return compute_weighted_loss(losses, weights, scope, loss_collection)
