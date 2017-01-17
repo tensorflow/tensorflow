@@ -51,18 +51,9 @@ bool IsLiteralWithValue(const HloInstruction* operand, int value) {
 
 // Returns whether the given transpose produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
-bool TransposeIsBitcast(
-    const HloInstruction* transpose,
-    const AlgebraicSimplifier::ValidBitcastCallback& valid_bitcast_callback) {
+bool TransposeIsBitcast(const HloInstruction* transpose) {
   CHECK_EQ(HloOpcode::kTranspose, transpose->opcode());
   const HloInstruction* operand = transpose->operand(0);
-
-  // Can't insert bitcasts if the compiler used a memory layout which isn't
-  // compatible.
-  if (!valid_bitcast_callback(operand->shape(), transpose->shape())) {
-    return false;
-  }
-
   return ShapeUtil::TransposeIsBitcast(operand->shape(), transpose->shape(),
                                        transpose->dimensions());
 }
@@ -80,11 +71,8 @@ bool ReshapeIsBitcast(
   const HloInstruction* operand = reshape->operand(0);
   // Can't insert bitcasts if the compiler used a memory layout which isn't
   // compatible.
-  if (!valid_bitcast_callback(operand->shape(), reshape->shape())) {
-    return false;
-  }
-
-  return ShapeUtil::ReshapeIsBitcast(operand->shape(), reshape->shape());
+  return ShapeUtil::ReshapeIsBitcast(operand->shape(), reshape->shape()) &&
+         valid_bitcast_callback(operand->shape(), reshape->shape());
 }
 }  // namespace
 
@@ -199,7 +187,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Whether layout is considered during transformation.
   bool is_layout_sensitive_;
 
-  // Callback used to determine if a bitcast is valid.
+  // Callback used to determine if a bitcast is possible.
   AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback_;
 };
 
@@ -287,7 +275,8 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
                                                 HloInstruction* rhs) {
   // A/1 => A
   VLOG(10) << "trying transform [A/1 => A]: " << divide->ToString();
-  if (IsLiteralWithValue(rhs, 1) && ReplaceInstructionIfSameShape(divide, lhs)) {
+  if (IsLiteralWithValue(rhs, 1) &&
+      ReplaceInstructionIfSameShape(divide, lhs)) {
     return Status::OK();
   }
 
@@ -717,8 +706,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     return Status::OK();
   }
 
-  if (is_layout_sensitive_ &&
-      TransposeIsBitcast(transpose, valid_bitcast_callback_)) {
+  if (is_layout_sensitive_ && TransposeIsBitcast(transpose)) {
     ReplaceWithBitcast(transpose);
     return Status::OK();
   }

@@ -795,7 +795,7 @@ def string_to_index_table_from_file(vocabulary_file=None,
   The bucket ID range is `[vocabulary size, vocabulary size + num_oov_buckets]`.
 
   The underlying table must be initialized by calling
-  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+  `tf.tables_initializer.run()` or `table.init.run()` once.
 
   Sample Usages:
 
@@ -813,7 +813,7 @@ def string_to_index_table_from_file(vocabulary_file=None,
       vocabulary_file="test.txt", num_oov_buckets=1)
   ids = table.lookup(features)
   ...
-  tf.initialize_all_tables().run()
+  tf.tables_initializer().run()
 
   ids.eval()  ==> [0, 1, 3, 2]  # where 3 is the out-of-vocabulary bucket
   ```
@@ -893,7 +893,7 @@ def string_to_index_table_from_tensor(mapping,
   The bucket ID range is `[mapping size, mapping size + num_oov_buckets]`.
 
   The underlying table must be initialized by calling
-  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+  `tf.tables_initializer.run()` or `table.init.run()` once.
 
   Elements in `mapping` cannot have duplicates, otherwise when executing the
   table initializer op, it will throw a `FailedPreconditionError`.
@@ -907,7 +907,7 @@ def string_to_index_table_from_tensor(mapping,
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
-  tf.initialize_all_tables().run()
+  tf.tables_initializer().run()
 
   ids.eval()  ==> [0, 1, 4, 2]
   ```
@@ -975,7 +975,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   will throw a FailedPreconditionError.
 
   The underlying table must be initialized by calling
-  `tf.initialize_all_tables.run()` once.
+  `tf.tables_initializer.run()` once.
 
   For example:
 
@@ -985,7 +985,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   ids = tf.contrib.lookup.string_to_index(
       feats, mapping=mapping_strings, default_value=-1)
   ...
-  tf.initialize_all_tables().run()
+  tf.tables_initializer().run()
 
   ids.eval()  ==> [0, 1, -1, 2]
   ```
@@ -1022,7 +1022,7 @@ def index_to_string_table_from_file(vocabulary_file,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+  `tf.tables_initializer.run()` or `table.init.run()` once.
 
   Sample Usages:
 
@@ -1040,7 +1040,7 @@ def index_to_string_table_from_file(vocabulary_file,
       vocabulary_file="test.txt", default_value="UNKNOWN")
   values = table.lookup(indices)
   ...
-  tf.initialize_all_tables().run()
+  tf.tables_initializer().run()
 
   values.eval() ==> ["lake", "UNKNOWN"]
   ```
@@ -1096,7 +1096,7 @@ def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.initialize_all_tables.run()` or `table.init.run()` once.
+  `tf.tables_initializer.run()` or `table.init.run()` once.
 
   Elements in `mapping` cannot have duplicates, otherwise when executing the
   table initializer op, it will throw a `FailedPreconditionError`.
@@ -1110,7 +1110,7 @@ def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
       mapping_string, default_value="UNKNOWN")
   values = table.lookup(indices)
   ...
-  tf.initialize_all_tables().run()
+  tf.tables_initializer().run()
 
   values.eval() ==> ["lake", "UNKNOWN"]
   ```
@@ -1159,7 +1159,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.initialize_all_tables.run()` once.
+  `tf.tables_initializer.run()` once.
 
   For example:
 
@@ -1169,7 +1169,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   values = tf.contrib.lookup.index_to_string(
       indices, mapping=mapping_string, default_value="UNKNOWN")
   ...
-  tf.initialize_all_tables().run()
+  tf.tables_initializer().run()
 
   values.eval() ==> ["lake", "UNKNOWN"]
   ```

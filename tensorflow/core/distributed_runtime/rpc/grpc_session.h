@@ -119,7 +119,7 @@ class GrpcSession : public Session {
                    const string& prun_handle);
 
   Status RunProto(CallOptions* call_options, MutableRunStepRequestWrapper* req,
-                  RunStepResponse* resp);
+                  MutableRunStepResponseWrapper* resp);
 
   // Implementations for all the public interfaces.
   Status CreateImpl(CallOptions* call_options, const GraphDef& graph);

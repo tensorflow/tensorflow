@@ -3721,6 +3721,8 @@ filegroup(
             # See b/29213790
             "scatter_nd_op*",
             "sparse_matmul_op.*",
+            # Lib CURL is not supported on Android.
+            "bigquery*",
         ],
     ),
     visibility = ["//visibility:public"],

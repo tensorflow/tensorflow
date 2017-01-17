@@ -169,6 +169,7 @@ def all_libraries(module_to_name, members, documented):
               "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
                                "initialize_all_tables",
+                               "tables_initializer",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),

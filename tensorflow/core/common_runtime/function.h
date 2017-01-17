@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_
 
 #include <functional>
+#include <memory>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -126,7 +127,7 @@ void DumpGraph(StringPiece label, const Graph* g);
 // OptimizeGraph mutates **g extensively and replaces '*g' with a
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
-void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g);
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g);
 
 // Convert the Graph of a function to a GraphDef.
 //
