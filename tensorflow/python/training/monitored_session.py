@@ -150,7 +150,7 @@ class Scaffold(object):
           default_init_op)
     if self._ready_op is None:
       def default_ready_op():
-        return array_ops.concat_v2([
+        return array_ops.concat([
             variables.report_uninitialized_variables(),
             resources.report_uninitialized_resources()
         ], 0)
@@ -237,7 +237,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.initialize_all_tables())
+                                  data_flow_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -301,12 +301,12 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     all_hooks.append(
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
 
-    if save_summaries_steps > 0:
+    if save_summaries_steps and save_summaries_steps > 0:
       all_hooks.append(basic_session_run_hooks.SummarySaverHook(
           scaffold=scaffold,
           save_steps=save_summaries_steps,
           output_dir=checkpoint_dir))
-    if save_checkpoint_secs > 0:
+    if save_checkpoint_secs and save_checkpoint_secs > 0:
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
           checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
 
@@ -497,7 +497,7 @@ class _MonitoredSession(object):
       queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
       # Inform the hooks that a new session has been created.
       for hook in self._hooks:
-        hook.after_create_session(self.tf_sess)
+        hook.after_create_session(self.tf_sess, self.coord)
       return _CoordinatedSession(
           _HookedSession(self.tf_sess, self._hooks), self.coord)
 
@@ -764,19 +764,30 @@ class _RecoverableSession(_WrappedSession):
       sess_creator: A 'SessionCreator' to be wrapped by recoverable.
     """
     self._sess_creator = sess_creator
-    _WrappedSession.__init__(self, self._sess_creator.create_session())
+    _WrappedSession.__init__(self, self._create_session())
+
+  def _create_session(self):
+    while True:
+      try:
+        return self._sess_creator.create_session()
+      except errors.AbortedError:
+        logging.info('An AbortedError was raised during initialization. '
+                     'It\'s most likely due to a preemption in a connected '
+                     'worker/ps. A new session will be created.')
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
       try:
         if not self._sess:
-          self._sess = self._sess_creator.create_session()
+          self._sess = self._create_session()
         return self._sess.run(fetches,
                               feed_dict=feed_dict,
                               options=options,
                               run_metadata=run_metadata)
       except errors.AbortedError:
         logging.info('An AbortedError was raised. Closing the current session. '
+                     'It\'s most likely due to a preemption in a connected '
+                     'worker/ps. '
                      'A new session will be created on the next session.run().')
         self.close()
         self._sess = None

@@ -164,7 +164,49 @@ class DNNClassifierTest(test.TestCase):
         embedding_lr_multipliers={embedding_language: 0.8})
     self.assertEqual({
         embedding_language: 0.8
-    }, classifier._estimator.params['embedding_lr_multipliers'])
+    }, classifier.params['embedding_lr_multipliers'])
+
+  def testInputPartitionSize(self):
+    def _input_fn_float_label(num_epochs=None):
+      features = {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant([[0.8], [0.], [0.2]], dtype=dtypes.float32)
+      return features, labels
+
+    language_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        feature_column.embedding_column(language_column, dimension=1),
+    ]
+
+    # Set num_ps_replica to be 10 and the min slice size to be extremely small,
+    # so as to ensure that there'll be 10 partititions produced.
+    config = run_config.RunConfig(tf_random_seed=1)
+    config._num_ps_replicas = 10
+    classifier = dnn.DNNClassifier(
+        n_classes=2,
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        optimizer='Adagrad',
+        config=config,
+        input_layer_min_slice_size=1)
+
+    # Ensure the param is passed in.
+    self.assertEqual(1, classifier.params['input_layer_min_slice_size'])
+
+    # Ensure the partition count is 10.
+    classifier.fit(input_fn=_input_fn_float_label, steps=50)
+    partition_count = 0
+    for name in classifier.get_variable_names():
+      if 'language_embedding' in name and 'Adagrad' in name:
+        partition_count += 1
+    self.assertEqual(10, partition_count)
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
@@ -269,10 +311,13 @@ class DNNClassifierTest(test.TestCase):
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = list(
-        classifier.predict(
+    predicted_classes = list(
+        classifier.predict_classes(
             input_fn=predict_input_fn, as_iterable=True))
-    self._assertBinaryPredictions(3, predictions)
+    self._assertBinaryPredictions(3, predicted_classes)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
 
   def testLogisticRegression_FloatLabel(self):
     """Tests binary classification with float labels."""
@@ -310,10 +355,14 @@ class DNNClassifierTest(test.TestCase):
     classifier.fit(input_fn=_input_fn_float_label, steps=50)
 
     predict_input_fn = functools.partial(_input_fn_float_label, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(
+            input_fn=predict_input_fn, as_iterable=True))
+    self._assertBinaryPredictions(3, predicted_classes)
     predictions = list(
         classifier.predict(
             input_fn=predict_input_fn, as_iterable=True))
-    self._assertBinaryPredictions(3, predictions)
+    self.assertAllEqual(predicted_classes, predictions)
     predictions_proba = list(
         classifier.predict_proba(
             input_fn=predict_input_fn, as_iterable=True))
@@ -501,8 +550,11 @@ class DNNClassifierTest(test.TestCase):
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
+    predicted_classes = classifier.predict_classes(
+        input_fn=_input_fn, as_iterable=False)
+    self._assertBinaryPredictions(3, predicted_classes)
     predictions = classifier.predict(input_fn=_input_fn, as_iterable=False)
-    self._assertBinaryPredictions(3, predictions)
+    self.assertAllEqual(predicted_classes, predictions)
     probabilities = classifier.predict_proba(
         input_fn=_input_fn, as_iterable=False)
     self._assertProbabilities(3, n_classes, probabilities)
@@ -545,15 +597,19 @@ class DNNClassifierTest(test.TestCase):
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(
+            input_fn=predict_input_fn, as_iterable=True))
+    self.assertListEqual(predicted_classes, [1, 0, 0])
     predictions = list(
         classifier.predict(
             input_fn=predict_input_fn, as_iterable=True))
-    self.assertListEqual(predictions, [1, 0, 0])
-    predictions = list(
+    self.assertAllEqual(predicted_classes, predictions)
+    predicted_proba = list(
         classifier.predict_proba(
             input_fn=predict_input_fn, as_iterable=True))
     self.assertAllClose(
-        predictions, [[0., 1., 0.], [1., 0., 0.], [1., 0., 0.]], atol=0.3)
+        predicted_proba, [[0., 1., 0.], [1., 0., 0.], [1., 0., 0.]], atol=0.3)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
@@ -605,7 +661,8 @@ class DNNClassifierTest(test.TestCase):
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric']).issubset(
             set(scores.keys())))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(classifier.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(classifier.predict_classes(
+        input_fn=predict_input_fn)))
     self.assertEqual(
         _sklearn.accuracy_score([1, 0, 0, 0], predictions),
         scores['my_accuracy'])
@@ -658,7 +715,7 @@ class DNNClassifierTest(test.TestCase):
 
     classifier.fit(input_fn=_input_fn, steps=5)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions1 = classifier.predict(input_fn=predict_input_fn)
+    predictions1 = classifier.predict_classes(input_fn=predict_input_fn)
     del classifier
 
     classifier2 = dnn.DNNClassifier(
@@ -667,7 +724,7 @@ class DNNClassifierTest(test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))
-    predictions2 = classifier2.predict(input_fn=predict_input_fn)
+    predictions2 = classifier2.predict_classes(input_fn=predict_input_fn)
     self.assertEqual(list(predictions1), list(predictions2))
 
   def testTrainWithPartitionedVariables(self):
@@ -1012,8 +1069,11 @@ class DNNRegressorTest(test.TestCase):
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores)
+    predicted_scores = regressor.predict_scores(
+        input_fn=_input_fn, as_iterable=False)
+    self.assertAllClose(labels, predicted_scores, atol=0.2)
     predictions = regressor.predict(input_fn=_input_fn, as_iterable=False)
-    self.assertAllClose(labels, predictions, atol=0.2)
+    self.assertAllClose(predicted_scores, predictions)
 
   def testPredict_AsIterable(self):
     """Tests predict method with as_iterable=True."""
@@ -1052,10 +1112,13 @@ class DNNRegressorTest(test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = list(
-        regressor.predict(
+    predicted_scores = list(
+        regressor.predict_scores(
             input_fn=predict_input_fn, as_iterable=True))
-    self.assertAllClose(labels, predictions, atol=0.2)
+    self.assertAllClose(labels, predicted_scores, atol=0.2)
+    predictions = list(
+        regressor.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllClose(predicted_scores, predictions)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
@@ -1092,7 +1155,8 @@ class DNNRegressorTest(test.TestCase):
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(regressor.predict_scores(
+        input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -1157,7 +1221,8 @@ class DNNRegressorTest(test.TestCase):
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(regressor.predict_scores(
+        input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -1209,7 +1274,7 @@ class DNNRegressorTest(test.TestCase):
 
     regressor.fit(input_fn=_input_fn, steps=5)
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = list(regressor.predict(input_fn=predict_input_fn))
+    predictions = list(regressor.predict_scores(input_fn=predict_input_fn))
     del regressor
 
     regressor2 = dnn.DNNRegressor(
@@ -1217,7 +1282,7 @@ class DNNRegressorTest(test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))
-    predictions2 = list(regressor2.predict(input_fn=predict_input_fn))
+    predictions2 = list(regressor2.predict_scores(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
   def testTrainWithPartitionedVariables(self):

@@ -126,10 +126,10 @@ def same_dynamic_shape(a, b):
       # static shape inference may break the equality comparison between
       # shape(a) and shape(b) in math_ops.equal.
       lambda: math_ops.reduce_all(math_ops.equal(
-          array_ops.concat_v2((
+          array_ops.concat((
               array_ops.shape(a),
               array_ops.shape(b)), 0),
-          array_ops.concat_v2((
+          array_ops.concat((
               array_ops.shape(b),
               array_ops.shape(a)), 0))),
       lambda: constant_op.constant(False))
@@ -371,7 +371,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
-      perm = array_ops.concat_v2((last, first), 0)
+      perm = array_ops.concat((last, first), 0)
       return array_ops.transpose(x, perm=perm)
 
 
@@ -427,7 +427,7 @@ def pick_vector(cond,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
-        array_ops.concat_v2((true_vector, false_vector), 0),
+        array_ops.concat((true_vector, false_vector), 0),
         [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
@@ -558,10 +558,67 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     # Gather up, reshape, and return.
     y = array_ops.reshape(x, [-1, d])
     y = array_ops.gather_nd(y, idx)
-    y = array_ops.reshape(y, array_ops.concat_v2([batch_shape, [n, n]], 0))
+    y = array_ops.reshape(y, array_ops.concat([batch_shape, [n, n]], 0))
     y = array_ops.matrix_band_part(y, -1, 0)
     y.set_shape(y.get_shape().merge_with(final_shape))
     return y
+
+
+# TODO(jvdillon): Merge this test back into:
+# tensorflow/python/ops/softplus_op_test.py
+# once TF core is accepting new ops.
+def softplus_inverse(x, name=None):
+  """Computes the inverse softplus, i.e., x = softplus_inverse(softplus(x)).
+
+  Mathematically this op is equivalent to:
+
+  ```none
+  softplus_inverse = log(exp(x) - 1.)
+  ```
+
+  Args:
+    x: `Tensor`. Non-negative (not enforced), floating-point.
+    name: A name for the operation (optional).
+
+  Returns:
+    `Tensor`. Has the same type/shape as input `x`.
+  """
+  with ops.name_scope(name, "softplus_inverse", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    # We begin by deriving a more numerically stable softplus_inverse:
+    # x = softplus(y) = Log[1 + exp{y}], (which means x > 0).
+    # ==> exp{x} = 1 + exp{y}                                (1)
+    # ==> y = Log[exp{x} - 1]                                (2)
+    #       = Log[(exp{x} - 1) / exp{x}] + Log[exp{x}]
+    #       = Log[(1 - exp{-x}) / 1] + Log[exp{x}]
+    #       = Log[1 - exp{-x}] + x                           (3)
+    # (2) is the "obvious" inverse, but (3) is more stable than (2) for large x.
+    # For small x (e.g. x = 1e-10), (3) will become -inf since 1 - exp{-x} will
+    # be zero.  To fix this, we use 1 - exp{-x} approx x for small x > 0.
+    #
+    # In addition to the numerically stable derivation above, we clamp
+    # small/large values to be congruent with the logic in:
+    # tensorflow/core/kernels/softplus_op.h
+    #
+    # Finally, we set the input to one whenever the input is too large or too
+    # small. This ensures that no unchosen codepath is +/- inf. This is
+    # necessary to ensure the gradient doesn't get NaNs. Recall that the
+    # gradient of `where` behaves like `pred*pred_true + (1-pred)*pred_false`
+    # thus an `inf` in an unselected path results in `0*inf=nan`. We are careful
+    # to overwrite `x` with ones only when we will never actually use this
+    # value.  Note that we use ones and not zeros since `log(expm1(0.)) = -inf`.
+    threshold = np.log(np.finfo(x.dtype.as_numpy_dtype).eps) + 2.
+    is_too_small = math_ops.less(x, np.exp(threshold))
+    is_too_large = math_ops.greater(x, -threshold)
+    too_small_value = math_ops.log(x)
+    too_large_value = x
+    # This `where` will ultimately be a NOP because we won't select this
+    # codepath whenever we used the surrogate `ones_like`.
+    x = array_ops.where(math_ops.logical_or(is_too_small, is_too_large),
+                        array_ops.ones_like(x), x)
+    y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
+    return array_ops.where(is_too_small, too_small_value,
+                           array_ops.where(is_too_large, too_large_value, y))
 
 
 class AppendDocstring(object):

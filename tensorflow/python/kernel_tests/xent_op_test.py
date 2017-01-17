@@ -24,6 +24,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -171,6 +173,26 @@ class XentTest(test.TestCase):
       err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
+
+  def testSecondGradient(self):
+    with self.test_session():
+      l = constant_op.constant([0.0, 0.0, 1.0, 0.0,
+                                1.0, 0.0, 0.0, 0.0,
+                                0.0, 0.5, 0.0, 0.5], shape=[12],
+                               dtype=dtypes.float64, name="l")
+      f = constant_op.constant([0.1, 0.2, 0.3, 0.4,
+                                0.1, 0.4, 0.9, 1.6,
+                                0.1, 0.8, 2.7, 6.4], shape=[12],
+                               dtype=dtypes.float64, name="f")
+      x = nn_ops.softmax_cross_entropy_with_logits(labels=l, logits=f,
+                                                   name="xent")
+      loss = math_ops.reduce_mean(x)
+
+    # Taking ths second gradient should fail, since it is not
+    # yet supported.
+    with self.assertRaisesRegexp(LookupError,
+                                 ".*No gradient defined.*PreventGradient.*"):
+      _ = gradients_impl.hessians(loss, [f])
 
   def testWrapper(self):
     features = np.array(

@@ -297,22 +297,27 @@ class MeanTest(test.TestCase):
 
   def testInvalidWeights(self):
     values_placeholder = array_ops.placeholder(dtype=dtypes_lib.float32)
-    values = _test_values((3, 2, 4))
+    values = _test_values((3, 2, 4, 1))
     invalid_weights = (
         (1,),
         (1, 1),
+        (1, 1, 1),
         (3, 2),
-        (2, 4),
-        (1, 1, 1, 1),
-        (3, 2, 4, 1),)
+        (3, 2, 4),
+        (2, 4, 1),
+        (4, 2, 4, 1),
+        (3, 3, 4, 1),
+        (3, 2, 5, 1),
+        (3, 2, 4, 2),
+        (1, 1, 1, 1, 1))
+    expected_error_msg = 'weights can not be broadcast to values'
     for invalid_weight in invalid_weights:
       # Static shapes.
-      with self.assertRaisesRegexp(ValueError, 'must have rank in.*0.*3'):
+      with self.assertRaisesRegexp(ValueError, expected_error_msg):
         metrics.mean(values, invalid_weight)
 
       # Dynamic shapes.
-      with self.assertRaisesRegexp(
-          errors_impl.OpError, 'must have rank in.*0.*3'):
+      with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
         with self.test_session():
           _, update_op = metrics.mean(values_placeholder, invalid_weight)
           variables.local_variables_initializer().run()
@@ -3277,14 +3282,14 @@ class MeanIOUTest(test.TestCase):
       self.assertAlmostEqual(desired_output, miou.eval())
 
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = array_ops.concat_v2(
+    predictions = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[5]), constant_op.constant(
                     1, shape=[5])
         ],
         0)
-    labels = array_ops.concat_v2(
+    labels = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[3]), constant_op.constant(
@@ -3296,7 +3301,7 @@ class MeanIOUTest(test.TestCase):
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
       confusion_matrix = update_op.eval()
-      self.assertAllEqual([[3, 2], [0, 5]], confusion_matrix)
+      self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
       desired_miou = np.mean([3. / 5., 5. / 7.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 
@@ -3317,18 +3322,18 @@ class MeanIOUTest(test.TestCase):
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[0, 40], [0, 0]], update_op.eval())
+      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
       self.assertEqual(0., miou.eval())
 
   def testResultsWithSomeMissing(self):
-    predictions = array_ops.concat_v2(
+    predictions = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[5]), constant_op.constant(
                     1, shape=[5])
         ],
         0)
-    labels = array_ops.concat_v2(
+    labels = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[3]), constant_op.constant(
@@ -3336,7 +3341,7 @@ class MeanIOUTest(test.TestCase):
         ],
         0)
     num_classes = 2
-    weights = array_ops.concat_v2(
+    weights = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[1]), constant_op.constant(
@@ -3348,7 +3353,7 @@ class MeanIOUTest(test.TestCase):
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[2, 2], [0, 4]], update_op.eval())
+      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 

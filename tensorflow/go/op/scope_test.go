@@ -84,6 +84,15 @@ func TestScopeFinalize(t *testing.T) {
 	}
 }
 
+func TestMultipleGeneratedOps(t *testing.T) {
+	s := NewScope()
+	Placeholder(s.SubScope("x"), tf.Float)
+	Placeholder(s.SubScope("y"), tf.Float)
+	if _, err := s.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func Example() {
 	// This example creates a Graph that multiplies a constant matrix with
 	// a matrix to be provided during graph execution (via

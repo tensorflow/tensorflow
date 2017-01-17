@@ -1,6 +1,7 @@
 Command-line-interface debugger hook.
 
-Can be used as a monitor/hook for tf.train.MonitoredSession.
+Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
+`tf.contrib.learn`'s `Estimator`s and `Experiment`s.
 - - -
 
 #### `tf_debug.LocalCLIDebugHook.__enter__()` {#LocalCLIDebugHook.__enter__}
@@ -17,9 +18,14 @@ Can be used as a monitor/hook for tf.train.MonitoredSession.
 
 - - -
 
-#### `tf_debug.LocalCLIDebugHook.__init__()` {#LocalCLIDebugHook.__init__}
+#### `tf_debug.LocalCLIDebugHook.__init__(ui_type='curses')` {#LocalCLIDebugHook.__init__}
 
 Create a local debugger command-line interface (CLI) hook.
+
+##### Args:
+
+
+*  <b>`ui_type`</b>: (str) user-interface type.
 
 
 - - -
@@ -38,7 +44,7 @@ Add a tensor filter.
 
 - - -
 
-#### `tf_debug.LocalCLIDebugHook.after_create_session(session)` {#LocalCLIDebugHook.after_create_session}
+#### `tf_debug.LocalCLIDebugHook.after_create_session(session, coord)` {#LocalCLIDebugHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -54,6 +60,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -186,7 +193,7 @@ Overrides on-session-init callback.
 
 ##### Returns:
 
-  An instance of OnSessionInitResponse.
+  An instance of `OnSessionInitResponse`.
 
 
 - - -

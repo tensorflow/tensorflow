@@ -482,8 +482,8 @@ static string GetPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
 
   // Prepare a NamedTuple type to hold the outputs, if there are multiple
   if (num_outs > 1) {
-    const string tuple_type_prefix =
-        strings::StrCat("_", op_def.name(), "Output = collections.namedtuple(");
+    const string tuple_type_prefix = strings::StrCat(
+        "_", op_def.name(), "Output = _collections.namedtuple(");
     const string tuple_type_suffix = strings::StrCat(
         "\"", op_def.name(), "\", ", lower_op_name_outputs, ")");
     strings::Appendf(
@@ -656,18 +656,18 @@ string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
 This file is MACHINE GENERATED! Do not edit.
 """
 
-import collections
+import collections as _collections
 
-from google.protobuf import text_format
+from google.protobuf import text_format as _text_format
 
-from tensorflow.core.framework import op_def_pb2
+from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 
 # Needed to trigger the call to _set_call_cpp_shape_fn.
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import common_shapes as _common_shapes
 
-from tensorflow.python.framework import op_def_registry
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import op_def_library
+from tensorflow.python.framework import op_def_registry as _op_def_registry
+from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import op_def_library as _op_def_library
 )");
 
   // We'll make a copy of ops that filters out descriptions.
@@ -699,7 +699,7 @@ from tensorflow.python.framework import op_def_library
                        GetPythonOp(op_def, is_hidden, lower_case_name));
 
     if (!require_shapes) {
-      strings::Appendf(&result, "ops.RegisterShape(\"%s\")(None)\n",
+      strings::Appendf(&result, "_ops.RegisterShape(\"%s\")(None)\n",
                        op_def.name().c_str());
     }
 
@@ -709,10 +709,10 @@ from tensorflow.python.framework import op_def_library
   }
 
   strings::Appendf(&result, R"(def _InitOpDefLibrary():
-  op_list = op_def_pb2.OpList()
-  text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
-  op_def_registry.register_op_list(op_list)
-  op_def_lib = op_def_library.OpDefLibrary()
+  op_list = _op_def_pb2.OpList()
+  _text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
+  _op_def_registry.register_op_list(op_list)
+  op_def_lib = _op_def_library.OpDefLibrary()
   op_def_lib.add_op_list(op_list)
   return op_def_lib
 

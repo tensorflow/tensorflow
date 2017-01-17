@@ -18,15 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
 
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
 
-FLAGS = flags.FLAGS
-flags.DEFINE_string("file_name", "", "Checkpoint filename")
-flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
+FLAGS = None
 
 
 def print_tensors_in_checkpoint_file(file_name, tensor_name):
@@ -66,4 +64,19 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--file_name",
+      type=str,
+      default="",
+      help="Checkpoint filename"
+  )
+  parser.add_argument(
+      "--tensor_name",
+      type=str,
+      default="",
+      help="Name of the tensor to inspect"
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -198,7 +198,7 @@ def concat(labeled_tensors, axis_name, name=None):
 
     concat_axis = core.concat_axes(concat_axis_list)
     concat_dimension = axis_names.index(axis_name)
-    concat_tensor = array_ops.concat_v2(tensors, concat_dimension, name=scope)
+    concat_tensor = array_ops.concat(tensors, concat_dimension, name=scope)
     values = list(axes_0.values())
     concat_axes = (values[:concat_dimension] + [concat_axis] +
                    values[concat_dimension + 1:])

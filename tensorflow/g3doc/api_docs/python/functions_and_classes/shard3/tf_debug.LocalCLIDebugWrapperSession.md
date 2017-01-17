@@ -19,7 +19,7 @@ will launch the command-line interface (CLI) of tfdbg.
 
 - - -
 
-#### `tf_debug.LocalCLIDebugWrapperSession.__init__(sess, dump_root=None, log_usage=True)` {#LocalCLIDebugWrapperSession.__init__}
+#### `tf_debug.LocalCLIDebugWrapperSession.__init__(sess, dump_root=None, log_usage=True, ui_type='curses')` {#LocalCLIDebugWrapperSession.__init__}
 
 Constructor of LocalCLIDebugWrapperSession.
 
@@ -32,6 +32,8 @@ Constructor of LocalCLIDebugWrapperSession.
     does not exist, it will be created by the debugger core during debug
     `run()` calls and removed afterwards.
 *  <b>`log_usage`</b>: (`bool`) whether the usage of this class is to be logged.
+*  <b>`ui_type`</b>: (`str`) requested UI type. Currently supported:
+    (curses | readline)
 
 ##### Raises:
 
@@ -148,7 +150,7 @@ Overrides on-session-init callback.
 
 ##### Returns:
 
-  An instance of OnSessionInitResponse.
+  An instance of `OnSessionInitResponse`.
 
 
 - - -

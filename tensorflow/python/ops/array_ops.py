@@ -55,17 +55,9 @@ or join multiple tensors together.
 @@tile
 @@pad
 @@concat
-@@concat_v2
 @@stack
-@@empty
-@@empty_like
-@@alias_inplace_update
-@@alias_inplace_add
-@@alias_inplace_subtract
 @@parallel_stack
-@@pack
 @@unstack
-@@unpack
 @@reverse_sequence
 @@reverse
 @@reverse_v2
@@ -110,6 +102,7 @@ import sys
 import numpy as np
 import six
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -497,7 +490,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
       shrink_axis_mask |= (1 << index)
     index += 1
 
-  # pack possibly involves no tensors, so we must use op_scope correct graph.
+  # stack possibly involves no tensors, so we must use op_scope correct graph.
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
     if begin:
@@ -749,194 +742,6 @@ def _SliceHelperVar(var, slice_spec):
 ops.Tensor._override_operator("__getitem__", _SliceHelper)
 
 
-def _inplace_helper(value, loc, update, op):
-  """Applies an inplace op on `value` at `loc` with `update`.
-
-  op is one of gen_array_ops._inplace_update, gen_array_ops._inplace_add, or
-  gen_array_ops._inplace_subtract.
-
-  If `loc` is None, `value` and `update` must be the same size.
-  ```
-  value op update
-  ```
-
-  If `loc` is a scalar, `value` has rank 1 higher than `update`
-  ```
-  value[i, :] op update
-  ```
-
-  If `loc` is a vector, `value` has the same rank as `update`
-  ```
-  value[loc, :] op update
-  ```
-
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-    op: One of gen_array_ops._inplace_update, ._inplace_add, ._inplace_subtract
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  value = ops.convert_to_tensor(value)
-  update = ops.convert_to_tensor(update, value.dtype)
-
-  if loc is None:
-    # Full tensor
-    return reshape(op(reshape(value, [1, -1]),
-                      gen_math_ops.cast([0], dtypes.int64),
-                      reshape(update, [1, -1])),
-                   shape(value))
-
-  loc = gen_math_ops.cast(loc, dtypes.int64)
-
-  if loc.get_shape().ndims == 0:
-    # Single 0-dim update
-    return op(value, reshape(loc, [1]), expand_dims(update, 0))
-
-  return op(value, loc, update)
-
-
-def empty(output_shape, dtype, init=False):
-  """Creates an empty Tensor with shape `output_shape` and type `dtype`.
-
-  The memory can optionally be initialized. This is usually useful in
-  conjunction with in-place operations.
-
-  Args:
-    output_shape: 1-D `Tensor` indicating the shape of the output.
-    dtype: The element type of the returned tensor.
-    init: `bool` indicating whether or not to zero the allocated memory.
-
-  Returns:
-    output: An empty Tensor of the specified type.
-  """
-  return gen_array_ops._empty(output_shape, dtype, init=init)
-
-
-def empty_like(value, init=None):
-  """Creates an empty Tensor with the same shape and type `dtype` as value.
-
-  The memory can optionally be initialized. This op is usually useful in
-  conjunction with in-place operations.
-
-  Args:
-    value: A `Tensor` whose shape will be used.
-    init: Initalize the returned tensor with the default value of
-      `value.dtype()` if True.  Otherwise do not initialize.
-
-  Returns:
-    output: An empty Tensor of the specified shape and type.
-  """
-  value = ops.convert_to_tensor(value)
-  return gen_array_ops._empty(shape(value), value.dtype, init=init)
-
-
-def alias_inplace_update(value, loc, update):
-  """Updates input `value` at `loc` with `update`. Aliases value.
-
-     If `loc` is None, `value` and `update` must be the same size.
-     ```
-     value = update
-     ```
-
-     If `loc` is a scalar, `value` has rank 1 higher than `update`
-     ```
-     value[i, :] = update
-     ```
-
-     If `loc` is a vector, `value` has the same rank as `update`
-     ```
-     value[loc, :] = update
-     ```
-
-     Warning: If you use this function you will almost certainly want to add
-     a control dependency as done in the implementation of parallel_stack to
-     avoid race conditions.
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  return _inplace_helper(value, loc, update, gen_array_ops._inplace_update)
-
-
-def alias_inplace_add(value, loc, update):
-  """Updates input `value` at `loc` with `update`. Aliases value.
-
-     If `loc` is None, `value` and `update` must be the same size.
-     ```
-     value += update
-     ```
-
-     If `loc` is a scalar, `value` has rank 1 higher than `update`
-     ```
-     value[i, :] += update
-     ```
-
-     If `loc` is a vector, `value` has the same rank as `update`
-     ```
-     value[loc, :] += update
-     ```
-
-     Warning: If you use this function you will almost certainly want to add
-     a control dependency as done in the implementation of parallel_stack to
-     avoid race conditions.
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  return _inplace_helper(value, loc, update, gen_array_ops._inplace_add)
-
-
-def alias_inplace_subtract(value, loc, update):
-  """Updates input `value` at `loc` with `update`. Aliases value.
-
-     If `loc` is None, `value` and `update` must be the same size.
-     ```
-     value -= update
-     ```
-
-     If `loc` is a scalar, `value` has rank 1 higher than `update`
-     ```
-     value[i, :] -= update
-     ```
-
-     If `loc` is a vector, `value` has the same rank as `update`
-     ```
-     value[loc, :] -= update
-     ```
-
-     Warning: If you use this function you will almost certainly want to add
-     a control dependency as done in the implementation of parallel_stack to
-     avoid race conditions.
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, Scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  return _inplace_helper(value, loc, update, gen_array_ops._inplace_subtract)
-
-
 def parallel_stack(values, name="parallel_stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor in parallel.
 
@@ -973,26 +778,15 @@ def parallel_stack(values, name="parallel_stack"):
   Returns:
     output: A stacked `Tensor` with the same type as `values`.
   """
-  try:
-    # If the input is a constant list, it can be converted to a constant op
-    return ops.convert_to_tensor(values, name=name)
-  except (TypeError, ValueError):
-    pass  # Input list contains non-constant tensors
+  with ops.name_scope(name):
+    value_t = ops.convert_to_tensor(values[0])
+    value_shape = ops.convert_to_tensor(value_t).get_shape()
 
-  value_shape = ops.convert_to_tensor(values[0]).get_shape()
-
-  output_shape = tensor_shape.TensorShape([len(values)])
-  output_shape = output_shape.concatenate(value_shape)
-
-  outputs = empty(output_shape, values[0].dtype)
-  output_ops = []
-  for i in range(len(values)):
-    output_op = alias_inplace_update(outputs, i, values[i])
-    output_ops.append(output_op)
-  with ops.control_dependencies(output_ops):
-    outputs = identity(outputs)
-  return outputs
-
+    output_shape = tensor_shape.TensorShape([len(values)])
+    output_shape = output_shape.concatenate(value_shape)
+    # expand_dims converts concat to stack.
+    return gen_array_ops._parallel_concat(
+        [expand_dims(value, 0) for value in values], shape=output_shape)
 
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
@@ -1046,50 +840,6 @@ def stack(values, axis=0, name="stack"):
                        (axis, -expanded_num_dims, expanded_num_dims))
 
   return gen_array_ops._pack(values, axis=axis, name=name)
-
-
-@deprecated(
-    "2016-12-14",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.stack().")
-def pack(values, axis=0, name="pack"):
-  """Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
-
-  Packs the list of tensors in `values` into a tensor with rank one higher than
-  each tensor in `values`, by packing them along the `axis` dimension.
-  Given a list of length `N` of tensors of shape `(A, B, C)`;
-
-  if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-  if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
-  Etc.
-
-  For example:
-
-  ```prettyprint
-  # 'x' is [1, 4]
-  # 'y' is [2, 5]
-  # 'z' is [3, 6]
-  pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-  pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
-  ```
-
-  This is the opposite of unpack.  The numpy equivalent is
-
-      tf.pack([x, y, z]) = np.asarray([x, y, z])
-
-  Args:
-    values: A list of `Tensor` objects with the same shape and type.
-    axis: An `int`. The axis to pack along. Defaults to the first dimension.
-      Supports negative indexes.
-    name: A name for this operation (optional).
-
-  Returns:
-    output: A packed `Tensor` with the same type as `values`.
-
-  Raises:
-    ValueError: If `axis` is out of the range [-(R+1), R+1).
-  """
-  return stack(values, axis, name)
 
 
 # pylint: disable=invalid-name
@@ -1229,50 +979,13 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
-@deprecated(
-    "2016-12-14",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.unstack().")
-def unpack(value, num=None, axis=0, name="unpack"):
-  """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
-
-  Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
-  If `num` is not specified (the default), it is inferred from `value`'s shape.
-  If `value.shape[axis]` is not known, `ValueError` is raised.
-
-  For example, given a tensor of shape `(A, B, C, D)`;
-
-  If `axis == 0` then the i'th tensor in `output` is the slice
-    `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
-    (Note that the dimension unpacked along is gone, unlike `split`).
-
-  If `axis == 1` then the i'th tensor in `output` is the slice
-    `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
-  Etc.
-
-  This is the opposite of pack.  The numpy equivalent is
-
-      tf.unpack(x, n) = list(x)
-
-  Args:
-    value: A rank `R > 0` `Tensor` to be unpacked.
-    num: An `int`. The length of the dimension `axis`. Automatically inferred
-      if `None` (the default).
-    axis: An `int`. The axis to unpack along. Defaults to the first
-      dimension. Supports negative indexes.
-    name: A name for the operation (optional).
-
-  Returns:
-    The list of `Tensor` objects unpacked from `value`.
-
-  Raises:
-    ValueError: If `num` is unspecified and cannot be inferred.
-    ValueError: If `axis` is out of the range [-R, R).
-  """
-  return unstack(value, num, axis, name)
-
-
+# concat_v2 is an alias for concat. concat_v2 will be deprecated and removed
+# soon, please use concat.
 def concat_v2(values, axis, name="concat_v2"):
+  return concat(values, axis, name)
+
+
+def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
 
   Concatenates the list of tensors `values` along dimension `axis`.  If
@@ -1296,26 +1009,26 @@ def concat_v2(values, axis, name="concat_v2"):
   ```python
   t1 = [[1, 2, 3], [4, 5, 6]]
   t2 = [[7, 8, 9], [10, 11, 12]]
-  tf.concat_v2([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-  tf.concat_v2([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+  tf.concat([t1, t2], 0) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+  tf.concat([t1, t2], 1) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
 
   # tensor t3 with shape [2, 3]
   # tensor t4 with shape [2, 3]
-  tf.shape(tf.concat_v2([t3, t4], 0)) ==> [4, 3]
-  tf.shape(tf.concat_v2([t3, t4], 1)) ==> [2, 6]
+  tf.shape(tf.concat([t3, t4], 0)) ==> [4, 3]
+  tf.shape(tf.concat([t3, t4], 1)) ==> [2, 6]
   ```
 
-  Note: If you are concatenating along a new axis consider using pack.
+  Note: If you are concatenating along a new axis consider using stack.
   E.g.
 
   ```python
-  tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
+  tf.concat([tf.expand_dims(t, axis) for t in tensors], axis)
   ```
 
   can be rewritten as
 
   ```python
-  tf.pack(tensors, axis=axis)
+  tf.stack(tensors, axis=axis)
   ```
 
   Args:
@@ -1343,67 +1056,6 @@ def concat_v2(values, axis, name="concat_v2"):
   return gen_array_ops._concat_v2(values=values,
                                   axis=axis,
                                   name=name)
-
-
-@deprecated(
-    "2016-12-14",
-    "This op will be removed after the deprecation date. "
-    "Please switch to tf.concat_v2().")
-def concat(concat_dim, values, name="concat"):
-  """Concatenates tensors along one dimension.
-
-  Concatenates the list of tensors `values` along dimension `concat_dim`.  If
-  `values[i].shape = [D0, D1, ... Dconcat_dim(i), ...Dn]`, the concatenated
-  result has shape
-
-      [D0, D1, ... Rconcat_dim, ...Dn]
-
-  where
-
-      Rconcat_dim = sum(Dconcat_dim(i))
-
-  That is, the data from the input tensors is joined along the `concat_dim`
-  dimension.
-
-  The number of dimensions of the input tensors must match, and all dimensions
-  except `concat_dim` must be equal.
-
-  For example:
-
-  ```python
-  t1 = [[1, 2, 3], [4, 5, 6]]
-  t2 = [[7, 8, 9], [10, 11, 12]]
-  tf.concat(0, [t1, t2]) ==> [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-  tf.concat(1, [t1, t2]) ==> [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
-
-  # tensor t3 with shape [2, 3]
-  # tensor t4 with shape [2, 3]
-  tf.shape(tf.concat(0, [t3, t4])) ==> [4, 3]
-  tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
-  ```
-
-  Note: If you are concatenating along a new axis consider using pack.
-  E.g.
-
-  ```python
-  tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
-  ```
-
-  can be rewritten as
-
-  ```python
-  tf.pack(tensors, axis=axis)
-  ```
-
-  Args:
-    concat_dim: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
-    values: A list of `Tensor` objects or a single `Tensor`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` resulting from concatenation of the input tensors.
-  """
-  return concat_v2(values, concat_dim, name)
 
 
 def boolean_mask(tensor, mask, name="boolean_mask"):
@@ -1465,7 +1117,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     leading_size = gen_math_ops._prod(shape(tensor)[:ndims_mask], [0])
     tensor = reshape(
         tensor,
-        concat_v2([[leading_size], shape(tensor)[ndims_mask:]], 0))
+        concat([[leading_size], shape(tensor)[ndims_mask:]], 0))
     first_dim = shape_tensor[:ndims_mask].num_elements()
     tensor.set_shape(
         tensor_shape.as_shape([first_dim])
@@ -1689,7 +1341,7 @@ def matrix_transpose(a, name="matrix_transpose"):
       perm = list(range(ndims - 2)) + [ndims - 1] + [ndims - 2]
     else:
       a_rank = rank(a)
-      perm = concat_v2(
+      perm = concat(
           (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]), 0)
 
     return transpose(a, perm=perm)

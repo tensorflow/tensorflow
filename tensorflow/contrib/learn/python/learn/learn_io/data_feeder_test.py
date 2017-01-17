@@ -253,20 +253,20 @@ class DataFeederTest(test.TestCase):
       inp, out = df.input_builder()
       feed_dict_fn = df.get_feed_dict_fn()
       feed_dict = feed_dict_fn()
-      self._assertAllClose(inp, [[1, 2], [3, 4]], feed_dict, 'name')
-      self._assertAllClose(out, [1, 2], feed_dict, 'name')
+      self._assertAllClose(inp, [[[1, 2]], [[3, 4]]], feed_dict, 'name')
+      self._assertAllClose(out, [[[1], [2]], [[2], [2]]], feed_dict, 'name')
 
     def x_iter(wrap_dict=False):
-      yield np.array([1, 2]) if not wrap_dict else self._wrap_dict(
-          np.array([1, 2]), 'in')
-      yield np.array([3, 4]) if not wrap_dict else self._wrap_dict(
-          np.array([3, 4]), 'in')
+      yield np.array([[1, 2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[1, 2]]), 'in')
+      yield np.array([[3, 4]]) if not wrap_dict else self._wrap_dict(
+          np.array([[3, 4]]), 'in')
 
     def y_iter(wrap_dict=False):
-      yield np.array([1]) if not wrap_dict else self._wrap_dict(
-          np.array([1]), 'out')
-      yield np.array([2]) if not wrap_dict else self._wrap_dict(
-          np.array([2]), 'out')
+      yield np.array([[1], [2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[1], [2]]), 'out')
+      yield np.array([[2], [2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[2], [2]]), 'out')
 
     func(
         data_feeder.StreamingDataFeeder(
@@ -277,6 +277,16 @@ class DataFeederTest(test.TestCase):
             y_iter(True),
             n_classes=self._wrap_dict(0, 'out'),
             batch_size=2))
+    # Test non-full batches.
+    func(
+        data_feeder.StreamingDataFeeder(
+            x_iter(), y_iter(), n_classes=0, batch_size=10))
+    func(
+        data_feeder.StreamingDataFeeder(
+            x_iter(True),
+            y_iter(True),
+            n_classes=self._wrap_dict(0, 'out'),
+            batch_size=10))
 
   def test_dask_data_feeder(self):
     if HAS_PANDAS and HAS_DASK:

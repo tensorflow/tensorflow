@@ -30,7 +30,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.deprecation import deprecated
 
 
 def _maybe_set_device(handle_op, value_t):
@@ -63,18 +62,19 @@ class TensorArray(object):
 
   @@handle
   @@flow
+  @@dtype
 
   @@read
   @@gather
-  @@pack
   @@stack
   @@concat
 
   @@write
   @@scatter
-  @@unpack
   @@unstack
   @@split
+
+  @@identity
 
   @@grad
   """
@@ -216,6 +216,20 @@ class TensorArray(object):
     else:
       self._element_shape.append(shape)
 
+  def identity(self):
+    """Returns a TensorArray with the same content and properties.
+
+    Returns:
+      A new TensorArray object with flow that ensures the control dependencies
+      from the contexts will become control dependencies for writes, reads, etc.
+      Use this object all for subsequent operations.
+    """
+    flow = array_ops.identity(self._flow)
+    ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow,
+                     infer_shape=self._infer_shape)
+    ta._element_shape = self._element_shape
+    return ta
+
   def grad(self, source, flow=None, name=None):
     # tensor_array_grad requires a flow input when forward
     # TensorArrays are dynamically sized.  This forces the creation
@@ -306,14 +320,6 @@ class TensorArray(object):
       with ops.name_scope(name, "TensorArrayStack", [self._handle]):
         return self.gather(math_ops.range(0, self.size()), name=name)
 
-  @deprecated("2016-12-12",
-              "This op will be removed after the deprecation date. "
-              "Please switch to tf.stack.")
-  def pack(self, name=None):
-    return self.stack(name)
-
-  pack.__doc__ = stack.__doc__
-
   def gather(self, indices, name=None):
     """Return selected values in the TensorArray as a packed `Tensor`.
 
@@ -392,14 +398,6 @@ class TensorArray(object):
       num_elements = array_ops.shape(value)[0]
       return self.scatter(
           indices=math_ops.range(0, num_elements), value=value, name=name)
-
-  @deprecated("2016-12-12",
-              "This op will be removed after the deprecation date. "
-              "Please switch to tf.unstack.")
-  def unpack(self, value, name=None):
-    return self.unstack(value, name)
-
-  unpack.__doc__ = unstack.__doc__
 
   def scatter(self, indices, value, name=None):
     """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.

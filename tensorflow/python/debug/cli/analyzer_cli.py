@@ -32,8 +32,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
-from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import ui_factory
 
 
 # String constants for the depth-dependent hanging indent at the beginning
@@ -1246,16 +1246,17 @@ class DebugAnalyzer(object):
     return output_with_header
 
 
-def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
+def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
   """Create an instance of CursesUI based on a DebugDumpDir object.
 
   Args:
     debug_dump: (debug_data.DebugDumpDir) The debug dump to use.
     tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
       filter (Callable).
+    ui_type: (str) requested UI type, e.g., "curses", "readline".
 
   Returns:
-    (curses_ui.CursesUI) A curses CLI object with a set of standard analyzer
+    (base_ui.BaseUI) A BaseUI subtype object with a set of standard analyzer
       commands and tab-completions registered.
   """
 
@@ -1265,7 +1266,7 @@ def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
       analyzer.add_tensor_filter(
           tensor_filter_name, tensor_filters[tensor_filter_name])
 
-  cli = curses_ui.CursesUI()
+  cli = ui_factory.get_ui(ui_type)
   cli.register_command_handler(
       "list_tensors",
       analyzer.list_tensors,
