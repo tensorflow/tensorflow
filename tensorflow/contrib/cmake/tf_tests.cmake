@@ -120,6 +120,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/*_test.py"
   )
 
   # exclude the onces we don't want
