@@ -1283,7 +1283,7 @@ class Estimator(BaseEstimator):
 
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
-        data_flow_ops.initialize_all_tables()
+        data_flow_ops.tables_initializer()
         saver_for_restore = saver.Saver(
             variables.global_variables(),
             sharded=True)
@@ -1291,7 +1291,7 @@ class Estimator(BaseEstimator):
 
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
-            data_flow_ops.initialize_all_tables())
+            data_flow_ops.tables_initializer())
 
         # Perform the export
         builder = saved_model_builder.SavedModelBuilder(export_dir)

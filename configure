@@ -49,6 +49,15 @@ while true; do
   # Retry
 done
 
+## Set up architecture-dependent optimization flags.
+if [ -z "$CC_OPT_FLAGS" ]; then
+  default_cc_opt_flags="-march=native"
+  read -p "Please specify optimization flags to use during compilation [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
+  if [ -z "$CC_OPT_FLAGS" ]; then
+    CC_OPT_FLAGS=$default_cc_opt_flags
+  fi
+fi
+
 if is_windows; then
   TF_NEED_GCP=0
   TF_NEED_HDFS=0
@@ -147,6 +156,12 @@ fi
 
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
+
+# Append CC optimization flags to bazel.rc
+echo >> tools/bazel.rc
+for opt in $CC_OPT_FLAGS; do
+  echo "build:opt --cxxopt=$opt --copt=$opt" >> tools/bazel.rc
+done
 
 # Run the gen_git_source to create links where bazel can track dependencies for
 # git hash propagation

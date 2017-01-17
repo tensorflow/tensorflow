@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
-namespace ops {
 
 class Output;
 
@@ -193,6 +192,7 @@ class Input {
   // * A scalar, or a multi-dimensional tensor specified as a recursive
   //   initializer list. This enables directly passing constants as
   //   inputs to op wrappers.
+  // * A Tensor object.
   Input(const Output& o) : output_(o) {}  // NOLINT(runtime/explicit)
 
   template <typename T, typename = typename std::enable_if<
@@ -249,7 +249,7 @@ typedef std::vector<Output> OutputList;
 class InputList {
  public:
   // Implicitly convert a list of outputs to a list of inputs. This is useful to
-  // write code such as tf.Concat(tf.Split(x, 4)).
+  // write code such as ops::Concat(ops::Split(x, 4)).
   InputList(const OutputList& out) {  // NOLINT(runtime/explicit)
     for (auto const& x : out) {
       inputs_.push_back(x);
@@ -284,7 +284,19 @@ class InputList {
   std::vector<Input> inputs_;
 };
 
+// These symbols used to live in the ops namespace, so we temporarily
+// declare some aliases there. TODO(josh11b): Delete this!
+namespace ops {
+
+using ::tensorflow::Input;
+using ::tensorflow::InputList;
+using ::tensorflow::Operation;
+using ::tensorflow::Output;
+using ::tensorflow::OutputHash;
+using ::tensorflow::OutputList;
+
 }  // namespace ops
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_OPS_H_
