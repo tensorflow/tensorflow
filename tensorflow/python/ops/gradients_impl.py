@@ -225,6 +225,24 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y), constant_op.constant(
                 1, dtype=y.dtype))
+      continue
+    if y.dtype.is_real or y.dtype.is_integer:
+      if not grad_y.dtype.is_real and not grad_y.dtype.is_integer:
+          raise ValueError("Gradient type %s generated for real or "
+                           "integer-valued tensor %s with type %s must be "
+                           "real or integer" %
+                           (dtypes.as_dtype(grad_y.dtype).name, y,
+                            dtypes.as_dtype(y.dtype).name))
+    elif y.dtype.is_complex:
+      if not grad_y.dtype.is_complex:
+          raise ValueError("Gradient type %s generated for complex-valued "
+                           "tensor %s with type %s must be real" %
+                           (dtypes.as_dtype(grad_y.dtype).name, y,
+                            dtypes.as_dtype(y.dtype).name))
+    else:
+      raise ValueError("Tensor %s with type %s must be numeric "
+                       "to obtain a default gradient" %
+                       (y, dtypes.as_dtype(y.dtype).name))
   return grad_ys
 
 
@@ -235,7 +253,7 @@ def _IsTrainable(tensor):
 
 
 def _VerifyGeneratedGradients(grads, op):
-  """Verify that gradients are valid in number.
+  """Verify that gradients are valid in number and type.
 
   Args:
     grads: List of generated gradients.
@@ -247,13 +265,29 @@ def _VerifyGeneratedGradients(grads, op):
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-  for grad in grads:
-    if grad is None:
-      continue
-    if not (grad.dtype.is_floating or grad.dtype.is_quantized or
-            grad.dtype.is_integer or grad.dtype.is_complex):
-      raise ValueError("Gradient type %s generated for op %s is not numeric" %
-                       (dtypes.as_dtype(grad.dtype).name, op.node_def))
+    for i in xrange(len(grads)):
+      grad = grads[i]
+      inp = op.inputs[i]
+      if grad is None:
+        continue
+      if grad.dtype.is_real:
+        if not inp.dtype.is_real:
+          raise ValueError("Gradient type %s generated for real-valued op %s "
+                           "with type %s must be real" %
+                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                            dtypes.as_dtype(inp.dtype).name))
+      elif grad.dtype.is_complex:
+        if not inp.dtype.is_complex:
+          raise ValueError("Gradient type %s generated for complex-valued op %s"
+                           " with type %s must be complex" %
+                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                            dtypes.as_dtype(inp.dtype).name))
+      else:
+        raise ValueError("Gradient type %s generated for op %s "
+                         "with type %s must be either real or complex" %
+                         (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                          dtypes.as_dtype(inp.dtype).name))
+
 
 def _StopOps(from_ops, pending_count):
   """The set of ops that terminate the gradient computation.
