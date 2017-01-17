@@ -26,6 +26,7 @@ should be recursive.
 @@flatten
 @@flatten_dict_items
 @@pack_sequence_as
+@@map_structure
 """
 
 from __future__ import absolute_import
@@ -260,3 +261,42 @@ def pack_sequence_as(structure, flat_sequence):
 
   _, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
   return _sequence_like(structure, packed)
+
+
+def map_structure(func, *structure):
+  """Applies `func` to each entry in `structure` and returns a new structure.
+
+  Applies `func(x[0], x[1], ...)` where x[i] is an entry in
+  `structure[i]`.  All structures in `structure` must have the same arity,
+  and the return value will contain the results in the same structure.
+
+  Args:
+    func: A callable that acceps as many arguments are there are structures.
+    *structure: scalar, or tuple or list of constructed scalars and/or other
+      tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
+
+  Returns:
+    A new structure with the same arity as `structure`, whose values correspond
+    to `func(x[0], x[1], ...)` where `x[i]` is a value in the corresponding
+    location in `structure[i]`.
+
+  Raises:
+    TypeError: If `func` is not callable or if the structures do not match
+      each other by depth tree.
+    ValueError: If no structure is provided or if the structures do not match
+      each other by type.
+  """
+  if not callable(func):
+    raise TypeError("func must be callable, got: %s" % func)
+
+  if not structure:
+    raise ValueError("Must provide at least one structure")
+
+  for other in structure[1:]:
+    assert_same_structure(structure[0], other)
+
+  flat_structure = [flatten(s) for s in structure]
+  entries = zip(*flat_structure)
+
+  return pack_sequence_as(
+      structure[0], [func(*x) for x in entries])

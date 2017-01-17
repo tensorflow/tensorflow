@@ -1019,16 +1019,7 @@ tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
 
 tensorflow::Status Service::ResetDevice(const ResetDeviceRequest* arg,
                                         ResetDeviceResponse* result) {
-  int first_device_ordinal = arg->has_device_handle()
-                                 ? arg->device_handle().handle()
-                                 : execute_backend_->default_device_ordinal();
-  TF_ASSIGN_OR_RETURN(auto executors,
-                      execute_backend_->Replicas(first_device_ordinal));
-  for (se::StreamExecutor* executor : executors) {
-    TF_RETURN_IF_ERROR(
-        execute_backend_->transfer_manager()->ResetDevice(executor));
-  }
-  return tensorflow::Status::OK();
+  return execute_backend_->ResetDevices();
 }
 
 tensorflow::Status Service::TransferToClientInProcess(

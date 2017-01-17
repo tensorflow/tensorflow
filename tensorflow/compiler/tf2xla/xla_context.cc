@@ -167,7 +167,7 @@ Status XlaContext::CollectResults(
     }
   }
 
-  if (handle.handle() > 0) {
+  if (handle.handle() > 0 || has_side_effects_) {
     // Build the full computation. The return value is the handle
     // constructed above.
     xla::StatusOr<xla::Computation> computation_status = builder().Build();
@@ -190,9 +190,11 @@ Status XlaContext::CollectResults(
   return Status::OK();
 }
 
-XlaContext::XlaContext(xla::Client* client, const string& computation_name,
+XlaContext::XlaContext(XlaCompiler* compiler, xla::Client* client,
+                       const string& computation_name,
                        bool allow_cpu_custom_calls)
-    : xla_builder_(client, computation_name),
+    : compiler_(compiler),
+      xla_builder_(client, computation_name),
       allow_cpu_custom_calls_(allow_cpu_custom_calls) {}
 
 const xla::ComputationDataHandle&
@@ -231,6 +233,11 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   mutex_lock l(mu_);
   compile_time_constant_.push_back(std::move(value));
   return Status::OK();
+}
+
+void XlaContext::AddSideEffects() {
+  mutex_lock lock(mu_);
+  has_side_effects_ = true;
 }
 
 /* static */ const XlaExpression* XlaContext::CastExpressionFromTensor(

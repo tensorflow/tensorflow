@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import core_rnn
 from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
@@ -31,11 +32,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
-
-flags.DEFINE_integer("batch_size", 64, "batch size.")
-FLAGS = flags.FLAGS
 
 
 class CudnnRNNBenchmark(test.Benchmark):

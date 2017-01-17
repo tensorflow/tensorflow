@@ -160,7 +160,9 @@ Status GenericTransferManager::TransferLiteralToInfeed(
   return Unimplemented("Infeed is not supported on GPU (b/30467474)");
 }
 
-Status GenericTransferManager::ResetDevice(se::StreamExecutor* executor) {
+Status GenericTransferManager::ResetDevices(
+    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+        executors) {
   return Unimplemented(
       "Device reset is not yet supported on CPU and GPU (b/30481585)");
 }

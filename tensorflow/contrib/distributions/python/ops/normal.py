@@ -157,7 +157,7 @@ class Normal(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat_v2(([n], array_ops.shape(self.mean())), 0)
+    shape = array_ops.concat(([n], array_ops.shape(self.mean())), 0)
     sampled = random_ops.random_normal(
         shape=shape, mean=0, stddev=1, dtype=self.mu.dtype, seed=seed)
     return sampled * self.sigma + self.mu
@@ -218,7 +218,7 @@ class NormalWithSoftplusSigma(Normal):
     with ops.name_scope(name, values=[sigma]) as ns:
       super(NormalWithSoftplusSigma, self).__init__(
           mu=mu,
-          sigma=nn.softplus(sigma),
+          sigma=nn.softplus(sigma, name="softplus_sigma"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

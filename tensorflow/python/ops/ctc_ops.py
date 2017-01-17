@@ -160,10 +160,15 @@ def _CTCLossGrad(op, grad_loss, _):
      The CTC Loss gradient.
   """
   # Outputs are: loss, grad
-  grad = op.outputs[1]
+  #
+  # Currently there is no way to take the second derivative of this op
+  # due to the fused implementation's interaction with tf.gradients(),
+  # so we make sure we prevent silently incorrect results by raising
+  # an error if the second derivative is requested via prevent_gradient.
+  grad_without_gradient = array_ops.prevent_gradient(op.outputs[1])
   # Return gradient for inputs and None for
   # labels_indices, labels_values and sequence_length
-  return [_BroadcastMul(grad_loss, grad), None, None, None]
+  return [_BroadcastMul(grad_loss, grad_without_gradient), None, None, None]
 
 
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):

@@ -98,7 +98,8 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
 
 
 def get_model_fn(params, graph_builder_class, device_assigner,
-                 weights_name=None, keys_name=None):
+                 weights_name=None, keys_name=None, num_trainers=1,
+                 trainer_id=0):
   """Return a model function given a way to construct a graph builder."""
   def _model_fn(features, labels):
     """Function that returns predictions, training loss, and training op."""
@@ -129,7 +130,9 @@ def get_model_fn(params, graph_builder_class, device_assigner,
           features, labels, name=LOSS_NAME)
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
-              features, labels, input_weights=weights),
+              features, labels, input_weights=weights,
+              num_trainers=num_trainers,
+              trainer_id=trainer_id),
           state_ops.assign_add(contrib_framework.get_global_step(), 1))
     # Put weights back in
     if weights is not None:
@@ -169,7 +172,8 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
                config=None, weights_name=None, keys_name=None,
-               feature_engineering_fn=None, early_stopping_rounds=100):
+               feature_engineering_fn=None, early_stopping_rounds=100,
+               num_trainers=1, trainer_id=0):
 
     """Initializes a TensorForestEstimator instance.
 
@@ -196,6 +200,9 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
         labels which will be fed into the model.
       early_stopping_rounds: Allows training to terminate early if the forest is
         no longer growing. 100 by default.
+      num_trainers: Number of training jobs, which will partition trees
+        among them.
+      trainer_id: Which trainer this instance is.
 
     Returns:
       A `TensorForestEstimator` instance.
@@ -206,7 +213,8 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
     self.weights_name = weights_name
     self._estimator = estimator.Estimator(
         model_fn=get_model_fn(params, graph_builder_class, device_assigner,
-                              weights_name=weights_name, keys_name=keys_name),
+                              weights_name=weights_name, keys_name=keys_name,
+                              num_trainers=num_trainers, trainer_id=trainer_id),
         model_dir=model_dir,
         config=config,
         feature_engineering_fn=feature_engineering_fn)

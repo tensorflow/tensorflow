@@ -186,9 +186,7 @@ Status XlaCompiler::CompileFunctionBody(
   // for devices other than CPU.
   OptimizerOptions opts;
   GraphOptimizer optimizer(opts);
-  Graph* g = graph.release();
-  OptimizeGraph(flr, &g);
-  graph.reset(g);
+  OptimizeGraph(flr, &graph);
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile(
@@ -318,7 +316,7 @@ Status XlaCompiler::CompileGraph(string const& name,
   }
 
   XlaContext* xla_context =
-      new XlaContext(client(), name, allow_cpu_custom_calls_);
+      new XlaContext(this, client(), name, allow_cpu_custom_calls_);
   core::ScopedUnref xla_context_unref(xla_context);
 
   TF_RETURN_IF_ERROR(xla_context->BuildArguments(args, use_tuple_arg));
@@ -399,6 +397,17 @@ Status XlaCompiler::CompileGraph(string const& name,
       ++computation_output;
     }
   }
+  return Status::OK();
+}
+
+Status XlaCompiler::GetChannelHandle(const string& key,
+                                     xla::ChannelHandle* channel) {
+  mutex_lock lock(mu_);
+  auto result = channels_.emplace(key, xla::ChannelHandle());
+  if (result.second) {
+    TF_ASSIGN_OR_RETURN(result.first->second, client_->CreateChannelHandle());
+  }
+  *channel = result.first->second;
   return Status::OK();
 }
 

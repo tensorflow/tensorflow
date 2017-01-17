@@ -172,6 +172,12 @@ class XlaCompiler {
   XlaCompilationDevice* device() const { return device_; }
   const DeviceMgr* device_mgr() const { return &device_mgr_; }
 
+  // Retrieves the channel handle associated with `key`. Allocates
+  // a new channel handle if none exists.
+  // Channel handles can be used to communicate between different computations.
+  // Computations that communicate should be compiled with the same XlaCompiler.
+  Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
+
  private:
   // Does the real work of Compile() and CompileToComputation().
   Status CompileFunctionBody(FunctionLibraryRuntime* function_library,
@@ -194,6 +200,8 @@ class XlaCompiler {
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
+
+  std::unordered_map<string, xla::ChannelHandle> channels_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

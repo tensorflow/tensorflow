@@ -87,6 +87,7 @@ filegroup(
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
+        "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",

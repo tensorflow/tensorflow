@@ -734,7 +734,7 @@ class ControlFlowTest(test.TestCase):
         c = array_ops.strided_slice(x,
                                     array_ops.expand_dims(i, 0),
                                     [1] + array_ops.expand_dims(i, 0))
-        o = array_ops.concat_v2([o, c], 0)
+        o = array_ops.concat([o, c], 0)
         i = math_ops.add(i, 1)
         return [i, c, o]
 
@@ -821,7 +821,7 @@ class ControlFlowTest(test.TestCase):
 
       def b(i, j):
         new_i = math_ops.add(i, 1)
-        new_j = array_ops.concat_v2([j, j], 0)
+        new_j = array_ops.concat([j, j], 0)
         return [new_i, new_j]
 
       r = control_flow_ops.while_loop(
@@ -1847,7 +1847,7 @@ class ControlFlowTest(test.TestCase):
         return i < 2
 
       def body(i, h):
-        return i + 1, array_ops.concat_v2([h, x], 0)
+        return i + 1, array_ops.concat([h, x], 0)
 
       _, h = control_flow_ops.while_loop(
           condition, body, [i0, h0],
@@ -2068,6 +2068,22 @@ class ControlFlowTest(test.TestCase):
       gradients_impl.gradients(grad_theta, theta)
     grad_theta_stopped = array_ops.stop_gradient(grad_theta)
     gradients_impl.gradients(grad_theta_stopped, theta)
+
+  def testStopGradOnWhileGrad(self):
+    with self.test_session():
+      x = constant_op.constant(2.0, name="x")
+      y = constant_op.constant(2.0, name="y")
+
+      c = lambda x: math_ops.less(x, 100.0)
+      b = lambda x: math_ops.multiply(x, y)
+      rx = control_flow_ops.while_loop(c, b, [x])
+
+      rg = gradients_impl.gradients(rx, y)[0]
+      rg = array_ops.stop_gradient(rg)
+      r = math_ops.add(math_ops.square(y), rx)
+      r = math_ops.add(r, rg)
+      r = gradients_impl.gradients(r, y)[0]
+      self.assertEqual(388.0, r.eval())
 
   def testOneValueCond(self):
     with self.test_session():

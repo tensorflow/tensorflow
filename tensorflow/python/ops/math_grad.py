@@ -125,7 +125,7 @@ def _ProdGrad(op, grad):
     reduced = math_ops.cast(reduction_indices, dtypes.int32)
     idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
     other, _ = array_ops.setdiff1d(idx, reduced)
-    perm = array_ops.concat_v2([reduced, other], 0)
+    perm = array_ops.concat([reduced, other], 0)
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
     other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
   permuted = array_ops.transpose(op.inputs[0], perm)
@@ -153,7 +153,7 @@ def _SegmentSumGrad(op, grad):
 def _SegmentMeanGrad(op, grad):
   """Gradient for SegmentMean."""
   input_rank = array_ops.rank(op.inputs[0])
-  ones_shape = array_ops.concat_v2([
+  ones_shape = array_ops.concat([
       array_ops.shape(op.inputs[1]),
       array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
   ], 0)
@@ -628,7 +628,7 @@ def _DivGrad(op, grad):
   y = math_ops.conj(y)
   return (array_ops.reshape(math_ops.reduce_sum(math_ops.div(grad, y), rx), sx),
           array_ops.reshape(
-              math_ops.reduce_sum(grad * math_ops.div(-x, math_ops.square(y)),
+              math_ops.reduce_sum(grad * math_ops.div(math_ops.div(-x, y), y),
                                   ry), sy))
 
 
@@ -658,7 +658,7 @@ def _RealDivGrad(op, grad):
   return (array_ops.reshape(
       math_ops.reduce_sum(math_ops.realdiv(grad, y), rx),
       sx), array_ops.reshape(
-          math_ops.reduce_sum(grad * math_ops.realdiv(-x, math_ops.square(y)),
+          math_ops.reduce_sum(grad * math_ops.realdiv(math_ops.realdiv(-x, y), y),
                               ry), sy))
 
 

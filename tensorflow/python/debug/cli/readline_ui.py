@@ -28,20 +28,29 @@ class ReadlineUI(base_ui.BaseUI):
 
   def __init__(self, on_ui_exit=None):
     base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit)
-
     self._init_input()
-    # TODO(cais): Enable readline tab completion support via
-    #   self._tab_completion_registry.
 
   def _init_input(self):
-    readline.parse_and_bind("tab: complete")
     readline.parse_and_bind("set editing-mode emacs")
+
+    # Disable default readline delimiter in order to receive the full text
+    # (not just the last word) in the completer.
+    readline.set_completer_delims("\n")
+    readline.set_completer(self._readline_complete)
+    readline.parse_and_bind("tab: complete")
 
     # For Python 2-3 compatibility.
     try:
       self._input = raw_input
     except NameError:
       self._input = input
+
+  def _readline_complete(self, text, state):
+    context, prefix, except_last_word = self._analyze_tab_complete_input(text)
+    candidates, _ = self._tab_completion_registry.get_completions(context,
+                                                                  prefix)
+    candidates = [(except_last_word + candidate) for candidate in candidates]
+    return candidates[state]
 
   def run_ui(self,
              init_command=None,

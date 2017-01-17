@@ -767,57 +767,20 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
 /* static */ std::vector<std::pair<int64, int64>>
 ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
                                          const Shape& output_shape) {
-  // Returns nil if the input/output shape has zero elements. This is safe but
-  // might be too conservative. Not a big deal for now because IR emitted for
-  // zero-element shapes are often trivially optimizable without the help of
-  // this method.
-  if (ShapeUtil::ElementsIn(input_shape) == 0 ||
-      ShapeUtil::ElementsIn(output_shape) == 0) {
-    return std::vector<std::pair<int64, int64>>();
-  }
-
-  std::vector<std::pair<int64, int64>> unmodified_dims;
-  int64 input_dim = 0;
-  int64 output_dim = 0;
-
-  // A reshape preserves input_dim as output_dim iff
-  // 1. input_dim and output_dim have the same size.
-  // 2. The size of the input subarray from dimension 0 to input_dim-1 equals
-  //    that of the output subarray from dimension 0 to output_dim-1.
-  VLOG(3) << "DimensionsUnmodifiedByReshape: input_shape="
-          << ShapeUtil::HumanString(input_shape)
-          << ", output_shape=" << ShapeUtil::HumanString(output_shape);
-  while (input_dim < ShapeUtil::Rank(input_shape) &&
-         output_dim < ShapeUtil::Rank(output_shape)) {
-    // partial_input_size is the product of sizes of input dimensions
-    // inclusively between the input_dim when this loop iteration starts and the
-    // current input_dim. partial_output_size is that of output dimensions. We
-    // compute these two values incrementally to save time.
-    int64 partial_input_size = input_shape.dimensions(input_dim);
-    int64 partial_output_size = output_shape.dimensions(output_dim);
-    // Move input_dim and output_dim forward until
-    // partial_input_size==partial_output_size.
-    while (partial_input_size != partial_output_size) {
-      if (partial_input_size < partial_output_size) {
-        ++input_dim;
-        partial_input_size *= input_shape.dimensions(input_dim);
-      } else {
-        ++output_dim;
-        partial_output_size *= output_shape.dimensions(output_dim);
-      }
+  // Unmodified dimensions are merely common factors of rank 1.
+  auto common_factors = CommonFactors(AsInt64Slice(input_shape.dimensions()),
+                                      AsInt64Slice(output_shape.dimensions()));
+  for (size_t i = 0; i < common_factors.size() - 1;) {
+    if (1 != common_factors[i + 1].first - common_factors[i].first ||
+        1 != common_factors[i + 1].second - common_factors[i].second) {
+      common_factors.erase(common_factors.begin() + i);
+    } else {
+      ++i;
     }
-    CHECK_LT(input_dim, ShapeUtil::Rank(input_shape));
-    CHECK_LT(output_dim, ShapeUtil::Rank(output_shape));
-    if (input_shape.dimensions(input_dim) ==
-        output_shape.dimensions(output_dim)) {
-      unmodified_dims.push_back({input_dim, output_dim});
-      VLOG(3) << "Matching dimension pair: " << input_dim << ' ' << output_dim;
-    }
-    ++input_dim;
-    ++output_dim;
   }
-
-  return unmodified_dims;
+  // `CommonFactors(a, b).back() == (a.rank, b.rank)` so we must pop it.
+  common_factors.pop_back();
+  return common_factors;
 }
 
 /* static */ bool ShapeUtil::TransposeIsBitcast(
@@ -1019,6 +982,40 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   };
   return check_input_unit_indices(input_shape, output_shape) &&
          check_input_unit_indices(output_shape, input_shape);
+}
+
+/* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
+                                              Shape shape) {
+  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  if (LayoutUtil::HasLayout(shape)) {
+    Layout* layout = shape.mutable_layout();
+    for (size_t i = 0; i < layout->minor_to_major().size();) {
+      if (layout->minor_to_major(i) == dim_to_delete) {
+        layout->mutable_minor_to_major()->erase(
+            layout->minor_to_major().begin() + i);
+        continue;
+      }
+      if (layout->minor_to_major(i) > dim_to_delete) {
+        (*layout->mutable_minor_to_major())[i] -= 1;
+      }
+      ++i;
+    }
+  }
+  return shape;
+}
+
+/* static */ Shape ShapeUtil::FilterDimensions(
+    const std::function<bool(int64)>& p, Shape shape) {
+  std::vector<int64> dims_to_delete;
+  for (int64 i = shape.dimensions().size() - 1; i >= 0; --i) {
+    if (!p(i)) {
+      dims_to_delete.push_back(i);
+    }
+  }
+  for (int64 dim : dims_to_delete) {
+    shape = DeleteDimension(dim, shape);
+  }
+  return shape;
 }
 
 }  // namespace xla

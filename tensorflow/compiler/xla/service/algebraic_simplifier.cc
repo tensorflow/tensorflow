@@ -51,18 +51,9 @@ bool IsLiteralWithValue(const HloInstruction* operand, int value) {
 
 // Returns whether the given transpose produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
-bool TransposeIsBitcast(
-    const HloInstruction* transpose,
-    const AlgebraicSimplifier::ValidBitcastCallback& valid_bitcast_callback) {
+bool TransposeIsBitcast(const HloInstruction* transpose) {
   CHECK_EQ(HloOpcode::kTranspose, transpose->opcode());
   const HloInstruction* operand = transpose->operand(0);
-
-  // Can't insert bitcasts if the compiler used a memory layout which isn't
-  // compatible.
-  if (!valid_bitcast_callback(operand->shape(), transpose->shape())) {
-    return false;
-  }
-
   return ShapeUtil::TransposeIsBitcast(operand->shape(), transpose->shape(),
                                        transpose->dimensions());
 }
@@ -80,11 +71,8 @@ bool ReshapeIsBitcast(
   const HloInstruction* operand = reshape->operand(0);
   // Can't insert bitcasts if the compiler used a memory layout which isn't
   // compatible.
-  if (!valid_bitcast_callback(operand->shape(), reshape->shape())) {
-    return false;
-  }
-
-  return ShapeUtil::ReshapeIsBitcast(operand->shape(), reshape->shape());
+  return ShapeUtil::ReshapeIsBitcast(operand->shape(), reshape->shape()) &&
+         valid_bitcast_callback(operand->shape(), reshape->shape());
 }
 }  // namespace
 
@@ -199,7 +187,7 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Whether layout is considered during transformation.
   bool is_layout_sensitive_;
 
-  // Callback used to determine if a bitcast is valid.
+  // Callback used to determine if a bitcast is possible.
   AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback_;
 };
 
@@ -287,7 +275,8 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
                                                 HloInstruction* rhs) {
   // A/1 => A
   VLOG(10) << "trying transform [A/1 => A]: " << divide->ToString();
-  if (IsLiteralWithValue(rhs, 1) && ReplaceInstructionIfSameShape(divide, lhs)) {
+  if (IsLiteralWithValue(rhs, 1) &&
+      ReplaceInstructionIfSameShape(divide, lhs)) {
     return Status::OK();
   }
 
@@ -717,8 +706,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     return Status::OK();
   }
 
-  if (is_layout_sensitive_ &&
-      TransposeIsBitcast(transpose, valid_bitcast_callback_)) {
+  if (is_layout_sensitive_ && TransposeIsBitcast(transpose)) {
     ReplaceWithBitcast(transpose);
     return Status::OK();
   }
@@ -749,11 +737,11 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   TF_RET_CHECK(LayoutUtil::HasLayout(filter_shape));
   TF_RET_CHECK(LayoutUtil::HasLayout(convolution_shape));
 
-  // Require 1x1 filter in the spatial dimensions (so no need to extract image
-  // patches).
-  if (filter_shape.dimensions(dnums.kernel_spatial_dimensions(0)) != 1 ||
-      filter_shape.dimensions(dnums.kernel_spatial_dimensions(1)) != 1) {
-    return Status::OK();
+  // Require the spatial dimensions in the kernel to have a bound of one.
+  for (int64 i = 0; i < dnums.kernel_spatial_dimensions_size(); ++i) {
+    if (filter_shape.dimensions(dnums.kernel_spatial_dimensions(i)) != 1) {
+      return Status::OK();
+    }
   }
 
   // Stride ignores part of the output, which matrix multiplication does not do,
@@ -782,9 +770,9 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
       input_shape.layout().minor_to_major(0) != dnums.feature_dimension() ||
       // The input feature dimension should come later in the minor-to-major
       // order.
-      (PositionInContainer(AsInt64Slice(filter_shape.layout().minor_to_major()),
+      (PositionInContainer(filter_shape.layout().minor_to_major(),
                            dnums.kernel_input_feature_dimension()) <
-       PositionInContainer(AsInt64Slice(filter_shape.layout().minor_to_major()),
+       PositionInContainer(filter_shape.layout().minor_to_major(),
                            dnums.kernel_output_feature_dimension()))) {
     return Status::OK();
   }

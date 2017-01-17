@@ -203,7 +203,7 @@ def _EnterGrad(op, grad):
     # Skip gradient computation, if the attribute `back_prop` is false.
     return grad
   if grad_ctxt.grad_state is None:
-    # Pass the gradient grough if we are not in a gradient while context.
+    # Pass the gradient through if we are not in a gradient while context.
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
@@ -216,6 +216,7 @@ def _EnterGrad(op, grad):
       raise TypeError("Type %s not supported" % type(grad))
   else:
     result = exit(grad)
+    grad_ctxt.loop_exits.append(result)
     grad_ctxt.ExitResult([result])
   return result
 

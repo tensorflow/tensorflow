@@ -138,6 +138,8 @@ class BundleWriter {
  private:
   Env* const env_;  // Not owned.
   const string prefix_;
+  const string tmp_metadata_path_;
+  const string tmp_data_path_;
   std::unique_ptr<FileOutputBuffer> out_;
   int64 size_;  // Number of bytes written into out_.
   std::map<string, BundleEntryProto> entries_;

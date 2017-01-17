@@ -124,7 +124,7 @@ class IrArray {
 
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
-    llvm::Value* Linearize(const Shape& shape,
+    llvm::Value* Linearize(tensorflow::gtl::ArraySlice<int64> dimensions,
                            llvm::IRBuilder<>* builder) const;
 
    private:

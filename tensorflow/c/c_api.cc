@@ -20,7 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#ifndef __ANDROID__
 #include "tensorflow/cc/saved_model/loader.h"
+#endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -159,11 +162,13 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
   const auto proto_size = in.ByteSize();
-  void* buf = malloc(proto_size);
+  void* buf = tensorflow::port::Malloc(proto_size);
   in.SerializeToArray(buf, proto_size);
   out->data = buf;
   out->length = proto_size;
-  out->data_deallocator = [](void* data, size_t length) { free(data); };
+  out->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
   return Status::OK();
 }
 
@@ -287,13 +292,15 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
 TF_Buffer* TF_NewBuffer() { return new TF_Buffer{nullptr, 0, nullptr}; }
 
 TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
-  void* copy = malloc(proto_len);
+  void* copy = tensorflow::port::Malloc(proto_len);
   memcpy(copy, proto, proto_len);
 
   TF_Buffer* buf = new TF_Buffer;
   buf->data = copy;
   buf->length = proto_len;
-  buf->data_deallocator = [](void* data, size_t length) { free(data); };
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
   return buf;
 }
 
@@ -694,7 +701,7 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
 TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
 void TF_DeleteLibraryHandle(TF_Library* lib_handle) {
-  free(const_cast<void*>(lib_handle->op_list.data));
+  tensorflow::port::Free(const_cast<void*>(lib_handle->op_list.data));
   delete lib_handle;
 }
 
@@ -1344,6 +1351,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
                   metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
                 });
       LIST_CASE(tensor, TF_ATTR_TENSOR);
+      LIST_CASE(tensor, TF_ATTR_FUNC);
 #undef LIST_CASE
       // All lists empty, determine the type from the OpDef.
       if (metadata.list_size == 0) {
@@ -1365,6 +1373,8 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
             metadata.type = TF_ATTR_SHAPE;
           } else if (typestr == "list(tensor)") {
             metadata.type = TF_ATTR_TENSOR;
+          } else if (typestr == "list(func)") {
+            metadata.type = TF_ATTR_FUNC;
           } else {
             status->status = InvalidArgument(
                 "Attribute '", attr_name,
@@ -1701,6 +1711,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
   }
 }
 
+#ifndef __ANDROID__
 TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
@@ -1754,6 +1765,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 }
+#endif  // __ANDROID__
 
 void TF_CloseSession(TF_Session* s, TF_Status* status) {
   status->status = s->session->Close();

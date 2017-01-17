@@ -53,7 +53,7 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 *  <b>`ValueError`</b>: If `ord` or `axis` is invalid.
 
 @compatibility(numpy)
-Mostly equivalent to np.linalg.norm.
+Mostly equivalent to numpy.linalg.norm.
 Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
 
 ##### Other differences:

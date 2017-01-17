@@ -150,7 +150,7 @@ class Scaffold(object):
           default_init_op)
     if self._ready_op is None:
       def default_ready_op():
-        return array_ops.concat_v2([
+        return array_ops.concat([
             variables.report_uninitialized_variables(),
             resources.report_uninitialized_resources()
         ], 0)
@@ -237,7 +237,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.initialize_all_tables())
+                                  data_flow_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -497,7 +497,7 @@ class _MonitoredSession(object):
       queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
       # Inform the hooks that a new session has been created.
       for hook in self._hooks:
-        hook.after_create_session(self.tf_sess)
+        hook.after_create_session(self.tf_sess, self.coord)
       return _CoordinatedSession(
           _HookedSession(self.tf_sess, self._hooks), self.coord)
 

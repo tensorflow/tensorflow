@@ -1319,9 +1319,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
   // we need output[i]=input[dimensions[i]] which is
   // Permute(Inverse(dimensions),input).
-  return ShapeUtil::MakeShape(operand.element_type(),
-                              Permute(InversePermutation(dimensions),
-                                      AsInt64Slice(operand.dimensions())));
+  return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(

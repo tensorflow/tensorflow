@@ -1014,7 +1014,7 @@ class PartitionedVariable(object):
     partition_ix = partition_axes[0]
 
     with ops.name_scope(self._name + "/ConcatPartitions/"):
-      concatenated = array_ops.concat_v2(self._variable_list, partition_ix)
+      concatenated = array_ops.concat(self._variable_list, partition_ix)
 
     with ops.name_scope(None):
       return array_ops.identity(concatenated, name=self._name)

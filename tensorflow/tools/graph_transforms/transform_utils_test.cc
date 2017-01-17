@@ -541,7 +541,9 @@ class TransformUtilsTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
 
     GraphDef renamed_graph_def;
-    TF_ASSERT_OK(RenameNodeInputs(graph_def, {{"a", "b"}}, &renamed_graph_def));
+    TF_ASSERT_OK(RenameNodeInputs(graph_def, {{"a", "b"}},
+                                  std::unordered_set<string>(),
+                                  &renamed_graph_def));
 
     std::map<string, const NodeDef*> node_map;
     MapNamesToNodes(renamed_graph_def, &node_map);
@@ -579,7 +581,7 @@ class TransformUtilsTest : public ::testing::Test {
     GraphDef renamed_graph_def;
     TF_ASSERT_OK(RenameNodeInputs(
         graph_def, {{"a", "f"}, {"f", "e"}, {"e", "d"}, {"d", "c"}},
-        &renamed_graph_def));
+        std::unordered_set<string>(), &renamed_graph_def));
 
     std::map<string, const NodeDef*> node_map;
     MapNamesToNodes(renamed_graph_def, &node_map);
@@ -615,8 +617,9 @@ class TransformUtilsTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
 
     GraphDef renamed_graph_def;
-    Status rename_status = RenameNodeInputs(graph_def, {{"a", "d"}, {"d", "a"}},
-                                            &renamed_graph_def);
+    Status rename_status =
+        RenameNodeInputs(graph_def, {{"a", "d"}, {"d", "a"}},
+                         std::unordered_set<string>(), &renamed_graph_def);
     EXPECT_FALSE(rename_status.ok());
   }
 
@@ -650,12 +653,52 @@ class TransformUtilsTest : public ::testing::Test {
 
     GraphDef renamed_graph_def;
     TF_ASSERT_OK(RenameNodeInputs(graph_def, {{"quantize_a:*", "quantize_b"}},
+                                  std::unordered_set<string>(),
                                   &renamed_graph_def));
 
     std::map<string, const NodeDef*> node_map;
     MapNamesToNodes(renamed_graph_def, &node_map);
     EXPECT_EQ("quantize_b:1", node_map.at("add")->input(0));
     EXPECT_EQ("quantize_b:2", node_map.at("add")->input(1));
+  }
+
+  void TestRenameNodeInputsWithIgnores() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    const int width = 10;
+
+    Tensor a_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&a_data, 1.0f);
+    Output a_const = Const(root.WithOpName("a"), Input::Initializer(a_data));
+
+    Tensor b_data(DT_FLOAT, TensorShape({width}));
+    test::FillIota<float>(&b_data, 1.0f);
+    Output b_const = Const(root.WithOpName("b"), Input::Initializer(b_data));
+
+    Output add = Add(root.WithOpName("add"), a_const, a_const);
+
+    Output add2 = Add(root.WithOpName("add2"), a_const, a_const);
+
+    Output placeholder = Placeholder(root.WithOpName("placeholder"), DT_FLOAT);
+
+    Output mul = Mul(root.WithOpName("mul"), add, placeholder);
+
+    Output mul2 = Mul(root.WithOpName("output"), mul, add2);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    GraphDef renamed_graph_def;
+    TF_ASSERT_OK(RenameNodeInputs(graph_def, {{"a", "b"}}, {"add2"},
+                                  &renamed_graph_def));
+
+    std::map<string, const NodeDef*> node_map;
+    MapNamesToNodes(renamed_graph_def, &node_map);
+    EXPECT_EQ("b", node_map.at("add")->input(0));
+    EXPECT_EQ("b", node_map.at("add")->input(1));
+    EXPECT_EQ("a", node_map.at("add2")->input(0));
+    EXPECT_EQ("a", node_map.at("add2")->input(1));
   }
 
   void TestFindInvalidInputs() {
@@ -943,20 +986,36 @@ class TransformUtilsTest : public ::testing::Test {
     EXPECT_EQ("d", value);
   }
 
-  void TestGetOneIntParameter() {
+  void TestGetOneInt32Parameter() {
+    TransformFuncContext context;
+    context.params.insert({"foo", {"10", "20"}});
+    context.params.insert({"bar", {"-23"}});
+    context.params.insert({"not_a_number", {"not_numerical"}});
+    context.params.insert({"float", {"-23.232323"}});
+    int32 value;
+    TF_EXPECT_OK(context.GetOneInt32Parameter("bar", 0, &value));
+    EXPECT_EQ(-23, value);
+    EXPECT_FALSE(context.GetOneInt32Parameter("foo", 0, &value).ok());
+    TF_EXPECT_OK(context.GetOneInt32Parameter("not_present", 10, &value));
+    EXPECT_EQ(10, value);
+    EXPECT_FALSE(context.GetOneInt32Parameter("not_a_number", 0, &value).ok());
+    EXPECT_FALSE(context.GetOneInt32Parameter("float", 0, &value).ok());
+  }
+
+  void TestGetOneInt64Parameter() {
     TransformFuncContext context;
     context.params.insert({"foo", {"10", "20"}});
     context.params.insert({"bar", {"-23"}});
     context.params.insert({"not_a_number", {"not_numerical"}});
     context.params.insert({"float", {"-23.232323"}});
     int64 value;
-    TF_EXPECT_OK(context.GetOneIntParameter("bar", 0, &value));
+    TF_EXPECT_OK(context.GetOneInt64Parameter("bar", 0, &value));
     EXPECT_EQ(-23, value);
-    EXPECT_FALSE(context.GetOneIntParameter("foo", 0, &value).ok());
-    TF_EXPECT_OK(context.GetOneIntParameter("not_present", 10, &value));
+    EXPECT_FALSE(context.GetOneInt64Parameter("foo", 0, &value).ok());
+    TF_EXPECT_OK(context.GetOneInt64Parameter("not_present", 10, &value));
     EXPECT_EQ(10, value);
-    EXPECT_FALSE(context.GetOneIntParameter("not_a_number", 0, &value).ok());
-    EXPECT_FALSE(context.GetOneIntParameter("float", 0, &value).ok());
+    EXPECT_FALSE(context.GetOneInt64Parameter("not_a_number", 0, &value).ok());
+    EXPECT_FALSE(context.GetOneInt64Parameter("float", 0, &value).ok());
   }
 
   void TestGetOneFloatParameter() {
@@ -1111,6 +1170,10 @@ TEST_F(TransformUtilsTest, TestRenameNodeInputsWithWildcard) {
   TestRenameNodeInputsWithWildcard();
 }
 
+TEST_F(TransformUtilsTest, TestRenameNodeInputsWithIgnores) {
+  TestRenameNodeInputsWithIgnores();
+}
+
 TEST_F(TransformUtilsTest, TestFindInvalidInputs) { TestFindInvalidInputs(); }
 
 TEST_F(TransformUtilsTest, TestIsGraphValid) { TestIsGraphValid(); }
@@ -1127,7 +1190,13 @@ TEST_F(TransformUtilsTest, TestGetOneStringParameter) {
   TestGetOneStringParameter();
 }
 
-TEST_F(TransformUtilsTest, TestGetOneIntParameter) { TestGetOneIntParameter(); }
+TEST_F(TransformUtilsTest, TestGetOneInt32Parameter) {
+  TestGetOneInt32Parameter();
+}
+
+TEST_F(TransformUtilsTest, TestGetOneInt64Parameter) {
+  TestGetOneInt64Parameter();
+}
 
 TEST_F(TransformUtilsTest, TestGetOneFloatParameter) {
   TestGetOneFloatParameter();

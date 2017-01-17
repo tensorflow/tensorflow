@@ -21,6 +21,7 @@ limitations under the License.
 #include "grpc++/grpc++.h"
 #include "grpc++/security/credentials.h"
 #include "grpc++/server_builder.h"
+#include "grpc/support/alloc.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -304,6 +306,11 @@ class GrpcServerFactory : public ServerFactory {
 class GrpcServerRegistrar {
  public:
   GrpcServerRegistrar() {
+    gpr_allocation_functions alloc_fns;
+    alloc_fns.malloc_fn = port::Malloc;
+    alloc_fns.realloc_fn = port::Realloc;
+    alloc_fns.free_fn = port::Free;
+    gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("GRPC_SERVER", new GrpcServerFactory());
   }
 };

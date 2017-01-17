@@ -788,10 +788,10 @@ class WALSModel(object):
     col_shape = [num_rows]
     right = embedding_ops.embedding_lookup(
         right_factors, gather_indices, partition_strategy="div")
-    new_sp_indices = array_ops.concat_v2([row_ids, col_ids], 1)
-    new_sp_shape = (array_ops.concat_v2([row_shape, col_shape], 0) if
+    new_sp_indices = array_ops.concat([row_ids, col_ids], 1)
+    new_sp_shape = (array_ops.concat([row_shape, col_shape], 0) if
                     transpose_input else
-                    array_ops.concat_v2([col_shape, row_shape], 0))
+                    array_ops.concat([col_shape, row_shape], 0))
     new_sp_input = sparse_tensor.SparseTensor(
         indices=new_sp_indices,
         values=sp_input.values,

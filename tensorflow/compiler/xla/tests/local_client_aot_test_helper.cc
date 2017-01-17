@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -72,16 +73,19 @@ int main(int argc, char** argv) {
 
   llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
 
+  xla::Computation computation = builder.Build().ConsumeValueOrDie();
+  xla::LocalClient::AheadOfTimeComputationInstance instance{
+      &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
+
   xla::cpu::CpuAotCompilationOptions options(
       triple_string,
       /*cpu_name=*/"", /*features=*/"", "SumAndDouble",
       xla::cpu::CpuAotCompilationOptions::RelocationModel::Static);
+
+  auto results =
+      client->CompileAheadOfTime({instance}, options).ConsumeValueOrDie();
   auto result = xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
-      client
-          ->CompileAheadOfTime(builder.Build().ValueOrDie(),
-                               /*argument_layouts=*/{&opaque_shape}, r0f32,
-                               options)
-          .ConsumeValueOrDie());
+      std::move(results.front()));
   // We should have two buffers, one for the result and one temporary buffer,
   // and both should be float-sized.  It's lame to hard-code this, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.

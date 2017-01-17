@@ -18,7 +18,7 @@ Create a _GlobalStepWaiterHook.
 
 - - -
 
-#### `tf.train.GlobalStepWaiterHook.after_create_session(session)` {#GlobalStepWaiterHook.after_create_session}
+#### `tf.train.GlobalStepWaiterHook.after_create_session(session, coord)` {#GlobalStepWaiterHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -34,6 +34,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -

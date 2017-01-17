@@ -253,20 +253,20 @@ class DataFeederTest(test.TestCase):
       inp, out = df.input_builder()
       feed_dict_fn = df.get_feed_dict_fn()
       feed_dict = feed_dict_fn()
-      self._assertAllClose(inp, [[1, 2], [3, 4]], feed_dict, 'name')
-      self._assertAllClose(out, [1, 2], feed_dict, 'name')
+      self._assertAllClose(inp, [[[1, 2]], [[3, 4]]], feed_dict, 'name')
+      self._assertAllClose(out, [[[1], [2]], [[2], [2]]], feed_dict, 'name')
 
     def x_iter(wrap_dict=False):
-      yield np.array([1, 2]) if not wrap_dict else self._wrap_dict(
-          np.array([1, 2]), 'in')
-      yield np.array([3, 4]) if not wrap_dict else self._wrap_dict(
-          np.array([3, 4]), 'in')
+      yield np.array([[1, 2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[1, 2]]), 'in')
+      yield np.array([[3, 4]]) if not wrap_dict else self._wrap_dict(
+          np.array([[3, 4]]), 'in')
 
     def y_iter(wrap_dict=False):
-      yield np.array([1]) if not wrap_dict else self._wrap_dict(
-          np.array([1]), 'out')
-      yield np.array([2]) if not wrap_dict else self._wrap_dict(
-          np.array([2]), 'out')
+      yield np.array([[1], [2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[1], [2]]), 'out')
+      yield np.array([[2], [2]]) if not wrap_dict else self._wrap_dict(
+          np.array([[2], [2]]), 'out')
 
     func(
         data_feeder.StreamingDataFeeder(
