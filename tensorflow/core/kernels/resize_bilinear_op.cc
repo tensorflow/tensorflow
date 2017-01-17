@@ -55,9 +55,9 @@ class ResizeBilinearOp : public OpKernel {
     typename TTypes<float, 4>::Tensor output_data =
         st.output->tensor<float, 4>();
 
-    functor::ResizeBilinear<Device, T>()(
-        context, context->eigen_device<Device>(), image_data, st.height_scale,
-        st.width_scale, output_data);
+    functor::ResizeBilinear<Device, T>()(context->eigen_device<Device>(),
+                                         image_data, st.height_scale,
+                                         st.width_scale, output_data);
   }
 
  private:
@@ -263,8 +263,7 @@ inline void scale_similar_image(const float* input_image, const int b,
 namespace functor {
 template <typename T>
 struct ResizeBilinear<CPUDevice, T> {
-  void operator()(OpKernelContext* context, const CPUDevice& d,
-                  typename TTypes<T, 4>::ConstTensor images,
+  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor images,
                   const float height_scale, const float width_scale,
                   typename TTypes<float, 4>::Tensor output) {
     const int batch_size = images.dimension(0);
