@@ -363,7 +363,8 @@ class ParseExampleTest(test.TestCase):
             "sp1":
                 parsing_ops.SparseFeature("idx", "val1", dtypes.float32, 13),
             "sp2":
-                parsing_ops.SparseFeature("idx", "val2", dtypes.float32, 7)
+                parsing_ops.SparseFeature(
+                    "idx", "val2", dtypes.float32, size=7, already_sorted=True)
         }
     }, expected_output)
 
@@ -1022,6 +1023,40 @@ class ParseSequenceExampleTest(test.TestCase):
                 "st_b": parsing_ops.VarLenFeature(dtypes.string),
                 "st_c": parsing_ops.VarLenFeature(dtypes.int64),
                 "a": parsing_ops.FixedLenSequenceFeature((2,), dtypes.int64),
+            }
+        },
+        expected_feat_list_values=expected_feature_list_output)
+
+  def testSequenceExampleWithEmptyFeatureInFeatureLists(self):
+    original = sequence_example(feature_lists=feature_lists({
+        "st_a":
+            feature_list([
+                float_feature([3.0, 4.0]),
+                feature(),
+                float_feature([5.0]),
+            ]),
+    }))
+
+    serialized = original.SerializeToString()
+
+    expected_st_a = (
+        np.array(
+            [[0, 0], [0, 1], [2, 0]], dtype=np.int64),  # indices
+        np.array(
+            [3.0, 4.0, 5.0], dtype=np.float32),  # values
+        np.array(
+            [3, 2], dtype=np.int64))  # shape: num_time = 3, max_feat = 2
+
+    expected_feature_list_output = {
+        "st_a": expected_st_a,
+    }
+
+    self._test(
+        {
+            "example_name": "in1",
+            "serialized": ops.convert_to_tensor(serialized),
+            "sequence_features": {
+                "st_a": parsing_ops.VarLenFeature(dtypes.float32),
             }
         },
         expected_feat_list_values=expected_feature_list_output)

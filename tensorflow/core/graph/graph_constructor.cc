@@ -65,12 +65,17 @@ class GraphConstructor {
           prefix(in.prefix.empty() || StringPiece(in.prefix).ends_with("/")
                      ? in.prefix
                      : in.prefix + "/"),
+          input_map(in.input_map),
+          control_dependencies(in.control_dependencies),
           importing(true) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
 
     string prefix;
+    std::map<TensorId, TensorId> input_map;
+    std::vector<string> control_dependencies;
+
     // TODO(ashankar): This bool exists to separate out functionality required
     // to make ImportGraphDef a close equivalent of Python's import_graph_def
     // without affecting the behavior of ConvertGraphDefToGraph at the time
@@ -104,6 +109,7 @@ class GraphConstructor {
 
   Status TryImport() {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
+    TF_RETURN_IF_ERROR(ValidateInputMapAndControlDependencies());
     TF_RETURN_IF_ERROR(BuildNodeIndex());
     TF_RETURN_IF_ERROR(InitFromEdges());
     TF_RETURN_IF_ERROR(Convert());
@@ -114,6 +120,7 @@ class GraphConstructor {
   }
 
   Status EnsureNoNameCollisions();
+  Status ValidateInputMapAndControlDependencies();
   Status BuildNodeIndex();
   Status InitFromEdges();
   Status Convert();
@@ -127,7 +134,19 @@ class GraphConstructor {
   Status MakeEdge(Node* src, int output_index, Node* dst, int input_index);
   Status ValidateShape(Node* node);
   Status ModifyNodeDefForImport(NodeDef* node_def);
-  void AddPrefixToNodeDef(NodeDef* node_def);
+  // Modifies node_def's inputs according to opts_.input_map.
+  // input_already_exists is a pre-initialized vector of length
+  // node_def->input_size(). This function will mark inputs that are remapped to
+  // true.
+  void RemapNodeDefInputs(NodeDef* node_def,
+                          std::vector<bool>* input_already_exists);
+  // input_already_exists is a pre-initialized vector of length
+  // node_def->input_size(). This function will add and mark control inputs as
+  // true.
+  void AddControlDependencies(NodeDef* node_def,
+                              std::vector<bool>* input_already_exists);
+  void AddPrefixToNodeDef(const std::vector<bool>& input_already_exists,
+                          NodeDef* node_def);
 
   // From constructor
   const Options opts_;
@@ -147,7 +166,10 @@ class GraphConstructor {
   };
   // TODO(vrv): Profile this data structure to see if we should use an
   // alternative implementation of std::unordered_map.
-  std::unordered_map<StringPiece, NodeInfo, StringPiece::Hasher> name_index_;
+  std::unordered_map<StringPiece, NodeInfo, StringPiece::Hasher> gdef_nodes_;
+
+  // Mapping from node name to the existing node in g_
+  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> existing_nodes_;
 
   // Index of NodeDefs in gdef_ with all inputs already converted.
   std::vector<int> ready_;
@@ -163,9 +185,10 @@ class GraphConstructor {
   // Used in the conversion from gdef_ to g_ to represent the ith input
   // of a node.
   struct InputInfo {
-    explicit InputInfo(StringPiece node_name, Node* n, int i)
+    explicit InputInfo(const string& node_name, Node* n, int i)
         : name(node_name), node(n), index(i) {}
-    StringPiece name;
+    // Use string instead of StringPiece so we don't have to manage lifetime
+    string name;
     Node* node;
     int index;
   };
@@ -173,9 +196,10 @@ class GraphConstructor {
   // Used in the conversion from gdef_ to g_ to represent an edge from
   // the node named 'name' to node 'n'.
   struct EdgeInfo {
-    explicit EdgeInfo(StringPiece name, int i1, Node* n, int i2)
+    explicit EdgeInfo(const string& name, int i1, Node* n, int i2)
         : src_name(name), src_index(i1), dst_node(n), dst_index(i2) {}
-    StringPiece src_name;
+    // Use string instead of StringPiece so we don't have to manage lifetime
+    string src_name;
     int src_index;
     Node* dst_node;
     int dst_index;
@@ -183,15 +207,43 @@ class GraphConstructor {
   std::vector<EdgeInfo> back_edges_;
 };
 
+// This could be expensive but we don't expect to call it often, if at all (only
+// if there are multiple nodes in g_ with the same name)
+bool NodeNameInValues(const std::map<TensorId, TensorId>& input_map,
+                      const StringPiece& node_name) {
+  for (auto iter = input_map.begin(); iter != input_map.end(); ++iter) {
+    if (iter->second.first == node_name) return true;
+  }
+  return false;
+}
+
+bool NodeNameInValues(const std::vector<string>& control_dependencies,
+                      const StringPiece& node_name) {
+  return std::find(control_dependencies.begin(), control_dependencies.end(),
+                   node_name) != control_dependencies.end();
+}
+
 Status GraphConstructor::EnsureNoNameCollisions() {
-  if (opts_.prefix.empty() && opts_.importing) {
-    std::unordered_set<string> existing(g_->num_nodes());
-    for (const Node* n : g_->nodes()) {
-      existing.insert(n->name());
+  existing_nodes_.reserve(g_->num_nodes());
+  for (Node* n : g_->nodes()) {
+    bool already_exists = !existing_nodes_.insert({n->name(), n}).second;
+    if (already_exists) {
+      if (NodeNameInValues(opts_.input_map, n->name())) {
+        return errors::InvalidArgument(
+            "cannot resolve input_map because multiple nodes exist with name '",
+            n->name(), "'");
+      }
+      if (NodeNameInValues(opts_.control_dependencies, n->name())) {
+        return errors::InvalidArgument(
+            "cannot resolve control_dependencies because multiple nodes exist "
+            "with name '", n->name(), "'");
+      }
     }
+  }
+  if (opts_.prefix.empty() && opts_.importing) {
     for (int n = 0; n < gdef_->node_size(); ++n) {
       const string& name = gdef_->node(n).name();
-      if (existing.find(name) != existing.end()) {
+      if (existing_nodes_.find(name) != existing_nodes_.end()) {
         return errors::InvalidArgument("Node '", name,
                                        "' already exists in the Graph");
       }
@@ -218,8 +270,34 @@ Status GraphConstructor::EnsureNoNameCollisions() {
   return Status::OK();
 }
 
+Status GraphConstructor::ValidateInputMapAndControlDependencies() {
+  for (const auto& mapping : opts_.input_map) {
+    TensorId src = mapping.first;
+    TensorId dst = mapping.second;
+    if (existing_nodes_.count(dst.first) == 0) {
+      return errors::InvalidArgument(
+          "node '", dst.first, "' in input_map does not exist in graph ",
+          "(input_map entry: ", src.ToString(), "->", dst.ToString(), ")");
+    }
+    if ((src.second == Graph::kControlSlot) !=
+        (dst.second == Graph::kControlSlot)) {
+      return errors::InvalidArgument(
+          "input_map entry ", src.ToString(), "->", dst.ToString(), " between ",
+          "control edge and non-control edge");
+    }
+  }
+  for (const string& node : opts_.control_dependencies) {
+    if (existing_nodes_.count(node) == 0) {
+      return errors::InvalidArgument(
+          "node '", node, "' in control_dependencies does not exist in "
+          "graph");
+    }
+  }
+  return Status::OK();
+}
+
 Status GraphConstructor::BuildNodeIndex() {
-  // Validate the node names and add them to name_index_.
+  // Validate the node names and add them to gdef_nodes_.
   for (int n = 0; n < gdef_->node_size(); ++n) {
     const NodeDef& node_def(gdef_->node(n));
     if (!IsValidNodeName(node_def.name(), opts_.allow_internal_ops)) {
@@ -227,7 +305,7 @@ Status GraphConstructor::BuildNodeIndex() {
           "Node '", node_def.name(),
           "': Node name contains invalid characters");
     }
-    if (!name_index_
+    if (!gdef_nodes_
              .insert(std::make_pair(StringPiece(node_def.name()), NodeInfo(n)))
              .second) {
       return errors::InvalidArgument("Node '", node_def.name(),
@@ -241,6 +319,18 @@ Status GraphConstructor::BuildNodeIndex() {
     if (opts_.expect_device_spec && node_def.device().empty()) {
       return errors::InvalidArgument("Node '", node_def.name(),
                                      "' is missing a device specification");
+    }
+    // Validate control edges at end
+    bool in_control_dependence = false;
+    for (int i = 0; i < node_def.input_size(); ++i) {
+      StringPiece input_name = node_def.input(i);
+      if (!input_name.empty() && input_name.starts_with("^")) {
+        in_control_dependence = true;
+      } else if (in_control_dependence) {
+        return errors::InvalidArgument(
+            "Node '", node_def.name(),
+            "': Control dependencies must come after regular dependencies");
+      }
     }
   }
   return Status::OK();
@@ -274,8 +364,8 @@ Status GraphConstructor::InitFromEdges() {
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
       TensorId id(ParseTensorName(input_name));
-      auto iter = name_index_.find(id.first);
-      if (iter == name_index_.end()) {
+      auto iter = gdef_nodes_.find(id.first);
+      if (iter == gdef_nodes_.end()) {
         return errors::InvalidArgument("Node '", node_def.name(),
                                        "': Unknown input node '",
                                        node_def.input(i), "'");
@@ -294,7 +384,7 @@ Status GraphConstructor::ValidateColocationConstraints(
   for (const string& c : iter->second.list().s()) {
     StringPiece s(c);
     if (s.Consume(kColocationGroupPrefix) &&
-        name_index_.find(s) == name_index_.end()) {
+        gdef_nodes_.find(s) == gdef_nodes_.end()) {
       return errors::InvalidArgument(
           "Node '", node_def.name(),
           "' expects to be colocated with unknown node '", s, "'");
@@ -389,13 +479,98 @@ Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
   return Status::OK();
 }
 
-void GraphConstructor::AddPrefixToNodeDef(NodeDef* node_def) {
+void RemoveInputs(NodeDef* node_def, const std::vector<int>& inputs_to_remove) {
+  // TODO(skyewm): is there a better way to do this?
+  std::vector<string> inputs;
+  for (int i = 0; i < node_def->input_size(); ++i) {
+    inputs.push_back(node_def->input(i));
+  }
+  node_def->clear_input();
+  for (int i = 0, j = 0; i < inputs.size(); ++i) {
+    if (j < inputs_to_remove.size() && i == inputs_to_remove[j]) {
+      ++j;
+    } else {
+      node_def->add_input(inputs[i]);
+    }
+  }
+}
+
+void GraphConstructor::RemapNodeDefInputs(
+    NodeDef* node_def, std::vector<bool>* input_already_exists) {
+  DCHECK_EQ(input_already_exists->size(), node_def->input_size());
+  std::set<TensorId> control_inputs;
+  std::vector<int> inputs_to_remove;
+
+  for (int i = 0; i < node_def->input_size(); ++i) {
+    auto iter = opts_.input_map.find(ParseTensorName(node_def->input(i)));
+    if (iter == opts_.input_map.end()) continue;
+
+    TensorId new_input = iter->second;
+    if (new_input.second == Graph::kControlSlot) {
+      // Check if we've already remapped a different input to new_input, and if
+      // so remove this input.
+      if (control_inputs.count(new_input) > 0) {
+        inputs_to_remove.push_back(i);
+        continue;
+      }
+      control_inputs.insert(new_input);
+    }
+    node_def->set_input(i, new_input.ToString());
+    (*input_already_exists)[i] = true;
+  }
+  if (!inputs_to_remove.empty()) RemoveInputs(node_def, inputs_to_remove);
+}
+
+void GraphConstructor::AddControlDependencies(
+    NodeDef* node_def, std::vector<bool>* input_already_exists) {
+  // To avoid adding redundant control dependencies to every imported node, skip
+  // nodes that will inherit the dependencies from another imported node.
+  bool inherits_deps = false;
+  for (int i = 0; i < node_def->input_size(); ++i) {
+    // Assume we won't inherit dependencies from remapped inputs that already
+    // exist in the graph. Even if we're wrong, we'll only add redundant
+    // dependencies.
+    if ((*input_already_exists)[i]) continue;
+
+    // If this input is a backedge, assume we won't inherit the dependencies.
+    // TODO(skyewm): we have many redundant ParseTensorName calls. It could be
+    // worth optimizing these.
+    TensorId id(ParseTensorName(node_def->input(i)));
+    auto iter = gdef_nodes_.find(id.first);
+    DCHECK(iter != gdef_nodes_.end()) << id.first;
+    if (iter->second.node == nullptr) {
+      // Input hasn't been created yet, indicating it's a backedge.
+      continue;
+    }
+    inherits_deps = true;
+  }
+  if (inherits_deps) return;
+
+  // node_def either has no inputs or all remapped inputs, add the control
+  // dependencies
+  for (const string& control_dep : opts_.control_dependencies) {
+    string input = TensorId(control_dep, Graph::kControlSlot).ToString();
+    const protobuf::RepeatedPtrField<string>& inputs = node_def->input();
+    if (std::find(inputs.begin(), inputs.end(), input) != inputs.end()) {
+      // Control dependency already exists
+      continue;
+    }
+    node_def->add_input(input);
+    input_already_exists->push_back(true);
+  }
+}
+
+void GraphConstructor::AddPrefixToNodeDef(
+    const std::vector<bool>& input_already_exists, NodeDef* node_def) {
   const string& prefix = opts_.prefix;
   if (prefix.empty()) return;
   node_def->set_name(strings::StrCat(prefix, node_def->name()));
   // Update names of input nodes
   for (int i = 0; i < node_def->input_size(); ++i) {
     StringPiece input(node_def->input(i));
+    // Skip remapped inputs (which already exist in g_ and are not being
+    // imported)
+    if (input_already_exists[i]) continue;
     if (input.Consume("^")) {
       node_def->set_input(i, strings::StrCat("^", prefix, input));
     } else {
@@ -426,57 +601,83 @@ Status GraphConstructor::Convert() {
     int o = ready_.back();
     ready_.pop_back();
     ++processed;
-    const NodeDef& node_def(gdef_->node(o));
     inputs.clear();
-    bool in_control_dependence = false;
     bool has_data_back_edge = false;
-    TF_RETURN_IF_ERROR(ValidateColocationConstraints(node_def));
-    for (int i = 0; i < node_def.input_size(); ++i) {
-      StringPiece input_name(node_def.input(i));
-      if (input_name.starts_with("^")) {
-        in_control_dependence = true;
-      } else if (in_control_dependence) {
-        return errors::InvalidArgument(
-            "Node '", node_def.name(),
-            "': Control dependencies must come after regular dependencies");
-      }
-      TensorId id(ParseTensorName(input_name));
-      auto iter = name_index_.find(id.first);
-      DCHECK(iter != name_index_.end());
-      Node* src_node = iter->second.node;
-      if (src_node == nullptr) {
-        has_data_back_edge = true;
-        inputs.push_back(InputInfo(id.first, src_node, id.second));
-      } else {
-        if (id.second >= src_node->num_outputs()) {
-          return errors::InvalidArgument(
-              "Node '", node_def.name(), "': Connecting to invalid output ",
-              id.second, " of source node ", id.first, " which has ",
-              src_node->num_outputs(), " outputs");
-        }
-        inputs.push_back(InputInfo(id.first, src_node, id.second));
-      }
-    }
-    if (has_data_back_edge && !IsMerge(node_def)) {
-      return errors::InvalidArgument(
-          "Node '", node_def.name(),
-          "' had a back edge, but only Merge nodes can have back edges.");
-    }
 
-    Node* node;
+    const NodeDef& original_node_def = gdef_->node(o);
+    NodeDef imported_node_def;
+    const NodeDef* node_def;
+
+    // input_already_exists[i] is true iff the i-th input of the node we're
+    // importing refers to a preexisting node in g_ (i.e. input[i] existed prior
+    // to importing gdef_).  Conversely, input_already_exists[i] is false iff
+    // the input refers to a node in gdef_.
+    std::vector<bool> input_already_exists(original_node_def.input_size(),
+                                           false);
+
     if (opts_.importing) {
       // TODO(ashankar): The line below means an additional copy of the NodeDef,
       // which can be expensive if the NodeDef contains large tensors in it.
       // Might make sense to change the API for ImportGraphDef to take a mutable
       // GraphDef* and avoid the copying.
-      NodeDef imported_node_def = node_def;
-      AddPrefixToNodeDef(&imported_node_def);
-      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&imported_node_def));
-      TF_RETURN_IF_ERROR(MakeNode(imported_node_def, &node));
+      imported_node_def = original_node_def;
+      if (!opts_.input_map.empty()) {
+        RemapNodeDefInputs(&imported_node_def, &input_already_exists);
+      }
+      if (!opts_.control_dependencies.empty()) {
+        // Note that input_already_exists can grow here
+        AddControlDependencies(&imported_node_def, &input_already_exists);
+      }
+      node_def = &imported_node_def;
     } else {
-      TF_RETURN_IF_ERROR(MakeNode(node_def, &node));
+      node_def = &original_node_def;
     }
-    name_index_[node_def.name()].node = node;
+
+    TF_RETURN_IF_ERROR(ValidateColocationConstraints(*node_def));
+    for (int i = 0; i < node_def->input_size(); ++i) {
+      TensorId id(ParseTensorName(node_def->input(i)));
+      Node* src_node;
+      int src_index;
+
+      if (!input_already_exists[i]) {
+        // Locate input in newly-imported nodes
+        auto iter = gdef_nodes_.find(id.first);
+        DCHECK(iter != gdef_nodes_.end()) << id.first;
+        src_node = iter->second.node;
+        src_index = id.second;
+        if (src_node == nullptr) has_data_back_edge = true;
+      } else {
+        // Input refers to preexistng node in graph
+        auto iter = existing_nodes_.find(id.first);
+        DCHECK(iter != existing_nodes_.end()) << id.first;
+        src_node = iter->second;
+        src_index = id.second;
+      }
+
+      if (src_node != nullptr && src_index >= src_node->num_outputs()) {
+        return errors::InvalidArgument(
+            "Node '", node_def->name(), "': Connecting to invalid output ",
+            id.second, " of source node ", id.first, " which has ",
+            src_node->num_outputs(), " outputs");
+      }
+
+      inputs.push_back(InputInfo(id.first.ToString(), src_node, src_index));
+    }
+
+    if (has_data_back_edge && !IsMerge(*node_def)) {
+      return errors::InvalidArgument(
+          "Node '", node_def->name(),
+          "' had a back edge, but only Merge nodes can have back edges.");
+    }
+
+    Node* node;
+    if (opts_.importing) {
+      AddPrefixToNodeDef(input_already_exists, &imported_node_def);
+      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&imported_node_def));
+    }
+    TF_RETURN_IF_ERROR(MakeNode(*node_def, &node));
+    // Use original_node_def so name StringPiece remains valid
+    gdef_nodes_[original_node_def.name()].node = node;
 
     // Add edges from inputs to *node to the graph.
     for (size_t i = 0; i < inputs.size(); ++i) {
@@ -485,7 +686,7 @@ Status GraphConstructor::Convert() {
         // are created.
         back_edges_.push_back(
             EdgeInfo(inputs[i].name, inputs[i].index, node, i));
-      } else if (inputs[i].index == -1) {
+      } else if (inputs[i].index == Graph::kControlSlot) {
         g_->AddControlEdge(inputs[i].node, node);
       } else {
         TF_RETURN_IF_ERROR(MakeEdge(inputs[i].node, inputs[i].index, node, i));
@@ -513,8 +714,8 @@ Status GraphConstructor::Convert() {
 Status GraphConstructor::AddBackEdges() {
   // Add the back edges after all nodes are created.
   for (auto e : back_edges_) {
-    Node* src_node = name_index_[e.src_name].node;
-    if (e.src_index == -1) {
+    Node* src_node = gdef_nodes_[e.src_name].node;
+    if (e.src_index == Graph::kControlSlot) {
       g_->AddControlEdge(src_node, e.dst_node);
     } else {
       TF_RETURN_IF_ERROR(
@@ -552,7 +753,7 @@ Status GraphConstructor::UpdateVersionDef() {
 }
 
 void GraphConstructor::Undo() {
-  for (const auto& iter : name_index_) {
+  for (const auto& iter : gdef_nodes_) {
     if (iter.second.node != nullptr) {
       g_->RemoveNode(iter.second.node);
     }

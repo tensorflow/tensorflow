@@ -112,9 +112,9 @@ class StabilityTest(test.TestCase):
     self.assertAllClose(regressor1.weights_, regressor2.weights_)
     self.assertAllClose(regressor1.bias_, regressor2.bias_)
     self.assertAllClose(
-        list(regressor1.predict(
+        list(regressor1.predict_scores(
             boston.data, as_iterable=True)),
-        list(regressor2.predict(
+        list(regressor2.predict_scores(
             boston.data, as_iterable=True)),
         atol=1e-05)
 
@@ -160,9 +160,9 @@ class StabilityTest(test.TestCase):
     for b1, b2 in zip(biases1, biases2):
       self.assertAllClose(b1, b2)
     self.assertAllClose(
-        list(regressor1.predict(
+        list(regressor1.predict_scores(
             boston.data, as_iterable=True)),
-        list(regressor2.predict(
+        list(regressor2.predict_scores(
             boston.data, as_iterable=True)),
         atol=1e-05)
 

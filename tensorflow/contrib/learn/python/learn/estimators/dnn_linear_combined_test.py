@@ -49,6 +49,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import ftrl
@@ -63,6 +64,33 @@ def _assert_metrics_in_range(keys, metrics):
   for key in keys:
     estimator_test_utils.assert_in_range(0.0 - epsilon, 1.0 + epsilon, key,
                                          metrics)
+
+
+class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
+  """Head that checks whether head_ops is called."""
+
+  def __init__(self):
+    self._head_ops_called_times = 0
+
+  @property
+  def logits_dimension(self):
+    return 1
+
+  def head_ops(self, features, labels, mode, train_op_fn, logits=None,
+               logits_input=None, scope=None):
+    """See `_Head`."""
+    self._head_ops_called_times += 1
+    loss = losses.mean_squared_error(labels, logits)
+    return model_fn.ModelFnOps(
+        mode,
+        predictions={'loss': loss},
+        loss=loss,
+        train_op=train_op_fn(loss),
+        eval_metric_ops={'loss': loss})
+
+  @property
+  def head_ops_called_times(self):
+    return self._head_ops_called_times
 
 
 class EmbeddingMultiplierTest(test.TestCase):
@@ -144,6 +172,47 @@ class EmbeddingMultiplierTest(test.TestCase):
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
+class DNNLinearCombinedEstimatorTest(test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, dnn_linear_combined._DNNLinearCombinedEstimator)
+
+  def testNoFeatureColumns(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Either linear_feature_columns or dnn_feature_columns must be defined'):
+      dnn_linear_combined._DNNLinearCombinedEstimator(
+          head=_CheckCallsHead(),
+          linear_feature_columns=None,
+          dnn_feature_columns=None,
+          dnn_hidden_units=[3, 3])
+
+  def testCheckCallsHead(self):
+    """Tests binary classification using matrix data as input."""
+    head = _CheckCallsHead()
+    iris = test_data.prepare_iris_data_for_logistic_regression()
+    cont_features = [
+        feature_column.real_valued_column('feature', dimension=4)]
+    bucketized_feature = [feature_column.bucketized_column(
+        cont_features[0], test_data.get_quantile_based_buckets(iris.data, 10))]
+
+    estimator = dnn_linear_combined._DNNLinearCombinedEstimator(
+        head,
+        linear_feature_columns=bucketized_feature,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3])
+
+    estimator.fit(input_fn=test_data.iris_input_multiclass_fn, steps=10)
+    self.assertEqual(1, head.head_ops_called_times)
+
+    estimator.evaluate(input_fn=test_data.iris_input_multiclass_fn, steps=10)
+    self.assertEqual(2, head.head_ops_called_times)
+
+    estimator.predict(input_fn=test_data.iris_input_multiclass_fn)
+    self.assertEqual(3, head.head_ops_called_times)
+
+
 class DNNLinearCombinedClassifierTest(test.TestCase):
 
   def testEstimatorContract(self):
@@ -182,7 +251,49 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         embedding_lr_multipliers={embedding_language: 0.8})
     self.assertEqual({
         embedding_language: 0.8
-    }, classifier._estimator.params['embedding_lr_multipliers'])
+    }, classifier.params['embedding_lr_multipliers'])
+
+  def testInputPartitionSize(self):
+    def _input_fn_float_label(num_epochs=None):
+      features = {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant([[0.8], [0.], [0.2]], dtype=dtypes.float32)
+      return features, labels
+
+    language_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        feature_column.embedding_column(language_column, dimension=1),
+    ]
+
+    # Set num_ps_replica to be 10 and the min slice size to be extremely small,
+    # so as to ensure that there'll be 10 partititions produced.
+    config = run_config.RunConfig(tf_random_seed=1)
+    config._num_ps_replicas = 10
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        n_classes=2,
+        dnn_feature_columns=feature_columns,
+        dnn_hidden_units=[3, 3],
+        dnn_optimizer='Adagrad',
+        config=config,
+        input_layer_min_slice_size=1)
+
+    # Ensure the param is passed in.
+    self.assertEqual(1, classifier.params['input_layer_min_slice_size'])
+
+    # Ensure the partition count is 10.
+    classifier.fit(input_fn=_input_fn_float_label, steps=50)
+    partition_count = 0
+    for name in classifier.get_variable_names():
+      if 'language_embedding' in name and 'Adagrad' in name:
+        partition_count += 1
+    self.assertEqual(10, partition_count)
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
@@ -519,7 +630,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
     probs = list(classifier.predict_proba(input_fn=_input_fn_predict))
     self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.05)
-    classes = list(classifier.predict(input_fn=_input_fn_predict))
+    classes = list(classifier.predict_classes(input_fn=_input_fn_predict))
     self.assertListEqual([0] * 4, classes)
 
   def testCustomMetrics(self):
@@ -571,7 +682,8 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric']).issubset(
             set(scores.keys())))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(classifier.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(classifier.predict_classes(
+        input_fn=predict_input_fn)))
     self.assertEqual(
         _sklearn.accuracy_score([1, 0, 0, 0], predictions),
         scores['my_accuracy'])
@@ -983,7 +1095,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores.keys())
-    regressor.predict(input_fn=_input_fn, as_iterable=False)
+    regressor.predict_scores(input_fn=_input_fn, as_iterable=False)
 
   def testPredict_AsIterable(self):
     """Tests predict method with as_iterable=True."""
@@ -1023,7 +1135,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores.keys())
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    regressor.predict(input_fn=predict_input_fn, as_iterable=True)
+    regressor.predict_scores(input_fn=predict_input_fn, as_iterable=True)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
@@ -1061,7 +1173,8 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(regressor.predict_scores(
+        input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -1127,7 +1240,8 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(regressor.predict_scores(
+        input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -1208,7 +1322,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
 
     model_dir = tempfile.mkdtemp()
     # pylint: disable=g-long-lambda
-    new_estimator = lambda: dnn_linear_combined.DNNLinearCombinedRegressor(
+    new_regressor = lambda: dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=[feature_column.real_valued_column('x')],
         dnn_feature_columns=[feature_column.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
@@ -1216,13 +1330,13 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
         config=run_config.RunConfig(tf_random_seed=1))
 
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    classifier = new_estimator()
-    classifier.fit(input_fn=_input_fn, steps=10)
-    predictions = list(classifier.predict(input_fn=predict_input_fn))
-    del classifier
+    regressor = new_regressor()
+    regressor.fit(input_fn=_input_fn, steps=10)
+    predictions = list(regressor.predict_scores(input_fn=predict_input_fn))
+    del regressor
 
-    classifier = new_estimator()
-    predictions2 = list(classifier.predict(input_fn=predict_input_fn))
+    regressor = new_regressor()
+    predictions2 = list(regressor.predict_scores(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
   def testTrainWithPartitionedVariables(self):
@@ -1415,11 +1529,11 @@ class FeatureEngineeringFunctionTest(test.TestCase):
 
     # predictions = y
     prediction_with_fe_fn = next(
-        estimator_with_fe_fn.predict(
+        estimator_with_fe_fn.predict_scores(
             input_fn=input_fn, as_iterable=True))
     self.assertAlmostEqual(1000., prediction_with_fe_fn, delta=10.0)
     prediction_without_fe_fn = next(
-        estimator_without_fe_fn.predict(
+        estimator_without_fe_fn.predict_scores(
             input_fn=input_fn, as_iterable=True))
     self.assertAlmostEqual(100., prediction_without_fe_fn, delta=1.0)
 

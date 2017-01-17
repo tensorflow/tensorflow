@@ -75,6 +75,18 @@ Status InitializeSession(int num_threads, const string& graph,
   return Status::OK();
 }
 
+template <class T>
+void InitializeTensor(const std::vector<float>& initialization_values,
+                      Tensor* input_tensor) {
+  auto type_tensor = input_tensor->flat<T>();
+  type_tensor = type_tensor.constant(0);
+  if (!initialization_values.empty()) {
+    for (int i = 0; i < initialization_values.size(); ++i) {
+      type_tensor(i) = static_cast<T>(initialization_values[i]);
+    }
+  }
+}
+
 void CreateTensorsFromInputInfo(
     const std::vector<InputLayerInfo>& inputs,
     std::vector<std::pair<string, tensorflow::Tensor> >* input_tensors) {
@@ -82,23 +94,19 @@ void CreateTensorsFromInputInfo(
     Tensor input_tensor(input.data_type, input.shape);
     switch (input.data_type) {
       case DT_INT32: {
-        auto int_tensor = input_tensor.flat<int32>();
-        int_tensor = int_tensor.constant(0.0);
+        InitializeTensor<int32>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_FLOAT: {
-        auto float_tensor = input_tensor.flat<float>();
-        float_tensor = float_tensor.constant(0.0);
+        InitializeTensor<float>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_QUINT8: {
-        auto int_tensor = input_tensor.flat<quint8>();
-        int_tensor = int_tensor.constant(0.0);
+        InitializeTensor<quint8>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_UINT8: {
-        auto int_tensor = input_tensor.flat<uint8>();
-        int_tensor = int_tensor.constant(0.0);
+        InitializeTensor<uint8>(input.initialization_values, &input_tensor);
         break;
       }
       default:
@@ -248,6 +256,7 @@ int Main(int argc, char** argv) {
   string input_layer_string = "input:0";
   string input_layer_shape_string = "1,224,224,3";
   string input_layer_type_string = "float";
+  string input_layer_values_string = "";
   string output_layer_string = "output:0";
   int num_runs = 50;
   string run_delay = "-1.0";
@@ -270,6 +279,8 @@ int Main(int argc, char** argv) {
       Flag("input_layer", &input_layer_string, "input layer names"),
       Flag("input_layer_shape", &input_layer_shape_string, "input layer shape"),
       Flag("input_layer_type", &input_layer_type_string, "input layer type"),
+      Flag("input_layer_values", &input_layer_values_string,
+           "values to initialize the inputs with"),
       Flag("output_layer", &output_layer_string, "output layer name"),
       Flag("num_runs", &num_runs, "number of runs"),
       Flag("run_delay", &run_delay, "delay between runs in seconds"),
@@ -304,6 +315,8 @@ int Main(int argc, char** argv) {
       str_util::Split(input_layer_shape_string, ':');
   std::vector<string> input_layer_types =
       str_util::Split(input_layer_type_string, ',');
+  std::vector<string> input_layer_values =
+      str_util::Split(input_layer_values_string, ':');
   std::vector<string> output_layers = str_util::Split(output_layer_string, ',');
   if ((input_layers.size() != input_layer_shapes.size()) ||
       (input_layers.size() != input_layer_types.size())) {
@@ -374,6 +387,12 @@ int Main(int argc, char** argv) {
       input.shape.AddDim(sizes[i]);
     }
     input.name = input_layers[n];
+    if (n < input_layer_values.size()) {
+      CHECK(str_util::SplitAndParseAsFloats(input_layer_values[n], ',',
+                                            &input.initialization_values))
+          << "Incorrect initialization values string specified: "
+          << input_layer_values[n];
+    }
     inputs.push_back(input);
   }
 
@@ -411,11 +430,11 @@ int Main(int argc, char** argv) {
       const float rounded_flops = (total_flops / 1000.0f);
       pretty_flops = strings::StrCat(rounded_flops, "k FLOPs");
     } else if (total_flops < (1000 * 1000 * 1000)) {
-      const float rounded_flops = (std::round(total_flops / 1000.0f) / 1000.0f);
+      const float rounded_flops = round(total_flops / 1000.0f) / 1000.0f;
       pretty_flops = strings::StrCat(rounded_flops, " million FLOPs");
     } else {
       const float rounded_flops =
-          (std::round(total_flops / (1000.0f * 1000.0f)) / 1000.0f);
+          round(total_flops / (1000.0f * 1000.0f)) / 1000.0f;
       pretty_flops = strings::StrCat(rounded_flops, " billion FLOPs");
     }
     LOG(INFO) << "FLOPs estimate: " << strings::HumanReadableNum(total_flops);

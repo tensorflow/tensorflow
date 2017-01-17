@@ -50,6 +50,9 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
       filesystems, such as Google Cloud Storage (GCS).
     name: Filename for the graph.
     as_text: If `True`, writes the graph as an ASCII proto.
+
+  Returns:
+    The path of the output proto file.
   """
   if isinstance(graph_or_graph_def, ops.Graph):
     graph_def = graph_or_graph_def.as_graph_def()
@@ -64,3 +67,4 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
     file_io.atomic_write_string_to_file(path, str(graph_def))
   else:
     file_io.atomic_write_string_to_file(path, graph_def.SerializeToString())
+  return path

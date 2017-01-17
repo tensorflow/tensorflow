@@ -253,7 +253,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
-from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer as tf_optimizer
 
@@ -285,10 +284,10 @@ def add_gradients_summaries(grads_and_vars):
       else:
         grad_values = grad
       summaries.append(
-          summary.histogram_summary(var.op.name + ':gradient', grad_values))
+          summary.histogram(var.op.name + '_gradient', grad_values))
       summaries.append(
-          summary.histogram_summary(var.op.name + ':gradient_norm',
-                                    clip_ops.global_norm([grad_values])))
+          summary.histogram(var.op.name + '_gradient_norm',
+                            clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
@@ -497,43 +496,25 @@ def train(train_op,
     ValueError: if `logdir` is `None` and either `save_checkpoint_secs` or
     `save_summaries_steps` are `None.
   """
-  # TODO(nsilberman): move this logic into monitored_session.py
-  scaffold = scaffold or monitored_session.Scaffold()
-
-  hooks = hooks or []
-
-  if is_chief:
-    session_creator = monitored_session.ChiefSessionCreator(
-        scaffold=scaffold, checkpoint_dir=logdir, master=master, config=config)
-
-    if chief_only_hooks:
-      hooks.extend(chief_only_hooks)
-
-    hooks.append(basic_session_run_hooks.StepCounterHook(output_dir=logdir))
-
+  if logdir is None and is_chief:
     if save_summaries_steps:
-      if logdir is None:
-        raise ValueError(
-            'logdir cannot be None when save_summaries_steps is None')
-      hooks.append(
-          basic_session_run_hooks.SummarySaverHook(
-              scaffold=scaffold,
-              save_steps=save_summaries_steps,
-              output_dir=logdir))
+      raise ValueError(
+          'logdir cannot be None when save_summaries_steps is not None')
 
     if save_checkpoint_secs:
-      if logdir is None:
-        raise ValueError(
-            'logdir cannot be None when save_checkpoint_secs is None')
-      hooks.append(
-          basic_session_run_hooks.CheckpointSaverHook(
-              logdir, save_secs=save_checkpoint_secs, scaffold=scaffold))
-  else:
-    session_creator = monitored_session.WorkerSessionCreator(
-        scaffold=scaffold, master=master, config=config)
+      raise ValueError(
+          'logdir cannot be None when save_checkpoint_secs is not None')
 
-  with monitored_session.MonitoredSession(
-      session_creator=session_creator, hooks=hooks) as session:
+  with monitored_session.MonitoredTrainingSession(
+      master=master,
+      is_chief=is_chief,
+      checkpoint_dir=logdir,
+      scaffold=scaffold,
+      hooks=hooks,
+      chief_only_hooks=chief_only_hooks,
+      save_checkpoint_secs=save_checkpoint_secs,
+      save_summaries_steps=save_summaries_steps,
+      config=config) as session:
     loss = None
     while not session.should_stop():
       loss = session.run(train_op)

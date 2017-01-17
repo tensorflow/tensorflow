@@ -557,7 +557,7 @@ class RNNCellTest(test.TestCase):
                 dtype=dtypes.float32)
             output, state = cell(inputs, zero_state)
             if state_is_tuple:
-              concat_state = array_ops.concat_v2(
+              concat_state = array_ops.concat(
                   [state[0][0], state[0][1], state[1], state[2]], 1)
             else:
               concat_state = state
@@ -575,33 +575,34 @@ class RNNCellTest(test.TestCase):
     attn_length = 6
     batch_size = 2
     expected_output = np.array(
-        [[0.955392, 0.408507, -0.60122, 0.270718],
-         [0.903681, 0.331165, -0.500238, 0.224052]],
+        [[1.068372, 0.45496, -0.678277, 0.340538],
+         [1.018088, 0.378983, -0.572179, 0.268591]],
         dtype=np.float32)
     expected_state = np.array(
-        [[0.81331915, 0.32036272, 0.28079176, 1.08888793, 0.41264394,
-          0.1062041, 0.10444493, 0.32050529, 0.64655536, 0.70794445,
-          0.51896095, 0.31809306, 0.58086717, 0.49446869, 0.7641536,
+        [[0.74946702, 0.34681597, 0.26474735, 1.06485605, 0.38465962,
+          0.11420801, 0.10272158, 0.30925757, 0.63899988, 0.7181077,
+          0.47534478, 0.33715725, 0.58086717, 0.49446869, 0.7641536,
           0.12814975, 0.92231739, 0.89857256, 0.21889746, 0.38442063,
           0.53481543, 0.8876909, 0.45823169, 0.5905602, 0.78038228,
           0.56501579, 0.03971386, 0.09870267, 0.8074435, 0.66821432,
-          0.99211812, 0.12295902, 1.01412082, 0.33123279, -0.71114945,
-          0.40583119],
-         [0.59962207, 0.42597458, -0.22491696, 0.98063421, 0.32548007,
-          0.11623692, -0.10100613, 0.27708149, 0.76956916, 0.6360054,
-          0.51719815, 0.50458527, 0.73000264, 0.66986895, 0.73576689,
+          0.99211812, 0.12295902, 1.14606023, 0.34370938, -0.79251152,
+          0.51843399],
+         [0.5179342, 0.48682183, -0.25426468, 0.96810579, 0.28809637,
+          0.13607743, -0.11446252, 0.26792109, 0.78047138, 0.63460857,
+          0.49122369, 0.52007174, 0.73000264, 0.66986895, 0.73576689,
           0.86301267, 0.87887371, 0.35185754, 0.93417215, 0.64732957,
           0.63173044, 0.66627824, 0.53644657, 0.20477486, 0.98458421,
           0.38277245, 0.03746676, 0.92510188, 0.57714164, 0.84932971,
-          0.36127412, 0.12125921, 0.99780077, 0.31886846, -0.67595094,
-          0.56531656]],
+          0.36127412, 0.12125921, 1.1362772, 0.34361625, -0.78150457,
+          0.70582712]],
         dtype=np.float32)
     seed = 12345
     random_seed.set_random_seed(seed)
     for state_is_tuple in [False, True]:
       with session.Session() as sess:
         with variable_scope.variable_scope(
-            "state_is_tuple", reuse=state_is_tuple):
+            "state_is_tuple", reuse=state_is_tuple,
+            initializer=init_ops.glorot_uniform_initializer()):
           lstm_cell = core_rnn_cell_impl.BasicLSTMCell(
               num_units, state_is_tuple=state_is_tuple)
           cell = rnn_cell.AttentionCellWrapper(
@@ -616,14 +617,14 @@ class RNNCellTest(test.TestCase):
               (batch_size, attn_length * num_units), 0.0, 1.0, seed=seed + 4)
           zero_state = ((zeros1, zeros2), zeros3, attn_state_zeros)
           if not state_is_tuple:
-            zero_state = array_ops.concat_v2([
+            zero_state = array_ops.concat([
                 zero_state[0][0], zero_state[0][1], zero_state[1], zero_state[2]
             ], 1)
           inputs = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 5)
           output, state = cell(inputs, zero_state)
           if state_is_tuple:
-            state = array_ops.concat_v2(
+            state = array_ops.concat(
                 [state[0][0], state[0][1], state[1], state[2]], 1)
           sess.run(variables.global_variables_initializer())
           self.assertAllClose(sess.run(output), expected_output)

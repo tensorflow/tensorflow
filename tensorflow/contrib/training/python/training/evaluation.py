@@ -252,15 +252,17 @@ def get_or_create_eval_step():
 class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
   """Run hook used by the evaluation routines to run the `eval_ops` N times."""
 
-  def __init__(self, num_evals):
+  def __init__(self, num_evals, log_progress=True):
     """Constructs the run hook.
 
     Args:
       num_evals: The number of evaluations to run for.
+      log_progress: Whether to log evaluation progress, defaults to True.
     """
     # The number of evals to run for.
     self._num_evals = num_evals
     self._evals_completed = None
+    self._log_progress = log_progress
 
   def _set_evals_completed_tensor(self, updated_eval_step):
     self._evals_completed = updated_eval_step
@@ -272,7 +274,8 @@ class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     evals_completed = run_values.results['evals_completed']
-    logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
+    if self._log_progress:
+      logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
     if evals_completed >= self._num_evals:
       run_context.request_stop()
 

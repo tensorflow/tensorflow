@@ -25,6 +25,7 @@ import sys
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug.cli import base_ui
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
@@ -50,21 +51,17 @@ def _get_command_from_line_attr_segs(mouse_x, attr_segs):
           return attr.content
 
 
-class CursesUI(object):
+class CursesUI(base_ui.BaseUI):
   """Curses-based Command-line UI.
 
   In this class, the methods with the prefix "_screen_" are the methods that
   interact with the actual terminal using the curses library.
   """
 
-  CLI_PROMPT = "tfdbg> "
-  CLI_EXIT_COMMANDS = ["exit", "quit"]
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
   REGEX_SEARCH_PREFIX = "/"
   TENSOR_INDICES_NAVIGATION_PREFIX = "@"
-  ERROR_MESSAGE_PREFIX = "ERROR: "
-  INFO_MESSAGE_PREFIX = "INFO: "
 
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
@@ -106,26 +103,14 @@ class CursesUI(object):
       on_ui_exit: (Callable) Callback invoked when the UI exits.
     """
 
+    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit)
+
     self._screen_init()
     self._screen_refresh_size()
     # TODO(cais): Error out if the size of the screen is too small.
 
     # Initialize some UI component size and locations.
     self._init_layout()
-
-    self._command_handler_registry = (
-        debugger_cli_common.CommandHandlerRegistry())
-
-    # Create tab completion registry and register the empty-str (top-level)
-    # tab-completion context with it.
-    self._tab_completion_registry = debugger_cli_common.TabCompletionRegistry()
-
-    # Create top-level tab-completion context and register the exit and help
-    # commands.
-    self._tab_completion_registry.register_tab_comp_context(
-        [""], self.CLI_EXIT_COMMANDS +
-        [debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND] +
-        debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND_ALIASES)
 
     self._command_history_store = debugger_cli_common.CommandHistory()
 
@@ -154,9 +139,6 @@ class CursesUI(object):
 
     # Register signal handler for SIGINT.
     signal.signal(signal.SIGINT, self._interrupt_handler)
-
-    # Configurable callbacks.
-    self._on_ui_exit = on_ui_exit
 
     self.register_command_handler(
         "mouse",
@@ -295,18 +277,7 @@ class CursesUI(object):
              title=None,
              title_color=None,
              enable_mouse_on_start=True):
-    """Run the Curses CLI.
-
-    Args:
-      init_command: (str) Optional command to run on CLI start up.
-      title: (str) Optional title to display in the CLI.
-      title_color: (str) Optional color of the title, e.g., "yellow".
-      enable_mouse_on_start: (bool) Whether the mouse mode is to be enabled on
-        start-up.
-
-    Returns:
-      An exit token of arbitrary type. Can be None.
-    """
+    """Run the CLI: See the doc of base_ui.BaseUI.run_ui for more details."""
 
     self._screen_launch(enable_mouse_on_start=enable_mouse_on_start)
 
@@ -326,48 +297,6 @@ class CursesUI(object):
     self._screen_terminate()
 
     return exit_token
-
-  def register_command_handler(self,
-                               prefix,
-                               handler,
-                               help_info,
-                               prefix_aliases=None):
-    """A wrapper around CommandHandlerRegistry.register_command_handler().
-
-    In addition to calling the wrapped register_command_handler() method, this
-    method also registers the top-level tab-completion context based on the
-    command prefixes and their aliases.
-
-    See the doc string of the wrapped method for more details on the args.
-
-    Args:
-      prefix: (str) command prefix.
-      handler: (callable) command handler.
-      help_info: (str) help information.
-      prefix_aliases: (list of str) aliases of the command prefix.
-    """
-
-    self._command_handler_registry.register_command_handler(
-        prefix, handler, help_info, prefix_aliases=prefix_aliases)
-
-    self._tab_completion_registry.extend_comp_items("", [prefix])
-    if prefix_aliases:
-      self._tab_completion_registry.extend_comp_items("", prefix_aliases)
-
-  def register_tab_comp_context(self, *args, **kwargs):
-    """Wrapper around TabCompletionRegistry.register_tab_comp_context()."""
-
-    self._tab_completion_registry.register_tab_comp_context(*args, **kwargs)
-
-  def set_help_intro(self, help_intro):
-    """Set an introductory message to the help output of the command registry.
-
-    Args:
-      help_intro: (RichTextLines) Rich text lines appended to the beginning of
-        the output of the command "help", as introductory information.
-    """
-
-    self._command_handler_registry.set_help_intro(help_intro=help_intro)
 
   def get_help(self):
     return self._command_handler_registry.get_help()
@@ -559,29 +488,6 @@ class CursesUI(object):
 
     self._command_pointer = 0
     self._pending_command = ""
-
-  def _parse_command(self, command):
-    """Parse a command string into prefix and arguments.
-
-    Args:
-      command: (str) Command string to be parsed.
-
-    Returns:
-      prefix: (str) The command prefix.
-      args: (list of str) The command arguments (i.e., not including the
-        prefix).
-      output_file_path: (str or None) The path to save the screen output
-        to (if any).
-    """
-    command = command.strip()
-    if not command:
-      return "", [], None
-
-    command_items = command_parser.parse_command(command)
-    command_items, output_file_path = command_parser.extract_output_file_path(
-        command_items)
-
-    return command_items[0], command_items[1:], output_file_path
 
   def _screen_gather_textbox_str(self):
     """Gather the text string in the command text box.
@@ -1248,24 +1154,8 @@ class CursesUI(object):
       appended by the common prefix of the candidates.
     """
 
-    command_str = command_str.lstrip()
-
-    if not command_str:
-      # Empty (top-level) context.
-      context = ""
-      prefix = ""
-      items = []
-    else:
-      items = command_str.split(" ")
-      if len(items) == 1:
-        # Single word: top-level context.
-        context = ""
-        prefix = items[0]
-      else:
-        # Multiple words.
-        context = items[0]
-        prefix = items[-1]
-
+    context, prefix, except_last_word = self._analyze_tab_complete_input(
+        command_str)
     candidates, common_prefix = self._tab_completion_registry.get_completions(
         context, prefix)
 
@@ -1280,9 +1170,9 @@ class CursesUI(object):
     if common_prefix:
       # Common prefix is not None and non-empty. The completed string will
       # incorporate the common prefix.
-      return " ".join(items[:-1] + [common_prefix])
+      return except_last_word + common_prefix
     else:
-      return " ".join(items)
+      return except_last_word + prefix
 
   def _display_candidates(self, candidates):
     """Show candidates (e.g., tab-completion candidates) on multiple lines.

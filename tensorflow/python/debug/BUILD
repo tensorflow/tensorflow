@@ -118,9 +118,9 @@ py_library(
     deps = [
         ":cli_shared",
         ":command_parser",
-        ":curses_ui",
         ":debug_data",
         ":debugger_cli_common",
+        ":ui_factory",
         "@six_archive//:six",
     ],
 )
@@ -141,15 +141,63 @@ py_library(
 )
 
 py_library(
+    name = "base_ui",
+    srcs = ["cli/base_ui.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":command_parser",
+        ":debugger_cli_common",
+    ],
+)
+
+py_library(
     name = "curses_ui",
     srcs = ["cli/curses_ui.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":base_ui",
         ":command_parser",
         ":debugger_cli_common",
         ":tensor_format",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "readline_ui",
+    srcs = ["cli/readline_ui.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_ui",
+        ":debugger_cli_common",
+    ],
+)
+
+py_library(
+    name = "ui_factory",
+    srcs = ["cli/ui_factory.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":curses_ui",
+        ":readline_ui",
+    ],
+)
+
+py_library(
+    name = "dumping_wrapper",
+    srcs = ["wrappers/dumping_wrapper.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":framework",
+    ],
+)
+
+py_library(
+    name = "grpc_wrapper",
+    srcs = ["wrappers/grpc_wrapper.py"],
+    srcs_version = "PY2AND3",
+    deps = [":framework"],
 )
 
 py_library(
@@ -159,11 +207,11 @@ py_library(
     deps = [
         ":analyzer_cli",
         ":cli_shared",
-        ":curses_ui",
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
         ":stepper_cli",
+        ":ui_factory",
     ],
 )
 
@@ -173,6 +221,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
+        ":dumping_wrapper",
         ":framework",
         ":local_cli_wrapper",
         ":stepper",
@@ -187,6 +236,7 @@ py_binary(
     deps = [
         ":analyzer_cli",
         ":debug_data",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
     ],
 )
@@ -326,6 +376,23 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "readline_ui_test",
+    size = "small",
+    srcs = [
+        "cli/readline_ui_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debugger_cli_common",
+        ":readline_ui",
+        ":ui_factory",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -476,6 +543,29 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "dumping_wrapper_test",
+    size = "small",
+    srcs = [
+        "wrappers/dumping_wrapper_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dumping_wrapper",
+        ":hooks",
+        ":stepper",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],

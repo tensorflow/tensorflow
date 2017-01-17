@@ -19,7 +19,6 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -70,10 +69,8 @@ public class TensorFlowMultiBoxDetector implements Classifier {
    * @param imageStd The assumed std of the image values.
    * @param inputName The label of the image input node.
    * @param outputName The label of the output node.
-   * @return The native return value, 0 indicating success.
-   * @throws IOException
    */
-  public int initializeTensorFlow(
+  public static Classifier create(
       final AssetManager assetManager,
       final String modelFilename,
       final String locationFilename,
@@ -82,29 +79,36 @@ public class TensorFlowMultiBoxDetector implements Classifier {
       final int imageMean,
       final float imageStd,
       final String inputName,
-      final String outputName)
-      throws IOException {
-    this.inputName = inputName;
-    this.inputSize = inputSize;
-    this.imageMean = imageMean;
-    this.imageStd = imageStd;
-    this.numLocations = numLocations;
+      final String outputName) {
+    TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
+    d.inputName = inputName;
+    d.inputSize = inputSize;
+    d.imageMean = imageMean;
+    d.imageStd = imageStd;
+    d.numLocations = numLocations;
 
-    this.boxPriors = new float[numLocations * 8];
+    d.boxPriors = new float[numLocations * 8];
 
-    loadCoderOptions(assetManager, locationFilename, boxPriors);
+    d.loadCoderOptions(assetManager, locationFilename, d.boxPriors);
 
     // Pre-allocate buffers.
-    outputNames = outputName.split(",");
-    intValues = new int[inputSize * inputSize];
-    floatValues = new float[inputSize * inputSize * 3];
-    outputScores = new float[numLocations];
-    outputLocations = new float[numLocations * 4];
+    d.outputNames = outputName.split(",");
+    d.intValues = new int[inputSize * inputSize];
+    d.floatValues = new float[inputSize * inputSize * 3];
+    d.outputScores = new float[numLocations];
+    d.outputLocations = new float[numLocations * 4];
 
-    inferenceInterface = new TensorFlowInferenceInterface();
+    d.inferenceInterface = new TensorFlowInferenceInterface();
 
-    return inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    final int status = d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    if (status != 0) {
+      LOGGER.e("TF init status: " + status);
+      throw new RuntimeException("TF init status (" + status + ") != 0");
+    }
+    return d;
   }
+
+  private TensorFlowMultiBoxDetector() {}
 
   // Load BoxCoderOptions from native code.
   private native void loadCoderOptions(
@@ -200,7 +204,7 @@ public class TensorFlowMultiBoxDetector implements Classifier {
               outputLocations[4 * i + 1] * inputSize,
               outputLocations[4 * i + 2] * inputSize,
               outputLocations[4 * i + 3] * inputSize);
-      pq.add(new Recognition("" + i, "" + i, outputScores[i], detection));
+      pq.add(new Recognition("" + i, null, outputScores[i], detection));
     }
 
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();
@@ -211,10 +215,12 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     return recognitions;
   }
 
+  @Override
   public void enableStatLogging(boolean debug) {
     inferenceInterface.enableStatLogging(debug);
   }
 
+  @Override
   public String getStatString() {
     return inferenceInterface.getStatString();
   }

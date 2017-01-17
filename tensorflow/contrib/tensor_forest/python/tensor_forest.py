@@ -23,12 +23,12 @@ import sys
 
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.contrib.tensor_forest.python import constants
+from tensorflow.contrib.tensor_forest.python.ops import data_ops
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -281,7 +281,7 @@ class ForestTrainingVariables(object):
                tree_variables_class=TreeTrainingVariables):
     self.variables = []
     for i in range(params.num_trees):
-      with ops.device(device_assigner.get_device(i)):
+      with ops.device(device_assigner.get_variable_device(i)):
         self.variables.append(tree_variables_class(params, i, training))
 
   def __setitem__(self, t, val):
@@ -301,13 +301,18 @@ class RandomForestDeviceAssigner(object):
 
   def __init__(self):
     self.cached = None
+    self.variables = None
+    self.params = None
 
-  def get_device(self, unused_tree_num):
+  def get_variable_device(self, unused_tree_num):
     if not self.cached:
       dummy = constant_op.constant(0)
       self.cached = dummy.device
-
     return self.cached
+
+  def get_device(self, tree_num):
+    # By default, colocate ops with variables.
+    return self.get_variable_device(tree_num)
 
 
 class RandomForestGraphs(object):
@@ -322,6 +327,7 @@ class RandomForestGraphs(object):
                training=True):
     self.params = params
     self.device_assigner = device_assigner or RandomForestDeviceAssigner()
+    self.device_assigner.params = self.params
     logging.info('Constructing forest with params = ')
     logging.info(self.params.__dict__)
     self.variables = variables or ForestTrainingVariables(
@@ -332,46 +338,66 @@ class RandomForestGraphs(object):
         tree_graph_class(self.variables[i], self.params, i)
         for i in range(self.params.num_trees)
     ]
+    self.device_assigner.variables = self.variables
 
   def _bag_features(self, tree_num, input_data):
     split_data = array_ops.split(
         value=input_data, num_or_size_splits=self.params.num_features, axis=1)
-    return array_ops.concat_v2(
+    return array_ops.concat(
         [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 
   def training_graph(self,
                      input_data,
                      input_labels,
-                     data_spec=None,
+                     num_trainers=1,
+                     trainer_id=0,
                      **tree_kwargs):
     """Constructs a TF graph for training a random forest.
 
     Args:
-      input_data: A tensor or SparseTensor or placeholder for input data.
+      input_data: A tensor or dict of string->Tensor for input data.
       input_labels: A tensor or placeholder for labels associated with
         input_data.
-      data_spec: A list of tf.dtype values specifying the original types of
-        each column.
+      num_trainers: Number of parallel trainers to split trees among.
+      trainer_id: Which trainer this instance is.
       **tree_kwargs: Keyword arguments passed to each tree's training_graph.
 
     Returns:
       The last op in the random forest training graph.
+
+    Raises:
+      NotImplementedError: If trying to use bagging with sparse features.
     """
-    data_spec = [constants.DATA_FLOAT] if data_spec is None else data_spec
+    processed_dense_features, processed_sparse_features, data_spec = (
+        data_ops.ParseDataTensorOrDict(input_data))
+
+    if input_labels is not None:
+      labels = data_ops.ParseLabelTensorOrDict(input_labels)
+
+    data_spec = data_spec or self.get_default_data_spec(input_data)
+
     tree_graphs = []
-    for i in range(self.params.num_trees):
+    trees_per_trainer = self.params.num_trees / num_trainers
+    tree_start = int(trainer_id * trees_per_trainer)
+    tree_end = int((trainer_id + 1) * trees_per_trainer)
+    for i in range(tree_start, tree_end):
+      logging.info('training graph for tree: %d' % i)
       with ops.device(self.device_assigner.get_device(i)):
         seed = self.params.base_random_seed
         if seed != 0:
           seed += i
         # If using bagging, randomly select some of the input.
-        tree_data = input_data
-        tree_labels = input_labels
+        tree_data = processed_dense_features
+        tree_labels = labels
         if self.params.bagging_fraction < 1.0:
+          # TODO(gilberth): Support bagging for sparse features.
+          if processed_sparse_features is not None:
+            raise NotImplementedError(
+                'Bagging not supported with sparse features.')
           # TODO(thomaswc): This does sampling without replacment.  Consider
           # also allowing sampling with replacement as an option.
           batch_size = array_ops.strided_slice(
-              array_ops.shape(input_data), [0], [1])
+              array_ops.shape(processed_dense_features), [0], [1])
           r = random_ops.random_uniform(batch_size, seed=seed)
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
@@ -379,42 +405,58 @@ class RandomForestGraphs(object):
               array_ops.where(mask), squeeze_dims=[1])
           # TODO(thomaswc): Calculate out-of-bag data and labels, and store
           # them for use in calculating statistics later.
-          tree_data = array_ops.gather(input_data, gather_indices)
-          tree_labels = array_ops.gather(input_labels, gather_indices)
+          tree_data = array_ops.gather(processed_dense_features, gather_indices)
+          tree_labels = array_ops.gather(labels, gather_indices)
         if self.params.bagged_features:
+          if processed_sparse_features is not None:
+            raise NotImplementedError(
+                'Feature bagging not supported with sparse features.')
           tree_data = self._bag_features(i, tree_data)
 
         initialization = self.trees[i].tree_initialization()
 
         with ops.control_dependencies([initialization]):
-          tree_graphs.append(
-              self.trees[i].training_graph(
-                  tree_data, tree_labels, seed, data_spec=data_spec,
-                  **tree_kwargs))
+          tree_graphs.append(self.trees[i].training_graph(
+              tree_data,
+              tree_labels,
+              seed,
+              data_spec=data_spec,
+              sparse_features=processed_sparse_features,
+              **tree_kwargs))
 
     return control_flow_ops.group(*tree_graphs, name='train')
 
-  def inference_graph(self, input_data, data_spec=None, **inference_args):
+  def inference_graph(self, input_data, **inference_args):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
-      input_data: A tensor or SparseTensor or placeholder for input data.
-      data_spec: A list of tf.dtype values specifying the original types of
-        each column.
+      input_data: A tensor or dict of string->Tensor for input data.
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
       The last op in the random forest inference graph.
+
+    Raises:
+      NotImplementedError: If trying to use feature bagging with sparse
+        features.
     """
-    data_spec = [constants.DATA_FLOAT] if data_spec is None else data_spec
+    processed_dense_features, processed_sparse_features, data_spec = (
+        data_ops.ParseDataTensorOrDict(input_data))
+
     probabilities = []
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
-        tree_data = input_data
+        tree_data = processed_dense_features
         if self.params.bagged_features:
+          if processed_sparse_features is not None:
+            raise NotImplementedError(
+                'Feature bagging not supported with sparse features.')
           tree_data = self._bag_features(i, input_data)
         probabilities.append(self.trees[i].inference_graph(
-            tree_data, data_spec, **inference_args))
+            tree_data,
+            data_spec,
+            sparse_features=processed_sparse_features,
+            **inference_args))
     with ops.device(self.device_assigner.get_device(0)):
       all_predict = array_ops.stack(probabilities)
       return math_ops.div(
@@ -434,8 +476,7 @@ class RandomForestGraphs(object):
     return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
   # pylint: disable=unused-argument
-  def training_loss(self, features, labels, data_spec=None,
-                    name='training_loss'):
+  def training_loss(self, features, labels, name='training_loss'):
     return math_ops.negative(self.average_size(), name=name)
 
   # pylint: disable=unused-argument
@@ -465,9 +506,14 @@ class RandomForestGraphs(object):
 def one_hot_wrapper(num_classes, loss_fn):
   """Some loss functions take one-hot labels."""
   def _loss(probs, targets):
+    if targets.get_shape().ndims > 1:
+      targets = array_ops.squeeze(targets, squeeze_dims=[1])
     one_hot_labels = array_ops.one_hot(
-        math_ops.to_int32(targets), num_classes,
-        on_value=1., off_value=0., dtype=dtypes.float32)
+        math_ops.to_int32(targets),
+        num_classes,
+        on_value=1.,
+        off_value=0.,
+        dtype=dtypes.float32)
     return loss_fn(probs, one_hot_labels)
   return _loss
 
@@ -489,16 +535,15 @@ class TrainingLossForest(RandomForestGraphs):
     self._loss = None
     super(TrainingLossForest, self).__init__(params, **kwargs)
 
-  def _get_loss(self, features, labels, data_spec=None):
+  def _get_loss(self, features, labels):
     """Constructs, caches, and returns the inference-based loss."""
     if self._loss is not None:
       return self._loss
 
     def _average_loss():
-      probs = self.inference_graph(features, data_spec=data_spec)
+      probs = self.inference_graph(features)
       return math_ops.reduce_sum(self.loss_fn(
-          probs, labels)) / math_ops.to_float(
-              array_ops.shape(features)[0])
+          probs, labels)) / math_ops.to_float(array_ops.shape(labels)[0])
 
     self._loss = control_flow_ops.cond(
         self.average_size() > 0, _average_loss,
@@ -506,17 +551,14 @@ class TrainingLossForest(RandomForestGraphs):
 
     return self._loss
 
-  def training_graph(self, input_data, input_labels, data_spec=None,
-                     **kwargs):
-    loss = self._get_loss(input_data, input_labels, data_spec=data_spec)
+  def training_graph(self, input_data, input_labels, **kwargs):
+    loss = self._get_loss(input_data, input_labels)
     with ops.control_dependencies([loss.op]):
       return super(TrainingLossForest, self).training_graph(
           input_data, input_labels, **kwargs)
 
-  def training_loss(self, features, labels, data_spec=None,
-                    name='training_loss'):
-    return array_ops.identity(
-        self._get_loss(features, labels, data_spec=data_spec), name=name)
+  def training_loss(self, features, labels, name='training_loss'):
+    return array_ops.identity(self._get_loss(features, labels), name=name)
 
 
 class RandomTreeGraphs(object):
@@ -603,18 +645,20 @@ class RandomTreeGraphs(object):
                      input_labels,
                      random_seed,
                      data_spec,
+                     sparse_features=None,
                      input_weights=None):
 
     """Constructs a TF graph for training a random tree.
 
     Args:
-      input_data: A tensor or SparseTensor or placeholder for input data.
+      input_data: A tensor or placeholder for input data.
       input_labels: A tensor or placeholder for labels associated with
         input_data.
       random_seed: The random number generator seed to use for this tree.  0
         means use the current time as the seed.
-      data_spec: A list of tf.dtype values specifying the original types of
-        each column.
+      data_spec: A data_ops.TensorForestDataSpec object specifying the
+        original feature/columns of the data.
+      sparse_features: A tf.SparseTensor for sparse input data.
       input_weights: A float tensor or placeholder holding per-input weights,
         or None if all inputs are to be weighted equally.
 
@@ -623,17 +667,21 @@ class RandomTreeGraphs(object):
     """
     epoch = math_ops.to_int32(get_epoch_variable())
 
+    serialized_input_spec = data_spec.SerializeToString()
+
     if input_weights is None:
       input_weights = []
+
+    if input_data is None:
+      input_data = []
 
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
-    if isinstance(input_data, sparse_tensor.SparseTensor):
-      sparse_indices = input_data.indices
-      sparse_values = input_data.values
-      sparse_shape = input_data.dense_shape
-      input_data = []
+    if sparse_features is not None:
+      sparse_indices = sparse_features.indices
+      sparse_values = sparse_features.values
+      sparse_shape = sparse_features.dense_shape
 
     # Count extremely random stats.
     (node_sums, node_squares, splits_indices, splits_sums, splits_squares,
@@ -643,7 +691,6 @@ class RandomTreeGraphs(object):
          sparse_indices,
          sparse_values,
          sparse_shape,
-         data_spec,
          input_labels,
          input_weights,
          self.variables.tree,
@@ -653,6 +700,7 @@ class RandomTreeGraphs(object):
          self.variables.candidate_split_thresholds,
          self.variables.start_epoch,
          epoch,
+         input_spec=serialized_input_spec,
          num_classes=self.params.num_output_columns,
          regression=self.params.regression))
     node_update_ops = []
@@ -690,6 +738,7 @@ class RandomTreeGraphs(object):
             input_leaves,
             self.variables.candidate_split_features,
             self.variables.candidate_split_thresholds,
+            input_spec=serialized_input_spec,
             split_initializations_per_input=(
                 self.params.split_initializations_per_input),
             split_sampling_random_seed=random_seed))
@@ -809,7 +858,7 @@ class RandomTreeGraphs(object):
         state_ops.scatter_update(self.variables.accumulator_to_node_map,
                                  a2n_map_updates[0], a2n_map_updates[1]))
 
-    cleared_and_allocated_accumulators = array_ops.concat_v2(
+    cleared_and_allocated_accumulators = array_ops.concat(
         [accumulators_cleared, accumulators_allocated], 0)
 
     # Calculate values to put into scatter update for candidate counts.
@@ -840,7 +889,7 @@ class RandomTreeGraphs(object):
             array_ops.zeros_like(accumulators_allocated,
                                  dtype=dtypes.float32), 1),
         [1, self.params.num_output_columns])
-    accumulator_updates = array_ops.concat_v2([total_cleared, total_reset], 0)
+    accumulator_updates = array_ops.concat([total_cleared, total_reset], 0)
     updates.append(state_ops.scatter_update(
         self.variables.accumulator_sums,
         cleared_and_allocated_accumulators, accumulator_updates))
@@ -874,34 +923,38 @@ class RandomTreeGraphs(object):
     """
     return []
 
-  def inference_graph(self, input_data, data_spec):
+  def inference_graph(self, input_data, data_spec, sparse_features=None):
     """Constructs a TF graph for evaluating a random tree.
 
     Args:
-      input_data: A tensor or SparseTensor or placeholder for input data.
-      data_spec: A list of tf.dtype values specifying the original types of
-        each column.
+      input_data: A tensor or placeholder for input data.
+      data_spec: A TensorForestDataSpec proto specifying the original
+        input columns.
+      sparse_features: A tf.SparseTensor for sparse input data.
 
     Returns:
       The last op in the random tree inference graph.
     """
+    if input_data is None:
+      input_data = []
+
     sparse_indices = []
     sparse_values = []
     sparse_shape = []
-    if isinstance(input_data, sparse_tensor.SparseTensor):
-      sparse_indices = input_data.indices
-      sparse_values = input_data.values
-      sparse_shape = input_data.dense_shape
-      input_data = []
+    if sparse_features is not None:
+      sparse_indices = sparse_features.indices
+      sparse_values = sparse_features.values
+      sparse_shape = sparse_features.dense_shape
+
     return tensor_forest_ops.tree_predictions(
         input_data,
         sparse_indices,
         sparse_values,
         sparse_shape,
-        data_spec,
         self.variables.tree,
         self.variables.tree_thresholds,
         self.variables.node_sums,
+        input_spec=data_spec.SerializeToString(),
         valid_leaf_threshold=self.params.valid_leaf_threshold)
 
   def average_impurity(self):

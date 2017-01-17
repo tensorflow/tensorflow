@@ -238,7 +238,7 @@ class Dirichlet(distribution.Distribution):
              math_ops.cast(self.event_shape()[0], self.dtype)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      shape = array_ops.concat_v2((self.batch_shape(), self.event_shape()), 0)
+      shape = array_ops.concat((self.batch_shape(), self.event_shape()), 0)
       return array_ops.where(
           math_ops.greater(self.alpha, 1.),
           mode,

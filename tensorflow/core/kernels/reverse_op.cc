@@ -27,23 +27,83 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+namespace {
+
+// Reverse rows (middle dimension) of a three dimensional tensor.
+// NUM_CHANNELS can be <= 0 to compute it dynamically from <input>
+// Otherwise, it must equal input.dim_size(2) and is used as a compile-time
+// constant.
+template <int NUM_CHANNELS>
+void ReverseRows(OpKernelContext* context, const Tensor& input,
+                 Tensor* result) {
+  auto work = [&input, result](int64 start, int64 end) {
+    const int64 inner_size =
+        NUM_CHANNELS > 0 ? NUM_CHANNELS : input.dim_size(2);
+    const int64 middle_size = input.dim_size(1);
+    const int64 row_size = inner_size * middle_size;
+    DCHECK_EQ(input.dim_size(2), inner_size);
+
+    const int32* in_ptr = input.bit_casted_tensor<int32, 3>().data();
+    int32* out_ptr = result->bit_casted_tensor<int32, 3>().data();
+
+    in_ptr += start * row_size;
+    out_ptr += start * row_size;
+
+    for (int outer_dim = start; outer_dim < end; ++outer_dim) {
+      out_ptr += row_size;
+      int remaining = middle_size;
+      while (remaining > 0) {
+        out_ptr -= inner_size;
+        memcpy(out_ptr, in_ptr, inner_size * sizeof(float));
+        in_ptr += inner_size;
+        --remaining;
+      }
+
+      out_ptr += row_size;
+    }
+  };
+
+  // Shard across outer dimension.
+  const int64 N = input.dim_size(0);
+  const int64 cost_per_unit = input.NumElements() / N;
+  auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+  Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
+        std::move(work));
+}
+
+}  // namespace
+
 template <typename Device, typename T, int NDIMS>
 void HandleReverseCase(OpKernelContext* context,
                        typename TTypes<bool, 1>::ConstTensor dims,
                        Tensor* result) {
+  const Tensor& input = context->input(0);
+
+  // Use optimized reverse if possible.
+  if (NDIMS == 3 && std::is_same<Device, CPUDevice>::value &&
+      std::is_same<T, float>::value && (!dims(0) && dims(1) && !dims(2))) {
+    if (input.dim_size(2) == 3) {
+      ReverseRows<3>(context, input, result);
+    } else {
+      ReverseRows<-1>(context, input, result);
+    }
+    return;
+  }
+
   typename Eigen::array<bool, NDIMS> axes_di;
   for (int i = 0; i < NDIMS; i++) {
     axes_di[i] = dims(i);
   }
   functor::Reverse<Device, T, NDIMS>()(context->eigen_device<Device>(),
-                                       context->input(0).tensor<T, NDIMS>(),
-                                       axes_di, result->tensor<T, NDIMS>());
+                                       input.tensor<T, NDIMS>(), axes_di,
+                                       result->tensor<T, NDIMS>());
 }
 
 template <typename Device, typename T>
@@ -105,13 +165,26 @@ class ReverseOp : public OpKernel {
 template <typename Device, typename T, int NDIMS>
 void HandleReverseV2Case(OpKernelContext* context,
                          const gtl::ArraySlice<bool>& axes, Tensor* result) {
+  const Tensor& input = context->input(0);
+
+  // Use optimized reverse if possible.
+  if (NDIMS == 3 && std::is_same<Device, CPUDevice>::value &&
+      std::is_same<T, float>::value && (!axes[0] && axes[1] && !axes[2])) {
+    if (input.dim_size(2) == 3) {
+      ReverseRows<3>(context, input, result);
+    } else {
+      ReverseRows<-1>(context, input, result);
+    }
+    return;
+  }
+
   typename Eigen::array<bool, NDIMS> axes_di;
   for (int i = 0; i < NDIMS; i++) {
     axes_di[i] = axes[i];
   }
   functor::Reverse<Device, T, NDIMS>()(context->eigen_device<Device>(),
-                                       context->input(0).tensor<T, NDIMS>(),
-                                       axes_di, result->tensor<T, NDIMS>());
+                                       input.tensor<T, NDIMS>(), axes_di,
+                                       result->tensor<T, NDIMS>());
 }
 
 template <typename Device, typename T>
@@ -157,6 +230,11 @@ class ReverseV2Op : public OpKernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, input.shape(), &output));
+
+// TODO(cwhipkey): we can do dimension folding to reduce, e.g., a reverse of
+// a single dimension to the dims=3 or dims=2 case, regardless of the number
+// of dimensions in the tensor. This would let some ops use faster
+// lower-dimension code (and use optimized versions).
 
 #define HANDLE_REVERSE(NDIMS)                                           \
   case NDIMS:                                                           \

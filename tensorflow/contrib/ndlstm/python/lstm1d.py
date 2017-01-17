@@ -28,10 +28,6 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import flags
-
-flags.DEFINE_bool("unrolled_lstm", False,
-                  "use a statically unrolled LSTM instead of dynamic_rnn")
 
 
 def _shape(tensor):

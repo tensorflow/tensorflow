@@ -91,7 +91,7 @@ def one_hot_mask(labels, num_classes, scope=None):
     sparse_labels = math_ops.to_int32(array_ops.reshape(labels, [-1, 1]))
     sparse_size, _ = _shape(sparse_labels)
     indices = array_ops.reshape(math_ops.range(0, sparse_size, 1), [-1, 1])
-    concated = array_ops.concat_v2([indices, sparse_labels], 1)
+    concated = array_ops.concat([indices, sparse_labels], 1)
     dense_result = sparse_ops.sparse_to_dense(concated,
                                               [sparse_size, num_classes], 1.0,
                                               0.0)

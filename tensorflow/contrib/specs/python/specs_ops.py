@@ -62,7 +62,7 @@ class Conc(specs_lib.Composable):
 
   def funcall(self, x):
     outputs = [f.funcall(x) for f in self.funs]
-    return array_ops.concat_v2(outputs, self.dim)
+    return array_ops.concat(outputs, self.dim)
 
 
 External = specs_lib.External

@@ -85,7 +85,7 @@ Status LocalMaster::PartialRunSetup(CallOptions* call_options,
 
 Status LocalMaster::RunStep(CallOptions* call_options,
                             RunStepRequestWrapper* request,
-                            RunStepResponse* response) {
+                            MutableRunStepResponseWrapper* response) {
   Notification n;
   Status ret;
   master_impl_->RunStep(call_options, request, response,
@@ -99,6 +99,10 @@ Status LocalMaster::RunStep(CallOptions* call_options,
 
 MutableRunStepRequestWrapper* LocalMaster::CreateRunStepRequest() {
   return new InMemoryRunStepRequest;
+}
+
+MutableRunStepResponseWrapper* LocalMaster::CreateRunStepResponse() {
+  return new InMemoryRunStepResponse;
 }
 
 Status LocalMaster::CloseSession(CallOptions* call_options,

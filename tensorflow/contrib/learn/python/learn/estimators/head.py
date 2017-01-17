@@ -30,7 +30,6 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
-from tensorflow.contrib.session_bundle import exporter
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -413,7 +412,6 @@ class _RegressionHead(_Head):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        signature_fn=self._signature_fn(),
         output_alternatives=self._create_output_alternatives(predictions))
 
   def _logits_to_predictions(self, logits):
@@ -430,24 +428,6 @@ class _RegressionHead(_Head):
       if self.logits_dimension == 1:
         logits = array_ops.squeeze(logits, squeeze_dims=(1,), name=key)
       return {key: logits}
-
-  def _signature_fn(self):
-    """Returns the signature_fn to be used in exporting."""
-
-    def _regression_signature_fn(examples, features, predictions):
-      # pylint: disable=missing-docstring
-      del features
-      if isinstance(predictions, dict):
-        score = predictions[prediction_key.PredictionKey.SCORES]
-      else:
-        score = predictions
-
-      default_signature = exporter.regression_signature(
-          input_tensor=examples, output_tensor=score)
-      # TODO(zakaria): add validation
-      return default_signature, {}
-
-    return _regression_signature_fn
 
   def _default_metrics(self):
     """Returns a dict of `MetricSpec` keyed by `MetricKey`."""
@@ -470,7 +450,7 @@ def _log_loss_with_two_classes(logits, labels):
 
 
 def _one_class_to_two_class_logits(logits):
-  return array_ops.concat_v2((array_ops.zeros_like(logits), logits), 1)
+  return array_ops.concat((array_ops.zeros_like(logits), logits), 1)
 
 
 class _BinaryLogisticHead(_Head):
@@ -556,7 +536,6 @@ class _BinaryLogisticHead(_Head):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        signature_fn=self._signature_fn(),
         output_alternatives=self._create_output_alternatives(predictions))
 
   def _logits_to_predictions(self, logits):
@@ -586,27 +565,6 @@ class _BinaryLogisticHead(_Head):
                   1,
                   name=prediction_key.PredictionKey.CLASSES)
       }
-
-  def _signature_fn(self):
-    """Returns the signature_fn to be used in exporting."""
-
-    def _classification_signature_fn(examples, features, predictions):
-      """Servo signature function."""
-      del features
-      if isinstance(predictions, dict):
-        default_signature = exporter.classification_signature(
-            input_tensor=examples,
-            classes_tensor=predictions[prediction_key.PredictionKey.CLASSES],
-            scores_tensor=predictions[
-                prediction_key.PredictionKey.PROBABILITIES])
-      else:
-        default_signature = exporter.classification_signature(
-            input_tensor=examples, scores_tensor=predictions)
-
-      # TODO(zakaria): add validation
-      return default_signature, {}
-
-    return _classification_signature_fn
 
   def _default_metrics(self):
     """Returns a dict of `MetricSpec` objects keyed by name."""
@@ -770,7 +728,6 @@ class _MultiClassHead(_Head):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        signature_fn=self._signature_fn(),
         output_alternatives=self._create_output_alternatives(predictions))
 
   def _logits_to_predictions(self, logits):
@@ -793,27 +750,6 @@ class _MultiClassHead(_Head):
               math_ops.argmax(
                   logits, 1, name=prediction_key.PredictionKey.CLASSES)
       }
-
-  def _signature_fn(self):
-    """Returns the signature_fn to be used in exporting."""
-
-    def _classification_signature_fn(examples, features, predictions):
-      """Servo signature function."""
-      del features
-      if isinstance(predictions, dict):
-        default_signature = exporter.classification_signature(
-            input_tensor=examples,
-            classes_tensor=predictions[prediction_key.PredictionKey.CLASSES],
-            scores_tensor=predictions[
-                prediction_key.PredictionKey.PROBABILITIES])
-      else:
-        default_signature = exporter.classification_signature(
-            input_tensor=examples, scores_tensor=predictions)
-
-      # TODO(zakaria): add validation
-      return default_signature, {}
-
-    return _classification_signature_fn
 
   def _metric_spec(self, metric_fn, prediction_name):
     return metric_spec.MetricSpec(metric_fn, prediction_name, self._label_name,
@@ -1228,8 +1164,10 @@ class _MultiHead(_Head):
 
     train_op = train_op_fn(loss)
     train_op = control_flow_ops.group(train_op, *additional_train_ops)
-    return model_fn.ModelFnOps(model_fn.ModeKeys.TRAIN, None, loss, train_op,
-                               None, None)
+    return model_fn.ModelFnOps(
+        mode=model_fn.ModeKeys.TRAIN,
+        loss=loss,
+        train_op=train_op)
 
   def _combine_infer(self, all_model_fn_ops):
     """Combines list of ModelFnOps for inference.
@@ -1249,15 +1187,9 @@ class _MultiHead(_Head):
         predictions[(head_name, k)] = v
 
     return model_fn.ModelFnOps(
-        model_fn.ModeKeys.INFER,
-        predictions,
-        None,
-        None,
-        None,
-        # signature_fn is for session bundle, not
-        # applicable for savedmodel.
-        None,
-        output_alternatives)
+        mode=model_fn.ModeKeys.INFER,
+        predictions=predictions,
+        output_alternatives=output_alternatives)
 
   def _combine_eval(self, all_model_fn_ops):
     """Combines list of ModelFnOps for eval.
@@ -1281,8 +1213,11 @@ class _MultiHead(_Head):
         metrics[k] = v
     loss = self._loss_combiner(losses)
 
-    return model_fn.ModelFnOps(model_fn.ModeKeys.EVAL, predictions, loss, None,
-                               metrics, None)
+    return model_fn.ModelFnOps(
+        mode=model_fn.ModeKeys.EVAL,
+        predictions=predictions,
+        loss=loss,
+        eval_metric_ops=metrics)
 
 
 def _weighted_loss(loss, weight):
