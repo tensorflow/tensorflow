@@ -15028,6 +15028,61 @@ op {
   description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
 }
 op {
+  name: "RecordInput"
+  output_arg {
+    name: "records"
+    description: "A tensor of shape [batch_size]."
+    type: DT_STRING
+  }
+  attr {
+    name: "file_pattern"
+    type: "string"
+    description: "Glob pattern for the data files."
+  }
+  attr {
+    name: "file_random_seed"
+    type: "int"
+    default_value {
+      i: 301
+    }
+    description: "Random seeds used to produce randomized records."
+  }
+  attr {
+    name: "file_shuffle_shift_ratio"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Shifts the list of files after the list is randomly\nshuffled."
+  }
+  attr {
+    name: "file_buffer_size"
+    type: "int"
+    default_value {
+      i: 10000
+    }
+    description: "The randomization shuffling buffer."
+  }
+  attr {
+    name: "file_parallelism"
+    type: "int"
+    default_value {
+      i: 16
+    }
+    description: "How many sstables are opened and concurrently iterated over."
+  }
+  attr {
+    name: "batch_size"
+    type: "int"
+    default_value {
+      i: 32
+    }
+    description: "The batch size."
+  }
+  summary: "Emits randomized records."
+  is_stateful: true
+}
+op {
   name: "ReduceJoin"
   input_arg {
     name: "inputs"
