@@ -392,7 +392,7 @@ tf_cuda_cc_test(
     name = "rpcbench_test",
     size = "small",
     srcs = ["rpcbench_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    linkstatic = 1,
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
