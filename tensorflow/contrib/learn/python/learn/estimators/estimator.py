@@ -68,7 +68,6 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
 
@@ -817,7 +816,7 @@ class BaseEstimator(
 
       hooks = hooks or []
       if feed_fn:
-        hooks.append(_FeedFnHook(feed_fn))
+        hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
       if steps:
         hooks.append(
             evaluation.StopAfterNEvalsHook(
@@ -1317,17 +1316,6 @@ class Estimator(BaseEstimator):
       return export_dir
 
 
-class _FeedFnHook(session_run_hook.SessionRunHook):
-  """Runs feed_fn and sets the feed_dict accordingly."""
-
-  def __init__(self, feed_fn):
-    self.feed_fn = feed_fn
-
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn())
-
-
 # For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
@@ -1343,7 +1331,7 @@ class SKCompat(sklearn.BaseEstimator):
                                       epochs=None)
     all_monitors = []
     if feed_fn:
-      all_monitors = [_FeedFnHook(feed_fn)]
+      all_monitors = [basic_session_run_hooks.FeedFnHook(feed_fn)]
     if monitors:
       all_monitors.extend(monitors)
 
