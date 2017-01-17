@@ -25,7 +25,8 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
-from tensorflow.contrib.tensor_forest.python import constants
+from tensorflow.contrib.tensor_forest.python.ops import data_ops
+
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import test_util
@@ -45,7 +46,19 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     self.split_thresholds = [[1.], [0.]]
     self.epochs = [0, 1, 1]
     self.current_epoch = [1]
-    self.data_spec = [constants.DATA_FLOAT]
+
+    spec_proto = data_ops.TensorForestDataSpec()
+    f1 = spec_proto.dense.add()
+    f1.name = 'f1'
+    f1.original_type = data_ops.DATA_FLOAT
+    f1.size = 1
+
+    f2 = spec_proto.dense.add()
+    f2.name = 'f2'
+    f2.original_type = data_ops.DATA_FLOAT
+    f2.size = 1
+    spec_proto.dense_features_size = 2
+    self.data_spec = spec_proto.SerializeToString()
 
   def testSimple(self):
     with self.test_session():
@@ -53,7 +66,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels, [],
            self.tree,
            self.tree_thresholds,
@@ -62,6 +74,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=5,
            regression=False))
 
@@ -81,7 +94,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels,
            input_weights,
            self.tree,
@@ -91,6 +103,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=5,
            regression=False))
 
@@ -109,7 +122,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            labels, [],
            self.tree,
            self.tree_thresholds,
@@ -118,6 +130,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=5,
            regression=False))
 
@@ -132,14 +145,18 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
 
   def testSparseInput(self):
     sparse_shape = [4, 10]
-    sparse_indices = [[0, 0], [0, 4], [0, 9],
-                      [1, 0], [1, 7],
-                      [2, 0],
-                      [3, 1], [3, 4]]
-    sparse_values = [3.0, -1.0, 0.5,
-                     1.5, 6.0,
-                     -2.0,
-                     -0.5, 2.0]
+    sparse_indices = [[0, 0], [0, 4], [0, 9], [1, 1], [1, 7], [2, 0], [3, 0],
+                      [3, 4]]
+    sparse_values = [3.0, -1.0, 0.5, -1.5, 6.0, -2.0, -0.5, 2.0]
+    spec_proto = data_ops.TensorForestDataSpec()
+    f1 = spec_proto.sparse.add()
+    f1.name = 'f1'
+    f1.original_type = data_ops.DATA_FLOAT
+    f1.size = -1
+
+    spec_proto.dense_features_size = 0
+    data_spec = spec_proto.SerializeToString()
+
     with self.test_session():
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
@@ -148,7 +165,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            sparse_indices,
            sparse_values,
            sparse_shape,
-           self.data_spec,
            self.input_labels, [],
            self.tree,
            self.tree_thresholds,
@@ -157,6 +173,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=data_spec,
            num_classes=5,
            regression=False))
 
@@ -179,7 +196,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
       (pcw_node_sums, _, _, pcw_splits_sums, _, _, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels, [],
            self.tree,
            self.tree_thresholds,
@@ -188,6 +204,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            current_epoch,
+           input_spec=self.data_spec,
            num_classes=5,
            regression=False))
 
@@ -205,7 +222,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels, [],
            self.tree,
            self.tree_thresholds,
@@ -214,6 +230,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=5,
            regression=False))
 
@@ -231,7 +248,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels, [],
            self.tree,
            self.tree_thresholds, [-1] * 3,
@@ -239,6 +255,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=5,
            regression=False))
 
@@ -260,7 +277,6 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
         pcw_node, _, _, _, _, _, _, _, _ = (
             tensor_forest_ops.count_extremely_random_stats(
                 self.input_data, [], [], [],
-                self.data_spec,
                 self.input_labels, [],
                 self.tree,
                 self.tree_thresholds,
@@ -269,6 +285,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
                 self.split_thresholds,
                 self.epochs,
                 self.current_epoch,
+                input_spec=self.data_spec,
                 num_classes=5,
                 regression=False))
 
@@ -288,7 +305,19 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
     self.split_thresholds = [[1.], [0.]]
     self.epochs = [0, 1, 1]
     self.current_epoch = [1]
-    self.data_spec = [constants.DATA_FLOAT] * 2
+
+    spec_proto = data_ops.TensorForestDataSpec()
+    f1 = spec_proto.dense.add()
+    f1.name = 'f1'
+    f1.original_type = data_ops.DATA_FLOAT
+    f1.size = 1
+
+    f2 = spec_proto.dense.add()
+    f2.name = 'f2'
+    f2.original_type = data_ops.DATA_FLOAT
+    f2.size = 1
+    spec_proto.dense_features_size = 2
+    self.data_spec = spec_proto.SerializeToString()
 
   def testSimple(self):
     with self.test_session():
@@ -297,7 +326,6 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
        pcw_totals_squares,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels, [],
            self.tree,
            self.tree_thresholds,
@@ -306,6 +334,7 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=2,
            regression=True))
 
@@ -328,7 +357,6 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
        pcw_totals_squares,
        leaves) = (tensor_forest_ops.count_extremely_random_stats(
            self.input_data, [], [], [],
-           self.data_spec,
            self.input_labels,
            input_weights,
            self.tree,
@@ -338,6 +366,7 @@ class CountExtremelyRandomStatsRegressionTest(test_util.TensorFlowTestCase):
            self.split_thresholds,
            self.epochs,
            self.current_epoch,
+           input_spec=self.data_spec,
            num_classes=2,
            regression=True))
 

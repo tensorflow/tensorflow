@@ -449,6 +449,23 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "vector_student_t_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/vector_student_t_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "uniform_test",
     size = "small",
     srcs = ["python/kernel_tests/uniform_test.py"],

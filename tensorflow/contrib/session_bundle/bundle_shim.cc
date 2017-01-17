@@ -197,14 +197,13 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
         continue;
       }
     }
-    SignatureDef signature_def;
     const Signature signature = it_named_signature.second;
     if (IsRegressionSignature(signature)) {
       (*meta_graph_def->mutable_signature_def())[key] =
           BuildRegressionSignatureDef(signature.regression_signature());
     } else if (IsClassificationSignature(signature)) {
-      (*meta_graph_def->mutable_signature_def())[key] = signature_def;
-      BuildClassificationSignatureDef(signature.classification_signature());
+      (*meta_graph_def->mutable_signature_def())[key] =
+          BuildClassificationSignatureDef(signature.classification_signature());
     } else {
       LOG(WARNING)
           << "Named signature up-conversion to SignatureDef is only supported "
@@ -283,9 +282,15 @@ Status LoadSessionBundleOrSavedModelBundle(
     const std::unordered_set<string>& saved_model_tags,
     SavedModelBundle* saved_model_bundle) {
   if (MaybeSavedModelDirectory(export_dir)) {
+    LOG(INFO)
+        << "Attempting to load native SavedModelBundle in bundle-shim from: "
+        << export_dir;
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
+    LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
+                 "in bundle-shim from: "
+              << export_dir;
     return LoadSavedModelFromLegacySessionBundlePath(
         session_options, run_options, export_dir, saved_model_bundle);
   }

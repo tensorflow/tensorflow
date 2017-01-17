@@ -89,6 +89,10 @@ class InterPlanetaryFileSystem : public NullFileSystem {
   Status IsDirectory(const string& dirname) override {
     string parsed_path;
     ParsePath(dirname, &parsed_path);
+    // Simulate evil_directory has bad permissions by throwing a LOG(FATAL)
+    if (parsed_path == "evil_directory") {
+      LOG(FATAL) << "evil_directory cannot be accessed";
+    }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     if (split_path.size() > 2) {
       return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
@@ -190,6 +194,16 @@ TEST(TestFileSystem, MatchSimple) {
   EXPECT_EQ(Match(&ipfs, "match-?[0-9]"), "match-00,match-01");
   EXPECT_EQ(Match(&ipfs, "match-?a*"), "match-0a,match-aaa");
   EXPECT_EQ(Match(&ipfs, "match-??"), "match-00,match-01,match-0a");
+}
+
+// Create 2 directories abcd and evil_directory. Look for abcd and make sure
+// that evil_directory isn't accessed.
+TEST(TestFileSystem, MatchOnlyNeeded) {
+  InterPlanetaryFileSystem ipfs;
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "abcd")));
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "evil_directory")));
+
+  EXPECT_EQ(Match(&ipfs, "abcd"), "abcd");
 }
 
 TEST(TestFileSystem, MatchDirectory) {

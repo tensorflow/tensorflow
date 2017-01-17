@@ -65,10 +65,10 @@ try:
     # use `dlopen()` for dynamic loading.
     from tensorflow.python import pywrap_tensorflow
 except ImportError:
-  msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
-you should not try to import tensorflow from its source directory;
-please exit the tensorflow source tree, and relaunch your python interpreter
-from there.""" % traceback.format_exc()
+  msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
+See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#import_error\n
+for some common reasons and solutions.  Include the entire stack trace
+above this error message when asking for help.""" % traceback.format_exc()
   raise ImportError(msg)
 
 # Protocol buffers
@@ -76,6 +76,7 @@ from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
+from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
@@ -101,6 +102,8 @@ from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
+from tensorflow.python.saved_model import saved_model
+from tensorflow.python.util import compat
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 from tensorflow.python.summary import summary
@@ -166,6 +169,7 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
 # The following symbols are kept for compatibility. It is our plan
@@ -177,6 +181,7 @@ _allowed_symbols.extend([
     'neg',  # use tf.negative instead.
     'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
+    'concat_v2',  # use tf.concat instead
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
@@ -189,7 +194,6 @@ _allowed_symbols.extend([
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
-    'platform',  ## This is included by the tf.learn main template.
     'pywrap_tensorflow',
 ])
 
@@ -237,6 +241,7 @@ _allowed_symbols.extend([
     'nn',
     'python_io',
     'resource_loader',
+    'saved_model',
     'sdca',
     'sets',
     'summary',
@@ -256,13 +261,13 @@ _allowed_symbols.extend([
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
-remove_undocumented(__name__, _allowed_symbols,
-                    [framework_lib, array_ops, client_lib, check_ops,
-                     compat, constant_op, control_flow_ops, confusion_matrix_m,
-                     functional_ops, histogram_ops, io_ops, losses, math_ops,
-                     metrics, nn, resource_loader, sets, script_ops,
-                     session_ops, sparse_ops, state_ops, string_ops, summary,
-                     tensor_array_ops, train, layers])
+remove_undocumented(__name__, _allowed_symbols, [
+    framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
+    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
+    losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
+    session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
+    train, layers
+])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

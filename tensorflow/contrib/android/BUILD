@@ -33,6 +33,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/java/src/main/native",
     ],
     alwayslink = 1,
 )

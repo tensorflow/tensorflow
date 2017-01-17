@@ -69,7 +69,7 @@ def match_filenames_once(pattern, name=None):
 def limit_epochs(tensor, num_epochs=None, name=None):
   """Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
-  Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+  Note: creates local counter `epochs`. Use `local_variables_initializer()` to
   initialize local variables.
 
   Args:
@@ -111,7 +111,7 @@ def input_producer(input_tensor,
   """Output the rows of `input_tensor` to a queue for an input pipeline.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     input_tensor: A tensor with the rows to produce. Must be at least
@@ -180,7 +180,7 @@ def string_input_producer(string_tensor,
   """Output strings (e.g. filenames) to a queue for an input pipeline.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     string_tensor: A 1-D string tensor with the strings to produce.
@@ -235,7 +235,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
   """Produces the integers from 0 to limit-1 in a queue.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     limit: An int32 scalar tensor.
@@ -831,7 +831,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   operations that depend on fixed batch_size would fail.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.
@@ -851,7 +851,8 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
     name: (Optional) A name for the operations.
 
   Returns:
-    A list or dictionary of tensors with the same types as `tensors`.
+    A list or dictionary of tensors with the same types as `tensors` (except if
+    the input is a list of one element, then it returns a tensor, not a list).
 
   Raises:
     ValueError: If the `shapes` are not specified, and cannot be
@@ -1123,7 +1124,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   operations that depend on fixed batch_size would fail.
 
   Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variable_initializer()` to initialize local variables.
+  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.

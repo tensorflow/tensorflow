@@ -43,19 +43,31 @@ do
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tensorflow/core:android_tensorflow_lib \
         //tensorflow/contrib/android:libtensorflow_inference.so \
-        //tensorflow/examples/android:libtensorflow_demo.so
+        //tensorflow/examples/android:libtensorflow_demo.so \
+        //tensorflow/tools/benchmark:benchmark_model
 
     copy_lib bazel-bin/tensorflow/core/libandroid_tensorflow_lib.lo
     copy_lib bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so
     copy_lib bazel-bin/tensorflow/examples/android/libtensorflow_demo.so
+    copy_lib bazel-bin/tensorflow/tools/benchmark/benchmark_model
 done
 
 # Build Jar and also demo containing native libs for all architectures.
+# Enable sandboxing so that zip archives don't get incorrectly packaged
+# in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
+# TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 echo "========== Building TensorFlow Android Jar and Demo =========="
-bazel build -c opt --fat_apk_cpu=${CPUS} \
+bazel --bazelrc=/dev/null build -c opt --fat_apk_cpu=${CPUS} \
+    --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     //tensorflow/contrib/android:android_tensorflow_inference_java \
     //tensorflow/examples/android:tensorflow_demo
 
 echo "Copying demo and Jar to ${OUT_DIR}"
 cp bazel-bin/tensorflow/examples/android/tensorflow_demo.apk \
     bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar ${OUT_DIR}
+
+# Test Makefile build just to make sure it still works.
+if [ -z "$NDK_ROOT" ]; then
+   export NDK_ROOT=${ANDROID_NDK_HOME}
+fi
+tensorflow/contrib/makefile/build_all_android.sh

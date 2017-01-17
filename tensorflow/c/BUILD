@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library",
 )
@@ -23,13 +24,19 @@ tf_cuda_library(
     name = "c_api",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/cc/saved_model:loader",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cuda_library(

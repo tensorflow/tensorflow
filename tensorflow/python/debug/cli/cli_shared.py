@@ -333,11 +333,13 @@ def get_run_start_intro(run_call_count,
           "step through nodes involved in the graph run() call and "
           "inspect/modify their values", create_link=True))
 
-  out.extend(debugger_cli_common.RichTextLines([
-      "",
-      "For more details, see help below:"
-      "",
-  ]))
+  out.append("")
+  suggest_help = "For more details, see help."
+  out.append(
+      suggest_help,
+      font_attr_segs=[(len(suggest_help) - 5, len(suggest_help) - 1,
+                       debugger_cli_common.MenuItem("", "help"))])
+  out.append("")
 
   # Make main menu for the run-start intro.
   menu = debugger_cli_common.Menu()

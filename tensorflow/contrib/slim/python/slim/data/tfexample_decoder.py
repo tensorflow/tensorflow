@@ -137,7 +137,7 @@ class BoundingBox(ItemHandler):
       side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
       sides.append(side)
 
-    bounding_box = array_ops.concat_v2(sides, 0)
+    bounding_box = array_ops.concat(sides, 0)
     return array_ops.transpose(bounding_box)
 
 
@@ -257,7 +257,7 @@ class SparseTensor(ItemHandler):
     ids = math_ops.to_int64(indices.values)
     indices_columns_to_preserve = array_ops.slice(
         indices.indices, [0, 0], array_ops.stack([-1, rank - 1]))
-    new_indices = array_ops.concat_v2(
+    new_indices = array_ops.concat(
         [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
 
     tensor = sparse_tensor.SparseTensor(new_indices, values.values, shape)

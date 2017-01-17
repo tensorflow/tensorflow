@@ -1949,7 +1949,7 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -2038,7 +2038,7 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -2487,9 +2487,9 @@ Use this function to prevent regularization of variables.
 
 - - -
 
-### `tf.constant_initializer(value=0, dtype=tf.float32)` {#constant_initializer}
+### `class tf.constant_initializer` {#constant_initializer}
 
-Returns an initializer that generates tensors with constant values.
+Initializer that generates tensors with constant values.
 
 The resulting tensor is populated with values of type `dtype`, as
 specified by arguments `value` following the desired `shape` of the
@@ -2504,20 +2504,13 @@ in `value` will be used to fill the remaining entries. If the total number of
 elements in `value` is greater than the number of elements required by the
 tensor shape, the initializer will raise a `ValueError`.
 
-##### Args:
-
-
-*  <b>`value`</b>: A Python scalar, list of values, or a N-dimensional numpy array. All
+Args:
+  value: A Python scalar, list of values, or a N-dimensional numpy array. All
     elements of the initialized variable will be set to the corresponding
     value in the `value` argument.
-*  <b>`dtype`</b>: The data type.
+  dtype: The data type.
 
-##### Returns:
-
-  An initializer that generates tensors with constant values.
-
-##### Examples:
-
+Examples:
   The following example can be rewritten using a numpy.ndarray instead
   of the `value` list, even reshaped, as shown in the two commented lines
   below the `value` list initialization.
@@ -2559,101 +2552,123 @@ tensor shape, the initializer will raise a `ValueError`.
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
-
-*  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
+  ValueError: Too many elements provided. Needed at most 6, but received 8
 ```
+- - -
+
+#### `tf.constant_initializer.__call__(shape, dtype=None, partition_info=None)` {#constant_initializer.__call__}
+
+
 
 
 - - -
 
-### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer}
-
-Returns an initializer that generates tensors with a normal distribution.
-
-##### Args:
+#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32)` {#constant_initializer.__init__}
 
 
-*  <b>`mean`</b>: a python scalar or a scalar tensor. Mean of the random values
+
+
+
+- - -
+
+### `class tf.random_normal_initializer` {#random_normal_initializer}
+
+Initializer that generates tensors with a normal distribution.
+
+Args:
+  mean: a python scalar or a scalar tensor. Mean of the random values
     to generate.
-*  <b>`stddev`</b>: a python scalar or a scalar tensor. Standard deviation of the
+  stddev: a python scalar or a scalar tensor. Standard deviation of the
     random values to generate.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type. Only floating point types are supported.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with a normal distribution.
-
-##### Raises:
+#### `tf.random_normal_initializer.__call__(shape, dtype=None, partition_info=None)` {#random_normal_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -
 
-### `tf.truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#truncated_normal_initializer}
+#### `tf.random_normal_initializer.__init__(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer.__init__}
 
-Returns an initializer that generates a truncated normal distribution.
+
+
+
+
+- - -
+
+### `class tf.truncated_normal_initializer` {#truncated_normal_initializer}
+
+Initializer that generates a truncated normal distribution.
 
 These values are similar to values from a `random_normal_initializer`
 except that values more than two standard deviations from the mean
 are discarded and re-drawn. This is the recommended initializer for
 neural network weights and filters.
 
-##### Args:
-
-
-*  <b>`mean`</b>: a python scalar or a scalar tensor. Mean of the random values
+Args:
+  mean: a python scalar or a scalar tensor. Mean of the random values
     to generate.
-*  <b>`stddev`</b>: a python scalar or a scalar tensor. Standard deviation of the
+  stddev: a python scalar or a scalar tensor. Standard deviation of the
     random values to generate.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type. Only floating point types are supported.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with a truncated normal
-  distribution.
-
-##### Raises:
+#### `tf.truncated_normal_initializer.__call__(shape, dtype=None, partition_info=None)` {#truncated_normal_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -
 
-### `tf.random_uniform_initializer(minval=0, maxval=None, seed=None, dtype=tf.float32)` {#random_uniform_initializer}
-
-Returns an initializer that generates tensors with a uniform distribution.
-
-##### Args:
+#### `tf.truncated_normal_initializer.__init__(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#truncated_normal_initializer.__init__}
 
 
-*  <b>`minval`</b>: A python scalar or a scalar tensor. Lower bound of the range
+
+
+
+- - -
+
+### `class tf.random_uniform_initializer` {#random_uniform_initializer}
+
+Initializer that generates tensors with a uniform distribution.
+
+Args:
+  minval: A python scalar or a scalar tensor. Lower bound of the range
     of random values to generate.
-*  <b>`maxval`</b>: A python scalar or a scalar tensor. Upper bound of the range
+  maxval: A python scalar or a scalar tensor. Upper bound of the range
     of random values to generate.  Defaults to 1 for float types.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type.
+  dtype: The data type.
+- - -
 
-##### Returns:
+#### `tf.random_uniform_initializer.__call__(shape, dtype=None, partition_info=None)` {#random_uniform_initializer.__call__}
 
-  An initializer that generates tensors with a uniform distribution.
+
 
 
 - - -
 
-### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer}
+#### `tf.random_uniform_initializer.__init__(minval=0, maxval=None, seed=None, dtype=tf.float32)` {#random_uniform_initializer.__init__}
 
-Returns an initializer that generates tensors without scaling variance.
+
+
+
+
+- - -
+
+### `class tf.uniform_unit_scaling_initializer` {#uniform_unit_scaling_initializer}
+
+Initializer that generates tensors without scaling variance.
 
 When initializing a deep network, it is in principle advantageous to keep
 the scale of the input variance constant, so it does not explode or diminish
@@ -2671,72 +2686,101 @@ See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
-##### Args:
-
-
-*  <b>`factor`</b>: Float.  A multiplicative factor by which the values will be scaled.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+Args:
+  factor: Float.  A multiplicative factor by which the values will be scaled.
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type. Only floating point types are supported.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with unit variance.
-
-##### Raises:
+#### `tf.uniform_unit_scaling_initializer.__call__(shape, dtype=None, partition_info=None)` {#uniform_unit_scaling_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -
 
-### `tf.zeros_initializer(dtype=tf.float32)` {#zeros_initializer}
-
-Returns an initializer that generates tensors initialized to 0.
+#### `tf.uniform_unit_scaling_initializer.__init__(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer.__init__}
 
 
-- - -
 
-### `tf.ones_initializer(dtype=tf.float32)` {#ones_initializer}
-
-An adaptor for ones() to match the Initializer spec.
 
 
 - - -
 
-### `tf.orthogonal_initializer(gain=1.0, dtype=tf.float32, seed=None)` {#orthogonal_initializer}
+### `class tf.zeros_initializer` {#zeros_initializer}
 
-Returns an initializer that generates an orthogonal matrix or a reshaped 
-orthogonal matrix.
+Initializer that generates tensors initialized to 0.
+- - -
+
+#### `tf.zeros_initializer.__call__(shape, dtype=None, partition_info=None)` {#zeros_initializer.__call__}
+
+
+
+
+- - -
+
+#### `tf.zeros_initializer.__init__(dtype=tf.float32)` {#zeros_initializer.__init__}
+
+
+
+
+
+- - -
+
+### `class tf.ones_initializer` {#ones_initializer}
+
+Initializer that generates tensors initialized to 1.
+- - -
+
+#### `tf.ones_initializer.__call__(shape, dtype=None, partition_info=None)` {#ones_initializer.__call__}
+
+
+
+
+- - -
+
+#### `tf.ones_initializer.__init__(dtype=tf.float32)` {#ones_initializer.__init__}
+
+
+
+
+
+- - -
+
+### `class tf.orthogonal_initializer` {#orthogonal_initializer}
+
+Initializer that generates an orthogonal matrix.
 
 If the shape of the tensor to initialize is two-dimensional, i is initialized
 with an orthogonal matrix obtained from the singular value decomposition of a
 matrix of uniform random numbers.
 
-If the shape of the tensor to initialize is more than two-dimensional, a matrix
-of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])` is initialized, where
-`n` is the length of the shape vector. The matrix is subsequently reshaped to
-give a tensor of the desired shape.
+If the shape of the tensor to initialize is more than two-dimensional,
+a matrix of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])`
+is initialized, where `n` is the length of the shape vector.
+The matrix is subsequently reshaped to give a tensor of the desired shape.
 
-##### Args:
-
-
-*  <b>`gain`</b>: multiplicative factor to apply to the orthogonal matrix
-*  <b>`dtype`</b>: The type of the output.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+Args:
+  gain: multiplicative factor to apply to the orthogonal matrix
+  dtype: The type of the output.
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
+- - -
 
-##### Returns:
-
-  An initializer that generates orthogonal tensors
-
-##### Raises:
+#### `tf.orthogonal_initializer.__call__(shape, dtype=None, partition_info=None)` {#orthogonal_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type or if `shape` has fewer than two entries.
+
+
+- - -
+
+#### `tf.orthogonal_initializer.__init__(gain=1.0, dtype=tf.float32, seed=None)` {#orthogonal_initializer.__init__}
+
+
+
 
 
 
@@ -3428,7 +3472,28 @@ The `Graph` that contains the values, indices, and shape tensors.
 
 - - -
 
-### `tf.initialize_all_tables(name='init_all_tables')` {#initialize_all_tables}
+### `tf.initialize_all_tables(*args, **kwargs)` {#initialize_all_tables}
+
+Returns an Op that initializes all tables of the default graph. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.tables_initializer` instead.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the initialization op.
+
+##### Returns:
+
+  An Op that initializes all tables.  Note that if there are
+  not tables the returned Op is a NoOp.
+
+
+- - -
+
+### `tf.tables_initializer(name='init_all_tables')` {#tables_initializer}
 
 Returns an Op that initializes all tables of the default graph.
 

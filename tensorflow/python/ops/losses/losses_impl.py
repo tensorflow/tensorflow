@@ -119,8 +119,11 @@ def _num_present(losses, weights, per_batch=False):
   """
   # If weights is a scalar, its easy to compute:
   if weights.get_shape().ndims == 0:
-    batch_size = array_ops.reshape(array_ops.slice(array_ops.shape(losses),
-                                                   [0], [1]), [])
+    if losses.get_shape().ndims == 0:
+      batch_size = 1
+    else:
+      batch_size = array_ops.reshape(array_ops.slice(array_ops.shape(losses),
+                                                     [0], [1]), [])
     num_per_batch = math_ops.div(math_ops.to_float(array_ops.size(losses)),
                                  math_ops.to_float(batch_size))
     num_per_batch = array_ops.where(math_ops.equal(weights, 0),

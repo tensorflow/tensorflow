@@ -27,6 +27,7 @@ struct InputLayerInfo {
   string name;
   DataType data_type;
   TensorShape shape;
+  std::vector<float> initialization_values;
 };
 
 // Loads a model from disk into a new session.

@@ -78,6 +78,7 @@ void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<PartialTensorShape> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 
 inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
   *out = value;

@@ -45,34 +45,50 @@ import org.tensorflow.demo.tracking.MultiBoxTracker;
 import org.tensorflow.demo.R;
 
 /**
- * An activity that uses a TensorFlowMultiboxDetector and ObjectTracker to detect and then track
+ * An activity that uses a TensorFlowMultiBoxDetector and ObjectTracker to detect and then track
  * objects.
  */
 public class DetectorActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
 
-  private static final int NUM_LOCATIONS = 784;
-  private static final int INPUT_SIZE = 224;
-  private static final int IMAGE_MEAN = 128;
-  private static final float IMAGE_STD = 128;
-  private static final String INPUT_NAME = "ResizeBilinear";
-  private static final String OUTPUT_NAMES = "output_locations/Reshape,output_scores/Reshape";
+  // Configuration values for the prepackaged multibox model.
+  private static final int MB_NUM_LOCATIONS = 784;
+  private static final int MB_INPUT_SIZE = 224;
+  private static final int MB_IMAGE_MEAN = 128;
+  private static final float MB_IMAGE_STD = 128;
+  private static final String MB_INPUT_NAME = "ResizeBilinear";
+  private static final String MB_OUTPUT_NAMES = "output_locations/Reshape,output_scores/Reshape";
+  private static final String MB_MODEL_FILE = "file:///android_asset/multibox_model.pb";
+  private static final String MB_LOCATION_FILE =
+      "file:///android_asset/multibox_location_priors.pb";
 
-  private static final String MODEL_FILE = "file:///android_asset/multibox_model.pb";
-  private static final String LOCATION_FILE = "file:///android_asset/multibox_location_priors.pb";
+  // Configuration values for tiny-yolo-voc. Note that the graph is not included with TensorFlow and
+  // must be manually placed in the assets/ directory by the user.
+  // Graphs and models downloaded from http://pjreddie.com/darknet/yolo/ may be converted e.g. via
+  // DarkFlow (https://github.com/thtrieu/darkflow). Sample command:
+  // ./flow --model cfg/tiny-yolo-voc.cfg --load bin/tiny-yolo-voc.weights --savepb --verbalise=True
+  private static final String YOLO_MODEL_FILE = "file:///android_asset/graph-tiny-yolo-voc.pb";
+  private static final int YOLO_INPUT_SIZE = 416;
+  private static final String YOLO_INPUT_NAME = "input";
+  private static final String YOLO_OUTPUT_NAMES = "output";
+  private static final int YOLO_BLOCK_SIZE = 32;
+
+  // Default to the included multibox model.
+  private static final boolean USE_YOLO = false;
+
+  private static final int CROP_SIZE = USE_YOLO ? YOLO_INPUT_SIZE : MB_INPUT_SIZE;
 
   // Minimum detection confidence to track a detection.
-  private static final float MINIMUM_CONFIDENCE = 0.1f;
+  private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.0f : 0.1f;
+
+  private static final boolean MAINTAIN_ASPECT = USE_YOLO;
 
   private static final boolean SAVE_PREVIEW_BITMAP = false;
-
-  private static final boolean MAINTAIN_ASPECT = false;
-
   private static final float TEXT_SIZE_DIP = 10;
 
   private Integer sensorOrientation;
 
-  private TensorFlowMultiBoxDetector detector;
+  private Classifier detector;
 
   private int previewWidth = 0;
   private int previewHeight = 0;
@@ -108,23 +124,28 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
 
-    detector = new TensorFlowMultiBoxDetector();
-
     try {
-      final int initStatus =
-          detector.initializeTensorFlow(
-              getAssets(),
-              MODEL_FILE,
-              LOCATION_FILE,
-              NUM_LOCATIONS,
-              INPUT_SIZE,
-              IMAGE_MEAN,
-              IMAGE_STD,
-              INPUT_NAME,
-              OUTPUT_NAMES);
-      if (initStatus != 0) {
-        LOGGER.e("TF init status != 0: %d", initStatus);
-        throw new RuntimeException();
+      if (USE_YOLO) {
+        detector =
+            TensorFlowYoloDetector.create(
+                getAssets(),
+                YOLO_MODEL_FILE,
+                YOLO_INPUT_SIZE,
+                YOLO_INPUT_NAME,
+                YOLO_OUTPUT_NAMES,
+                YOLO_BLOCK_SIZE);
+      } else {
+        detector =
+            TensorFlowMultiBoxDetector.create(
+                getAssets(),
+                MB_MODEL_FILE,
+                MB_LOCATION_FILE,
+                MB_NUM_LOCATIONS,
+                MB_INPUT_SIZE,
+                MB_IMAGE_MEAN,
+                MB_IMAGE_STD,
+                MB_INPUT_NAME,
+                MB_OUTPUT_NAMES);
       }
     } catch (final Exception e) {
       throw new RuntimeException("Error initializing TensorFlow!", e);
@@ -143,12 +164,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
     rgbBytes = new int[previewWidth * previewHeight];
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
-    croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
+    croppedBitmap = Bitmap.createBitmap(CROP_SIZE, CROP_SIZE, Config.ARGB_8888);
 
     frameToCropTransform =
         ImageUtils.getTransformationMatrix(
             previewWidth, previewHeight,
-            INPUT_SIZE, INPUT_SIZE,
+            CROP_SIZE, CROP_SIZE,
             sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();
@@ -212,6 +233,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   }
 
   OverlayView trackingOverlay;
+
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
@@ -333,7 +355,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   @Override
   protected int getDesiredPreviewFrameSize() {
-    return INPUT_SIZE;
+    return CROP_SIZE;
   }
 
   @Override

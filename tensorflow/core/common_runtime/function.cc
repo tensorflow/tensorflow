@@ -463,7 +463,7 @@ void DumpGraph(StringPiece label, const Graph* g) {
   }
 }
 
-void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   OptimizerOptions opts;
   opts.set_do_common_subexpression_elimination(true);
   opts.set_do_function_inlining(true);
@@ -475,16 +475,12 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
-  Graph* g = new Graph(lib_def_);
-  CopyGraph(*fbody->graph, g);
+  std::unique_ptr<Graph> g(new Graph(lib_def_));
+  CopyGraph(*fbody->graph, g.get());
 
   optimizer_.Optimize(this, env(), device(), &g);
-  auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
-                             device()->name(), g);
-  if (!s.ok()) {
-    delete g;
-    return Status::OK();
-  }
+  TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
+                                       device()->name(), g.get()));
 
   // Creates an executor based on the g.  This must be done without
   // holding mu_ because create_kernel_ calls back into the library.
@@ -495,11 +491,12 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  Graph* graph = g.get();
   Executor* exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
 
   *item = new Item;
-  (*item)->graph = g;
+  (*item)->graph = graph;
   (*item)->exec = exec;
   return Status::OK();
 }

@@ -277,7 +277,7 @@ def _LSTMBlockCellGrad(op, *grad):
   h_prev_grad.get_shape().merge_with(h_prev.get_shape())
 
   # Backprop from dicfo to w.
-  xh = array_ops.concat_v2([x, h_prev], 1)
+  xh = array_ops.concat([x, h_prev], 1)
   w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
   w_grad.get_shape().merge_with(w.get_shape())
 
@@ -527,9 +527,9 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
         # correctly,since we want to access the last valid state at
         # sequence_length - 1, which can even be -1, corresponding to the
         # initial state.
-        mod_cell_states = array_ops.concat_v2(
+        mod_cell_states = array_ops.concat(
             [array_ops.expand_dims(initial_cell_state, [0]), cell_states], 0)
-        mod_outputs = array_ops.concat_v2(
+        mod_outputs = array_ops.concat(
             [array_ops.expand_dims(initial_output, [0]), outputs], 0)
         final_cell_state = self._gather_states(mod_cell_states, sequence_length,
                                                batch_size)
@@ -635,7 +635,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
 
     if sequence_length is None:
-      max_seq_len = time_len
+      max_seq_len = math_ops.to_int64(time_len)
     else:
       max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
 

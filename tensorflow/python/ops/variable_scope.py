@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections as collections_lib
 import contextlib
+import copy
 import functools
 import traceback
 
@@ -182,21 +183,21 @@ class _VariableStore(object):
     """Create a variable store."""
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
-    self._variable_scopes_count = {}  # Count re-used variable scopes.
+    self.variable_scopes_count = {}  # Count re-used variable scopes.
 
   def open_variable_scope(self, scope_name):
-    if scope_name in self._variable_scopes_count:
-      self._variable_scopes_count[scope_name] += 1
+    if scope_name in self.variable_scopes_count:
+      self.variable_scopes_count[scope_name] += 1
     else:
-      self._variable_scopes_count[scope_name] = 1
+      self.variable_scopes_count[scope_name] = 1
 
   def close_variable_subscopes(self, scope_name):
-    for k in self._variable_scopes_count:
+    for k in self.variable_scopes_count:
       if not scope_name or k.startswith(scope_name + "/"):
-        self._variable_scopes_count[k] = 0
+        self.variable_scopes_count[k] = 0
 
   def variable_scope_count(self, scope_name):
-    return self._variable_scopes_count.get(scope_name, 0)
+    return self.variable_scopes_count.get(scope_name, 0)
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
@@ -214,7 +215,7 @@ class _VariableStore(object):
 
     If initializer is `None` (the default), the default initializer passed in
     the constructor is used. If that one is `None` too, we use a new
-    `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
+    `glorot_uniform_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
     If a partitioner is provided, a `PartitionedVariable` is returned.
@@ -370,7 +371,7 @@ class _VariableStore(object):
 
     If initializer is `None` (the default), the default initializer passed in
     the constructor is used. If that one is `None` too, we use a new
-    `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
+    `glorot_uniform_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
     If the initializer is a callable, then it will be called for each
@@ -715,7 +716,7 @@ class _VariableStore(object):
     """
     # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
     if dtype.is_floating:
-      initializer = init_ops.uniform_unit_scaling_initializer()
+      initializer = init_ops.glorot_uniform_initializer()
       initializing_from_value = False
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
@@ -997,13 +998,13 @@ for an extensive description of how reusing works. Here is a basic example:
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -1114,7 +1115,7 @@ def _get_partitioned_variable(name,
 
   If initializer is `None` (the default), the default initializer passed in
   the constructor is used. If that one is `None` too, we use a new
-  `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
+  `glorot_uniform_initializer`. If initializer is a Tensor, we use
   it as a value and derive the shape from the initializer.
 
   If the initializer is a callable, then it will be called for each
@@ -1222,6 +1223,7 @@ def _pure_variable_scope(name_or_scope,
   try:
     var_store.open_variable_scope(new_name)
     if isinstance(name_or_scope, VariableScope):
+      old_subscopes = copy.copy(var_store.variable_scopes_count)
       name_scope = name_or_scope._name_scope  # pylint: disable=protected-access
       # Handler for the case when we jump to a shared scope.
       #   We create a new VariableScope (default_varscope[0]) that contains
@@ -1280,6 +1282,9 @@ def _pure_variable_scope(name_or_scope,
       yield default_varscope[0]
   finally:
     var_store.close_variable_subscopes(new_name)
+    # If jumping out from a non-prolonged scope, restore counts.
+    if isinstance(name_or_scope, VariableScope):
+      var_store.variable_scopes_count = old_subscopes
     default_varscope[0] = old
 
 

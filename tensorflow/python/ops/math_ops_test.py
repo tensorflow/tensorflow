@@ -299,6 +299,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               // array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
+  def testDivideName(self):
+    with self.test_session():
+      op = math_ops.divide(array_ops.constant(3),
+                           array_ops.constant(4), name="my_cool_divide")
+      self.assertEqual(op.name, "my_cool_divide:0")
+
   def testRealDiv(self):
     nums, divs = self.floatTestData()
     with self.test_session():

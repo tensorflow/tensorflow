@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
@@ -42,9 +41,19 @@ class StudentT(distribution.Distribution):
 
   #### Mathematical details
 
-  The PDF of this distribution is:
+  Write `sigma` for the scale and `mu` for the mean (both are scalars). The PDF
+  of this distribution is:
 
-  `f(t) = gamma((df+1)/2)/sqrt(df*pi)/gamma(df/2)*(1+t^2/df)^(-(df+1)/2)`
+  ```none
+  f(x) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
+  where,
+  y(x) = (x - mu) / sigma
+  Z    = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
+  ```
+
+  Notice that `sigma` has semantics more similar to standard deviation than
+  variance.  (Recall that the variance of the Student's t-distribution is
+  `sigma**2 df / (df - 2)` when `df > 2`.)
 
   #### Examples
 
@@ -101,12 +110,13 @@ class StudentT(distribution.Distribution):
     broadcasting (e.g. `df + mu + sigma` is a valid operation).
 
     Args:
-      df: Floating point tensor, the degrees of freedom of the
-        distribution(s). `df` must contain only positive values.
-      mu: Floating point tensor, the means of the distribution(s).
-      sigma: Floating point tensor, the scaling factor for the
-        distribution(s). `sigma` must contain only positive values.
-        Note that `sigma` is not the standard deviation of this distribution.
+      df: Numeric `Tensor`. The degrees of freedom of the distribution(s).
+        `df` must contain only positive values.
+      mu: Numeric `Tensor`. The mean(s) of the distribution(s).
+      sigma: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
+        Note that `sigma` is not technically the standard deviation of this
+        distribution but has semantics more similar to std. deviation than
+        variance.
       validate_args: `Boolean`, default `False`.  Whether to assert that
         `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
         invalid, correct behavior is not guaranteed.
@@ -122,10 +132,8 @@ class StudentT(distribution.Distribution):
     parameters = locals()
     parameters.pop("self")
     with ops.name_scope(name, values=[df, mu, sigma]) as ns:
-      with ops.control_dependencies([
-          check_ops.assert_positive(df),
-          check_ops.assert_positive(sigma),
-      ] if validate_args else []):
+      with ops.control_dependencies([check_ops.assert_positive(df)]
+                                    if validate_args else []):
         self._df = array_ops.identity(df, name="df")
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
@@ -188,7 +196,7 @@ class StudentT(distribution.Distribution):
     #   Y = X / sqrt(Z / df)
     # then:
     #   Y ~ StudentT(df).
-    shape = array_ops.concat_v2([[n], self.batch_shape()], 0)
+    shape = array_ops.concat([[n], self.batch_shape()], 0)
     normal_sample = random_ops.random_normal(shape, dtype=self.dtype, seed=seed)
     df = self.df * array_ops.ones(self.batch_shape(), dtype=self.dtype)
     gamma_sample = random_ops.random_gamma(
@@ -196,65 +204,64 @@ class StudentT(distribution.Distribution):
         0.5 * df,
         beta=0.5,
         dtype=self.dtype,
-        seed=distribution_util.gen_new_seed(
-            seed, salt="student_t"))
+        seed=distribution_util.gen_new_seed(seed, salt="student_t"))
     samples = normal_sample / math_ops.sqrt(gamma_sample / df)
-    return samples * self.sigma + self.mu
+    return samples * self.sigma + self.mu  # Abs(sigma) not wanted.
 
   def _log_prob(self, x):
-    y = (x - self.mu) / self.sigma
-    half_df = 0.5 * self.df
-    return (math_ops.lgamma(0.5 + half_df) - math_ops.lgamma(half_df) - 0.5 *
-            math_ops.log(self.df) - 0.5 * math.log(math.pi) -
-            math_ops.log(self.sigma) -
-            (0.5 + half_df) * math_ops.log(1. + math_ops.square(y) / self.df))
+    return self._log_unnormalized_prob(x) - self._log_normalization()
+
+  def _log_unnormalized_prob(self, x):
+    y = (x - self.mu) / self.sigma  # Abs(sigma) superfluous.
+    return -0.5 * (self.df + 1.) * math_ops.log1p(y**2. / self.df)
+
+  def _log_normalization(self):
+    return (math_ops.log(math_ops.abs(self.sigma)) +
+            0.5 * math_ops.log(self.df) +
+            0.5 * np.log(np.pi) +
+            math_ops.lgamma(0.5 * self.df) -
+            math_ops.lgamma(0.5 * (self.df + 1.)))
 
   def _prob(self, x):
-    y = (x - self.mu) / self.sigma
-    half_df = 0.5 * self.df
-    return (
-        math_ops.exp(math_ops.lgamma(0.5 + half_df) - math_ops.lgamma(half_df))
-        / (math_ops.sqrt(self.df) * math.sqrt(math.pi) * self.sigma) *
-        math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
+    return math_ops.exp(self._log_prob(x))
 
   def _cdf(self, x):
-    # we use the same notation here as in wikipedia for the
-    t = (x - self.mu) / self.sigma
-    x_t = self.df / (math_ops.square(t) + self.df)
-    # The cdf is defined differently for positive and negative t
-    positive_cdf = 1. - 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
-    negative_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
-    return array_ops.where(math_ops.less(t, 0), negative_cdf, positive_cdf)
+    # Take Abs(sigma) to make subsequent where work correctly.
+    y = (x - self.mu) / math_ops.abs(self.sigma)
+    x_t = self.df / (y**2. + self.df)
+    neg_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    return array_ops.where(math_ops.less(y, 0.), neg_cdf, 1. - neg_cdf)
 
   def _entropy(self):
-    u = array_ops.expand_dims(self.df * self._ones(), -1)
-    v = array_ops.expand_dims(self._ones(), -1)
-    beta_arg = array_ops.concat_v2([u, v], len(u.get_shape()) - 1) / 2
-    half_df = 0.5 * self.df
-    return ((0.5 + half_df) *
-            (math_ops.digamma(0.5 + half_df) - math_ops.digamma(half_df)) + 0.5
-            * math_ops.log(self.df) + special_math_ops.lbeta(beta_arg) +
-            math_ops.log(self.sigma))
+    v = array_ops.ones(self.batch_shape(), dtype=self.dtype)[..., None]
+    u = v * self.df[..., None]
+    beta_arg = array_ops.concat([u, v], -1) / 2.
+    return (math_ops.log(math_ops.abs(self.sigma)) +
+            0.5 * math_ops.log(self.df) +
+            special_math_ops.lbeta(beta_arg) +
+            0.5 * (self.df + 1.) *
+            (math_ops.digamma(0.5 * (self.df + 1.)) -
+             math_ops.digamma(0.5 * self.df)))
 
   @distribution_util.AppendDocstring(
       """The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
       If `self.allow_nan_stats=True`, then an exception will be raised rather
       than returning `NaN`.""")
   def _mean(self):
-    mean = self.mu * self._ones()
+    mean = self.mu * array_ops.ones(self.batch_shape(), dtype=self.dtype)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
       return array_ops.where(
-          math_ops.greater(self.df, self._ones()),
+          math_ops.greater(
+              self.df,
+              array_ops.ones(self.batch_shape(), dtype=self.dtype)),
           mean,
-          array_ops.fill(
-              self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies(
           [
               check_ops.assert_less(
-                  array_ops.ones(
-                      (), dtype=self.dtype),
+                  array_ops.ones((), dtype=self.dtype),
                   self.df,
                   message="mean not defined for components of df <= 1"),
           ],
@@ -270,28 +277,34 @@ class StudentT(distribution.Distribution):
       ```
       """)
   def _variance(self):
-    var = (self._ones() * math_ops.square(self.sigma) * self.df / (self.df - 2))
+    # We need to put the tf.where inside the outer tf.where to ensure we never
+    # hit a NaN in the gradient.
+    denom = array_ops.where(math_ops.greater(self.df, 2.),
+                            self.df - 2.,
+                            array_ops.ones_like(self.df))
+    # Abs(sigma) superfluous.
+    var = (array_ops.ones(self.batch_shape(), dtype=self.dtype) *
+           math_ops.square(self.sigma) * self.df / denom)
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
     result_where_defined = array_ops.where(
         math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
         var,
-        array_ops.fill(
-            self.batch_shape(), inf, name="inf"))
+        array_ops.fill(self.batch_shape(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
       return array_ops.where(
-          math_ops.greater(self.df, self._ones()),
+          math_ops.greater(
+              self.df,
+              array_ops.ones(self.batch_shape(), dtype=self.dtype)),
           result_where_defined,
-          array_ops.fill(
-              self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies(
           [
               check_ops.assert_less(
-                  array_ops.ones(
-                      (), dtype=self.dtype),
+                  array_ops.ones((), dtype=self.dtype),
                   self.df,
                   message="variance not defined for components of df <= 1"),
           ],
@@ -302,11 +315,6 @@ class StudentT(distribution.Distribution):
 
   def _mode(self):
     return array_ops.identity(self.mu)
-
-  def _ones(self):
-    if self.get_batch_shape().is_fully_defined():
-      return array_ops.ones(self.get_batch_shape(), dtype=self.dtype)
-    return array_ops.ones(self.batch_shape(), dtype=self.dtype)
 
 
 class StudentTWithAbsDfSoftplusSigma(StudentT):
@@ -325,7 +333,7 @@ class StudentTWithAbsDfSoftplusSigma(StudentT):
       super(StudentTWithAbsDfSoftplusSigma, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           mu=mu,
-          sigma=nn.softplus(sigma),
+          sigma=nn.softplus(sigma, name="softplus_sigma"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

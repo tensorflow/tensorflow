@@ -65,9 +65,11 @@ class SparseFeature(
       be `dtype` and its length must always match that of the `index_key`
       feature.
     dtype: Data type of the `value_key` feature.
-    size: Each value in the `index_key` feature must be in `[0, size)`.
-    already_sorted: A boolean to specify whether the values in `index_key` are
-      already sorted. If so skip sorting, False by default (optional).
+    size: A Python int to specify a dimension of the dense shape. Each value in
+      the `index_key` feature must be in `[0, size)`.
+    already_sorted: A Python boolean to specify whether the values in
+      `index_key` are already sorted. If so skip sorting.
+      False by default (optional).
   """
   pass
 SparseFeature.__new__.__defaults__ = (False,)
@@ -204,10 +206,12 @@ def _features_to_raw_params(features, types):
 def _construct_sparse_tensors_for_sparse_features(features, tensor_dict):
   """Merges SparseTensors of indices and values of SparseFeatures.
 
-  Updates `tensor_dict`. For `SparseFeatures` in the values of `features`
-  expects their `index_key`s and `index_value`s to be present in `tensor_dict`
-  mapping to `SparseTensor`s. Removes those, constructs a single `SparseTensor`
-  from them, and adds it to `tensor_dict` with the key from `features`.
+  Constructs new dict based on `tensor_dict`. For `SparseFeatures` in the values
+  of `features` expects their `index_key`s and `index_value`s to be present in
+  `tensor_dict` mapping to `SparseTensor`s. Constructs a single `SparseTensor`
+  from them, and adds it to the result with the key from `features`.
+  Copies other keys and values from `tensor_dict` with keys present in
+  `features`.
 
   Args:
     features: A `dict` mapping feature keys to `SparseFeature` values.
@@ -215,7 +219,12 @@ def _construct_sparse_tensors_for_sparse_features(features, tensor_dict):
     tensor_dict: A `dict` mapping feature keys to `Tensor` and `SparseTensor`
       values. Expected to contain keys of the `SparseFeature`s' `index_key`s and
       `value_key`s and mapping them to `SparseTensor`s.
+  Returns:
+    A `dict` mapping feature keys to `Tensor` and `SparseTensor` values. Similar
+    to `tensor_dict` except each `SparseFeature`s in `features` results in a
+    single `SparseTensor`.
   """
+  tensor_dict = dict(tensor_dict)  # Do not modify argument passed in.
   # Construct SparseTensors for SparseFeatures.
   for key in sorted(features.keys()):
     feature = features[key]
@@ -225,12 +234,13 @@ def _construct_sparse_tensors_for_sparse_features(features, tensor_dict):
       tensor_dict[key] = sparse_ops.sparse_merge(
           sp_ids,
           sp_values,
-          feature.size,
-          feature.already_sorted)
+          vocab_size=feature.size,
+          already_sorted=feature.already_sorted)
   # Remove tensors from dictionary that were only used to construct
   # SparseTensors for SparseFeature.
-  for key in set(tensor_dict.keys()) - set(features.keys()):
+  for key in set(tensor_dict) - set(features):
     del tensor_dict[key]
+  return tensor_dict
 
 
 def parse_example(serialized, features, name=None, example_names=None):
@@ -394,7 +404,8 @@ def parse_example(serialized, features, name=None, example_names=None):
   ```
   example_names: ["input0", "input1"],
   features: {
-      "sparse": SparseFeature("ix", "val", tf.float32, 100),
+      "sparse": SparseFeature(
+          index_key="ix", value_key="val", dtype=tf.float32, size=100),
   }
   ```
 
@@ -432,8 +443,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   outputs = _parse_example_raw(
       serialized, example_names, sparse_keys, sparse_types, dense_keys,
       dense_types, dense_defaults, dense_shapes, name)
-  _construct_sparse_tensors_for_sparse_features(features, outputs)
-  return outputs
+  return _construct_sparse_tensors_for_sparse_features(features, outputs)
 
 
 def _parse_example_raw(serialized,
@@ -583,8 +593,7 @@ def parse_single_example(serialized, features, name=None, example_names=None):
   outputs = _parse_single_example_raw(
       serialized, example_names, sparse_keys, sparse_types, dense_keys,
       dense_types, dense_defaults, dense_shapes, name)
-  _construct_sparse_tensors_for_sparse_features(features, outputs)
-  return outputs
+  return _construct_sparse_tensors_for_sparse_features(features, outputs)
 
 
 def _parse_single_example_raw(serialized,
