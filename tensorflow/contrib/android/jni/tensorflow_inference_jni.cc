@@ -49,7 +49,7 @@ typedef std::map<std::string, std::pair<std::string, tensorflow::Tensor> >
 struct SessionVariables {
   std::unique_ptr<tensorflow::Session> session;
 
-  long id = -1;  // Copied from Java field for convenience.
+  int64 id = -1;  // Copied from Java field for convenience.
   int num_runs = 0;
   int64 timing_total_us = 0;
 
