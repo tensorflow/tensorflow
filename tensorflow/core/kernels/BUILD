@@ -318,6 +318,19 @@ cc_library(
 )
 
 cc_library(
+    name = "record_input_op",
+    srcs = [
+        "record_input_op.cc",
+        "record_yielder.cc",
+        "record_yielder.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
@@ -1167,6 +1180,7 @@ cc_library(
         ":priority_queue_op",
         ":queue_ops",
         ":random_shuffle_queue_op",
+        ":record_input_op",
         ":session_ops",
         ":sparse_conditional_accumulator_op",
         ":stack_ops",
