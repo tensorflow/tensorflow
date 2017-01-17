@@ -2180,4 +2180,35 @@ Delete the tensor specified by its handle in the session.
 handle: The handle for a tensor stored in the session state.
 )doc");
 
+REGISTER_OP("Stage")
+    .Input("values: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Stage values similar to a lightweight Enqueue.  The basic functionality of this
+Op is similar to a queue with many fewer capabilities and options.  This Op is
+optimized for performance.
+
+values: a list of tensors
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+    )doc");
+
+REGISTER_OP("Unstage")
+    .Output("values: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
+dequeue with many fewer capabilities and options.  This Op is optimized for
+performance.
+    )doc");
+
 }  // namespace tensorflow

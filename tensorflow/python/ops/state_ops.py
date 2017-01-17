@@ -106,6 +106,7 @@ automatically by the optimizers in most cases.
 ### Read-only Lookup Tables
 
 @@initialize_all_tables
+@@tables_initializer
 
 
 ## Exporting and Importing Meta Graphs

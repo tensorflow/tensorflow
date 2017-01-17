@@ -163,6 +163,33 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       #     # TODO(aselle): (tf.batch_*)
       # ]
 
+  def testBatchAndSvd(self):
+    with self.test_session():
+      mat = [[1., 2.], [2., 3.]]
+      batched_mat = tf.expand_dims(mat, [0])
+      result = tf.matmul(mat, mat).eval()
+      result_batched = tf.batch_matmul(batched_mat, batched_mat).eval()
+      self.assertAllEqual(result_batched, np.expand_dims(result, 0))
+      self.assertAllEqual(
+          tf.svd(mat, False, True).eval(),
+          tf.svd(mat, compute_uv=False, full_matrices=True).eval())
+
+  def testCrossEntropy(self):
+    # TODO(aselle): Test sparse_softmax_...
+    with self.test_session():
+      labels = [.8, .5, .2, .1]
+      logits = [.9, .1, .3, .1]
+      self.assertAllEqual(
+          tf.nn.softmax_cross_entropy_with_logits(
+              logits, labels).eval(),
+          tf.nn.softmax_cross_entropy_with_logits(
+              labels=labels, logits=logits).eval())
+      self.assertAllEqual(
+          tf.nn.sigmoid_cross_entropy_with_logits(
+              logits, labels).eval(),
+          tf.nn.sigmoid_cross_entropy_with_logits(
+              labels=labels, logits=logits).eval())
+
   def testVariables(self):
     with self.test_session() as s:
 

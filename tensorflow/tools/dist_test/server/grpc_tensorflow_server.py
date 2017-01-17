@@ -33,32 +33,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
+
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
 from tensorflow.python.training import server_lib
 
-FLAGS = flags.FLAGS
 
-flags.DEFINE_string("cluster_spec", "", """Cluster spec: SPEC.
-    SPEC is <JOB>(,<JOB>)*,"
-    JOB  is <NAME>|<HOST:PORT>(;<HOST:PORT>)*,"
-    NAME is a valid job name ([a-z][0-9a-z]*),"
-    HOST is a hostname or IP address,"
-    PORT is a port number."
-E.g., local|localhost:2222;localhost:2223, ps|ps0:2222;ps1:2222""")
-flags.DEFINE_string("job_name", "", "Job name: e.g., local")
-flags.DEFINE_integer("task_id", 0, "Task index, e.g., 0")
-flags.DEFINE_boolean("verbose", False, "Verbose mode")
-
-
-def parse_cluster_spec(cluster_spec, cluster):
+def parse_cluster_spec(cluster_spec, cluster, verbose=False):
   """Parse content of cluster_spec string and inject info into cluster protobuf.
 
   Args:
     cluster_spec: cluster specification string, e.g.,
           "local|localhost:2222;localhost:2223"
     cluster: cluster protobuf.
+    verbose: If verbose logging is requested.
 
   Raises:
     ValueError: if the cluster_spec string is invalid.
@@ -82,7 +72,7 @@ def parse_cluster_spec(cluster_spec, cluster):
 
     job_def.name = job_name
 
-    if FLAGS.verbose:
+    if verbose:
       print("Added job named \"%s\"" % job_name)
 
     job_tasks = job_string.split("|")[1].split(";")
@@ -92,7 +82,7 @@ def parse_cluster_spec(cluster_spec, cluster):
 
       job_def.tasks[i] = job_tasks[i]
 
-      if FLAGS.verbose:
+      if verbose:
         print("  Added task \"%s\" to job \"%s\"" % (job_tasks[i], job_name))
 
 
@@ -101,7 +91,7 @@ def main(unused_args):
   server_def = tensorflow_server_pb2.ServerDef(protocol="grpc")
 
   # Cluster info
-  parse_cluster_spec(FLAGS.cluster_spec, server_def.cluster)
+  parse_cluster_spec(FLAGS.cluster_spec, server_def.cluster, FLAGS.verbose)
 
   # Job name
   if not FLAGS.job_name:
@@ -121,4 +111,39 @@ def main(unused_args):
 
 
 if __name__ == "__main__":
-  app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--cluster_spec",
+      type=str,
+      default="",
+      help="""\
+      Cluster spec: SPEC.     SPEC is <JOB>(,<JOB>)*,"     JOB  is
+      <NAME>|<HOST:PORT>(;<HOST:PORT>)*,"     NAME is a valid job name
+      ([a-z][0-9a-z]*),"     HOST is a hostname or IP address,"     PORT is a
+      port number." E.g., local|localhost:2222;localhost:2223,
+      ps|ps0:2222;ps1:2222\
+      """
+  )
+  parser.add_argument(
+      "--job_name",
+      type=str,
+      default="",
+      help="Job name: e.g., local"
+  )
+  parser.add_argument(
+      "--task_id",
+      type=int,
+      default=0,
+      help="Task index, e.g., 0"
+  )
+  parser.add_argument(
+      "--verbose",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Verbose mode"
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

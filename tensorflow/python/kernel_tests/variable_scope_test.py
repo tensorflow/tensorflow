@@ -453,6 +453,25 @@ class VariableScopeTest(test.TestCase):
               variable_scope.get_variable("w", []).name,
               "defaultScope1_2/layer/w:0")
 
+  def testVarOpScopeUniqueNamesWithJump(self):
+    with self.test_session():
+      with variable_scope.variable_scope("default") as default:
+        with variable_scope.variable_scope(None, "layer"):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name,
+              "default/layer/w:0")
+        with variable_scope.variable_scope(None, "layer"):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name,
+              "default/layer_1/w:0")
+        with variable_scope.variable_scope(default):
+          pass
+        # No matter the jump in the middle, unique numbering continues.
+        with variable_scope.variable_scope(None, "layer"):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name,
+              "default/layer_2/w:0")
+
   def testVarOpScopeReuse(self):
     with self.test_session():
       with variable_scope.variable_scope("outer") as outer:

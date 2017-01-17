@@ -356,7 +356,7 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 }
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
-                     RunStepResponse* resp, MyClosure done) {
+                     MutableRunStepResponseWrapper* resp, MyClosure done) {
   mu_.lock();
   uint64 start_time = env_->env->NowMicros();
   MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());

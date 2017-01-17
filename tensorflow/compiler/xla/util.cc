@@ -176,12 +176,6 @@ std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
   return output;
 }
 
-int64 PositionInContainer(tensorflow::gtl::ArraySlice<int64> container,
-                          int64 value) {
-  return std::find(container.begin(), container.end(), value) -
-         container.begin();
-}
-
 PaddingConfig MakeNoPaddingConfig(int64 rank) {
   PaddingConfig padding_config;
   for (int64 dnum = 0; dnum < rank; ++dnum) {

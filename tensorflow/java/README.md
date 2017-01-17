@@ -37,7 +37,7 @@ Build the Java Archive (JAR) and native library:
 ```sh
 bazel build -c opt \
   //tensorflow/java:tensorflow \
-  //tensorflow/java:libtensorflow-jni
+  //tensorflow/java:libtensorflow_jni
 ```
 
 ### Maven
@@ -86,8 +86,8 @@ bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:label_i
       ./src/main/java/org/tensorflow/examples/LabelImage.java
     ```
 
--   Make `libtensorflow.jar` and `libtensorflow-jni.so`
-    (`libtensorflow-jni.dylib` on OS X) available during execution. For example:
+-   Make `libtensorflow.jar` and `libtensorflow_jni.so`
+    (`libtensorflow_jni.dylib` on OS X) available during execution. For example:
 
     ```sh
     java \

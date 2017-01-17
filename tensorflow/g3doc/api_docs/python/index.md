@@ -119,6 +119,7 @@
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
   * [`scatter_update`](../../api_docs/python/state_ops.md#scatter_update)
   * [`sparse_mask`](../../api_docs/python/state_ops.md#sparse_mask)
+  * [`tables_initializer`](../../api_docs/python/state_ops.md#tables_initializer)
   * [`trainable_variables`](../../api_docs/python/state_ops.md#trainable_variables)
   * [`truncated_normal_initializer`](../../api_docs/python/state_ops.md#truncated_normal_initializer)
   * [`uniform_unit_scaling_initializer`](../../api_docs/python/state_ops.md#uniform_unit_scaling_initializer)
@@ -258,7 +259,6 @@
   * [`maximum`](../../api_docs/python/math_ops.md#maximum)
   * [`minimum`](../../api_docs/python/math_ops.md#minimum)
   * [`mod`](../../api_docs/python/math_ops.md#mod)
-  * [`mul`](../../api_docs/python/math_ops.md#mul)
   * [`multiply`](../../api_docs/python/math_ops.md#multiply)
   * [`neg`](../../api_docs/python/math_ops.md#neg)
   * [`negative`](../../api_docs/python/math_ops.md#negative)
@@ -297,7 +297,6 @@
   * [`sqrt`](../../api_docs/python/math_ops.md#sqrt)
   * [`square`](../../api_docs/python/math_ops.md#square)
   * [`squared_difference`](../../api_docs/python/math_ops.md#squared_difference)
-  * [`sub`](../../api_docs/python/math_ops.md#sub)
   * [`subtract`](../../api_docs/python/math_ops.md#subtract)
   * [`svd`](../../api_docs/python/math_ops.md#svd)
   * [`tan`](../../api_docs/python/math_ops.md#tan)
@@ -417,6 +416,7 @@
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
   * [`rot90`](../../api_docs/python/image.md#rot90)
   * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
+  * [`total_variation`](../../api_docs/python/image.md#total_variation)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:
@@ -771,6 +771,7 @@
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
+  * [`softplus_inverse`](../../api_docs/python/contrib.distributions.md#softplus_inverse)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`StudentTWithAbsDfSoftplusSigma`](../../api_docs/python/contrib.distributions.md#StudentTWithAbsDfSoftplusSigma)
   * [`TransformedDistribution`](../../api_docs/python/contrib.distributions.md#TransformedDistribution)
@@ -1032,6 +1033,7 @@
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
   * [`LinearOperatorIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorIdentity)
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
+  * [`LinearOperatorScaledIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorScaledIdentity)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
@@ -1156,6 +1158,8 @@
   * [`add_debug_tensor_watch`](../../api_docs/python/tf_debug.md#add_debug_tensor_watch)
   * [`DebugDumpDir`](../../api_docs/python/tf_debug.md#DebugDumpDir)
   * [`DebugTensorDatum`](../../api_docs/python/tf_debug.md#DebugTensorDatum)
+  * [`DumpingDebugHook`](../../api_docs/python/tf_debug.md#DumpingDebugHook)
+  * [`DumpingDebugWrapperSession`](../../api_docs/python/tf_debug.md#DumpingDebugWrapperSession)
   * [`has_inf_or_nan`](../../api_docs/python/tf_debug.md#has_inf_or_nan)
   * [`load_tensor_from_event_file`](../../api_docs/python/tf_debug.md#load_tensor_from_event_file)
   * [`LocalCLIDebugHook`](../../api_docs/python/tf_debug.md#LocalCLIDebugHook)

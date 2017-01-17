@@ -41,6 +41,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "loss_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/loss_test.py"],
+    additional_deps = [
+        ":seq2seq_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "seq2seq_test",
     size = "medium",
     srcs = ["python/kernel_tests/seq2seq_test.py"],

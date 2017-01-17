@@ -49,6 +49,7 @@ def module_names():
       "tf.nn",
       "tf.train",
       "tf.python_io",
+      "tf.saved_model",
       "tf.summary",
       "tf.test",
       "tf.contrib.bayesflow.entropy",
@@ -168,6 +169,7 @@ def all_libraries(module_to_name, members, documented):
               "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
                                "initialize_all_tables",
+                               "tables_initializer",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),
@@ -250,7 +252,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
-                   "ClusterDef", "JobDef", "ServerDef"]
+                   "ClusterDef", "JobDef", "ServerDef", "TensorInfo"]
 
 # TODO(skleinfeld, deannarubin) Address shortname
 # conflict between tf.contrib.learn.NanLossDuringTrainingError and

@@ -19,7 +19,6 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -89,33 +88,35 @@ public class TensorFlowYoloDetector implements Classifier {
 
   private TensorFlowInferenceInterface inferenceInterface;
 
-  /**
-   * Initializes a native TensorFlow session for classifying images.
-   *
-   * @throws IOException
-   */
-  public int initializeTensorFlow(
+  /** Initializes a native TensorFlow session for classifying images. */
+  public static Classifier create(
       final AssetManager assetManager,
       final String modelFilename,
       final int inputSize,
       final String inputName,
       final String outputName,
-      final int blockSize)
-      throws IOException {
-    this.inputName = inputName;
-    this.inputSize = inputSize;
+      final int blockSize) {
+    TensorFlowYoloDetector d = new TensorFlowYoloDetector();
+    d.inputName = inputName;
+    d.inputSize = inputSize;
 
     // Pre-allocate buffers.
-    outputNames = outputName.split(",");
-    intValues = new int[inputSize * inputSize];
-    floatValues = new float[inputSize * inputSize * 3];
-    this.blockSize = blockSize;
+    d.outputNames = outputName.split(",");
+    d.intValues = new int[inputSize * inputSize];
+    d.floatValues = new float[inputSize * inputSize * 3];
+    d.blockSize = blockSize;
 
-    inferenceInterface = new TensorFlowInferenceInterface();
+    d.inferenceInterface = new TensorFlowInferenceInterface();
 
-    // Graphs must be converted from https://github.com/thtrieu/darkflow
-    return inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    final int status = d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    if (status != 0) {
+      LOGGER.e("TF init status: " + status);
+      throw new RuntimeException("TF init status (" + status + ") != 0");
+    }
+    return d;
   }
+
+  private TensorFlowYoloDetector() {}
 
   private float expit(final float x) {
     return (float) (1. / (1. + Math.exp(-x)));

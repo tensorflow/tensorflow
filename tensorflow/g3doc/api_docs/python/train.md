@@ -4245,7 +4245,7 @@ tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
 Hook to extend calls to MonitoredSession.run().
 - - -
 
-#### `tf.train.SessionRunHook.after_create_session(session)` {#SessionRunHook.after_create_session}
+#### `tf.train.SessionRunHook.after_create_session(session, coord)` {#SessionRunHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4261,6 +4261,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4371,7 +4372,7 @@ Initializes a LoggingHook monitor.
 
 - - -
 
-#### `tf.train.LoggingTensorHook.after_create_session(session)` {#LoggingTensorHook.after_create_session}
+#### `tf.train.LoggingTensorHook.after_create_session(session, coord)` {#LoggingTensorHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4387,6 +4388,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4460,7 +4462,7 @@ call.
 
 - - -
 
-#### `tf.train.StopAtStepHook.after_create_session(session)` {#StopAtStepHook.after_create_session}
+#### `tf.train.StopAtStepHook.after_create_session(session, coord)` {#StopAtStepHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4476,6 +4478,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4549,7 +4552,7 @@ Initialize CheckpointSaverHook monitor.
 
 - - -
 
-#### `tf.train.CheckpointSaverHook.after_create_session(session)` {#CheckpointSaverHook.after_create_session}
+#### `tf.train.CheckpointSaverHook.after_create_session(session, coord)` {#CheckpointSaverHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4565,6 +4568,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4617,7 +4621,7 @@ Steps per second monitor.
 
 - - -
 
-#### `tf.train.StepCounterHook.after_create_session(session)` {#StepCounterHook.after_create_session}
+#### `tf.train.StepCounterHook.after_create_session(session, coord)` {#StepCounterHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4633,6 +4637,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4708,7 +4713,7 @@ Initializes NanLoss monitor.
 
 - - -
 
-#### `tf.train.NanTensorHook.after_create_session(session)` {#NanTensorHook.after_create_session}
+#### `tf.train.NanTensorHook.after_create_session(session, coord)` {#NanTensorHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4724,6 +4729,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4805,7 +4811,7 @@ Initializes a `SummarySaver` monitor.
 
 - - -
 
-#### `tf.train.SummarySaverHook.after_create_session(session)` {#SummarySaverHook.after_create_session}
+#### `tf.train.SummarySaverHook.after_create_session(session, coord)` {#SummarySaverHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4821,6 +4827,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -4876,7 +4883,7 @@ Create a _GlobalStepWaiterHook.
 
 - - -
 
-#### `tf.train.GlobalStepWaiterHook.after_create_session(session)` {#GlobalStepWaiterHook.after_create_session}
+#### `tf.train.GlobalStepWaiterHook.after_create_session(session, coord)` {#GlobalStepWaiterHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -4892,6 +4899,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -5446,43 +5454,22 @@ opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
 
 # Now you can call `minimize()` or `compute_gradients()` and
 # `apply_gradients()` normally
-grads = opt.minimize(total_loss, global_step=self.global_step)
+training_op = opt.minimize(total_loss, global_step=self.global_step)
 
 
-# You can now call get_init_tokens_op() and get_chief_queue_runner().
-# Note that get_init_tokens_op() must be called before creating session
-# because it modifies the graph by adding new nodes.
-init_token_op = opt.get_init_tokens_op()
-chief_queue_runner = opt.get_chief_queue_runner()
+# You can create the hook which handles initialization and queues.
+sync_replicas_hook = opt.make_session_run_hook(is_chief)
 ```
 
 In the training program, every worker will run the train_op as if not
-synchronized. But one worker (usually the chief) will need to execute the
-chief_queue_runner and get_init_tokens_op from this optimizer.
+synchronized.
 
 ```python
-# When you create the supervisor, you need to add the local_init_op and
-# ready_for_local_init_op to make sure the local_step is initialized to the
-# global_step. Here is an example:
-if is_chief:
-  local_init_op = opt.chief_init_op
-else:
-  local_init_op = opt.local_step_init_op
-ready_for_local_init_op = opt.ready_for_local_init_op
-sv = tf.Supervisor(graph=g,
-                   is_chief=is_chief,
-                   # This initialize local step.
-                   local_init_op=local_init_op,
-                   # This makes sure global step is initialized before using.
-                   ready_for_local_init_op=ready_for_local_init_op,
-                   saver=model.saver)
-
-# After the session is created by the Supervisor and before the main while
-# loop:
-if is_chief and FLAGS.sync_replicas:
-  sv.start_queue_runners(sess, [chief_queue_runner])
-  # Insert initial tokens to the queue.
-  sess.run(init_token_op)
+with training.MonitoredTrainingSession(
+    master=workers[worker_id].target, is_chief=is_chief,
+    hooks=[sync_replicas_hook]) as mon_sess:
+  while not mon_sess.should_stop():
+    mon_sess.run(training_op)
 ```
 
 - - -
@@ -5658,6 +5645,13 @@ This simply wraps the get_slot_names() from the actual optimizer.
 ##### Returns:
 
   A list of strings.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.make_session_run_hook(is_chief, num_tokens=-1)` {#SyncReplicasOptimizer.make_session_run_hook}
+
+Creates a hook to handle SyncReplicasHook ops such as initialization.
 
 
 

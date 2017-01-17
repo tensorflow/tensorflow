@@ -40,6 +40,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
+from tensorflow.python.training import input as input_lib
 
 FLAGS = flags.FLAGS
 
@@ -68,7 +69,7 @@ def make_random_points(centers, num_points, max_offset=20):
 
 class KMeansTestBase(test.TestCase):
 
-  def input_fn(self, batch_size=None, points=None):
+  def input_fn(self, batch_size=None, points=None, num_epochs=None):
     """Returns an input_fn that randomly selects batches from given points."""
     batch_size = batch_size or self.batch_size
     points = points if points is not None else self.points
@@ -77,14 +78,15 @@ class KMeansTestBase(test.TestCase):
     def _fn():
       x = constant_op.constant(points)
       if batch_size == num_points:
-        return x, None
+        return input_lib.limit_epochs(x, num_epochs=num_epochs), None
       indices = random_ops.random_uniform(
           constant_op.constant([batch_size]),
           minval=0,
           maxval=num_points - 1,
           dtype=dtypes.int32,
           seed=10)
-      return array_ops.gather(x, indices), None
+      batch = array_ops.gather(x, indices)
+      return (input_lib.limit_epochs(batch, num_epochs=num_epochs), None)
 
     return _fn
 
@@ -113,21 +115,23 @@ class KMeansTest(KMeansTestBase):
                                                      self.num_points)
     self.true_score = np.add.reduce(self.scores)
 
-    self.kmeans = kmeans_lib.KMeansClustering(
+  def _kmeans(self, relative_tolerance=None):
+    return kmeans_lib.KMeansClustering(
         self.num_centers,
         initial_clusters=factorization.RANDOM_INIT,
         use_mini_batch=self.use_mini_batch,
         config=self.config(14),
-        random_seed=10)
+        random_seed=10,
+        relative_tolerance=relative_tolerance)
 
   def test_clusters(self):
-    kmeans = self.kmeans
+    kmeans = self._kmeans()
     kmeans.fit(input_fn=self.input_fn(), steps=1)
     clusters = kmeans.clusters()
     self.assertAllEqual(list(clusters.shape), [self.num_centers, self.num_dims])
 
   def test_fit(self):
-    kmeans = self.kmeans
+    kmeans = self._kmeans()
     kmeans.fit(input_fn=self.input_fn(), steps=1)
     score1 = kmeans.score(
         input_fn=self.input_fn(batch_size=self.num_points), steps=1)
@@ -146,20 +150,20 @@ class KMeansTest(KMeansTestBase):
         initial_clusters=factorization.RANDOM_INIT,
         use_mini_batch=self.use_mini_batch,
         config=run_config.RunConfig(tf_random_seed=14),
-        random_seed=12)
+        random_seed=12,
+        relative_tolerance=1e-4)
 
     kmeans.fit(
         input_fn=self.input_fn(),
-        # Force it to train forever until the monitor stops it.
-        steps=None,
-        relative_tolerance=1e-4)
+        # Force it to train until the relative tolerance monitor stops it.
+        steps=None)
     score = kmeans.score(
         input_fn=self.input_fn(batch_size=self.num_points), steps=1)
     self.assertNear(self.true_score, score, self.true_score * 0.005)
 
   def test_infer(self):
-    kmeans = self.kmeans
-    kmeans.fit(input_fn=self.input_fn(), relative_tolerance=1e-4)
+    kmeans = self._kmeans(relative_tolerance=1e-4)
+    kmeans.fit(input_fn=self.input_fn())
     clusters = kmeans.clusters()
 
     # Make a small test set
@@ -167,8 +171,8 @@ class KMeansTest(KMeansTestBase):
     points, true_assignments, true_offsets = make_random_points(clusters,
                                                                 num_points)
     # Test predict
-    assignments = kmeans.predict(input_fn=self.input_fn(
-        batch_size=num_points, points=points))
+    assignments = list(kmeans.predict_cluster_idx(input_fn=self.input_fn(
+        batch_size=num_points, points=points, num_epochs=1)))
     self.assertAllEqual(assignments, true_assignments)
 
     # Test score
@@ -260,7 +264,8 @@ class KMeansTestCosineDistance(KMeansTestBase):
             centers, axis=0), np.sort(
                 self.true_centers, axis=0), atol=1e-2)
 
-    assignments = self.kmeans.predict(input_fn=self.input_fn())
+    assignments = list(self.kmeans.predict_cluster_idx(
+        input_fn=self.input_fn(num_epochs=1)))
     self.assertAllClose(
         centers[assignments],
         self.true_centers[self.true_assignments],
@@ -305,8 +310,11 @@ class KMeansTestCosineDistance(KMeansTestBase):
     self.assertAllClose(
         sorted(centers.tolist()), sorted(true_centers.tolist()), atol=1e-2)
 
-    assignments = kmeans.predict(
-        input_fn=lambda: (constant_op.constant(points), None))
+    def _input_fn():
+      return (
+          input_lib.limit_epochs(constant_op.constant(points), num_epochs=1),
+          None)
+    assignments = list(kmeans.predict_cluster_idx(input_fn=_input_fn))
     self.assertAllClose(
         centers[assignments], true_centers[true_assignments], atol=1e-2)
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 
@@ -41,7 +42,7 @@ void* XlaDeviceAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   // Regardless of the size requested, always allocate a XlaGlobalData. Respect
   // the aligment request because there is alignment checking even for Tensors
   // whose data is never accessed.
-  void* p = port::aligned_malloc(sizeof(XlaGlobalData), alignment);
+  void* p = port::AlignedMalloc(sizeof(XlaGlobalData), alignment);
   VLOG(2) << "Allocated XLA device tensor " << p;
   return new (p) XlaGlobalData();
 }
@@ -50,7 +51,7 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
   XlaGlobalData* global_data = reinterpret_cast<XlaGlobalData*>(ptr);
   VLOG(2) << "Deallocated XLA device tensor " << ptr;
   global_data->~XlaGlobalData();
-  port::aligned_free(ptr);
+  port::AlignedFree(ptr);
 }
 
 void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }

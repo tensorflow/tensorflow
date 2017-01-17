@@ -13,7 +13,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 
 *  <b>`inputs`</b>: a tensor with 2 or more dimensions. The normalization
           occurs over all but the first dimension.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.

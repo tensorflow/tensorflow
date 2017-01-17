@@ -74,7 +74,7 @@ class Exponential(gamma.Gamma):
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
         name=ns)
-    # While the Gamma distribution is not reparameterizeable, the
+    # While the Gamma distribution is not re-parameterizable, the
     # exponential distribution is.
     self._is_reparameterized = True
     self._parameters = parameters

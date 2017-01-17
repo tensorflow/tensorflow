@@ -41,12 +41,15 @@ const char* const kXlaClusterAttr = "_XlaCluster";
 
 namespace {
 
-bool HasXLAKernel(const NodeDef& node_def, DeviceType jit_device_type) {
+bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
+  // _Send and _Recv should not be marked for compilation.
+  if (node.IsSend() || node.IsRecv()) return false;
+
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
-  if (node_def.op() == "SymbolicGradient") return false;
-  return FindKernelDef(jit_device_type, node_def, nullptr, nullptr).ok();
+  if (node.type_string() == "SymbolicGradient") return false;
+  return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
 }
 
 // Make sure we don't recurse infinitely on recursive functions.
@@ -125,7 +128,7 @@ bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
       return IsCompilableWhile(node->def(), jit_device_type, depth + 1,
                                lib_runtime);
     }
-    if (!HasXLAKernel(node->def(), jit_device_type) &&
+    if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, depth + 1,
                           lib_runtime)) {
       VLOG(2) << "Function marking failed: unsupported op " << node->name()
@@ -168,7 +171,7 @@ Status FindCompilationCandidates(
     CHECK(XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device_name,
                                       /*requires_jit=*/nullptr));
     DeviceType jit_device_type(*jit_device_name);
-    if (!HasXLAKernel(node->def(), jit_device_type) &&
+    if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
               << ": " << node->def().op();
