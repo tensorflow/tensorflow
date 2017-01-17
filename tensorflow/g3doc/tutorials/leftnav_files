@@ -10,6 +10,7 @@ wide_and_deep/index.md
 monitors/index.md
 input_fn/index.md
 estimators/index.md
+layers/index.md
 ### TensorFlow Serving
 tfserve/index.md
 ### Image Processing

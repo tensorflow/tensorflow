@@ -32,6 +32,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import weights_broadcast_ops
 
 
 def _local_variable(initial_value, validate_shape=True, name=None):
@@ -171,41 +172,6 @@ def _create_local(name, shape, collections=None, validate_shape=True,
       validate_shape=validate_shape)
 
 
-def _assert_weights_rank(weights, values):
-  return check_ops.assert_rank_in(weights, (0, array_ops.rank(values)))
-
-
-def _broadcast_weights(weights, values):
-  """Broadcast `weights` to the same shape as `values`.
-
-  This returns a version of `weights` following the same broadcast rules as
-  `multiply(weights, values)`. When computing a weighted average, use this
-  function to broadcast `weights` before summing them; e.g.,
-  `reduce_sum(w * v) / reduce_sum(_broadcast_weights(w, v))`.
-
-  Args:
-    weights: `Tensor` whose rank is either 0, or the same rank as `values`, and
-      must be broadcastable to `values` (i.e., all dimensions must be either
-      `1`, or the same as the corresponding `values` dimension).
-    values: `Tensor` of any shape.
-
-  Returns:
-    `weights` broadcast to `values` shape.
-
-  Raises:
-    ValueError: if `weights` rank is invalid.
-  """
-  weights_shape = weights.get_shape()
-  values_shape = values.get_shape()
-  if (weights_shape.is_fully_defined() and
-      values_shape.is_fully_defined() and
-      weights_shape.is_compatible_with(values_shape)):
-    return weights
-  with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-    return math_ops.multiply(
-        weights, array_ops.ones_like(values), name='broadcast_weights')
-
-
 def _safe_div(numerator, denominator, name):
   """Divides two values, returning 0 if the denominator is <= 0.
 
@@ -292,7 +258,8 @@ def mean(values, weights=None, metrics_collections=None,
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
     else:
-      weights = _broadcast_weights(math_ops.to_float(weights), values)
+      weights = weights_broadcast_ops.broadcast_weights(
+          math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.reduce_sum(weights)
 
@@ -451,7 +418,8 @@ def _confusion_matrix_at_thresholds(
     label_is_neg = math_ops.logical_not(label_is_pos)
 
   if weights is not None:
-    weights = _broadcast_weights(math_ops.to_float(weights), predictions)
+    weights = weights_broadcast_ops.broadcast_weights(
+        math_ops.to_float(weights), predictions)
     weights_tiled = array_ops.tile(array_ops.reshape(
         weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
@@ -1002,7 +970,8 @@ def mean_tensor(values, weights=None, metrics_collections=None,
 
     num_values = array_ops.ones_like(values)
     if weights is not None:
-      weights = _broadcast_weights(math_ops.to_float(weights), values)
+      weights = weights_broadcast_ops.broadcast_weights(
+          math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
 
@@ -1580,7 +1549,8 @@ def _sparse_true_positive_at_k(labels,
     tp = sets.set_size(sets.set_intersection(predictions_idx, labels))
     tp = math_ops.to_double(tp)
     if weights is not None:
-      with ops.control_dependencies((_assert_weights_rank(weights, tp),)):
+      with ops.control_dependencies((
+          weights_broadcast_ops.assert_broadcastable(weights, tp),)):
         weights = math_ops.to_double(weights)
         tp = math_ops.multiply(tp, weights)
     return tp
@@ -1675,7 +1645,8 @@ def _sparse_false_negative_at_k(labels,
                                            aminusb=False))
     fn = math_ops.to_double(fn)
     if weights is not None:
-      with ops.control_dependencies((_assert_weights_rank(weights, fn),)):
+      with ops.control_dependencies((
+          weights_broadcast_ops.assert_broadcastable(weights, fn),)):
         weights = math_ops.to_double(weights)
         fn = math_ops.multiply(fn, weights)
     return fn
@@ -2292,7 +2263,7 @@ def sparse_average_precision_at_k(labels,
     average_precision = _sparse_average_precision_at_k(
         predictions=predictions, labels=labels, k=k)
     if weights is not None:
-      weights = _broadcast_weights(
+      weights = weights_broadcast_ops.broadcast_weights(
           math_ops.to_double(weights), average_precision)
       average_precision = math_ops.multiply(average_precision, weights)
 
@@ -2367,7 +2338,8 @@ def _sparse_false_positive_at_k(labels,
         predictions_idx, labels, aminusb=True))
     fp = math_ops.to_double(fp)
     if weights is not None:
-      with ops.control_dependencies((_assert_weights_rank(weights, fp),)):
+      with ops.control_dependencies((
+          weights_broadcast_ops.assert_broadcastable(weights, fp),)):
         weights = math_ops.to_double(weights)
         fp = math_ops.multiply(fp, weights)
     return fp

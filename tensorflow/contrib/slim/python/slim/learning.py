@@ -627,7 +627,7 @@ def train(train_op,
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
     local_init_op: The local initialization operation. If left to its default
       value, then the session is initialized by calling
-      `tf.local_variables_initializer()` and `tf.initialize_all_tables()`.
+      `tf.local_variables_initializer()` and `tf.tables_initializer()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     ready_op: Operation to check if the model is ready to use. If left to its
@@ -697,7 +697,7 @@ def train(train_op,
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
             tf_variables.local_variables_initializer(),
-            data_flow_ops.initialize_all_tables())
+            data_flow_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(
           sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
