@@ -297,22 +297,27 @@ class MeanTest(test.TestCase):
 
   def testInvalidWeights(self):
     values_placeholder = array_ops.placeholder(dtype=dtypes_lib.float32)
-    values = _test_values((3, 2, 4))
+    values = _test_values((3, 2, 4, 1))
     invalid_weights = (
         (1,),
         (1, 1),
+        (1, 1, 1),
         (3, 2),
-        (2, 4),
-        (1, 1, 1, 1),
-        (3, 2, 4, 1),)
+        (3, 2, 4),
+        (2, 4, 1),
+        (4, 2, 4, 1),
+        (3, 3, 4, 1),
+        (3, 2, 5, 1),
+        (3, 2, 4, 2),
+        (1, 1, 1, 1, 1))
+    expected_error_msg = 'weights can not be broadcast to values'
     for invalid_weight in invalid_weights:
       # Static shapes.
-      with self.assertRaisesRegexp(ValueError, 'must have rank in.*0.*3'):
+      with self.assertRaisesRegexp(ValueError, expected_error_msg):
         metrics.mean(values, invalid_weight)
 
       # Dynamic shapes.
-      with self.assertRaisesRegexp(
-          errors_impl.OpError, 'must have rank in.*0.*3'):
+      with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
         with self.test_session():
           _, update_op = metrics.mean(values_placeholder, invalid_weight)
           variables.local_variables_initializer().run()

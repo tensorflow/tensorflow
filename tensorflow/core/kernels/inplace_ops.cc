@@ -24,47 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-class InplaceOpBase : public OpKernel {
- public:
-  explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    auto value = ctx->input(0);
-    auto loc = ctx->input(1);
-    auto update = ctx->input(2);
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(loc.shape()),
-                errors::InvalidArgument("loc must be a vector. ",
-                                        loc.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, value.dims() == update.dims(),
-        errors::InvalidArgument("value and update shape doesn't match: ",
-                                value.shape().DebugString(), " vs. ",
-                                update.shape().DebugString()));
-    for (int i = 1; i < value.dims(); ++i) {
-      OP_REQUIRES(
-          ctx, value.dim_size(i) == update.dim_size(i),
-          errors::InvalidArgument("value and update shape doesn't match ",
-                                  value.shape().DebugString(), " vs. ",
-                                  update.shape().DebugString()));
-    }
-    OP_REQUIRES(ctx, loc.dim_size(0) == update.dim_size(0),
-                errors::InvalidArgument("loc and update shape doesn't match: ",
-                                        loc.shape().DebugString(), " vs. ",
-                                        update.shape().DebugString()));
-
-    Tensor output = value;  // This creates an alias intentionally.
-    OP_REQUIRES_OK(ctx, DoCompute(ctx, update, loc, &output));
-    ctx->set_output(0, output);
-  }
-
- protected:
-  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& value,
-                           const Tensor& loc, Tensor* output) = 0;
-};
 
 namespace functor {
 
@@ -110,6 +70,48 @@ Status DoInplace(const CPUDevice& d, InplaceOpType op, const Tensor& value,
 }
 
 }  // end namespace functor
+
+namespace {
+
+// TODO(apassos): validate the shapes better.
+class InplaceOpBase : public OpKernel {
+ public:
+  explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    auto value = ctx->input(0);
+    auto loc = ctx->input(1);
+    auto update = ctx->input(2);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(loc.shape()),
+                errors::InvalidArgument("loc must be a vector. ",
+                                        loc.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, value.dims() == update.dims(),
+        errors::InvalidArgument("value and update shape doesn't match: ",
+                                value.shape().DebugString(), " vs. ",
+                                update.shape().DebugString()));
+    for (int i = 1; i < value.dims(); ++i) {
+      OP_REQUIRES(
+          ctx, value.dim_size(i) == update.dim_size(i),
+          errors::InvalidArgument("value and update shape doesn't match ",
+                                  value.shape().DebugString(), " vs. ",
+                                  update.shape().DebugString()));
+    }
+    OP_REQUIRES(ctx, loc.dim_size(0) == update.dim_size(0),
+                errors::InvalidArgument("loc and update shape doesn't match: ",
+                                        loc.shape().DebugString(), " vs. ",
+                                        update.shape().DebugString()));
+
+    Tensor output = value;  // This creates an alias intentionally.
+    OP_REQUIRES_OK(ctx, DoCompute(ctx, update, loc, &output));
+    ctx->set_output(0, output);
+  }
+
+ protected:
+  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& value,
+                           const Tensor& loc, Tensor* output) = 0;
+};
 
 template <typename Device, functor::InplaceOpType op>
 class InplaceOp : public InplaceOpBase {
@@ -159,21 +161,27 @@ class EmptyOp : public OpKernel {
   bool init_;
 };
 
-#define REGISTER(type)                                                      \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceUpdate").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
-      InplaceOp<CPUDevice, functor::I_UPDATE>);                             \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceAdd").Device(DEVICE_CPU).TypeConstraint<type>("T"),      \
-      InplaceOp<CPUDevice, functor::I_ADD>);                                \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceSubtract").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      InplaceOp<CPUDevice, functor::I_SUB>);
+class FailureKernel : public OpKernel {
+ public:
+  explicit FailureKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   errors::Internal("Found instance of parallel_stack which "
+                                    "could not be properly replaced."));
+  }
+
+  void Compute(OpKernelContext*) {}
+};
+
+#define REGISTER(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")   \
+                              .Device(DEVICE_CPU)         \
+                              .TypeConstraint<type>("T"), \
+                          InplaceOp<CPUDevice, functor::I_UPDATE>);
 TF_CALL_NUMBER_TYPES(REGISTER)
 #undef REGISTER
 
 #define REGISTER_EMPTY(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("Empty")                       \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatStart")        \
                               .Device(DEVICE_CPU)             \
                               .HostMemory("shape")            \
                               .TypeConstraint<type>("dtype"), \
@@ -182,12 +190,19 @@ TF_CALL_NUMBER_TYPES(REGISTER)
 TF_CALL_POD_STRING_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
 
+#define REGISTER_PARALLEL_CONCAT(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ParallelConcat").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      FailureKernel);
+TF_CALL_POD_STRING_TYPES(REGISTER_PARALLEL_CONCAT);
+#undef REGISTER_PARALLEL_CONCAT
+
 #if GOOGLE_CUDA
 
 typedef Eigen::GpuDevice GPUDevice;
 
 #define REGISTER_EMPTY(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("Empty")                       \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatStart")        \
                               .Device(DEVICE_GPU)             \
                               .HostMemory("shape")            \
                               .TypeConstraint<type>("dtype"), \
@@ -195,23 +210,25 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
 
-#define REGISTER(type)                                                      \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<type>("T"),   \
-      InplaceOp<GPUDevice, functor::I_UPDATE>);                             \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceAdd").Device(DEVICE_GPU).TypeConstraint<type>("T"),      \
-      InplaceOp<GPUDevice, functor::I_ADD>);                                \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceSubtract").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      InplaceOp<GPUDevice, functor::I_SUB>);
+#define REGISTER_PARALLEL_CONCAT(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ParallelConcat").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      FailureKernel);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
+#undef REGISTER_PARALLEL_CONCAT
+
+#define REGISTER(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")   \
+                              .Device(DEVICE_GPU)         \
+                              .TypeConstraint<type>("T"), \
+                          InplaceOp<GPUDevice, functor::I_UPDATE>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER)
 #undef REGISTER
 
 // Register versions that operate on int32 data on the CPU even though the op
 // has been placed on the GPU
 
-REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
+REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                             .Device(DEVICE_GPU)
                             .HostMemory("value")
                             .HostMemory("loc")
@@ -219,24 +236,7 @@ REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         InplaceOp<CPUDevice, functor::I_UPDATE>);
-
-REGISTER_KERNEL_BUILDER(Name("InplaceAdd")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("value")
-                            .HostMemory("loc")
-                            .HostMemory("update")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_ADD>);
-
-REGISTER_KERNEL_BUILDER(Name("InplaceSubtract")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("value")
-                            .HostMemory("loc")
-                            .HostMemory("update")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_SUB>);
 #endif
 
+}  // end namespace
 }  // end namespace tensorflow

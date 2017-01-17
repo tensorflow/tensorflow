@@ -35,7 +35,7 @@ class GraphOptimizer {
   // optimizers so that they can respect constraints if any, that should be
   // respected.
   void Optimize(FunctionLibraryRuntime* runtime, Env* env, Device* device,
-                Graph** graph);
+                std::unique_ptr<Graph>* graph);
 
  private:
   OptimizerOptions opts_;

@@ -495,11 +495,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
 }
 
 void DumpText(const HloModule& module, const string& label,
-              const string& directory_path) {
+              const string& directory_path, bool do_prefix) {
   Env* env = Env::Default();
   TF_CHECK_OK(env->RecursivelyCreateDir(directory_path));
   string prefix = StrCat(env->NowMicros());
-  string path = JoinPath(directory_path, StrCat(prefix, "-", label, ".txt"));
+  string filename =
+      do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
+  string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(env, path, module.ToString()));
 }
 
