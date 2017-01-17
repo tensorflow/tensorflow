@@ -22,8 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.python.framework import ops
@@ -42,7 +40,7 @@ KMEANS_PLUS_PLUS_INIT = clustering_ops.KMEANS_PLUS_PLUS_INIT
 
 
 # TODO(agarwal,ands): support sharded input.
-class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
+class KMeansClustering(estimator.Estimator):
   """An Estimator fo rK-Means clustering."""
   SCORES = 'scores'
   CLUSTER_IDX = 'cluster_idx'
@@ -58,6 +56,7 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
                random_seed=0,
                use_mini_batch=True,
                kmeans_plus_plus_num_retries=2,
+               relative_tolerance=None,
                config=None):
     """Creates a model for running KMeans training and inference.
 
@@ -76,6 +75,9 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
         additional points to draw from the current distribution before selecting
         the best. If a negative value is specified, a heuristic is used to
         sample O(log(num_to_sample)) additional points.
+      relative_tolerance: A relative tolerance of change in the loss between
+        iterations.  Stops learning if the loss changes less than this amount.
+        Note that this may not work correctly if use_mini_batch=True.
       config: See Estimator
     """
     self._num_clusters = num_clusters
@@ -84,7 +86,8 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
     self._random_seed = random_seed
     self._use_mini_batch = use_mini_batch
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
-    self._estimator = estimator.Estimator(
+    self._relative_tolerance = relative_tolerance
+    super(KMeansClustering, self).__init__(
         model_fn=self._get_model_function(), model_dir=model_dir)
 
   class LossRelativeChangeHook(session_run_hook.SessionRunHook):
@@ -119,76 +122,13 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
           run_context.request_stop()
       self._prev_loss = loss
 
-  @property
-  def model_dir(self):
-    """See Evaluable."""
-    return self._estimator.model_dir
-
-  def fit(self,
-          input_fn=None,
-          steps=None,
-          monitors=None,
-          max_steps=None,
-          relative_tolerance=None):
-    """Trains a k-means clustering on x.
-
-    Note: See Estimator for logic for continuous training and graph
-      construction across multiple calls to fit.
-
-    Args:
-      input_fn: see Trainable.fit.
-      steps: see Trainable.fit.
-      monitors: see Trainable.fit.
-      max_steps: see Trainable.fit.
-      relative_tolerance: A relative tolerance of change in the loss between
-        iterations.  Stops learning if the loss changes less than this amount.
-        Note that this may not work correctly if use_mini_batch=True.
-
-    Returns:
-      Returns self.
-    """
-    if relative_tolerance is not None:
-      if monitors is None:
-        monitors = []
-      monitors.append(self.LossRelativeChangeHook(relative_tolerance))
-    # Make sure that we will eventually terminate.
-    assert ((monitors is not None and len(monitors)) or (steps is not None) or
-            (max_steps is not None))
-    self._estimator.fit(input_fn=input_fn,
-                        steps=steps,
-                        max_steps=max_steps,
-                        monitors=monitors)
-    return self
-
-  def evaluate(self,
-               input_fn=None,
-               feed_fn=None,
-               steps=None,
-               metrics=None,
-               name=None,
-               checkpoint_path=None,
-               hooks=None):
-    """See Evaluable.evaluate."""
-    return self._estimator.evaluate(
-        input_fn=input_fn,
-        feed_fn=feed_fn,
-        steps=steps,
-        metrics=metrics,
-        name=name,
-        checkpoint_path=checkpoint_path,
-        hooks=hooks)
-
-  def predict(self, input_fn=None, outputs=None, as_iterable=False):
-    """See BaseEstimator.predict."""
-
-    outputs = outputs or [KMeansClustering.CLUSTER_IDX]
-    assert isinstance(outputs, list)
-    results = self._estimator.predict(
-        input_fn=input_fn, outputs=outputs, as_iterable=as_iterable)
-    if len(outputs) == 1 and not as_iterable:
-      return results[outputs[0]]
-    else:
-      return results
+  def predict_cluster_idx(self, input_fn=None):
+    """Yields predicted cluster indices."""
+    key = KMeansClustering.CLUSTER_IDX
+    results = super(KMeansClustering, self).predict(
+        input_fn=input_fn, outputs=[key])
+    for result in results:
+      yield result[key]
 
   def score(self, input_fn=None, steps=None):
     """Predict total sum of distances to nearest clusters.
@@ -223,14 +163,19 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
       Array with same number of rows as x, and num_clusters columns, containing
       distances to the cluster centers.
     """
-    return self.predict(
+    key = KMeansClustering.ALL_SCORES
+    results = super(KMeansClustering, self).predict(
         input_fn=input_fn,
-        outputs=[KMeansClustering.ALL_SCORES],
+        outputs=[key],
         as_iterable=as_iterable)
+    if not as_iterable:
+      return results[key]
+    else:
+      return results
 
   def clusters(self):
     """Returns cluster centers."""
-    return self._estimator.get_variable_value(self.CLUSTERS)
+    return super(KMeansClustering, self).get_variable_value(self.CLUSTERS)
 
   def _parse_tensor_or_dict(self, features):
     if isinstance(features, dict):
@@ -264,11 +209,16 @@ class KMeansClustering(evaluable.Evaluable, trainable.Trainable):
           KMeansClustering.CLUSTER_IDX: model_predictions[0],
       }
       eval_metric_ops = {KMeansClustering.SCORES: loss,}
+      if self._relative_tolerance is not None:
+        training_hooks = [self.LossRelativeChangeHook(self._relative_tolerance)]
+      else:
+        training_hooks = None
       return ModelFnOps(
           mode=mode,
           predictions=predictions,
           eval_metric_ops=eval_metric_ops,
           loss=loss,
-          train_op=training_op)
+          train_op=training_op,
+          training_hooks=training_hooks)
 
     return _model_fn

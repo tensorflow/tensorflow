@@ -27,6 +27,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+// TODO(apassos): validate the shapes better.
 class InplaceOpBase : public OpKernel {
  public:
   explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -159,21 +160,27 @@ class EmptyOp : public OpKernel {
   bool init_;
 };
 
-#define REGISTER(type)                                                      \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceUpdate").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
-      InplaceOp<CPUDevice, functor::I_UPDATE>);                             \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceAdd").Device(DEVICE_CPU).TypeConstraint<type>("T"),      \
-      InplaceOp<CPUDevice, functor::I_ADD>);                                \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceSubtract").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      InplaceOp<CPUDevice, functor::I_SUB>);
+class FailureKernel : public OpKernel {
+ public:
+  explicit FailureKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   errors::Internal("Found instance of parallel_stack which "
+                                    "could not be properly replaced."));
+  }
+
+  void Compute(OpKernelContext*) {}
+};
+
+#define REGISTER(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")   \
+                              .Device(DEVICE_CPU)         \
+                              .TypeConstraint<type>("T"), \
+                          InplaceOp<CPUDevice, functor::I_UPDATE>);
 TF_CALL_NUMBER_TYPES(REGISTER)
 #undef REGISTER
 
 #define REGISTER_EMPTY(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("Empty")                       \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatStart")        \
                               .Device(DEVICE_CPU)             \
                               .HostMemory("shape")            \
                               .TypeConstraint<type>("dtype"), \
@@ -182,12 +189,19 @@ TF_CALL_NUMBER_TYPES(REGISTER)
 TF_CALL_POD_STRING_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
 
+#define REGISTER_PARALLEL_CONCAT(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ParallelConcat").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      FailureKernel);
+TF_CALL_POD_STRING_TYPES(REGISTER_PARALLEL_CONCAT);
+#undef REGISTER_PARALLEL_CONCAT
+
 #if GOOGLE_CUDA
 
 typedef Eigen::GpuDevice GPUDevice;
 
 #define REGISTER_EMPTY(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("Empty")                       \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatStart")        \
                               .Device(DEVICE_GPU)             \
                               .HostMemory("shape")            \
                               .TypeConstraint<type>("dtype"), \
@@ -195,23 +209,25 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
 
-#define REGISTER(type)                                                      \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<type>("T"),   \
-      InplaceOp<GPUDevice, functor::I_UPDATE>);                             \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceAdd").Device(DEVICE_GPU).TypeConstraint<type>("T"),      \
-      InplaceOp<GPUDevice, functor::I_ADD>);                                \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("InplaceSubtract").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      InplaceOp<GPUDevice, functor::I_SUB>);
+#define REGISTER_PARALLEL_CONCAT(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ParallelConcat").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      FailureKernel);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
+#undef REGISTER_PARALLEL_CONCAT
+
+#define REGISTER(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")   \
+                              .Device(DEVICE_GPU)         \
+                              .TypeConstraint<type>("T"), \
+                          InplaceOp<GPUDevice, functor::I_UPDATE>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER)
 #undef REGISTER
 
 // Register versions that operate on int32 data on the CPU even though the op
 // has been placed on the GPU
 
-REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
+REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                             .Device(DEVICE_GPU)
                             .HostMemory("value")
                             .HostMemory("loc")
@@ -219,24 +235,6 @@ REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         InplaceOp<CPUDevice, functor::I_UPDATE>);
-
-REGISTER_KERNEL_BUILDER(Name("InplaceAdd")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("value")
-                            .HostMemory("loc")
-                            .HostMemory("update")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_ADD>);
-
-REGISTER_KERNEL_BUILDER(Name("InplaceSubtract")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("value")
-                            .HostMemory("loc")
-                            .HostMemory("update")
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_SUB>);
 #endif
 
 }  // end namespace tensorflow

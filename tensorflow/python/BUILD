@@ -75,6 +75,7 @@ py_library(
         ":ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
+        ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
@@ -1516,6 +1517,21 @@ py_library(
 )
 
 py_library(
+    name = "weights_broadcast_ops",
+    srcs = [
+        "ops/weights_broadcast_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+        ":sets",
+    ],
+)
+
+py_library(
     name = "metrics",
     srcs = [
         "ops/metrics.py",
@@ -1537,6 +1553,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        ":weights_broadcast_ops",
     ],
 )
 

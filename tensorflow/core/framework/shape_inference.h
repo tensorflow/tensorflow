@@ -259,6 +259,9 @@ class InferenceContext {
   string DebugString(ShapeHandle s);
   string DebugString(DimensionHandle d);
 
+  // Describes the whole context, for debugging purposes.
+  string DebugString() const;
+
   // If <shape> has rank <rank>, or its rank is unknown, return OK and return
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
