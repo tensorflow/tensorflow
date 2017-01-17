@@ -39,7 +39,7 @@ static const uint32_t OUTPUT_PARAM_MAX_LINE_SIZE = 1000;
 // extern pre-generated inception dummy data
 extern uint8_t inception_dummy_int_data_224x224[];
 extern uint8_t inception_dummy_int_data_299x299[];
-extern float inception_dummy_float_data[];
+extern float inception_dummy_float_data_299x299_299x299[];
 
 #define GEMM_WRAPPER_VERSION 1
 
@@ -78,7 +78,7 @@ void hexagon_controller_InitInputNodeDataToInceptionDummyData(int version) {
       hexagon_controller_CopyByteNodeData(
           INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
           INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-          sizeof(float), (uint8_t*)inception_dummy_float_data);
+          sizeof(float), (uint8_t*)inception_dummy_float_data_299x299_299x299);
     } else {
       hexagon_controller_CopyByteNodeData(
           INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,

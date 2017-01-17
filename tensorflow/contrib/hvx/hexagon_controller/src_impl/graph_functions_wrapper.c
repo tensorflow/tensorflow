@@ -38,9 +38,9 @@ static float s_output_values[300 * 300 * 3 * 4];
 
 extern void init_graph(uint32_t id);
 extern void init_graph_v1(uint32_t id);
-extern uint8_t inception_sample_int_data_299x299[];
+extern uint8_t inception_dummy_int_data_299x299[];
 extern uint8_t inception_sample_int_data_224x224[];
-extern float inception_dummy_float_data[];
+extern float inception_dummy_float_data_299x299_299x299[];
 
 enum InceptionVersion {
   INCEPTION_V1,
@@ -245,7 +245,7 @@ bool hexagon_controller_ExecuteInceptionDummyData(uint32_t nn_id) {
   const bool success = hexagon_controller_ExecuteGraph(
       nn_id, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
       INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-      (uint8_t *)inception_sample_int_data_299x299,
+      (uint8_t *)inception_dummy_int_data_299x299,
       INCEPTION_PARAM_HEIGHT_V3 * INCEPTION_PARAM_WIDTH_V3 *
       INCEPTION_PARAM_DEPTH,
       &out_batches, &out_height, &out_width, &out_depth,
