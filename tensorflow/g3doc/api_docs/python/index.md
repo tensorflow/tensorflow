@@ -619,6 +619,8 @@
   * [`do_quantize_training_on_graphdef`](../../api_docs/python/train.md#do_quantize_training_on_graphdef)
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
+  * [`FeedFnHook`](../../api_docs/python/train.md#FeedFnHook)
+  * [`FinalOpsHook`](../../api_docs/python/train.md#FinalOpsHook)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
   * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
   * [`get_checkpoint_mtimes`](../../api_docs/python/train.md#get_checkpoint_mtimes)
