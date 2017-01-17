@@ -33,6 +33,12 @@ static inline bool IsLogOn(int log_level) { return log_level >= s_log_level; }
 
 static inline void SetLogLevel(int log_level) { s_log_level = log_level; }
 
+#define TFMLOGV(fmt, ...)                       \
+  do {                                          \
+    if (!IsLogOn(TFM_LOG_LEVEL_VERBOSE)) break; \
+    printf(fmt "\n", ##__VA_ARGS__);            \
+  } while (0)
+
 #define TFMLOGD(fmt, ...)                     \
   do {                                        \
     if (!IsLogOn(TFM_LOG_LEVEL_DEBUG)) break; \
