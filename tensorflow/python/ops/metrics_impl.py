@@ -354,8 +354,8 @@ def _confusion_matrix_at_thresholds(
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `Tensor` whose shape matches `predictions`. `labels` will be cast
-      to `bool`.
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
@@ -384,6 +384,8 @@ def _confusion_matrix_at_thresholds(
       if include not in all_includes:
         raise ValueError('Invaild key: %s.' % include)
 
+  labels = math_ops.cast(labels, dtype=dtypes.bool)
+  predictions = math_ops.to_float(predictions)
   labels, predictions, weights = _remove_squeezable_dimensions(
       labels, predictions, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -503,7 +505,8 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
@@ -1101,10 +1104,10 @@ def true_positives(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1127,11 +1130,11 @@ def true_positives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'true_positives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_true_positive = math_ops.logical_and(math_ops.equal(labels, 1),
-                                            math_ops.equal(predictions, 1))
+    is_true_positive = math_ops.logical_and(math_ops.equal(labels, True),
+                                            math_ops.equal(predictions, True))
     return _count_condition(is_true_positive, weights, metrics_collections,
                             updates_collections)
 
@@ -1145,10 +1148,10 @@ def false_positives(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1171,11 +1174,11 @@ def false_positives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_positives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_false_positive = math_ops.logical_and(math_ops.equal(labels, 0),
-                                             math_ops.equal(predictions, 1))
+    is_false_positive = math_ops.logical_and(math_ops.equal(labels, False),
+                                             math_ops.equal(predictions, True))
     return _count_condition(is_false_positive, weights, metrics_collections,
                             updates_collections)
 
@@ -1199,9 +1202,10 @@ def precision(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1227,6 +1231,8 @@ def precision(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'precision', (predictions, labels, weights)):
 
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
     labels, predictions, weights = _remove_squeezable_dimensions(
         labels, predictions, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -1279,7 +1285,8 @@ def precision_at_thresholds(labels, predictions, thresholds,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
@@ -1336,10 +1343,10 @@ def false_negatives(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1361,11 +1368,11 @@ def false_negatives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_negatives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_false_negative = math_ops.logical_and(math_ops.equal(labels, 1),
-                                             math_ops.equal(predictions, 0))
+    is_false_negative = math_ops.logical_and(math_ops.equal(labels, True),
+                                             math_ops.equal(predictions, False))
     return _count_condition(is_false_negative, weights, metrics_collections,
                             updates_collections)
 
@@ -1387,9 +1394,10 @@ def recall(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1414,6 +1422,8 @@ def recall(labels, predictions, weights=None,
   """
   with variable_scope.variable_scope(
       name, 'recall', (predictions, labels, weights)):
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
     labels, predictions, weights = _remove_squeezable_dimensions(
         labels, predictions, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -1817,7 +1827,8 @@ def recall_at_thresholds(labels, predictions, thresholds,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
@@ -1952,7 +1963,8 @@ def sensitivity_at_specificity(
   following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     specificity: A scalar value in range `[0, 1]`.
@@ -2515,7 +2527,8 @@ def specificity_at_sensitivity(
   following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     sensitivity: A scalar value in range `[0, 1]`.

@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -721,15 +722,18 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(1, sess.run(update_op))
       self.assertAlmostEqual(1, precision.eval())
 
-  def testSomeCorrect(self):
-    predictions = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-    precision, update_op = metrics.precision(labels, predictions)
+  def testSomeCorrect_multipleInputDtypes(self):
+    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions = math_ops.cast(
+          constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtype)
+      labels = math_ops.cast(
+          constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
+      precision, update_op = metrics.precision(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, update_op.eval())
-      self.assertAlmostEqual(0.5, precision.eval())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, update_op.eval())
+        self.assertAlmostEqual(0.5, precision.eval())
 
   def testWeighted1d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
@@ -885,15 +889,18 @@ class RecallTest(test.TestCase):
       sess.run(update_op)
       self.assertEqual(1, recall.eval())
 
-  def testSomeCorrect(self):
-    predictions = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-    recall, update_op = metrics.recall(labels, predictions)
+  def testSomeCorrect_multipleInputDtypes(self):
+    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions = math_ops.cast(
+          constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtype)
+      labels = math_ops.cast(
+          constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
+      recall, update_op = metrics.recall(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, update_op.eval())
-      self.assertAlmostEqual(0.5, recall.eval())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, update_op.eval())
+        self.assertAlmostEqual(0.5, recall.eval())
 
   def testWeighted1d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
@@ -1008,17 +1015,20 @@ class AUCTest(test.TestCase):
 
       self.assertEqual(1, auc.eval())
 
-  def testSomeCorrect(self):
+  def testSomeCorrect_multipleLabelDtypes(self):
     with self.test_session() as sess:
-      predictions = constant_op.constant(
-          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
-      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-      auc, update_op = metrics.auc(labels, predictions)
+      for label_dtype in (
+          dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+        predictions = constant_op.constant(
+            [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+        labels = math_ops.cast(
+            constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=label_dtype)
+        auc, update_op = metrics.auc(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, sess.run(update_op))
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, sess.run(update_op))
 
-      self.assertAlmostEqual(0.5, auc.eval())
+        self.assertAlmostEqual(0.5, auc.eval())
 
   def testWeighted1d(self):
     with self.test_session() as sess:
@@ -1297,23 +1307,24 @@ class SpecificityAtSensitivityTest(test.TestCase):
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
-  def testWeighted1d(self):
-    predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
-    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-    weights_values = [3]
+  def testWeighted1d_multipleLabelDtypes(self):
+    for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
+      labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+      weights_values = [3]
 
-    predictions = constant_op.constant(
-        predictions_values, dtype=dtypes_lib.float32)
-    labels = constant_op.constant(labels_values)
-    weights = constant_op.constant(weights_values)
-    specificity, update_op = metrics.specificity_at_sensitivity(
-        labels, predictions, weights=weights, sensitivity=0.4)
+      predictions = constant_op.constant(
+          predictions_values, dtype=dtypes_lib.float32)
+      labels = math_ops.cast(labels_values, dtype=label_dtype)
+      weights = constant_op.constant(weights_values)
+      specificity, update_op = metrics.specificity_at_sensitivity(
+          labels, predictions, weights=weights, sensitivity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
 
-      self.assertAlmostEqual(0.6, sess.run(update_op))
-      self.assertAlmostEqual(0.6, specificity.eval())
+        self.assertAlmostEqual(0.6, sess.run(update_op))
+        self.assertAlmostEqual(0.6, specificity.eval())
 
   def testWeighted2d(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
@@ -1432,22 +1443,24 @@ class SensitivityAtSpecificityTest(test.TestCase):
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
-  def testWeighted(self):
-    predictions_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
-    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-    weights_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  def testWeighted_multipleLabelDtypes(self):
+    for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions_values = [
+          0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+      labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+      weights_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-    predictions = constant_op.constant(
-        predictions_values, dtype=dtypes_lib.float32)
-    labels = constant_op.constant(labels_values)
-    weights = constant_op.constant(weights_values)
-    specificity, update_op = metrics.sensitivity_at_specificity(
-        labels, predictions, weights=weights, specificity=0.4)
+      predictions = constant_op.constant(
+          predictions_values, dtype=dtypes_lib.float32)
+      labels = math_ops.cast(labels_values, dtype=label_dtype)
+      weights = constant_op.constant(weights_values)
+      specificity, update_op = metrics.sensitivity_at_specificity(
+          labels, predictions, weights=weights, specificity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.675, sess.run(update_op))
-      self.assertAlmostEqual(0.675, specificity.eval())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.675, sess.run(update_op))
+        self.assertAlmostEqual(0.675, specificity.eval())
 
 
 # TODO(nsilberman): Break this up into two sets of tests.
@@ -1536,22 +1549,25 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       self.assertEqual(1, prec.eval())
       self.assertEqual(1, rec.eval())
 
-  def testSomeCorrect(self):
+  def testSomeCorrect_multipleLabelDtypes(self):
     with self.test_session() as sess:
-      predictions = constant_op.constant(
-          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
-      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-      thresholds = [0.5]
-      prec, prec_op = metrics.precision_at_thresholds(labels, predictions,
-                                                      thresholds)
-      rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
-                                                 thresholds)
+      for label_dtype in (
+          dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+        predictions = constant_op.constant(
+            [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+        labels = math_ops.cast(
+            constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=label_dtype)
+        thresholds = [0.5]
+        prec, prec_op = metrics.precision_at_thresholds(labels, predictions,
+                                                        thresholds)
+        rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
+                                                   thresholds)
 
-      sess.run(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+        sess.run(variables.local_variables_initializer())
+        sess.run([prec_op, rec_op])
 
-      self.assertAlmostEqual(0.5, prec.eval())
-      self.assertAlmostEqual(0.5, rec.eval())
+        self.assertAlmostEqual(0.5, prec.eval())
+        self.assertAlmostEqual(0.5, rec.eval())
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
