@@ -1226,7 +1226,15 @@ REGISTER_OP("MaxPool3DGradGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::Pool3DShape)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Pool3DShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
+      // Validate 'orig_output' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
 
@@ -1398,7 +1406,15 @@ REGISTER_OP("MaxPoolGradGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::MaxPoolShape)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
+      // Validate 'orig_output' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
 
@@ -1484,7 +1500,15 @@ REGISTER_OP("MaxPoolGradGradWithArgmax")
     .Input("argmax: Targmax")
     .Output("output: T")
     .Attr("T: realnumbertype")
-    .SetShapeFn(shape_inference::MaxPoolShape)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &unused));
+      // Validate 'argmax' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), c->output(0), &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes gradients of the maxpooling backward function.
 
