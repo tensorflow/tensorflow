@@ -167,6 +167,21 @@ def _MaxPool3DGradGrad(op, grad):
                                            data_format=op.get_attr("data_format")))
 
 
+@ops.RegisterGradient("MaxPool3DGradGrad")
+def _MaxPoolGradGradGrad(op, grad):
+  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
+                          dtype=op.inputs[0].dtype),
+          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
+                          dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool3d_grad(op.inputs[0],
+                                      op.inputs[1],
+                                      grad,
+                                      op.get_attr("ksize"),
+                                      op.get_attr("strides"),
+                                      padding=op.get_attr("padding"),
+                                      data_format=op.get_attr("data_format")))
+
+
 @ops.RegisterGradient("Softmax")
 def _SoftmaxGrad(op, grad_softmax):
   """The derivative of the softmax nonlinearity.
