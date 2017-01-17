@@ -96,7 +96,6 @@ from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages.
 from tensorflow.python.layers import layers
-from tensorflow.python.ops.cloud import cloud
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sdca_ops as sdca
@@ -230,7 +229,6 @@ _allowed_symbols.extend([
 _allowed_symbols.extend([
     'app',
     'compat',
-    'cloud',
     'errors',
     'flags',
     'gfile',
@@ -264,7 +262,7 @@ _allowed_symbols.extend([
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols, [
-    framework_lib, array_ops, check_ops, client_lib, cloud, compat, constant_op,
+    framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
     control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
     losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
