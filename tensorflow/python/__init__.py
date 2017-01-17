@@ -261,13 +261,13 @@ _allowed_symbols.extend([
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
-remove_undocumented(__name__, _allowed_symbols,
-                    [framework_lib, array_ops, client_lib, check_ops,
-                     compat, constant_op, control_flow_ops, confusion_matrix_m,
-                     functional_ops, histogram_ops, io_ops, losses, math_ops,
-                     metrics, nn, resource_loader, sets, script_ops,
-                     session_ops, sparse_ops, state_ops, string_ops, summary,
-                     tensor_array_ops, train, layers])
+remove_undocumented(__name__, _allowed_symbols, [
+    framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
+    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
+    losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
+    session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
+    train, layers
+])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([
