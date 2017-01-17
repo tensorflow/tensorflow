@@ -17,7 +17,7 @@ import os
 import subprocess
 import time
 import unittest
-from testing.web import browser
+from testing.web import webtest
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support import wait
 from selenium.webdriver.common import by
@@ -42,7 +42,7 @@ class BasicTest(unittest.TestCase):
     self.process.wait()
 
   def setUp(self):
-    self.driver = browser.Browser().new_session()
+    self.driver = webtest.new_webdriver_session()
     self.driver.get("http://localhost:8000")
     self.wait = wait.WebDriverWait(self.driver, 2)
 

@@ -11,8 +11,6 @@ browser(
         "linux_x86_64": [
             "//third_party/noto:hinted",
             "//third_party/noto:mono",
-            "//third_party/chromium",
-            "//third_party/chromium:chromedriver",
         ],
         "//conditions:default": None,
     }),
@@ -23,4 +21,11 @@ browser(
     environment = {"DISABLE_X_DISPLAY": "1"},
     metadata = "headless-chrome.json",
     visibility = ["//visibility:public"],
+    deps = select({
+        "linux_x86_64": [
+            "//third_party/chromium",
+            "//third_party/chromium:chromedriver",
+        ],
+        "//conditions:default": None,
+    }),
 )
