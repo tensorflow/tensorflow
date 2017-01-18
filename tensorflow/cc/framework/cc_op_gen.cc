@@ -76,9 +76,9 @@ string ToGuard(const std::string& path) {
 }
 
 // Change:     Into:
-//   ABC         // ABC
-//               //
-//   DEF         // DEF
+//   ABC         /// ABC
+//               ///
+//   DEF         /// DEF
 string MakeComment(StringPiece text, StringPiece indent) {
   string ret;
   while (!text.empty()) {
@@ -89,9 +89,9 @@ string MakeComment(StringPiece text, StringPiece indent) {
       if (text[newline] != ' ') last_non_space = newline;
     }
     if (last_non_space == -1) {
-      strings::StrAppend(&ret, indent, "//\n");
+      strings::StrAppend(&ret, indent, "///\n");
     } else {
-      strings::StrAppend(&ret, indent, "// ",
+      strings::StrAppend(&ret, indent, "/// ",
                          text.substr(0, last_non_space + 1), "\n");
     }
     text.remove_prefix(newline + 1);
