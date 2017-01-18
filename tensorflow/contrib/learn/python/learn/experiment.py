@@ -378,7 +378,8 @@ class Experiment(object):
                                                steps=self._eval_steps,
                                                metrics=self._eval_metrics,
                                                name=name,
-                                               checkpoint_path=latest_path)
+                                               checkpoint_path=latest_path,
+                                               hooks=self._eval_hooks)
         # Ensure eval result is not None for next round of evaluation.
         if not eval_result:
           eval_result = {}
@@ -454,14 +455,15 @@ class Experiment(object):
         self._train_monitors += [monitors.ValidationMonitor(
             input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
             metrics=self._eval_metrics, every_n_steps=self._min_eval_frequency,
-            name=eval_dir_suffix,
+            name=eval_dir_suffix, hooks=self._eval_hooks
         )]
       self.train(delay_secs=0)
 
     eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
                                            steps=self._eval_steps,
                                            metrics=self._eval_metrics,
-                                           name=eval_dir_suffix)
+                                           name=eval_dir_suffix,
+                                           hooks=self._eval_hooks)
     export_results = self._maybe_export(eval_result)
     return eval_result, export_results
 

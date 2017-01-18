@@ -620,6 +620,16 @@ class EstimatorTest(test.TestCase):
     predictions = list(est.predict(x=iris.data))
     self.assertEqual(len(predictions), iris.target.shape[0])
 
+  def testHooksNotChanged(self):
+    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
+    # We pass empty array and expect it to remain empty after calling
+    # fit and evaluate. Requires inside to copy this array if any hooks were
+    # added.
+    my_array = []
+    est.fit(input_fn=iris_input_fn, steps=100, monitors=my_array)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1, hooks=my_array)
+    self.assertEqual(my_array, [])
+
   def testIrisInputFnLabelsDict(self):
     iris = base.load_iris()
     est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)

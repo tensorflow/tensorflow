@@ -814,7 +814,8 @@ class BaseEstimator(
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
-      hooks = hooks or []
+      # We need to copy the hook array as we modify it, thus [:].
+      hooks = hooks[:] if hooks else []
       if feed_fn:
         hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
       if steps:
