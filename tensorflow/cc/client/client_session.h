@@ -50,11 +50,9 @@ class ClientSession {
   /// A data type to represent feeds to a Run call.
   ///
   /// This is a map of `Output` objects returned by op-constructors to the value
-  /// to feed them with. See `ops::Input::Initializer` for details on what can
-  /// be used as feed values.
-  typedef std::unordered_map<ops::Output, ops::Input::Initializer,
-                             ops::OutputHash>
-      FeedType;
+  /// to feed them with. See `Input::Initializer` for details on what can be
+  /// used as feed values.
+  typedef std::unordered_map<Output, Input::Initializer, OutputHash> FeedType;
 
   /// Create a new session to evaluate the graph contained in `scope` by
   /// connecting to the TensorFlow runtime specified by `target`.
@@ -69,25 +67,23 @@ class ClientSession {
   /// Evaluate the tensors in `fetch_outputs`. The values are returned as
   /// `Tensor` objects in `outputs`. The number and order of `outputs` will
   /// match `fetch_outputs`.
-  Status Run(const std::vector<ops::Output>& fetch_outputs,
+  Status Run(const std::vector<Output>& fetch_outputs,
              std::vector<Tensor>* outputs) const;
 
   /// Same as above, but use the mapping in `inputs` as feeds.
-  Status Run(const FeedType& inputs,
-             const std::vector<ops::Output>& fetch_outputs,
+  Status Run(const FeedType& inputs, const std::vector<Output>& fetch_outputs,
              std::vector<Tensor>* outputs) const;
 
   /// Same as above. Additionally runs the operations ins `run_outputs`.
-  Status Run(const FeedType& inputs,
-             const std::vector<ops::Output>& fetch_outputs,
-             const std::vector<ops::Operation>& run_outputs,
+  Status Run(const FeedType& inputs, const std::vector<Output>& fetch_outputs,
+             const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs) const;
 
   /// Use `run_options` to turn on performance profiling. `run_metadata`, if not
   /// null, is filled in with the profiling results.
   Status Run(const RunOptions& run_options, const FeedType& inputs,
-             const std::vector<ops::Output>& fetch_outputs,
-             const std::vector<ops::Operation>& run_outputs,
+             const std::vector<Output>& fetch_outputs,
+             const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
 
   // TODO(keveman): Add support for partial run.
