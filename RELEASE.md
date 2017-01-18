@@ -139,6 +139,9 @@
 * `tf.all_variables`, `tf.VARIABLES` and `tf.initialize_all_variables` renamed
   to `tf.global_variables`, `tf.GLOBAL_VARIABLES` and
   `tf.global_variables_initializer` respectively.
+* `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
+  that must be called with initializer arguments, in your code replace
+  tf.zeros_initializer with tf.zeros_initializer()
 
 ## Bug Fixes and Other Changes
 

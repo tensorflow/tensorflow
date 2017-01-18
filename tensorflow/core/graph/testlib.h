@@ -100,6 +100,9 @@ Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins);
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
 
+// Reverses <axis> dimensions of <tensor>>
+Node* Reverse(Graph* g, Node* tensor, Node* axis);
+
 // Generates random unit uniform distribution of the input shape.
 Node* RandomUniform(Graph* g, Node* input, DataType dtype);
 

@@ -181,6 +181,7 @@ from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
 # pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook

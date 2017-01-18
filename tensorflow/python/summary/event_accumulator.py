@@ -709,7 +709,10 @@ def _CompressHistogram(histo_ev, bps):
   # See also: Histogram::Percentile() in core/lib/histogram/histogram.cc
   histo = histo_ev.histogram_value
   if not histo.num:
-    return [CompressedHistogramValue(b, 0.0) for b in bps]
+    return CompressedHistogramEvent(
+        histo_ev.wall_time,
+        histo_ev.step,
+        [CompressedHistogramValue(b, 0.0) for b in bps])
   bucket = np.array(histo.bucket)
   weights = (bucket * bps[-1] / (bucket.sum() or 1.0)).cumsum()
   values = []

@@ -18,13 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.learn_io import numpy_io
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class NumpyIoTest(tf.test.TestCase):
+class NumpyIoTest(test.TestCase):
 
   def testNumpyInputFn(self):
     a = np.arange(4) * 1.0
@@ -37,8 +47,8 @@ class NumpyIoTest(tf.test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(session, coord=coord)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
       res = session.run([features, target])
       self.assertAllEqual(res[0]['a'], [0, 1])
@@ -63,8 +73,8 @@ class NumpyIoTest(tf.test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(session, coord=coord)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
       res = session.run([features, target])
       self.assertAllEqual(res[0]['a'], [[1, 2], [3, 4]])
@@ -121,4 +131,4 @@ class NumpyIoTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

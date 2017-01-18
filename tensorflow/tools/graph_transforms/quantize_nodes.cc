@@ -157,22 +157,8 @@ Status ExtractRangeFromParams(const TransformFuncContext& context,
     return errors::InvalidArgument("You must pass both ", min_name, " and ",
                                    max_name, " into quantize_nodes");
   }
-  std::vector<string> min_strings = context.params.at(min_name);
-  std::vector<string> max_strings = context.params.at(max_name);
-  if ((min_strings.size() != 1) || (max_strings.size() != 1)) {
-    return errors::InvalidArgument("You must pass a single ", min_name,
-                                   " and single ", max_name,
-                                   " value into "
-                                   "quantize_nodes");
-  }
-  if (!strings::safe_strtof(min_strings[0].c_str(), min_value)) {
-    return errors::InvalidArgument("Couldn't decode ", min_name,
-                                   " as a number: ", min_strings[0]);
-  }
-  if (!strings::safe_strtof(max_strings[0].c_str(), max_value)) {
-    return errors::InvalidArgument("Couldn't decode ", max_name,
-                                   " as a number: ", max_strings[0]);
-  }
+  TF_RETURN_IF_ERROR(context.GetOneFloatParameter(min_name, 0.0f, min_value));
+  TF_RETURN_IF_ERROR(context.GetOneFloatParameter(max_name, 0.0f, max_value));
   return Status::OK();
 }
 
@@ -250,7 +236,8 @@ Status MergeDuplicateNodes(const GraphDef& input_graph_def,
     }
     // Update the graph so that any nodes that referred to removed inputs now
     // pull from the remaining duplicate.
-    RenameNodeInputs(merged_graph_def, inputs_to_rename, &current_graph_def);
+    RenameNodeInputs(merged_graph_def, inputs_to_rename,
+                     std::unordered_set<string>(), &current_graph_def);
   } while (any_duplicates_found);
 
   *output_graph_def = current_graph_def;
@@ -309,7 +296,8 @@ Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
       },
       {true}, &replaced_graph_def));
 
-  RenameNodeInputs(replaced_graph_def, inputs_to_rename, output_graph_def);
+  RenameNodeInputs(replaced_graph_def, inputs_to_rename,
+                   std::unordered_set<string>(), output_graph_def);
 
   return Status::OK();
 }
@@ -386,9 +374,9 @@ Status QuantizePlaceholders(const GraphDef& input_graph_def,
 
   GraphDef first_pass_graph_def;
   RenameNodeInputs(placeholder_graph_def, inputs_to_rename_first_pass,
-                   &first_pass_graph_def);
+                   std::unordered_set<string>(), &first_pass_graph_def);
   RenameNodeInputs(first_pass_graph_def, inputs_to_rename_second_pass,
-                   output_graph_def);
+                   std::unordered_set<string>(), output_graph_def);
 
   return Status::OK();
 }
@@ -695,6 +683,31 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           std::vector<NodeDef>* new_nodes) {
         const NodeDef& float_node = match.node;
         const QuantizedOpInfo& op_info = op_map[float_node.op()];
+
+        DataTypeVector input_types;
+        DataTypeVector output_types;
+        TF_RETURN_IF_ERROR(
+            GetInOutTypes(float_node, &input_types, &output_types));
+        bool are_all_float = true;
+        for (int i = 0; i < float_node.input_size(); ++i) {
+          // Skip any known non-float inputs.
+          if (op_info.unquantized_inputs.count(i)) {
+            continue;
+          }
+          if (input_types[i] != DT_FLOAT) {
+            are_all_float = false;
+          }
+        }
+        for (const DataType& output_type : output_types) {
+          if (output_type != DT_FLOAT) {
+            are_all_float = false;
+          }
+        }
+        // This isn't a float op, so don't quantize it.
+        if (!are_all_float) {
+          CopyOriginalMatch(match, new_nodes);
+          return Status::OK();
+        }
 
         string namespace_prefix = float_node.name() + "_eightbit";
 

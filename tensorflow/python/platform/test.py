@@ -64,18 +64,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=g-bad-import-order
 from tensorflow.python.client import device_lib as _device_lib
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
 from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
-from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import assert_equal_graph_def
+from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
-# pylint: enable=unused-import
+# pylint: enable=unused-import,g-bad-import-order
 
 import sys
 if sys.version_info.major == 2:
@@ -87,9 +88,9 @@ else:
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 
 
-def main():
+def main(argv=None):
   """Runs all unit tests."""
-  return _googletest.main()
+  return _googletest.main(argv)
 
 
 def get_temp_dir():

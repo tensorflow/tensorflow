@@ -42,7 +42,7 @@ Returns x + y element-wise.
 
 Returns x - y element-wise.
 
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
+*NOTE*: `tf.subtract` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -63,7 +63,7 @@ Returns x - y element-wise.
 
 Returns x * y element-wise.
 
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
+*NOTE*: ``tf.multiply`` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -435,17 +435,18 @@ an input element and y is an output element, this operation computes
 
 Computes numerical negative value element-wise.
 
-I.e., \\(y = -x\\).
+I.e., \(y = -x\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -1634,13 +1635,15 @@ c = tf.matmul(a, b) => [[58 64]
 
 
 # 3-D tensor `a`
-a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+a = tf.constant(np.arange(1, 13, dtype=np.int32),
+                shape=[2, 2, 3])                  => [[[ 1.  2.  3.]
                                                        [ 4.  5.  6.]],
                                                       [[ 7.  8.  9.]
                                                        [10. 11. 12.]]]
 
 # 3-D tensor `b`
-b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+b = tf.constant(np.arange(13, 25, dtype=np.int32),
+                shape=[2, 3, 2])                   => [[[13. 14.]
                                                         [15. 16.]
                                                         [17. 18.]],
                                                        [[19. 20.]
@@ -1671,7 +1674,7 @@ c = tf.matmul(a, b) => [[[ 94 100]
 ##### Returns:
 
   A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-  the product of the corresponding matrices in `a` and `b, e.g. if all
+  the product of the corresponding matrices in `a` and `b`, e.g. if all
   transpose or adjoint attributes are `False`:
 
   `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
@@ -1746,7 +1749,7 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 *  <b>`ValueError`</b>: If `ord` or `axis` is invalid.
 
 @compatibility(numpy)
-Mostly equivalent to np.linalg.norm.
+Mostly equivalent to numpy.linalg.norm.
 Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
 
 ##### Other differences:
@@ -2137,6 +2140,12 @@ s = svd(a, compute_uv=False)
 *  <b>`v`</b>: Left singular vectors. If `full_matrices` is `False` (default) then
     shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
     `[..., N, N]`. Not returned if `compute_uv` is `False`.
+
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.svd, except that the order of output
+arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
+`u`, `s`, `v` for numpy.linalg.svd.
+@end_compatibility
 
 
 
@@ -3715,59 +3724,16 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ## Other Functions and Classes
 - - -
 
-### `tf.mul(x, y, name=None)` {#mul}
-
-Returns x * y element-wise.
-
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
-
-
-- - -
-
 ### `tf.neg(x, name=None)` {#neg}
 
 Computes numerical negative value element-wise.
 
-I.e., \(y = -x\).
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-
-- - -
-
-### `tf.sub(x, y, name=None)` {#sub}
-
-Returns x - y element-wise.
-
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+I.e., \\(y = -x\\).
 
 ##### Args:
 
 
 *  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

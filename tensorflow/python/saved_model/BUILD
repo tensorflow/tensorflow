@@ -2,6 +2,8 @@
 # TensorFlow SavedModel.
 
 package(
+    # TODO(drpng): change that to //third_party/tensorflow:internal
+    # when we have migrated all users.
     default_visibility = ["//visibility:public"],
 )
 
@@ -10,6 +12,20 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+py_library(
+    name = "saved_model",
+    srcs = ["saved_model.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":builder",
+        ":loader",
+        ":signature_constants",
+        ":signature_def_utils",
+        ":tag_constants",
+    ],
+)
 
 py_library(
     name = "constants",
@@ -31,7 +47,10 @@ py_library(
 
 py_library(
     name = "builder",
-    srcs = ["builder.py"],
+    srcs = [
+        "builder.py",
+        "builder_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -47,14 +66,16 @@ py_library(
 
 py_library(
     name = "loader",
-    srcs = ["loader.py"],
+    srcs = [
+        "loader.py",
+        "loader_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
     ],
@@ -62,14 +83,13 @@ py_library(
 
 py_library(
     name = "main_op",
+    testonly = 1,
     srcs = ["main_op.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
 )
@@ -89,20 +109,15 @@ py_test(
         ":main_op",
         ":signature_def_utils",
         ":tag_constants",
-        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
@@ -134,7 +149,10 @@ py_test(
 
 py_library(
     name = "signature_def_utils",
-    srcs = ["signature_def_utils.py"],
+    srcs = [
+        "signature_def_utils.py",
+        "signature_def_utils_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":signature_constants",

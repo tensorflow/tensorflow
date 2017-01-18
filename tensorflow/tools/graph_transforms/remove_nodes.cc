@@ -80,7 +80,7 @@ Status RemoveNodes(const GraphDef& input_graph_def,
           {true}, &replaced_graph_def));
       // Make sure all references to removed nodes now point to their inputs.
       RenameNodeInputs(replaced_graph_def, inputs_to_rename,
-                       &current_graph_def);
+                       std::unordered_set<string>(), &current_graph_def);
     } while (any_nodes_removed);
   }
 

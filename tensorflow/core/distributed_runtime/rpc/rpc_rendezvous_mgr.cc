@@ -92,7 +92,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     // RpcRecvTensorCall, and it always sets this->wi_ to null when
     // a call object is released to it, we can assert that this->wi_ is
     // always null at the point of deletion.
-    CHECK_EQ(nullptr, wi_)
+    CHECK_EQ(static_cast<WorkerInterface*>(nullptr), wi_)
         << "Leaking WorkerInterface in RpcRecvTensorCall destructor.";
   }
 

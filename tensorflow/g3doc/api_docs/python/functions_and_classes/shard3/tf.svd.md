@@ -39,3 +39,9 @@ s = svd(a, compute_uv=False)
     shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
     `[..., N, N]`. Not returned if `compute_uv` is `False`.
 
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.svd, except that the order of output
+arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
+`u`, `s`, `v` for numpy.linalg.svd.
+@end_compatibility
+

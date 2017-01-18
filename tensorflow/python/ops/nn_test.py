@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_impl
@@ -790,6 +791,79 @@ class CReluTest(test_lib.TestCase):
       z = nn_ops.crelu(constant_op.constant(x)).eval()
       self.assertAllClose(y, z, 1e-4)
 
+
+class MomentsTest(test_lib.TestCase):
+
+  def doOutputTest(self, input_shape, moments_axes, tol=1e-4):
+    for mu in [0.0, 1.0, 1e3]:
+      for sigma in [1.0, 0.1]:
+        for keep_dims in [True, False]:
+          input_values = np.random.rand(*input_shape) * sigma + mu
+          expected_mean = np.mean(input_values, axis=moments_axes,
+                                  keepdims=keep_dims)
+          expected_var = np.var(input_values, axis=moments_axes,
+                                keepdims=keep_dims)
+          with ops.Graph().as_default() as g:
+            with self.test_session(graph=g) as sess:
+              inputs = constant_op.constant(input_values,
+                                            shape=input_shape,
+                                            dtype=dtypes.float32)
+              mean, variance = nn_impl.moments(inputs,
+                                               moments_axes,
+                                               keep_dims=keep_dims)
+
+              [mean, variance] = sess.run([mean, variance])
+              # Make sure that there are no NaNs
+              self.assertFalse(np.isnan(mean).any())
+              self.assertFalse(np.isnan(variance).any())
+              self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
+              self.assertAllClose(variance, expected_var, rtol=tol, atol=tol)
+
+  def testOutput2DInput0(self):
+    self.doOutputTest((10, 300), (0,))
+
+  def testOutput2DInput1(self):
+    self.doOutputTest((10, 300), (1,))
+
+  def testOutput2DInput01(self):
+    self.doOutputTest((10, 300), (0, 1))
+
+  def testOutput4DInput0(self):
+    self.doOutputTest((10, 10, 10, 30), (0,))
+
+  def testOutput4DInput1(self):
+    self.doOutputTest((10, 10, 10, 30), (1,))
+
+  def testOutput4DInput3(self):
+    self.doOutputTest((10, 10, 10, 30), (3,))
+
+  def testOutput4DInput012(self):
+    self.doOutputTest((10, 10, 10, 30), (0, 1, 2))
+
+  def testOutput4DInput123(self):
+    self.doOutputTest((10, 10, 10, 30), (1, 2, 3))
+
+  def testUnstableOutputShiftNone(self):
+    input_shape = (10, 300)
+    moments_axes = (0, 1)
+    mu, sigma = 1e3, 0.1
+    tol = 1e-3
+    input_values = np.random.rand(*input_shape) * sigma + mu
+    expected_mean = np.mean(input_values, axis=moments_axes)
+    expected_var = np.var(input_values, axis=moments_axes)
+
+    with self.test_session() as sess:
+      inputs = constant_op.constant(input_values, shape=input_shape,
+                                    dtype=dtypes.float32)
+      mean, variance = nn_impl.moments(inputs, moments_axes, shift=0.0)
+
+      [mean, variance] = sess.run([mean, variance])
+      # Make sure that there are no NaNs
+      self.assertFalse(np.isnan(mean).any())
+      self.assertFalse(np.isnan(variance).any())
+      self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
+      # The variance is unstable
+      self.assertGreater(np.abs(variance - expected_var), 0.1)
 
 if __name__ == "__main__":
   test_lib.main()

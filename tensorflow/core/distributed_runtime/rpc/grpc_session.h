@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -117,8 +118,8 @@ class GrpcSession : public Session {
                    std::vector<Tensor>* outputs, RunMetadata* run_metadata,
                    const string& prun_handle);
 
-  Status RunProto(CallOptions* call_options, RunStepRequest* req,
-                  RunStepResponse* resp);
+  Status RunProto(CallOptions* call_options, MutableRunStepRequestWrapper* req,
+                  MutableRunStepResponseWrapper* resp);
 
   // Implementations for all the public interfaces.
   Status CreateImpl(CallOptions* call_options, const GraphDef& graph);

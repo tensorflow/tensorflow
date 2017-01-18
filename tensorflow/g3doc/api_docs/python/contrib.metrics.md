@@ -115,7 +115,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: The predicted values, a `Tensor` of any shape.
 *  <b>`labels`</b>: The ground truth values, a `Tensor` whose shape matches
     `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `accuracy` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -161,7 +163,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 
 *  <b>`values`</b>: A `Tensor` of arbitrary dimensions.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `values`, and
+    must be broadcastable to `values` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `values` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`
@@ -207,7 +211,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -257,7 +263,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`thresholds`</b>: A python list or tuple of float thresholds in `[0, 1]`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall` should be
     added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -306,7 +314,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -358,7 +368,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`thresholds`</b>: A python list or tuple of float thresholds in `[0, 1]`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `auc` should be
     added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -418,7 +430,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`num_thresholds`</b>: The number of thresholds to use when discretizing the roc
     curve.
 *  <b>`metrics_collections`</b>: An optional list of collections that `auc` should be
@@ -479,7 +493,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`labels`</b>: A `Tensor` of dimension [batch_size] whose type is in `int32`,
     `int64`.
 *  <b>`k`</b>: The number of top elements to look at for computing recall.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall_at_k`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
@@ -530,7 +546,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_absolute_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -636,7 +655,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
 *  <b>`normalizer`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_relative_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -687,7 +709,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -738,7 +763,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
 *  <b>`labels`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that
     `root_mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
@@ -796,8 +824,10 @@ variables and returns the updated covariance.
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary size.
 *  <b>`labels`</b>: A `Tensor` of the same size as `predictions`.
-*  <b>`weights`</b>: An optional set of weights which indicates the frequency with which
-    an example is sampled. Must be broadcastable with `labels`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -847,8 +877,10 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary size.
 *  <b>`labels`</b>: A `Tensor` of the same size as predictions.
-*  <b>`weights`</b>: An optional set of weights which indicates the frequency with which
-    an example is sampled. Must be broadcastable with `labels`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -996,7 +1028,9 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`specificity`</b>: A scalar value in range `[0, 1]`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
     specificity.
 *  <b>`metrics_collections`</b>: An optional list of collections that `sensitivity`
@@ -1064,8 +1098,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     range are ignored.
 *  <b>`k`</b>: Integer, k for @k metric. This will calculate an average precision for
     range `[1,k]`, as documented above.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
-    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+    `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+    dimensions must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
@@ -1134,8 +1170,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes], where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
-    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+    `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+    dimensions must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
@@ -1209,8 +1247,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
-    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+    `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+    dimensions must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
@@ -1285,8 +1325,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`class_id`</b>: Integer class ID for which we want binary metrics. This should be
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If class_id is outside this range, the method returns NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the first
-    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+    `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+    dimensions must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
@@ -1340,7 +1382,9 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`sensitivity`</b>: A scalar value in range `[0, 1]`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
     sensitivity.
 *  <b>`metrics_collections`</b>: An optional list of collections that `specificity`
@@ -1429,7 +1473,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     dimensions.
 *  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
+    `labels`, and must be broadcastable to `labels` (i.e., all dimensions
+    must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -1472,7 +1519,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     dimensions.
 *  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
+    `labels`, and must be broadcastable to `labels` (i.e., all dimensions
+    must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -1516,7 +1566,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     dimensions.
 *  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
+    `labels`, and must be broadcastable to `labels` (i.e., all dimensions
+    must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -1560,7 +1613,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     dimensions.
 *  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
     match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
+    `labels`, and must be broadcastable to `labels` (i.e., all dimensions
+    must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update

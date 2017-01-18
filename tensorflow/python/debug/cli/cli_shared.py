@@ -32,6 +32,36 @@ from tensorflow.python.ops import variables
 DEFAULT_NDARRAY_DISPLAY_THRESHOLD = 2000
 
 
+def bytes_to_readable_str(num_bytes, include_b=False):
+  """Generate a human-readable string representing number of bytes.
+
+  The units B, kB, MB and GB are used.
+
+  Args:
+    num_bytes: (`int` or None) Number of bytes.
+    include_b: (`bool`) Include the letter B at the end of the unit.
+
+  Returns:
+    (`str`) A string representing the number of bytes in a human-readable way,
+      including a unit at the end.
+  """
+
+  if num_bytes is None:
+    return str(num_bytes)
+  if num_bytes < 1024:
+    result = "%d" % num_bytes
+  elif num_bytes < 1048576:
+    result = "%.2fk" % (num_bytes / 1024.0)
+  elif num_bytes < 1073741824:
+    result = "%.2fM" % (num_bytes / 1048576.0)
+  else:
+    result = "%.2fG" % (num_bytes / 1073741824.0)
+
+  if include_b:
+    result += "B"
+  return result
+
+
 def parse_ranges_highlight(ranges_string):
   """Process ranges highlight string.
 
@@ -303,11 +333,13 @@ def get_run_start_intro(run_call_count,
           "step through nodes involved in the graph run() call and "
           "inspect/modify their values", create_link=True))
 
-  out.extend(debugger_cli_common.RichTextLines([
-      "",
-      "For more details, see help below:"
-      "",
-  ]))
+  out.append("")
+  suggest_help = "For more details, see help."
+  out.append(
+      suggest_help,
+      font_attr_segs=[(len(suggest_help) - 5, len(suggest_help) - 1,
+                       debugger_cli_common.MenuItem("", "help"))])
+  out.append("")
 
   # Make main menu for the run-start intro.
   menu = debugger_cli_common.Menu()
@@ -352,7 +384,8 @@ def get_run_short_description(run_call_count, fetches, feed_dict):
   else:
     if len(feed_dict) == 1:
       for key in feed_dict:
-        description += "1 feed (%s)" % key.name
+        description += "1 feed (%s)" % (
+            key if isinstance(key, six.string_types) else key.name)
     else:
       description += "%d feeds" % len(feed_dict)
 
@@ -384,14 +417,19 @@ def get_error_intro(tf_error):
       intro_lines, font_attr_segs=intro_font_attr_segs)
 
   out.extend(
-      _recommend_command("ni %s" % op_name,
-                         "Inspect information about the failing op."))
+      _recommend_command("ni -a -d -t %s" % op_name,
+                         "Inspect information about the failing op.",
+                         create_link=True))
   out.extend(
       _recommend_command("li -r %s" % op_name,
-                         "List inputs to the failing op, recursively."))
+                         "List inputs to the failing op, recursively.",
+                         create_link=True))
+
   out.extend(
       _recommend_command(
-          "lt", "List all tensors dumped during the failing run() call."))
+          "lt",
+          "List all tensors dumped during the failing run() call.",
+          create_link=True))
 
   more_lines = [
       "",

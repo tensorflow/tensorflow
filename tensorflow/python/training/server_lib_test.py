@@ -332,6 +332,19 @@ class GrpcServerTest(test.TestCase):
     with session.Session(server.target) as sess:
       self.assertEqual(1.0, sess.run(a))
 
+  def testTimeoutRaisesException(self):
+    server = server_lib.Server.create_local_server()
+    q = data_flow_ops.FIFOQueue(1, [dtypes.float32])
+    blocking_t = q.dequeue()
+
+    with session.Session(server.target) as sess:
+      with self.assertRaises(errors_impl.DeadlineExceededError):
+        sess.run(blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000))
+
+    with session.Session(server.target, config=self._useRPCConfig()) as sess:
+      with self.assertRaises(errors_impl.DeadlineExceededError):
+        sess.run(blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000))
+
 
 class ServerDefTest(test.TestCase):
 

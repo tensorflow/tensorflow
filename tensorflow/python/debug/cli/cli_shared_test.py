@@ -30,6 +30,46 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+class BytesToReadableStrTest(test_util.TensorFlowTestCase):
+
+  def testNoneSizeWorks(self):
+    self.assertEqual(str(None), cli_shared.bytes_to_readable_str(None))
+
+  def testSizesBelowOneKiloByteWorks(self):
+    self.assertEqual("0", cli_shared.bytes_to_readable_str(0))
+    self.assertEqual("500", cli_shared.bytes_to_readable_str(500))
+    self.assertEqual("1023", cli_shared.bytes_to_readable_str(1023))
+
+  def testSizesBetweenOneKiloByteandOneMegaByteWorks(self):
+    self.assertEqual("1.00k", cli_shared.bytes_to_readable_str(1024))
+    self.assertEqual("2.40k", cli_shared.bytes_to_readable_str(int(1024 * 2.4)))
+    self.assertEqual("1023.00k", cli_shared.bytes_to_readable_str(1024 * 1023))
+
+  def testSizesBetweenOneMegaByteandOneGigaByteWorks(self):
+    self.assertEqual("1.00M", cli_shared.bytes_to_readable_str(1024**2))
+    self.assertEqual("2.40M",
+                     cli_shared.bytes_to_readable_str(int(1024**2 * 2.4)))
+    self.assertEqual("1023.00M",
+                     cli_shared.bytes_to_readable_str(1024**2 * 1023))
+
+  def testSizeAboveOneGigaByteWorks(self):
+    self.assertEqual("1.00G", cli_shared.bytes_to_readable_str(1024**3))
+    self.assertEqual("2000.00G",
+                     cli_shared.bytes_to_readable_str(1024**3 * 2000))
+
+  def testReadableStrIncludesBAtTheEndOnRequest(self):
+    self.assertEqual("0B", cli_shared.bytes_to_readable_str(0, include_b=True))
+    self.assertEqual(
+        "1.00kB", cli_shared.bytes_to_readable_str(
+            1024, include_b=True))
+    self.assertEqual(
+        "1.00MB", cli_shared.bytes_to_readable_str(
+            1024**2, include_b=True))
+    self.assertEqual(
+        "1.00GB", cli_shared.bytes_to_readable_str(
+            1024**3, include_b=True))
+
+
 class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -227,6 +267,16 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     command_set.add(annot[2].content)
     self.assertEqual({"run -f filter_a", "run -f filter_b"}, command_set)
 
+  def testGetRunShortDescriptionWorksForTensorFeedKey(self):
+    short_description = cli_shared.get_run_short_description(
+        1, self.const_a, {self.const_a: 42.0})
+    self.assertEqual("run #1: 1 fetch (a:0); 1 feed (a:0)", short_description)
+
+  def testGetRunShortDescriptionWorksForUnicodeFeedKey(self):
+    short_description = cli_shared.get_run_short_description(
+        1, self.const_a, {u"foo": 42.0})
+    self.assertEqual("run #1: 1 fetch (a:0); 1 feed (foo)", short_description)
+
 
 class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
@@ -247,14 +297,25 @@ class GetErrorIntroTest(test_util.TensorFlowTestCase):
     self.assertEqual([(0, len(error_intro.lines[1]), "blink")],
                      error_intro.font_attr_segs[1])
 
-    self.assertEqual(2, error_intro.lines[4].index("ni a/Assign"))
-    self.assertEqual([(2, 13, "bold")], error_intro.font_attr_segs[4])
+    self.assertEqual(2, error_intro.lines[4].index("ni -a -d -t a/Assign"))
+    self.assertEqual(2, error_intro.font_attr_segs[4][0][0])
+    self.assertEqual(22, error_intro.font_attr_segs[4][0][1])
+    self.assertEqual("ni -a -d -t a/Assign",
+                     error_intro.font_attr_segs[4][0][2][0].content)
+    self.assertEqual("bold", error_intro.font_attr_segs[4][0][2][1])
 
     self.assertEqual(2, error_intro.lines[6].index("li -r a/Assign"))
-    self.assertEqual([(2, 16, "bold")], error_intro.font_attr_segs[6])
+    self.assertEqual(2, error_intro.font_attr_segs[6][0][0])
+    self.assertEqual(16, error_intro.font_attr_segs[6][0][1])
+    self.assertEqual("li -r a/Assign",
+                     error_intro.font_attr_segs[6][0][2][0].content)
+    self.assertEqual("bold", error_intro.font_attr_segs[6][0][2][1])
 
     self.assertEqual(2, error_intro.lines[8].index("lt"))
-    self.assertEqual([(2, 4, "bold")], error_intro.font_attr_segs[8])
+    self.assertEqual(2, error_intro.font_attr_segs[8][0][0])
+    self.assertEqual(4, error_intro.font_attr_segs[8][0][1])
+    self.assertEqual("lt", error_intro.font_attr_segs[8][0][2][0].content)
+    self.assertEqual("bold", error_intro.font_attr_segs[8][0][2][1])
 
     self.assertStartsWith(error_intro.lines[11], "Op name:")
     self.assertTrue(error_intro.lines[11].endswith("a/Assign"))

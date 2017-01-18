@@ -133,7 +133,7 @@ class HasNanOrInfTest(test_util.TensorFlowTestCase):
     a = np.array([1j, 3j, 3j, 7j], dtype=np.complex128)
     self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
 
-    b = np.array([1j, 3j, 3j, 7j, np.nan], dtype=np.complex256)
+    b = np.array([1j, 3j, 3j, 7j, np.nan], dtype=np.complex128)
     self.assertTrue(debug_data.has_inf_or_nan(self._dummy_datum, b))
 
   def testDTypeIntegerWorks(self):
@@ -178,6 +178,13 @@ class DebugTensorDatumTest(test_util.TensorFlowTestCase):
                                                               datum.debug_op,
                                                               datum.timestamp),
                      repr(datum))
+
+  def testDumpSizeBytesIsNoneForNonexistentFilePath(self):
+    dump_root = "/tmp/tfdbg_1"
+    debug_dump_rel_path = "ns1/ns2/node_foo_1_2_DebugIdentity_1472563253536385"
+    datum = debug_data.DebugTensorDatum(dump_root, debug_dump_rel_path)
+
+    self.assertIsNone(datum.dump_size_bytes)
 
 
 class DebugDumpDirTest(test_util.TensorFlowTestCase):

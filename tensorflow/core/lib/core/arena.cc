@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <assert.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
@@ -48,7 +49,8 @@ Arena::Arena(const size_t block_size)
       overflow_blocks_(NULL) {
   assert(block_size > kDefaultAlignment);
 
-  first_blocks_[0].mem = reinterpret_cast<char*>(malloc(block_size_));
+  first_blocks_[0].mem =
+      reinterpret_cast<char*>(port::AlignedMalloc(block_size_, sizeof(void*)));
 
   first_blocks_[0].size = block_size_;
 
@@ -59,7 +61,9 @@ Arena::~Arena() {
   FreeBlocks();
   assert(overflow_blocks_ == NULL);  // FreeBlocks() should do that
   // The first X blocks stay allocated always by default.  Delete them now.
-  for (size_t i = 0; i < blocks_alloced_; ++i) free(first_blocks_[i].mem);
+  for (size_t i = 0; i < blocks_alloced_; ++i) {
+    port::AlignedFree(first_blocks_[i].mem);
+  }
 }
 
 // Returns true iff it advances freestart_ to the first position
@@ -162,8 +166,11 @@ Arena::AllocatedBlock* Arena::AllocNewBlock(const size_t block_size,
 
   // Must be a multiple of kDefaultAlignment, unless requested
   // alignment is 1, in which case we don't care at all.
-  const uint32 adjusted_alignment =
+  uint32 adjusted_alignment =
       (alignment > 1 ? LeastCommonMultiple(alignment, kDefaultAlignment) : 1);
+  // Required minimum alignment for port::AlignedMalloc().
+  adjusted_alignment =
+      std::max(adjusted_alignment, static_cast<uint32>(sizeof(void*)));
 
   CHECK_LE(adjusted_alignment, static_cast<uint32>(1 << 20))
       << "Alignment on boundaries greater than 1MB not supported.";
@@ -171,16 +178,12 @@ Arena::AllocatedBlock* Arena::AllocNewBlock(const size_t block_size,
   // If block_size > alignment we force block_size to be a multiple
   // of alignment; if block_size < alignment we make no adjustment.
   size_t adjusted_block_size = block_size;
-  if (adjusted_alignment > 1) {
-    if (adjusted_block_size > adjusted_alignment) {
-      const uint32 excess = adjusted_block_size % adjusted_alignment;
-      adjusted_block_size += (excess > 0 ? adjusted_alignment - excess : 0);
-    }
-    block->mem = reinterpret_cast<char*>(
-        port::aligned_malloc(adjusted_block_size, adjusted_alignment));
-  } else {
-    block->mem = reinterpret_cast<char*>(malloc(adjusted_block_size));
+  if (adjusted_block_size > adjusted_alignment) {
+    const uint32 excess = adjusted_block_size % adjusted_alignment;
+    adjusted_block_size += (excess > 0 ? adjusted_alignment - excess : 0);
   }
+  block->mem = reinterpret_cast<char*>(
+      port::AlignedMalloc(adjusted_block_size, adjusted_alignment));
   block->size = adjusted_block_size;
   CHECK(NULL != block->mem) << "block_size=" << block_size
                             << " adjusted_block_size=" << adjusted_block_size
@@ -242,7 +245,7 @@ void* Arena::GetMemoryFallback(const size_t size, const int alignment) {
 
 void Arena::FreeBlocks() {
   for (size_t i = 1; i < blocks_alloced_; ++i) {  // keep first block alloced
-    free(first_blocks_[i].mem);
+    port::AlignedFree(first_blocks_[i].mem);
     first_blocks_[i].mem = NULL;
     first_blocks_[i].size = 0;
   }
@@ -250,7 +253,7 @@ void Arena::FreeBlocks() {
   if (overflow_blocks_ != NULL) {
     std::vector<AllocatedBlock>::iterator it;
     for (it = overflow_blocks_->begin(); it != overflow_blocks_->end(); ++it) {
-      free(it->mem);
+      port::AlignedFree(it->mem);
     }
     delete overflow_blocks_;  // These should be used very rarely
     overflow_blocks_ = NULL;

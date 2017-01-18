@@ -639,7 +639,7 @@ def attention_decoder(decoder_inputs,
           ndims = q.get_shape().ndims
           if ndims:
             assert ndims == 2
-        query = array_ops.concat_v2(query_list, 1)
+        query = array_ops.concat(query_list, 1)
       for a in xrange(num_heads):
         with variable_scope.variable_scope("Attention_%d" % a):
           y = linear(query, attention_vec_size, True)
@@ -853,7 +853,7 @@ def embedding_attention_seq2seq(encoder_inputs,
     top_states = [
         array_ops.reshape(e, [-1, 1, cell.output_size]) for e in encoder_outputs
     ]
-    attention_states = array_ops.concat_v2(top_states, 1)
+    attention_states = array_ops.concat(top_states, 1)
 
     # Decoder.
     output_size = None
@@ -1062,7 +1062,7 @@ def sequence_loss_by_example(logits,
         # violates our general scalar strictness policy.
         target = array_ops.reshape(target, [-1])
         crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
-            logits=logit, labels=target)
+            labels=target, logits=logit)
       else:
         crossent = softmax_loss_function(target, logit)
       log_perp_list.append(crossent * weight)

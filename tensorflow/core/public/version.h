@@ -78,11 +78,13 @@ limitations under the License.
 // 20. Catch all version 1.0 changes to Python API generation. SplitV is now
 //     used for tf.split, ReverseV2 is now used by tf.reverse, ConcatV2 is
 //     now used by tf.concat_v2 (and soon tf.concat). Graphs use flooring
-//     division and mod semantics. (12dec2016)
+//     division and mod semantics. TensorArrayV3. (12dec2016)
+// 21. Dropped FunctionDef.Node support, switched to node_def introduced
+//     in version 12. (11jan2017)
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 20
+#define TF_GRAPH_DEF_VERSION 21
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //
