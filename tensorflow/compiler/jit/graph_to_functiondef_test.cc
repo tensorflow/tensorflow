@@ -50,8 +50,7 @@ TEST(GraphToFunctionDefTest, Basics) {
   auto d = ops::Add(root.WithOpName("D"), a, b);
   auto e = ops::Add(root.WithOpName("b"), d, c);
   auto f = ops::Neg(root.WithOpName("h"), e);
-  auto g =
-      ops::AddN(root.WithOpName("G"), std::initializer_list<ops::Output>{e, f});
+  auto g = ops::AddN(root.WithOpName("G"), std::initializer_list<Output>{e, f});
   auto h = ops::_Retval(root.WithOpName("H"), g, 0);
 
   GraphDef graph_def;
