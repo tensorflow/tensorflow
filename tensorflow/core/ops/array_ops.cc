@@ -1898,7 +1898,7 @@ This op first slices `input` along the dimension `batch_dim`, and for each
 slice `i`, reverses the first `seq_lengths[i]` elements along
 the dimension `seq_dim`.
 
-The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
 and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
 The output slice `i` along dimension `batch_dim` is then given by input
@@ -1951,7 +1951,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 
 input: The input to reverse.
 seq_lengths: 1-D with length `input.dims(batch_dim)` and
-  `max(seq_lengths) < input.dims(seq_dim)`
+  `max(seq_lengths) <= input.dims(seq_dim)`
 seq_dim: The dimension which is partially reversed.
 batch_dim: The dimension along which reversal is performed.
 output: The partially reversed input. It has the same shape as `input`.
