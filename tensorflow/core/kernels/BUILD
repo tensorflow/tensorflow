@@ -785,7 +785,10 @@ tf_cc_test(
 tf_cc_test(
     name = "xsmm_conv2d_test",
     size = "small",
-    srcs = ["xsmm_conv2d_test.cc"],
+    srcs = select({
+        ":xsmm": ["xsmm_conv2d_test.cc"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":conv_ops",
         ":ops_testutil",
