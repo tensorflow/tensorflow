@@ -45,7 +45,7 @@ def main(_):
   sess.run(tf.global_variables_initializer())
 
   # Wrap the TensorFlow Session object for debugging.
-  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+  sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
 
   sess.run(n1)
 
@@ -66,5 +66,10 @@ if __name__ == "__main__":
       type=int,
       default=20,
       help="Length of the fibonacci sequence to compute.")
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
