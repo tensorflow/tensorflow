@@ -420,6 +420,37 @@ HloInstruction::CreateFusionForBackwardConvolution(
   return fusion;
 }
 
+void HloInstruction::MergeFusionInstruction(
+    HloInstruction* instruction_to_merge) {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
+  CHECK_EQ(instruction_to_merge->opcode(), HloOpcode::kFusion);
+  // Clone the instruction from which to merge fused instructions.
+  std::unique_ptr<HloInstruction> clone = instruction_to_merge->Clone();
+  // Replace uses of fused parameters with the corresponding operand of the
+  // fusion.
+  // Add all non-parameter fused instructions to 'unfused_instructions' to be
+  // merged into 'this'.
+  std::vector<HloInstruction*> unfused_instructions;
+  for (auto& fused_instruction : clone->fused_instructions()) {
+    if (fused_instruction->opcode() == HloOpcode::kParameter) {
+      fused_instruction->ReplaceAllUsesWith(
+          clone->mutable_operand(fused_instruction->parameter_number()));
+    } else {
+      unfused_instructions.push_back(fused_instruction.get());
+    }
+  }
+  CHECK(unfused_instructions.front() == clone->fused_expression_root());
+  // Replace instruction_to_merge use of 'this' with unfused_root.
+  instruction_to_merge->ReplaceUseWith(this, unfused_instructions.front());
+  // Fuse 'unfused_instructions' into 'this'.
+  for (auto& instruction : unfused_instructions) {
+    FuseInstruction(instruction);
+    instruction->DetachFromOperands();
+  }
+  CHECK_EQ(0, clone->user_count());
+  clone->DetachFromOperands();
+}
+
 HloInstruction* HloInstruction::FuseInstruction(
     HloInstruction* instruction_to_fuse) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
