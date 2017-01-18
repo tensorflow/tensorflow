@@ -355,6 +355,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "sendrecv_ops",
+    include_internal_ops = 1,
     op_lib_names = [
         "sendrecv_ops",
     ],
@@ -363,6 +364,7 @@ tf_gen_op_wrappers_cc(
 
 tf_gen_op_wrappers_cc(
     name = "function_ops",
+    include_internal_ops = 1,
     op_lib_names = [
         "function_ops",
     ],
