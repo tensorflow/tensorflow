@@ -33,7 +33,7 @@ class RecordInputOpTest(test.TestCase):
       w = tf_record.TFRecordWriter(f)
 
       for j in range(m):
-        w.write("{0:0{width}}".format(i * m + j, width=10))
+        w.write("{0:0{width}}".format(i * m + j, width=10).encode("utf-8"))
 
     w.close()
 
@@ -48,7 +48,7 @@ class RecordInputOpTest(test.TestCase):
           batch_size=1,
           name="record_input").get_yield_op()
 
-      self.assertEqual(sess.run(yield_op), "0000000000")
+      self.assertEqual(sess.run(yield_op), b"0000000000")
 
   def testRecordInputEpochs(self):
     files = 100
