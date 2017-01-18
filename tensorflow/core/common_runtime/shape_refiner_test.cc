@@ -492,7 +492,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Shape) {
     TF_ASSERT_OK(
         NodeBuilder("in", pass == 0 ? "WithPartialShape" : "WithUnknownShape")
             .Finalize(root.graph(), &input));
-    auto shape = ops::Shape(root, ops::Output(input));
+    auto shape = ops::Shape(root, Output(input));
     Node* result;
     TF_ASSERT_OK(NodeBuilder("test", "TensorAsShapeInt32")
                      .Input(shape.node())
@@ -518,12 +518,13 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
                    .Finalize(root.graph(), &scalar_non_const));
 
-  ops::InputList inputs{
-      ops::Input(ops::Const<int32>(root, 10)),
-      ops::Input(ops::Const<int32>(root, 20)),
-      ops::Input(ops::Output(scalar_non_const)),
-      ops::Input(ops::Const<int32>(root, 40)),
-  };
+  InputList inputs{
+      // clang-format off
+      Input(ops::Const<int32>(root, 10)),
+      Input(ops::Const<int32>(root, 20)),
+      Input(Output(scalar_non_const)),
+      Input(ops::Const<int32>(root, 40)),
+  };  // clang-format on
   auto pack = ops::Pack(root, inputs);
   TF_ASSERT_OK(root.status());
 
@@ -549,12 +550,13 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt64")
                    .Finalize(root.graph(), &scalar_non_const));
 
-  ops::InputList inputs{
-      ops::Input(ops::Const<int64>(root, 10LL)),
-      ops::Input(ops::Const<int64>(root, 20LL)),
-      ops::Input(ops::Output(scalar_non_const)),
-      ops::Input(ops::Const<int64>(root, 1LL << 40)),
-  };
+  InputList inputs{
+      // clang-format off
+      Input(ops::Const<int64>(root, 10LL)),
+      Input(ops::Const<int64>(root, 20LL)),
+      Input(Output(scalar_non_const)),
+      Input(ops::Const<int64>(root, 1LL << 40)),
+  };  // clang-format on
   auto pack = ops::Pack(root, inputs);
   TF_ASSERT_OK(root.status());
 
@@ -577,9 +579,9 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
 TEST(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
   Scope root = Scope::NewRootScope();
 
-  ops::InputList inputs{
-      ops::Input(ops::Const<int64>(root, 10LL)),
-      ops::Input(ops::Const<int64>(root, -1LL)),
+  InputList inputs{
+      Input(ops::Const<int64>(root, 10LL)),
+      Input(ops::Const<int64>(root, -1LL)),
   };
   auto pack = ops::Pack(root, inputs);
   TF_ASSERT_OK(root.status());
@@ -604,9 +606,9 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
   Scope root = Scope::NewRootScope();
 
   // Inputs are length 2 vectors instead of scalars.
-  ops::InputList inputs{
-      ops::Input(ops::Const<int64>(root, {10LL, 20LL})),
-      ops::Input(ops::Const<int64>(root, {10LL, 21LL})),
+  InputList inputs{
+      Input(ops::Const<int64>(root, {10LL, 20LL})),
+      Input(ops::Const<int64>(root, {10LL, 21LL})),
   };
   auto pack = ops::Pack(root, inputs);
   TF_ASSERT_OK(root.status());
@@ -633,10 +635,12 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
   TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape").Finalize(g, &partial_1));
   TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape2").Finalize(g, &partial_2));
   auto const_input = ops::Const(root, {9, 10, 11});
-  ops::OutputList concat_inputs{
-      ops::Shape(root, ops::Output(partial_1)),
-      ops::Shape(root, ops::Output(partial_2)), const_input,
-  };
+  OutputList concat_inputs{
+      // clang-format off
+      ops::Shape(root, Output(partial_1)),
+      ops::Shape(root, Output(partial_2)),
+      const_input,
+  };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
   auto concat = ops::Concat(root, concat_dim, concat_inputs);
   TF_ASSERT_OK(root.status());
@@ -673,11 +677,12 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
   TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape").Finalize(g, &partial_1));
   TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape2").Finalize(g, &partial_2));
   TF_ASSERT_OK(NodeBuilder("in", "WithUnknownShape").Finalize(g, &unknown));
-  ops::OutputList concat_inputs{
-      ops::Shape(root, ops::Output(partial_1)),
-      ops::Shape(root, ops::Output(partial_2)),
-      ops::Shape(root, ops::Output(unknown)),
-  };
+  OutputList concat_inputs{
+      // clang-format off
+      ops::Shape(root, Output(partial_1)),
+      ops::Shape(root, Output(partial_2)),
+      ops::Shape(root, Output(unknown)),
+  };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
   auto concat = ops::Concat(root, concat_dim, concat_inputs);
   TF_ASSERT_OK(root.status());
@@ -714,11 +719,12 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
   TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape").Finalize(g, &partial_1));
   TF_ASSERT_OK(NodeBuilder("in", "WithPartialShape2").Finalize(g, &partial_2));
   auto const_input = ops::Const(root, {9, -2, 11});
-  ops::OutputList concat_inputs{
-      ops::Shape(root, ops::Output(partial_1)),
-      ops::Shape(root, ops::Output(partial_2)),  //
+  OutputList concat_inputs{
+      // clang-format off
+      ops::Shape(root, Output(partial_1)),
+      ops::Shape(root, Output(partial_2)),
       const_input,
-  };
+  };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
   auto concat = ops::Concat(root, concat_dim, concat_inputs);
   TF_ASSERT_OK(root.status());
