@@ -785,11 +785,21 @@ tf_cc_test(
 tf_cc_test(
     name = "xsmm_conv2d_test",
     size = "small",
-    srcs = ["xsmm_conv2d_test.cc"],
+    srcs = select({
+        ":xsmm": ["xsmm_conv2d_test.cc"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":conv_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -2102,8 +2112,17 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matmul_op",
+    defines = select({
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        "//conditions:default": [],
+    }),
     prefix = "matmul_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_kernel_library(
@@ -2372,7 +2391,6 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
     ] + select({
         ":xsmm": [
-            "@libxsmm_archive//:libxsmm_headers",
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
