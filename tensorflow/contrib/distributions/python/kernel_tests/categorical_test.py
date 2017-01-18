@@ -26,7 +26,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
@@ -145,6 +147,32 @@ class CategoricalTest(test.TestCase):
           -(0.2 * np.log(0.2) + 0.8 * np.log(0.8)),
           -(0.6 * np.log(0.6) + 0.4 * np.log(0.4))
       ])
+
+  def testEntropyGradient(self):
+    with self.test_session() as sess:
+      logits = constant_op.constant([[1., 2., 3.], [2., 5., 1.]])
+
+      probabilities = nn_ops.softmax(logits)
+      log_probabilities = nn_ops.log_softmax(logits)
+      true_entropy = - math_ops.reduce_sum(
+          probabilities * log_probabilities, axis=-1)
+
+      categorical_distribution = categorical.Categorical(p=probabilities)
+      categorical_entropy = categorical_distribution.entropy()
+
+      # works
+      true_entropy_g = gradients_impl.gradients(true_entropy, [logits])
+      categorical_entropy_g = gradients_impl.gradients(
+          categorical_entropy, [logits])
+
+      res = sess.run({"true_entropy": true_entropy,
+                      "categorical_entropy": categorical_entropy,
+                      "true_entropy_g": true_entropy_g,
+                      "categorical_entropy_g": categorical_entropy_g})
+      self.assertAllClose(res["true_entropy"],
+                          res["categorical_entropy"])
+      self.assertAllClose(res["true_entropy_g"],
+                          res["categorical_entropy_g"])
 
   def testSample(self):
     with self.test_session():
