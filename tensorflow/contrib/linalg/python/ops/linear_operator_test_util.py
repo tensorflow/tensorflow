@@ -174,6 +174,29 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 feed_dict=feed_dict)
             self.assertAC(op_det_v, mat_det_v)
 
+  def test_log_abs_det(self):
+    self._maybe_skip("log_abs_det")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          if dtype.is_complex:
+            self.skipTest(
+                "tf.matrix_determinant does not work with complex, so this "
+                "test is being skipped.")
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_log_abs_det = operator.log_abs_determinant()
+            mat_log_abs_det = math_ops.log(
+                math_ops.abs(linalg_ops.matrix_determinant(mat)))
+            if not use_placeholder:
+              self.assertAllEqual(shape[:-2], op_log_abs_det.get_shape())
+            op_log_abs_det_v, mat_log_abs_det_v = sess.run(
+                [op_log_abs_det, mat_log_abs_det],
+                feed_dict=feed_dict)
+            self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
+
   def test_apply(self):
     self._maybe_skip("apply")
     for use_placeholder in False, True:
@@ -291,7 +314,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   @property
   def _tests_to_skip(self):
     """List of test names to skip."""
-    return ["solve", "det"]
+    return ["solve", "det", "log_abs_det"]
 
   @property
   def _shapes_to_test(self):
