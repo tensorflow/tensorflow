@@ -351,10 +351,10 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   ASSERT_TRUE(params_conv != nullptr);
   const int id = params_conv->node_id;
   EXPECT_GE(id, 0);
-  EXPECT_EQ("Conv2D", params_conv->type);
+  EXPECT_EQ("Conv2D", params_conv->type_name);
   EXPECT_EQ(3, params_conv->inputs_size);
   EXPECT_EQ(1, params_conv->outputs_size);
-  EXPECT_EQ("NN_PAD_SAME", params_conv->padding);
+  EXPECT_EQ(Padding::SAME, params_conv->padding);
 }
 
 TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
@@ -377,10 +377,10 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   ASSERT_TRUE(params_max_pool != nullptr);
   const int id = params_max_pool->node_id;
   EXPECT_GE(id, 0);
-  EXPECT_EQ("MaxPool", params_max_pool->type);
+  EXPECT_EQ("MaxPool", params_max_pool->type_name);
   EXPECT_EQ(3, params_max_pool->inputs_size);
   EXPECT_EQ(1, params_max_pool->outputs_size);
-  EXPECT_EQ("NN_PAD_SAME", params_max_pool->padding);
+  EXPECT_EQ(Padding::SAME, params_max_pool->padding);
 }
 
 TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {

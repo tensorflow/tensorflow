@@ -141,18 +141,15 @@ bool HexagonControlWrapper::SetupGraph(
       output_count = std::get<1>(output_ptr_and_count);
       CHECK(output_count > 0);
     }
-
-    // TODO(satok): Do not use string. Use enum instead.
-    const string padding = params.padding;
     int padding_id = -1;
-    if (padding == "NN_PAD_NA") {
+    if (params.padding == 0) {
       padding_id = 0;
-    } else if (padding == "NN_PAD_SAME") {
+    } else if (params.padding == Padding::SAME) {
       padding_id = 1;
-    } else if (padding == "NN_PAD_VALID") {
+    } else if (params.padding == Padding::VALID) {
       padding_id = 2;
     } else {
-      CHECK(false) << "Unsupported padding " << padding;
+      CHECK(false);
     }
     soc_interface_AppendNode(params.name.c_str(), node_id + NODE_ID_OFFSET,
                              op_id, padding_id, input_ptr, input_count,

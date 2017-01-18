@@ -52,21 +52,18 @@ class GraphTransferer {
   struct NodeTransferParams {
     string name;
     int node_id;
-    string type;  // for debug info
+    string type_name;
     int soc_op_id;
-    string padding;
-    string inputs_name;  // for debug info TODO(satok): remove
+    int padding;
     int inputs_size;
-    string outputs_name;  // for debug info TODO(satok): remove
     int outputs_size;
   };
 
   // Const node parameters for transfer
   struct ConstNodeTransferParams {
-    string name;  // for debug info
+    string name;
     int node_id;
     std::array<int64, MAX_SUPPORTED_RANK> shape;
-    string data_name;  // for debug info TODO(satok): remove
     int data_size;
     std::vector<uint8> data;
   };
@@ -215,7 +212,7 @@ class GraphTransferer {
       const OutputTensorMap& output_tensor_map);
 
   void AppendNodeParams(const string& name, const int id, const string& type,
-                        const int type_id, const string& padding_str,
+                        const int type_id, const int padding,
                         const int inputs_size,
                         const std::vector<int>& extra_inputs,
                         const int outputs_size);
@@ -235,12 +232,14 @@ class GraphTransferer {
       const ShapeRefiner& shape_refiner,
       const OutputTensorMap& output_tensor_map, const Node& node,
       const string& name, const int id, const string& type, const int type_id,
-      const string& padding_str, const int inputs_size,
+      const int padding, const int inputs_size,
       const std::vector<int>& extra_inputs, const int outputs_size,
       const bool append_input_params, const bool append_output_params);
 
   static std::array<int64, SHAPE_ARRAY_SIZE> ToTensorShapeArray(
       const TensorShape& shape);
+
+  static string ToPaddingDebugString(int padding);
 
   static void CheckShape(const OutputTensorMap& output_tensor_map,
                          const string& node_name,
