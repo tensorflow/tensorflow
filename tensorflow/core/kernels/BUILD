@@ -3732,10 +3732,7 @@ filegroup(
             "ctc_loss_op.*",
             # Excluded due to experimental status:
             "debug_ops.*",
-            # Ops excluded because they do not build correctly for Android.
-            # See b/29213790
             "scatter_nd_op*",
-            "sparse_matmul_op.*",
             # Lib CURL is not supported on Android.
             "bigquery*",
         ],
