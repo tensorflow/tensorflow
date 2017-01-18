@@ -1220,8 +1220,7 @@ class Estimator(BaseEstimator):
       self, export_dir_base, input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
-      as_text=False,
-      exports_to_keep=None):
+      as_text=False):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1230,7 +1229,7 @@ class Estimator(BaseEstimator):
       input_fn: A function that takes no argument and
         returns an `InputFnOps`.
       default_output_alternative_key: the name of the head to serve when none is
-        specified.
+        specified.  Not needed for single-headed models.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel.  Each key should give the destination
         path (including the filename) relative to the assets.extra directory.
@@ -1239,7 +1238,6 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
-      exports_to_keep: Number of exports to keep.
 
     Returns:
       The string path to the exported directory.
@@ -1265,7 +1263,7 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
-      # Build the SignatureDefs from all pairs of input and output signatures
+      # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)

@@ -240,21 +240,21 @@ class SavedModelExportUtilsTest(test.TestCase):
     export_dir_base = tempfile.mkdtemp() + "export/"
     export_dir_1 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(0.001)
+    time.sleep(1)
     export_dir_2 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(0.001)
+    time.sleep(1)
     export_dir_3 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
 
-    # Export directories should be named using a timestamp that is milliseconds
-    # since epoch.  Such a timestamp is 13 digits long.
+    # Export directories should be named using a timestamp that is seconds
+    # since epoch.  Such a timestamp is 10 digits long.
     time_1 = os.path.basename(export_dir_1)
-    self.assertEqual(13, len(time_1))
+    self.assertEqual(10, len(time_1))
     time_2 = os.path.basename(export_dir_2)
-    self.assertEqual(13, len(time_2))
+    self.assertEqual(10, len(time_2))
     time_3 = os.path.basename(export_dir_3)
-    self.assertEqual(13, len(time_3))
+    self.assertEqual(10, len(time_3))
 
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
@@ -299,7 +299,7 @@ def _create_test_export_dir(export_dir_base):
   export_dir = saved_model_export_utils.get_timestamped_export_dir(
       export_dir_base)
   gfile.MkDir(export_dir)
-  time.sleep(0.001)
+  time.sleep(1)
   return export_dir
 
 

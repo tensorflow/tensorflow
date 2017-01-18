@@ -261,15 +261,13 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                         input_fn,
                         default_output_alternative_key=None,
                         assets_extra=None,
-                        as_text=False,
-                        exports_to_keep=None):
+                        as_text=False):
     return self._estimator.export_savedmodel(
         export_dir_base,
         input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        as_text=as_text,
-        exports_to_keep=exports_to_keep)
+        as_text=as_text)
 
   @property
   def weights_(self):

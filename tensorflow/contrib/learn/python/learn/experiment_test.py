@@ -346,7 +346,7 @@ class ExperimentTest(test.TestCase):
   def test_train_and_evaluate(self):
     est = TestEstimator()
     export_strategy = saved_model_export_utils.make_export_strategy(
-        est, 'export_input')
+        est, 'export_input', exports_to_keep=None)
     ex = experiment.Experiment(
         est,
         train_input_fn='train_input',
