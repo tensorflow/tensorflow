@@ -17,10 +17,15 @@ limitations under the License.
 // -o /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb
 // adb push /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb \
 // /data/local/tmp
+// $ curl
+// https://storage.googleapis.com/download.tensorflow.org/models/imagenet_comp_graph_label_strings.txt
+// -o /tmp/imagenet_comp_graph_label_strings.txt
+// adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 #include <memory>
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
@@ -29,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -40,6 +46,42 @@ const bool DBG_DUMP_FLOAT_DATA = false;
 const int WIDTH = 299;
 const int HEIGHT = 299;
 const int DEPTH = 3;
+const int EXPECTED_FIRST_RESULT_ID = 59;
+
+static void DumpTop10Results(
+    const std::vector<ISocControlWrapper::ByteArray>& outputs) {
+  CHECK(outputs.size() == 1);
+  const int byte_size = std::get<1>(outputs.at(0));
+  const int element_count = byte_size / sizeof(float);
+  const float* float_array =
+      reinterpret_cast<float*>(std::get<0>(outputs.at(0)));
+  const string label_filename =
+      "/data/local/tmp/imagenet_comp_graph_label_strings.txt";
+  string label_str;
+  TF_CHECK_OK(ReadFileToString(Env::Default(), label_filename, &label_str));
+  std::vector<string> labels = str_util::Split(label_str, '\n');
+  GraphTransferUtils::DumpTopNFloatResults(
+      float_array, labels.data(),
+      std::min(element_count, static_cast<int>(labels.size())),
+      10 /* show top_n results */);
+}
+
+static void CheckFirstResult(
+    const std::vector<ISocControlWrapper::ByteArray>& outputs,
+    const int expected_first_id) {
+  EXPECT_GE(outputs.size(), 1);
+  const int byte_size = std::get<1>(outputs.at(0));
+  const int element_count = byte_size / sizeof(float);
+  const float* float_array =
+      reinterpret_cast<float*>(std::get<0>(outputs.at(0)));
+  EXPECT_GE(element_count, 1);
+  std::vector<string> labels(element_count);
+  std::priority_queue<std::tuple<float, int, string>> queue =
+      GraphTransferUtils::GetTopNFloatResults(float_array, labels.data(),
+                                              element_count);
+  const std::tuple<float, int, string>& entry = queue.top();
+  EXPECT_EQ(expected_first_id, std::get<1>(entry));
+}
 
 // CAVEAT: This test only runs when you specify hexagon library using
 // makefile.
@@ -77,12 +119,17 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   const int fsize = bmp.size();
   LOG(INFO) << "Read " << image_filename << ", size = " << fsize << "bytes";
   const int64 pixel_count = WIDTH * HEIGHT * DEPTH;
+  CHECK(fsize >= 22 /* pos of height */ + sizeof(int));
+  CHECK(bmp.data() != nullptr);
   uint8* const img_bytes = bit_cast<uint8*>(bmp.data());
   const int header_size = *(reinterpret_cast<int*>(img_bytes + 10));
+  LOG(INFO) << "header size = " << header_size;
   const int size = *(reinterpret_cast<int*>(img_bytes + 14));
+  LOG(INFO) << "image size = " << size;
   const int width = *(reinterpret_cast<int*>(img_bytes + 18));
+  LOG(INFO) << "width = " << width;
   const int height = *(reinterpret_cast<int*>(img_bytes + 22));
-  LOG(INFO) << header_size << ", " << size << ", " << width << ", " << height;
+  LOG(INFO) << "height = " << height;
   CHECK(fsize >= (WIDTH + 1) * WIDTH * 3 + header_size);
 
   uint8* const bmp_pixels = &img_bytes[header_size];
@@ -134,6 +181,8 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   // 5. Read output node's outputs
   std::vector<ISocControlWrapper::ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
+  DumpTop10Results(outputs);
+  CheckFirstResult(outputs, EXPECTED_FIRST_RESULT_ID);
 
   // 6. Teardown graph in hexagon
   hexagon_control_wrapper.TeardownGraph();
