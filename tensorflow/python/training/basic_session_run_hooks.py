@@ -173,14 +173,14 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     if self._should_trigger:
       original = np.get_printoptions()
       np.set_printoptions(suppress=True)
+      elapsed_secs, _ = self._timer.update_last_triggered_step(self._iter_count)
       if self._formatter:
         logging.info(self._formatter(run_values.results))
       else:
         stats = []
         for tag in self._tag_order:
           stats.append("%s = %s" % (tag, run_values.results[tag]))
-        logging.info("%s", ", ".join(stats))
-      self._timer.update_last_triggered_step(self._iter_count)
+        logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
       np.set_printoptions(**original)
     self._iter_count += 1
 
