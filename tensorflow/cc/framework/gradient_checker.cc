@@ -35,20 +35,20 @@ namespace {
 
 template <typename T>
 Status ComputeTheoreticalJacobianTranspose(
-    const Scope& scope, const OutputList& xs,
+    const Scope& scope, const ops::OutputList& xs,
     const std::vector<TensorShape>& x_shapes,
-    const std::vector<Tensor>& x_datas, const OutputList& ys,
+    const std::vector<Tensor>& x_datas, const ops::OutputList& ys,
     const std::vector<TensorShape>& y_shapes,
     std::vector<Tensor>& jacobian_ts) {
   int y_num = y_shapes.size();
   int x_num = x_shapes.size();
   // Call AddSymbolicGradients to get 'dxs' (we will feed 'dys').
-  OutputList dys;
+  ops::OutputList dys;
   for (const auto& y_shape : y_shapes) {
     // TODO(suharshs): This currently assumes that all x's are the same type.
     dys.push_back(Cast(scope, Const(scope, 1.0, y_shape), xs[0].type()));
   }
-  OutputList dxs;
+  ops::OutputList dxs;
   TF_RETURN_IF_ERROR(AddSymbolicGradients(scope, ys, xs, dys, &dxs));
 
   // Initialize 'dy_data' to zeros.
@@ -97,8 +97,8 @@ Status ComputeTheoreticalJacobianTranspose(
   return Status::OK();
 }
 
-Status EvaluateGraph(ClientSession& session, const OutputList& xs,
-                     const OutputList& ys, std::vector<Tensor>& x_datas,
+Status EvaluateGraph(ClientSession& session, const ops::OutputList& xs,
+                     const ops::OutputList& ys, std::vector<Tensor>& x_datas,
                      std::vector<Tensor>* y_datas) {
   // Create the feed list.
   ClientSession::FeedType feed_list;
@@ -123,13 +123,11 @@ Status EvaluateGraph(ClientSession& session, const OutputList& xs,
 }
 
 template <typename T>
-Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
-                                       const std::vector<TensorShape>& x_shapes,
-                                       const OutputList& ys,
-                                       const std::vector<TensorShape>& y_shapes,
-                                       const T delta,
-                                       std::vector<Tensor>& x_datas,
-                                       std::vector<Tensor>& jacobian_ts) {
+Status ComputeNumericJacobianTranspose(
+    const Scope& scope, const ops::OutputList& xs,
+    const std::vector<TensorShape>& x_shapes, const ops::OutputList& ys,
+    const std::vector<TensorShape>& y_shapes, const T delta,
+    std::vector<Tensor>& x_datas, std::vector<Tensor>& jacobian_ts) {
   int y_num = y_shapes.size();
   int x_num = x_shapes.size();
 
@@ -172,7 +170,7 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
 }
 
 template <typename T>
-void InitJacobians(const OutputList& xs,
+void InitJacobians(const ops::OutputList& xs,
                    const std::vector<TensorShape>& x_shapes,
                    const std::vector<TensorShape>& y_shapes,
                    std::vector<Tensor>& jacobians) {
@@ -193,9 +191,10 @@ void InitJacobians(const OutputList& xs,
 }
 
 template <typename T>
-Status ComputeGradientErrorInternal(const Scope& scope, const OutputList& xs,
+Status ComputeGradientErrorInternal(const Scope& scope,
+                                    const ops::OutputList& xs,
                                     const std::vector<TensorShape>& x_shapes,
-                                    const OutputList& ys,
+                                    const ops::OutputList& ys,
                                     const std::vector<TensorShape>& y_shapes,
                                     std::vector<Tensor>& x_datas,
                                     T* max_error) {
@@ -232,9 +231,9 @@ Status ComputeGradientErrorInternal(const Scope& scope, const OutputList& xs,
 }  // namespace
 
 template <typename T>
-Status ComputeGradientError(const Scope& scope, const OutputList& xs,
+Status ComputeGradientError(const Scope& scope, const ops::OutputList& xs,
                             const std::vector<TensorShape>& x_shapes,
-                            const OutputList& ys,
+                            const ops::OutputList& ys,
                             const std::vector<TensorShape>& y_shapes,
                             T* max_error) {
   if (xs.size() != x_shapes.size()) {
@@ -260,8 +259,8 @@ Status ComputeGradientError(const Scope& scope, const OutputList& xs,
 }
 
 template <typename T>
-Status ComputeGradientError(const Scope& scope, const Output& x,
-                            const Tensor& x_init_value, const Output& y,
+Status ComputeGradientError(const Scope& scope, const ops::Output& x,
+                            const Tensor& x_init_value, const ops::Output& y,
                             const TensorShape& y_shape, T* max_error) {
   // Initialize 'x_data' from 'x_init_value'.
   std::vector<Tensor> x_datas(1, Tensor(x_init_value));
@@ -270,14 +269,14 @@ Status ComputeGradientError(const Scope& scope, const Output& x,
                                       {y_shape}, x_datas, max_error);
 }
 
-#define INSTANTIATE_GRAD_ERR_TYPE(T)                                   \
-  template Status ComputeGradientError<T>(                             \
-      const Scope& scope, const OutputList& xs,                        \
-      const std::vector<TensorShape>& x_shapes, const OutputList& ys,  \
-      const std::vector<TensorShape>& y_shapes, T* max_error);         \
-  template Status ComputeGradientError<T>(                             \
-      const Scope& scope, const Output& x, const Tensor& x_init_value, \
-      const Output& y, const TensorShape& y_shape, T* max_error);
+#define INSTANTIATE_GRAD_ERR_TYPE(T)                                        \
+  template Status ComputeGradientError<T>(                                  \
+      const Scope& scope, const ops::OutputList& xs,                        \
+      const std::vector<TensorShape>& x_shapes, const ops::OutputList& ys,  \
+      const std::vector<TensorShape>& y_shapes, T* max_error);              \
+  template Status ComputeGradientError<T>(                                  \
+      const Scope& scope, const ops::Output& x, const Tensor& x_init_value, \
+      const ops::Output& y, const TensorShape& y_shape, T* max_error);
 
 INSTANTIATE_GRAD_ERR_TYPE(float);
 INSTANTIATE_GRAD_ERR_TYPE(double);

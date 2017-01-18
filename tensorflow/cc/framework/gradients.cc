@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+using namespace ops;  // NOLINT(build/namespaces)
+
 namespace {
 
 struct OutputHash {
@@ -46,7 +48,7 @@ struct OutputEq {
 class SymbolicGradientBuilder {
  public:
   SymbolicGradientBuilder(const Scope& scope,
-                          const ops::GradOpRegistry* registry,
+                          const GradOpRegistry* registry,
                           const std::vector<Output>& outputs,
                           const std::vector<Output>& inputs,
                           const std::vector<Output>& grad_inputs,
@@ -79,7 +81,7 @@ class SymbolicGradientBuilder {
                           std::vector<Output>* grad_outputs);
 
   const Scope& scope_;
-  const ops::GradOpRegistry* registry_;
+  const GradOpRegistry* registry_;
   const std::vector<Output>& outputs_;
   const std::vector<Output>& inputs_;
   const std::vector<Output>& grad_inputs_;
@@ -117,15 +119,19 @@ class SymbolicGradientBuilder {
 };
 
 SymbolicGradientBuilder::SymbolicGradientBuilder(
-    const Scope& scope, const ops::GradOpRegistry* registry,
-    const std::vector<Output>& outputs, const std::vector<Output>& inputs,
-    const std::vector<Output>& grad_inputs, std::vector<Output>* grad_outputs)
+    const Scope& scope,
+    const GradOpRegistry* registry,
+    const std::vector<Output>& outputs,
+    const std::vector<Output>& inputs,
+    const std::vector<Output>& grad_inputs,
+    std::vector<Output>* grad_outputs)
     : scope_(scope),
       registry_(registry),
       outputs_(outputs),
       inputs_(inputs),
       grad_inputs_(grad_inputs),
-      grad_outputs_(grad_outputs) {}
+      grad_outputs_(grad_outputs) {
+}
 
 Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
                                                   const Output& src) {
@@ -243,14 +249,14 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
   } else {
     // Otherwise, adds backprop-ed gradients.
     // TODO(andydavis) Use a better accumulator here.
-    *grad = ops::AddN(scope_, grads_to_keep);
+    *grad = AddN(scope_, grads_to_keep);
   }
 
   return Status::OK();
 }
 
 bool SymbolicGradientBuilder::IsPrimitiveOpWithNoGrad(const string& opname) {
-  ops::GradFunc grad_fn;
+  GradFunc grad_fn;
   Status s = registry_->Lookup(opname, &grad_fn);
   return s.ok() && (grad_fn == nullptr);
 }
@@ -259,7 +265,7 @@ Status SymbolicGradientBuilder::CallGradFunction(
     const Operation& op,
     const std::vector<Output>& grad_inputs,
     std::vector<Output>* grad_outputs) {
-  ops::GradFunc grad_fn;
+  GradFunc grad_fn;
   TF_RETURN_IF_ERROR(registry_->Lookup(op.node()->type_string(), &grad_fn));
   TF_RETURN_IF_ERROR(grad_fn(scope_, op, grad_inputs, grad_outputs));
   TF_RETURN_IF_ERROR(scope_.status());
@@ -327,7 +333,7 @@ Status SymbolicGradientBuilder::AddGradients() {
       // TODO(andydavis) If static shapes are known, replace 'ZerosLike' with
       // zero-filled Constant node of appropriate shape.
       for (const int dy_index : no_grad_dy_indices) {
-        dy[dy_index] = ops::ZerosLike(scope_, Output(n, dy_index));
+        dy[dy_index] = ZerosLike(scope_, Output(n, dy_index));
       }
     }
 
@@ -362,7 +368,7 @@ Status AddSymbolicGradients(const Scope& scope,
                             const std::vector<Output>& inputs,
                             const std::vector<Output>& grad_inputs,
                             std::vector<Output>* grad_outputs) {
-  SymbolicGradientBuilder builder(scope, ops::GradOpRegistry::Global(), outputs,
+  SymbolicGradientBuilder builder(scope, GradOpRegistry::Global(), outputs,
                                   inputs, grad_inputs, grad_outputs);
   return builder.AddGradients();
 }

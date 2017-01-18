@@ -69,9 +69,10 @@ class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
 
 static GraphDef CreateAddGraphDef() {
   Scope root = Scope::NewRootScope();
-  Output node_a = ops::Const(root.WithOpName(NAME_A), NODE_A_VAL);
-  Output node_b = ops::Const(root.WithOpName(NAME_B), NODE_B_VAL);
-  Output node_add = ops::Add(root.WithOpName(NAME_A_PLUS_B), node_a, node_b);
+  ops::Output node_a = ops::Const(root.WithOpName(NAME_A), NODE_A_VAL);
+  ops::Output node_b = ops::Const(root.WithOpName(NAME_B), NODE_B_VAL);
+  ops::Output node_add =
+      ops::Add(root.WithOpName(NAME_A_PLUS_B), node_a, node_b);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -81,16 +82,16 @@ static GraphDef CreateConvGraphDef() {
   Scope root = Scope::NewRootScope();
   Tensor input_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&input_data, 1.0f);
-  Output input =
-      ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
+  ops::Output input =
+      ops::Const(root.WithOpName("input"), ops::Input::Initializer(input_data));
   Tensor filter_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&filter_data, 1.0f);
-  Output filter =
-      ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
+  ops::Output filter = ops::Const(root.WithOpName("filter"),
+                                  ops::Input::Initializer(filter_data));
   const std::vector<int> strides{1, 1, 1, 1};
-  Output conv =
+  ops::Output conv =
       ops::Conv2D(root.WithOpName("conv"), input, filter, strides, "SAME");
-  Output softmax = ops::Softmax(root.WithOpName("softmax"), conv);
+  ops::Output softmax = ops::Softmax(root.WithOpName("softmax"), conv);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -100,18 +101,18 @@ static GraphDef CreatePoolGraphDef() {
   Scope root = Scope::NewRootScope();
   Tensor input_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&input_data, 1.0f);
-  Output input =
-      ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
+  ops::Output input =
+      ops::Const(root.WithOpName("input"), ops::Input::Initializer(input_data));
   Tensor filter_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&filter_data, 1.0f);
-  Output filter =
-      ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
+  ops::Output filter = ops::Const(root.WithOpName("filter"),
+                                  ops::Input::Initializer(filter_data));
   const std::vector<int> ksize{1, 1, 1, 1};
   const std::vector<int> padding{0, 0, 0, 0};
   const std::vector<int> strides{1, 1, 1, 1};
-  Output max_pool =
+  ops::Output max_pool =
       ops::MaxPool(root.WithOpName("maxpool"), input, ksize, strides, "SAME");
-  Output softmax = ops::Softmax(root.WithOpName("softmax"), max_pool);
+  ops::Output softmax = ops::Softmax(root.WithOpName("softmax"), max_pool);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
