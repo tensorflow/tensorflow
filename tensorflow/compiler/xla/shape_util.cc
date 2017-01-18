@@ -37,32 +37,62 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ bool ShapeUtil::CompareShapes(const Shape& lhs, const Shape& rhs,
-                                           bool compare_layouts) {
-  if (IsTuple(lhs)) {
-    return IsTuple(rhs) &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts);
-                           });
+namespace {
+
+// Recursive helper for comparing the equality of two shapes. Returns true if
+// the shapes are the same. If compare_layouts is true, then layouts must also
+// match.
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
+  if (ShapeUtil::IsTuple(lhs)) {
+    if (!ShapeUtil::IsTuple(rhs)) {
+      VLOG(3) << "CompareShapes: lhs is a tuple, rhs not a tuple";
+      return false;
+    }
+
+    if (!ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [=](const Shape& l, const Shape& r) {
+                           return CompareShapes(l, r, compare_layouts);
+                         })) {
+      VLOG(3) << "CompareShapes: tuples on lhs and rhs not equal";
+      return false;
+    }
   }
   // Explicitly compare the fields rather than using MessageDifferencer because
   // we want empty layouts to be treated identically to missing layouts.
-  if (compare_layouts &&
-      (!ContainersEqual(lhs.layout().minor_to_major(),
-                        rhs.layout().minor_to_major()) ||
-       !ContainersEqual(lhs.layout().padded_dimensions(),
-                        rhs.layout().padded_dimensions()) ||
-       lhs.layout().padding_value() != rhs.layout().padding_value())) {
+  if (compare_layouts) {
+    if (!ContainersEqual(lhs.layout().minor_to_major(),
+                         rhs.layout().minor_to_major())) {
+      VLOG(3) << "CompareShapes: lhs layout != rhs layout";
+      return false;
+    }
+    if (!ContainersEqual(lhs.layout().padded_dimensions(),
+                         rhs.layout().padded_dimensions())) {
+      VLOG(3)
+          << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
+      return false;
+    }
+    if (lhs.layout().padding_value() != rhs.layout().padding_value()) {
+      VLOG(3) << "CompareShapes: lhs padding value != rhs padding_value";
+      return false;
+    }
+  }
+
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
     return false;
   }
-  return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
+  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs element type != rhs element type";
+    return false;
+  }
+  return true;
 }
+
+}  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
   bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
   if (!equal && VLOG_IS_ON(3)) {
-    // TODO(jeff): Maybe print more info about where lhs and rhs differ
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
   }
