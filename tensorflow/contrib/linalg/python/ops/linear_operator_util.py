@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -64,3 +66,39 @@ def assert_zero_imag_part(x, message=None, name="assert_zero_imag_part"):
 
     zero = ops.convert_to_tensor(0, dtype=dtype.real_dtype)
     return check_ops.assert_equal(zero, math_ops.imag(x), message=message)
+
+
+def assert_compatible_matrix_dimensions(operator, x):
+  """Assert that an argument to solve/apply has proper domain dimension.
+
+  If `operator.shape[-2:] = [M, N]`, and `x.shape[-2:] = [Q, R]`, then
+  `operator.apply(x)` is defined only if `N = Q`.  This `Op` returns an
+  `Assert` that "fires" if this is not the case.  Static checks are already
+  done by the base class `LinearOperator`.
+
+  Args:
+    operator:  `LinearOperator`.
+    x:  `Tensor`.
+
+  Returns:
+    `Assert` `Op`.
+  """
+  # Static checks are done in the base class.  Only dynamic asserts here.
+  assert_same_dd = check_ops.assert_equal(
+      array_ops.shape(x)[-2],
+      operator.domain_dimension_dynamic(),
+      message=(
+          "Incompatible matrix dimensions.  "
+          "shape[-2] of argument to be the same as this operator"))
+
+  return assert_same_dd
+
+
+def shape_tensor(shape, name=None):
+  """Convert Tensor using default type, unless empty list or tuple."""
+  # Works just like random_ops._ShapeTensor.
+  if isinstance(shape, (tuple, list)) and not shape:
+    dtype = dtypes.int32
+  else:
+    dtype = None
+  return ops.convert_to_tensor(shape, dtype=dtype, name=name)

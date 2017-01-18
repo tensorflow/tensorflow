@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import hashlib
 import re
+import threading
 
 import six
 
@@ -38,6 +39,7 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _as_type_list(dtypes):
@@ -205,8 +207,8 @@ class QueueBase(object):
     reduced_shapes = [
         six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
 
-    queue_refs = [x.queue_ref for x in queues]
-    selected_queue = control_flow_ops.ref_select(index, queue_refs)
+    queue_refs = array_ops.stack([x.queue_ref for x in queues])
+    selected_queue = array_ops.gather(queue_refs, index)
     return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
@@ -242,7 +244,7 @@ class QueueBase(object):
     dictionary with tensor values.
 
     If it is a dictionary, the queue must have been constructed with a
-    `names` attribute and the dictionary keys must math the queue names.
+    `names` attribute and the dictionary keys must match the queue names.
     If the queue was constructed with a `names` attribute, `vals` must
     be a dictionary.
 
@@ -326,7 +328,12 @@ class QueueBase(object):
       for val, shape in zip(vals, self._shapes):
         val.get_shape().assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=scope)
+      if self._queue_ref.dtype == _dtypes.resource:
+        return gen_data_flow_ops._queue_enqueue_v2(
+            self._queue_ref, vals, name=scope)
+      else:
+        return gen_data_flow_ops._queue_enqueue(
+            self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
     """Enqueues zero or more elements to this queue.
@@ -367,7 +374,7 @@ class QueueBase(object):
             val.get_shape().with_rank_at_least(1)[0])
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue_many(
+      return gen_data_flow_ops._queue_enqueue_many_v2(
           self._queue_ref, vals, name=scope)
 
   def _dequeue_return_value(self, tensors):
@@ -415,8 +422,12 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Dequeue" % self._name
-    ret = gen_data_flow_ops._queue_dequeue(
-        self._queue_ref, self._dtypes, name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      ret = gen_data_flow_ops._queue_dequeue_v2(
+          self._queue_ref, self._dtypes, name=name)
+    else:
+      ret = gen_data_flow_ops._queue_dequeue(
+          self._queue_ref, self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
@@ -454,7 +465,7 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueMany" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_many(
+    ret = gen_data_flow_ops._queue_dequeue_many_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
@@ -495,7 +506,7 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueUpTo" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_up_to(
+    ret = gen_data_flow_ops._queue_dequeue_up_to_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
@@ -529,9 +540,14 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Close" % self._name
-    return gen_data_flow_ops._queue_close(
-        self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
-        name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops._queue_close_v2(
+          self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
+          name=name)
+    else:
+      return gen_data_flow_ops._queue_close(
+          self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
+          name=name)
 
   def size(self, name=None):
     """Compute the number of elements in this queue.
@@ -544,7 +560,10 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Size" % self._name
-    return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops._queue_size_v2(self._queue_ref, name=name)
+    else:
+      return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
 
 
 class RandomShuffleQueue(QueueBase):
@@ -614,7 +633,7 @@ class RandomShuffleQueue(QueueBase):
       # the id of the last op created.)
       string = (str(seed1) + shared_name).encode("utf-8")
       seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
-    queue_ref = gen_data_flow_ops._random_shuffle_queue(
+    queue_ref = gen_data_flow_ops._random_shuffle_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
         shared_name=shared_name, name=name)
@@ -665,7 +684,7 @@ class FIFOQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    queue_ref = gen_data_flow_ops._fifo_queue(
+    queue_ref = gen_data_flow_ops._fifo_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -732,7 +751,7 @@ class PaddingFIFOQueue(QueueBase):
                        "but received %d dtypes and %d shapes."
                        % (len(dtypes), len(shapes)))
 
-    queue_ref = gen_data_flow_ops._padding_fifo_queue(
+    queue_ref = gen_data_flow_ops._padding_fifo_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -788,7 +807,7 @@ class PriorityQueue(QueueBase):
     types = _as_type_list(types)
     shapes = _as_shape_list(shapes, types)
 
-    queue_ref = gen_data_flow_ops._priority_queue(
+    queue_ref = gen_data_flow_ops._priority_queue_v2(
         component_types=types, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -1035,7 +1054,21 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
+@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
+  """Returns an Op that initializes all tables of the default graph.
+
+  Args:
+    name: Optional name for the initialization op.
+
+  Returns:
+    An Op that initializes all tables.  Note that if there are
+    not tables the returned Op is a NoOp.
+  """
+  return tables_initializer(name)
+
+
+def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
   Args:
@@ -1365,3 +1398,218 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)
+
+
+class StagingArea(object):
+  """Class for staging inputs. No ordering guarantees.
+
+  A `StagingArea` is a TensorFlow data structure that stores tensors across
+  multiple steps, and exposes operations that can put and get
+  tensors.
+
+  Each `StagingArea` element is a tuple of one or more tensors, where each
+  tuple component has a static dtype, and may have a static shape.
+
+  The capacity of a `StagingArea` is unbounded and supports multiple
+  concurrent producers and consumers; and provides exactly-once delivery.
+
+  Each element of a `StagingArea` is a fixed-length tuple of tensors whose
+  dtypes are described by `dtypes`, and whose shapes are optionally described
+  by the `shapes` argument.
+
+  If the `shapes` argument is specified, each component of a staging area
+  element must have the respective fixed shape. If it is
+  unspecified, different elements may have different shapes,
+  """
+
+  _identifier = 0
+  _lock = threading.Lock()
+
+  def __init__(self, dtypes, shapes=None, names=None, shared_name=None):
+    """Constructs a staging area object.
+
+    The two optional lists, `shapes` and `names`, must be of the same length
+    as `dtypes` if provided.  The values at a given index `i` indicate the
+    shape and name to use for the corresponding queue component in `dtypes`.
+
+    Args:
+      dtypes:  A list of types.  The length of dtypes must equal the number
+        of tensors in each element.
+      shapes: (Optional.) Constraints on the shapes of tensors in an element.
+        A list of shape tuples or None. This list is the same length
+        as dtypes.  If the shape of any tensors in the element are constrained,
+        all must be; shapes can be None if the shapes should not be constrained.
+      names: (Optional.) If provided, the `get()` and
+        `put()` methods will use dictionaries with these names as keys.
+        Must be None or a list or tuple of the same length as `dtypes`.
+      shared_name: (Optional.) A name to be used for the shared object. By
+        passing the same name to two different python objects they will share
+        the underlying staging area. Must be a string.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+    if shared_name is None:
+      self._name = ops.get_default_graph().unique_name("StagingArea")
+    elif isinstance(shared_name, six.string_types):
+      self._name = shared_name
+    else:
+      raise ValueError("shared_name must be a string")
+    self._dtypes = dtypes
+    if shapes is not None:
+      if len(shapes) != len(dtypes):
+        raise ValueError("StagingArea shapes must be the same length as dtypes")
+      self._shapes = [tensor_shape.TensorShape(s) for s in shapes]
+    else:
+      self._shapes = [tensor_shape.unknown_shape() for _ in self._dtypes]
+    if names is not None:
+      if len(names) != len(dtypes):
+        raise ValueError("StagingArea names must be the same length as dtypes")
+      self._names = names
+    else:
+      self._names = None
+
+  @property
+  def name(self):
+    """The name of the staging area."""
+    return self._name
+
+  @property
+  def dtypes(self):
+    """The list of dtypes for each component of a staging area element."""
+    return self._dtypes
+
+  @property
+  def shapes(self):
+    """The list of shapes for each component of a staging area element."""
+    return self._shapes
+
+  @property
+  def names(self):
+    """The list of names for each component of a staging area element."""
+    return self._names
+
+  def _check_put_dtypes(self, vals):
+    """Validate and convert `vals` to a list of `Tensor`s.
+
+    The `vals` argument can be a Tensor, a list or tuple of tensors, or a
+    dictionary with tensor values.
+
+    If it is a dictionary, the staging area must have been constructed with a
+    `names` attribute and the dictionary keys must match the staging area names.
+    If the staging area was constructed with a `names` attribute, `vals` must
+    be a dictionary.
+
+    Args:
+      vals: A tensor, a list or tuple of tensors, or a dictionary..
+
+    Returns:
+      A list of `Tensor` objects.
+
+    Raises:
+      ValueError: If `vals` is invalid.
+    """
+    if isinstance(vals, dict):
+      if not self._names:
+        raise ValueError(
+            "Staging areas must have names to enqueue a dictionary")
+      if sorted(self._names) != sorted(vals.keys()):
+        raise ValueError("Keys in dictionary to put do not match names "
+                         "of staging area. Dictionary: (%s), Queue: (%s)" %
+                         (sorted(vals.keys()), sorted(self._names)))
+      # The order of values in `self._names` indicates the order in which the
+      # tensors in the dictionary `vals` must be listed.
+      vals = [vals[k] for k in self._names]
+    else:
+      if self._names:
+        raise ValueError("You must enqueue a dictionary in a staging area "
+                         "with names")
+      if not isinstance(vals, (list, tuple)):
+        vals = [vals]
+
+    tensors = []
+    for i, (val, dtype) in enumerate(zip(vals, self._dtypes)):
+      tensors.append(
+          ops.convert_to_tensor(
+              val, dtype=dtype, name="component_%d" % i))
+
+    return tensors
+
+  def _scope_vals(self, vals):
+    """Return a list of values to pass to `name_scope()`.
+
+    Args:
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
+
+    Returns:
+      The values in vals as a list.
+    """
+    if isinstance(vals, (list, tuple)):
+      return vals
+    elif isinstance(vals, dict):
+      return vals.values()
+    else:
+      return [vals]
+
+  def put(self, values, name=None):
+    with ops.name_scope(name, "%s_put" % self._name,
+                        self._scope_vals(values)) as scope:
+      vals = self._check_put_dtypes(values)
+      if len(values) != len(self._dtypes):
+        raise ValueError("Unexpected number of inputs " + str(len(values)) +
+                         "vs " + str(len(self._dtypes)))
+      for val, dtype in zip(vals, self._dtypes):
+        if val.dtype != dtype:
+          raise ValueError("Datatypes do not match. " + str(val.dtype) + " != "
+                           + str(dtype))
+
+      for val, shape in zip(vals, self._shapes):
+        val.get_shape().assert_is_compatible_with(shape)
+
+      return gen_data_flow_ops.stage(vals, shared_name=self._name, name=scope)
+
+  def _get_return_value(self, tensors):
+    """Return the value to return from a get op.
+
+    If the staging area has names, return a dictionary with the
+    names as keys.  Otherwise return either a single tensor
+    or a list of tensors depending on the length of `tensors`.
+
+    Args:
+      tensors: List of tensors from the get op.
+
+    Returns:
+      A single tensor, a list of tensors, or a dictionary
+      of tensors.
+    """
+    if self._names:
+      # The returned values in `tensors` are in the same order as
+      # the names in `self._names`.
+      return {n: tensors[i] for i, n in enumerate(self._names)}
+    elif len(tensors) == 1:
+      return tensors[0]
+    else:
+      return tensors
+
+  def get(self, name=None):
+    """Gets one element from this staging area.
+
+    If the staging area is empty when this operation executes, it will block
+    until there is an element to dequeue.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      The tuple of tensors that was gotten.
+    """
+    if name is None:
+      name = "%s_get" % self._name
+
+    ret = gen_data_flow_ops.unstage(self._dtypes, shared_name=self._name,
+                                    name=name)
+
+    for output, shape in zip(ret, self._shapes):
+      output.set_shape(shape)
+
+    return self._get_return_value(ret)

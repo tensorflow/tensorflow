@@ -294,8 +294,8 @@ class BetaWithSoftplusAB(Beta):
     parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       super(BetaWithSoftplusAB, self).__init__(
-          a=nn.softplus(a),
-          b=nn.softplus(b),
+          a=nn.softplus(a, name="softplus_a"),
+          b=nn.softplus(b, name="softplus_b"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

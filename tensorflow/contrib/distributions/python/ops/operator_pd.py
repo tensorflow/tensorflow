@@ -428,7 +428,7 @@ class OperatorPDBase(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs):
-        return array_ops.concat_v2(
+        return array_ops.concat(
             (self.batch_shape(), [self.vector_space_dimension()]), 0)
 
   def vector_space_dimension(self, name="vector_space_dimension"):
@@ -703,12 +703,11 @@ def _flip_matrix_to_vector_dynamic(mat, batch_shape):
   """Flip matrix to vector with dynamic shapes."""
   mat_rank = array_ops.rank(mat)
   k = array_ops.gather(array_ops.shape(mat), mat_rank - 2)
-  final_shape = array_ops.concat_v2((batch_shape, [k]), 0)
+  final_shape = array_ops.concat((batch_shape, [k]), 0)
 
   # mat.shape = matrix_batch_shape + [k, M]
   # Permutation corresponding to [M] + matrix_batch_shape + [k]
-  perm = array_ops.concat_v2(
-      ([mat_rank - 1], math_ops.range(0, mat_rank - 1)), 0)
+  perm = array_ops.concat(([mat_rank - 1], math_ops.range(0, mat_rank - 1)), 0)
   mat_with_end_at_beginning = array_ops.transpose(mat, perm=perm)
   vector = array_ops.reshape(mat_with_end_at_beginning, final_shape)
   return vector
@@ -779,12 +778,12 @@ def _flip_vector_to_matrix_dynamic(vec, batch_shape):
   # If vec_shape_left = [M1,...,Mm], condensed_shape = [M1*...*Mm]
   condensed_shape = [math_ops.reduce_prod(vec_shape_left)]
   k = array_ops.gather(vec_shape, vec_rank - 1)
-  new_shape = array_ops.concat_v2((batch_shape, [k], condensed_shape), 0)
+  new_shape = array_ops.concat((batch_shape, [k], condensed_shape), 0)
 
   def _flip_front_dims_to_back():
     # Permutation corresponding to [N1,...,Nn] + [k, M1,...,Mm]
-    perm = array_ops.concat_v2(
-        (math_ops.range(m, vec_rank), math_ops.range(0, m)), 0)
+    perm = array_ops.concat((math_ops.range(m, vec_rank), math_ops.range(0, m)),
+                            0)
     return array_ops.transpose(vec, perm=perm)
 
   x_flipped = control_flow_ops.cond(
@@ -817,8 +816,8 @@ def _flip_vector_to_matrix_static(vec, batch_shape):
 
   def _flip_front_dims_to_back():
     # Permutation corresponding to [N1,...,Nn] + [k, M1,...,Mm]
-    perm = array_ops.concat_v2(
-        (math_ops.range(m, vec_rank), math_ops.range(0, m)), 0)
+    perm = array_ops.concat((math_ops.range(m, vec_rank), math_ops.range(0, m)),
+                            0)
     return array_ops.transpose(vec, perm=perm)
 
   if 0 < m:

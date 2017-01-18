@@ -116,7 +116,7 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
   # concatenating zero-size TensorArrays" limitation:
   def _empty_tensor_like(t):
     result = array_ops.zeros(
-        shape=(array_ops.concat_v2([[0], array_ops.shape(t)[1:]], 0)),
+        shape=(array_ops.concat([[0], array_ops.shape(t)[1:]], 0)),
         dtype=t.dtype)
     if t.get_shape().ndims is not None:
       # preserve known shapes

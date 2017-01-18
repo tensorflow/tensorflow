@@ -171,7 +171,7 @@ First, the values from the `labels_placeholder` are converted to 64-bit integers
 ```python
 labels = tf.to_int64(labels)
 cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    logits, labels, name='xentropy')
+    labels=labels, logits=logits, name='xentropy')
 ```
 
 It then uses [`tf.reduce_mean`](../../../api_docs/python/math_ops.md#reduce_mean)

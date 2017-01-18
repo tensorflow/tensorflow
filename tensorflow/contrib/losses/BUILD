@@ -32,9 +32,20 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":losses_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 

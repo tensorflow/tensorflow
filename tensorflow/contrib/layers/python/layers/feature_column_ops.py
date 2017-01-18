@@ -181,7 +181,7 @@ def _input_from_feature_columns(columns_to_tensors,
           except ValueError as e:
             raise ValueError('Error creating input layer for column: {}.\n'
                              '{}, {}'.format(column.name, e, ee))
-    return array_ops.concat_v2(output_tensors, output_rank - 1)
+    return array_ops.concat(output_tensors, output_rank - 1)
 
 
 def input_from_feature_columns(columns_to_tensors,
@@ -491,7 +491,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
         columns_to_tensors=columns_to_tensor,
         feature_columns=feature_columns,
         num_outputs=1)
-    loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
+    loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=labels,
+                                                   logits=logits)
     ```
 
   Args:

@@ -14,7 +14,6 @@
 # ==============================================================================
 """Wrappers for primitive Neural Net (NN) Operations."""
 
-# pylint: disable=invalid-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -408,7 +407,7 @@ def with_space_to_batch(input, dilation_rate, padding, op, filter_shape=None,  #
     if const_orig is not None:
       return np.concatenate(parts)
     else:
-      return array_ops.concat_v2(parts, 0)
+      return array_ops.concat(parts, 0)
 
   dilation_rate = adjust(dilation_rate, 1)
   paddings = adjust(paddings, 0)
@@ -1047,7 +1046,7 @@ def conv2d_transpose(value,
       raise ValueError("data_format has to be either NCHW or NHWC.")
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
-    axis = 3 if data_format=="NHWC" else 1
+    axis = 3 if data_format == "NHWC" else 1
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[3], filter.get_shape(
@@ -1363,7 +1362,7 @@ def crelu(features, name=None):
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    c = array_ops.concat_v2([features, -features], -1, name=name)
+    c = array_ops.concat([features, -features], -1, name=name)
     return gen_nn_ops.relu(c)
 
 
@@ -1388,8 +1387,7 @@ def _flatten_outer_dims(logits):
   rank = array_ops.rank(logits)
   last_dim_size = array_ops.slice(
       array_ops.shape(logits), [math_ops.subtract(rank, 1)], [1])
-  output = array_ops.reshape(logits,
-                             array_ops.concat_v2([[-1], last_dim_size], 0))
+  output = array_ops.reshape(logits, array_ops.concat([[-1], last_dim_size], 0))
 
   # Set output shape if known.
   shape = logits.get_shape()
@@ -1434,7 +1432,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   def _swap_axis(logits, dim_index, last_index):
     """Swaps logits's dim_index and last_index."""
     return array_ops.transpose(logits,
-                               array_ops.concat_v2([
+                               array_ops.concat([
                                    math_ops.range(dim_index), [last_index],
                                    math_ops.range(dim_index + 1, last_index),
                                    [dim_index]
@@ -1528,7 +1526,18 @@ def log_softmax(logits, dim=-1, name=None):
   return _softmax(logits, gen_nn_ops._log_softmax, dim, name)
 
 
-def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
+def _ensure_xent_args(name, sentinel, labels, logits):
+  # Make sure that all arguments were passed as named arguments.
+  if sentinel is not None:
+    raise ValueError("Only call `%s` with "
+                     "named arguments (labels=..., logits=..., ...)" % name)
+  if labels is None or logits is None:
+    raise ValueError("Both labels and logits must be provided.")
+
+
+def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
+                                      labels=None, logits=None,
+                                      dim=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -1551,9 +1560,13 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
   `logits` and `labels` must have the same shape `[batch_size, num_classes]`
   and the same dtype (either `float16`, `float32`, or `float64`).
 
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
   Args:
-    logits: Unscaled log probabilities.
+    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: Each row `labels[i]` must be a valid probability distribution.
+    logits: Unscaled log probabilities.
     dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
@@ -1561,6 +1574,9 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
     A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
     softmax cross entropy loss.
   """
+  _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel,
+                    labels, logits)
+
   # TODO(pcmurray) Raise an error when the labels do not sum to 1. Note: This
   # could break users who call this with bad labels, but disregard the bad
   # results.
@@ -1569,7 +1585,7 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
   labels = ops.convert_to_tensor(labels)
   precise_logits = math_ops.cast(logits, dtypes.float32) if (
       logits.dtype == dtypes.float16) else logits
-  # Labels and logits must be of the same type
+  # labels and logits must be of the same type
   labels = math_ops.cast(labels, precise_logits.dtype)
   input_rank = array_ops.rank(precise_logits)
   # For shape inference.
@@ -1579,7 +1595,7 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
   if dim is not -1:
     def _move_dim_to_end(tensor, dim_index, rank):
       return array_ops.transpose(tensor,
-                                 array_ops.concat_v2([
+                                 array_ops.concat([
                                      math_ops.range(dim_index),
                                      math_ops.range(dim_index + 1, rank),
                                      [dim_index]
@@ -1618,7 +1634,9 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
     return cost
 
 
-def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
+def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
+                                             labels=None, logits=None,
+                                             name=None):
   """Computes sparse softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -1640,14 +1658,18 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   A common use case is to have logits of shape `[batch_size, num_classes]` and
   labels of shape `[batch_size]`. But higher dimensions are supported.
 
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
   Args:
-    logits: Unscaled log probabilities of rank `r` and shape
-      `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
+    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
       `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
       Other values will raise an exception when this op is run on CPU, and
       return `NaN` for corresponding corresponding loss and gradient rows
       on GPU.
+    logits: Unscaled log probabilities of rank `r` and shape
+      `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1658,6 +1680,9 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
     ValueError: If logits are scalars (need to have rank >= 1) or if the rank
       of the labels is not equal to the rank of the labels minus one.
   """
+  _ensure_xent_args("sparse_softmax_cross_entropy_with_logits", _sentinel,
+                    labels, logits)
+
   # TODO(pcmurray) Raise an error when the label is not an index in
   # [0, num_classes). Note: This could break users who call this with bad
   # labels, but disregard the bad results.
@@ -1679,8 +1704,8 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
     if logits.get_shape().ndims is not None and (
         labels_static_shape.ndims is not None and
         labels_static_shape.ndims != logits.get_shape().ndims - 1):
-      raise ValueError("Rank mismatch: Rank of labels (received %s) should equal "
-                       "rank of logits minus 1 (received %s)." %
+      raise ValueError("Rank mismatch: Rank of labels (received %s) should "
+                       "equal rank of logits minus 1 (received %s)." %
                        (labels_static_shape.ndims, logits.get_shape().ndims))
     # Check if no reshapes are required.
     if logits.get_shape().ndims == 2:
@@ -1857,8 +1882,7 @@ def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
     return bias_add_v1(mm, biases, name=name)
 
 
-# pylint: disable=invalid-name
-def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
+def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
   """Computes dropout.
 
   With probability `keep_prob`, outputs the input element scaled up by
@@ -2082,5 +2106,3 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                               rates=rates,
                               padding=padding,
                               name=name))
-
-# pylint: enable=invalid-name

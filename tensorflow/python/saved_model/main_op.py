@@ -39,7 +39,7 @@ def main_op():
   """
   init = variables.global_variables_initializer()
   init_local = variables.local_variables_initializer()
-  init_tables = tf_data_flow_ops.initialize_all_tables()
+  init_tables = tf_data_flow_ops.tables_initializer()
   return control_flow_ops.group(init, init_local, init_tables)
 
 

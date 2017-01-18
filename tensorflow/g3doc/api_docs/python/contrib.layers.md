@@ -83,7 +83,8 @@ can have speed penalty, specially in distributed settings.
     Lower `decay` value (recommend trying `decay`=0.9) if model experiences
     reasonably good training performance but poor validation and/or test
     performance. Try zero_debias_moving_mean=True for improved stability.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
@@ -411,7 +412,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 
 *  <b>`inputs`</b>: a tensor with 2 or more dimensions. The normalization
           occurs over all but the first dimension.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
@@ -1768,7 +1770,8 @@ Example:
       columns_to_tensors=columns_to_tensor,
       feature_columns=feature_columns,
       num_outputs=1)
-  loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, labels)
+  loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=labels,
+                                                 logits=logits)
   ```
 
 ##### Args:

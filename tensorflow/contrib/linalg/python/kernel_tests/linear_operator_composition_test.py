@@ -18,13 +18,18 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-
-linalg = tf.contrib.linalg
-tf.set_random_seed(23)
+linalg = linalg_lib
+random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
@@ -34,13 +39,13 @@ class SquareLinearOperatorCompositionTest(
 
   def setUp(self):
     # Increase from 1e-6 to 1e-4
-    self._atol[tf.float32] = 1e-4
-    self._atol[tf.complex64] = 1e-4
-    self._rtol[tf.float32] = 1e-4
-    self._rtol[tf.complex64] = 1e-4
+    self._atol[dtypes.float32] = 1e-4
+    self._atol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.complex64] = 1e-4
 
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
-    sess = tf.get_default_session()
+    sess = ops.get_default_session()
     shape = list(shape)
 
     # Either 1 or 2 matrices, depending.
@@ -52,7 +57,9 @@ class SquareLinearOperatorCompositionTest(
     ]
 
     if use_placeholder:
-      matrices_ph = [tf.placeholder(dtype=dtype) for _ in range(num_operators)]
+      matrices_ph = [
+          array_ops.placeholder(dtype=dtype) for _ in range(num_operators)
+      ]
       # Evaluate here because (i) you cannot feed a tensor, and (ii)
       # values are random and we want the same value used for both mat and
       # feed_dict.
@@ -68,9 +75,9 @@ class SquareLinearOperatorCompositionTest(
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.
     apply_order_list = list(reversed(matrices))
-    mat = tf.convert_to_tensor(apply_order_list[0])
+    mat = ops.convert_to_tensor(apply_order_list[0])
     for other_mat in apply_order_list[1:]:
-      mat = tf.matmul(other_mat, mat)
+      mat = math_ops.matmul(other_mat, mat)
 
     return operator, mat, feed_dict
 
@@ -103,8 +110,7 @@ class SquareLinearOperatorCompositionTest(
 
     with self.assertRaisesRegexp(ValueError, "always non-singular"):
       linalg.LinearOperatorComposition(
-          [operator_1, operator_2],
-          is_non_singular=False)
+          [operator_1, operator_2], is_non_singular=False)
 
   def test_name(self):
     matrix = [[11., 0.], [1., 8.]]
@@ -118,7 +124,8 @@ class SquareLinearOperatorCompositionTest(
   def test_different_dtypes_raises(self):
     operators = [
         linalg.LinearOperatorMatrix(rng.rand(2, 3, 3)),
-        linalg.LinearOperatorMatrix(rng.rand(2, 3, 3).astype(np.float32))]
+        linalg.LinearOperatorMatrix(rng.rand(2, 3, 3).astype(np.float32))
+    ]
     with self.assertRaisesRegexp(TypeError, "same dtype"):
       linalg.LinearOperatorComposition(operators)
 
@@ -133,13 +140,13 @@ class NonSquareLinearOperatorCompositionTest(
 
   def setUp(self):
     # Increase from 1e-6 to 1e-4
-    self._atol[tf.float32] = 1e-4
-    self._atol[tf.complex64] = 1e-4
-    self._rtol[tf.float32] = 1e-4
-    self._rtol[tf.complex64] = 1e-4
+    self._atol[dtypes.float32] = 1e-4
+    self._atol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.complex64] = 1e-4
 
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
-    sess = tf.get_default_session()
+    sess = ops.get_default_session()
     shape = list(shape)
 
     # Test only the case of 2 matrices.
@@ -155,11 +162,15 @@ class NonSquareLinearOperatorCompositionTest(
     shape_2 = batch_shape + [k, shape[-1]]
 
     matrices = [
-        linear_operator_test_util.random_normal(shape_1, dtype=dtype),
-        linear_operator_test_util.random_normal(shape_2, dtype=dtype)]
+        linear_operator_test_util.random_normal(
+            shape_1, dtype=dtype), linear_operator_test_util.random_normal(
+                shape_2, dtype=dtype)
+    ]
 
     if use_placeholder:
-      matrices_ph = [tf.placeholder(dtype=dtype) for _ in range(num_operators)]
+      matrices_ph = [
+          array_ops.placeholder(dtype=dtype) for _ in range(num_operators)
+      ]
       # Evaluate here because (i) you cannot feed a tensor, and (ii)
       # values are random and we want the same value used for both mat and
       # feed_dict.
@@ -175,23 +186,25 @@ class NonSquareLinearOperatorCompositionTest(
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.
     apply_order_list = list(reversed(matrices))
-    mat = tf.convert_to_tensor(apply_order_list[0])
+    mat = ops.convert_to_tensor(apply_order_list[0])
     for other_mat in apply_order_list[1:]:
-      mat = tf.matmul(other_mat, mat)
+      mat = math_ops.matmul(other_mat, mat)
 
     return operator, mat, feed_dict
 
   def test_static_shapes(self):
     operators = [
         linalg.LinearOperatorMatrix(rng.rand(2, 3, 4)),
-        linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))]
+        linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))
+    ]
     operator = linalg.LinearOperatorComposition(operators)
     self.assertAllEqual((2, 3, 5), operator.shape)
 
   def test_dynamic_shapes_when_statically_available(self):
     operators = [
         linalg.LinearOperatorMatrix(rng.rand(2, 3, 4)),
-        linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))]
+        linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))
+    ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.test_session():
       self.assertAllEqual((2, 3, 5), operator.shape_dynamic().eval())
@@ -199,19 +212,19 @@ class NonSquareLinearOperatorCompositionTest(
   def test_dynamic_shapes_when_only_dynamically_available(self):
     mat_1 = rng.rand(1, 2, 3, 4)
     mat_2 = rng.rand(1, 2, 4, 5)
-    mat_ph_1 = tf.placeholder(tf.float64)
-    mat_ph_2 = tf.placeholder(tf.float64)
+    mat_ph_1 = array_ops.placeholder(dtypes.float64)
+    mat_ph_2 = array_ops.placeholder(dtypes.float64)
     feed_dict = {mat_ph_1: mat_1, mat_ph_2: mat_2}
 
     operators = [
         linalg.LinearOperatorMatrix(mat_ph_1),
-        linalg.LinearOperatorMatrix(mat_ph_2)]
+        linalg.LinearOperatorMatrix(mat_ph_2)
+    ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.test_session():
       self.assertAllEqual(
-          (1, 2, 3, 5),
-          operator.shape_dynamic().eval(feed_dict=feed_dict))
+          (1, 2, 3, 5), operator.shape_dynamic().eval(feed_dict=feed_dict))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

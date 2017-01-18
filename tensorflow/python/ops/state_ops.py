@@ -54,6 +54,7 @@ TensorFlow provides several classes and operations that you can use to
 create variables contingent on certain conditions.
 
 @@get_variable
+@@get_local_variable
 @@VariableScope
 @@variable_scope
 @@variable_op_scope
@@ -105,6 +106,7 @@ automatically by the optimizers in most cases.
 ### Read-only Lookup Tables
 
 @@initialize_all_tables
+@@tables_initializer
 
 
 ## Exporting and Importing Meta Graphs

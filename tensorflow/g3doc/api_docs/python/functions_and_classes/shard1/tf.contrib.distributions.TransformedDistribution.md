@@ -146,9 +146,9 @@ Construct a Transformed Distribution.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
     Typically an instance of `Bijector`. `None` means `Identity()`.
 *  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `batch_shape`; valid only if `distribution.is_scalar_batch`.
+    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `event_shape`; valid only if `distribution.is_scalar_event`.
+    `event_shape`; valid only if `distribution.is_scalar_event()`.
 *  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
@@ -343,16 +343,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch` {#TransformedDistribution.is_scalar_batch}
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
 
-Indicates that `batch_shape==[]`.
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event` {#TransformedDistribution.is_scalar_event}
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
 
-Indicates that `event_shape==[]`.
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -690,43 +710,6 @@ sample.
 
 
 *  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#TransformedDistribution.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `TransformedDistribution`:
-
-Samples from the base distribution and then passes through
-      the bijector's forward transform.
-
-##### `condition_kwargs`:
-
-*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
-*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -

@@ -13,6 +13,9 @@ For `SparseTensor`s, the first (batch) column of the indices matrix is removed
 the first (`batch_size`) entry of the shape vector is removed (it is now a
 single element vector).
 
+One might see performance advantages by batching `Example` protos with
+`parse_example` instead of using this function directly.
+
 ##### Args:
 
 

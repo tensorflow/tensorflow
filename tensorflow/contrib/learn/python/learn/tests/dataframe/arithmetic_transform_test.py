@@ -12,17 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for arithmetic transforms."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.dataframe import tensorflow_dataframe as df
+from tensorflow.python.platform import test
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -32,7 +38,7 @@ except ImportError:
   HAS_PANDAS = False
 
 
-class SumTestCase(tf.test.TestCase):
+class SumTestCase(test.TestCase):
   """Test class for `Sum` transform."""
 
   def testSum(self):
@@ -40,8 +46,10 @@ class SumTestCase(tf.test.TestCase):
       return
     num_rows = 100
 
-    pandas_df = pd.DataFrame({"a": np.arange(num_rows),
-                              "b": np.arange(num_rows, 2 * num_rows)})
+    pandas_df = pd.DataFrame({
+        "a": np.arange(num_rows),
+        "b": np.arange(num_rows, 2 * num_rows)
+    })
 
     frame = df.TensorFlowDataFrame.from_pandas(
         pandas_df, shuffle=False, batch_size=num_rows)
@@ -53,7 +61,7 @@ class SumTestCase(tf.test.TestCase):
     np.testing.assert_array_equal(expected_sum, actual_sum)
 
 
-class DifferenceTestCase(tf.test.TestCase):
+class DifferenceTestCase(test.TestCase):
   """Test class for `Difference` transform."""
 
   def testDifference(self):
@@ -61,8 +69,10 @@ class DifferenceTestCase(tf.test.TestCase):
       return
     num_rows = 100
 
-    pandas_df = pd.DataFrame({"a": np.arange(num_rows),
-                              "b": np.arange(num_rows, 2 * num_rows)})
+    pandas_df = pd.DataFrame({
+        "a": np.arange(num_rows),
+        "b": np.arange(num_rows, 2 * num_rows)
+    })
 
     frame = df.TensorFlowDataFrame.from_pandas(
         pandas_df, shuffle=False, batch_size=num_rows)
@@ -75,4 +85,4 @@ class DifferenceTestCase(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

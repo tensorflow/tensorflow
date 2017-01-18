@@ -337,6 +337,9 @@ add_python_module("tensorflow/contrib/metrics/python/metrics")
 add_python_module("tensorflow/contrib/metrics/python/ops")
 add_python_module("tensorflow/contrib/ndlstm")
 add_python_module("tensorflow/contrib/ndlstm/python")
+add_python_module("tensorflow/contrib/nn")
+add_python_module("tensorflow/contrib/nn/python")
+add_python_module("tensorflow/contrib/nn/python/ops")
 add_python_module("tensorflow/contrib/opt")
 add_python_module("tensorflow/contrib/opt/python")
 add_python_module("tensorflow/contrib/opt/python/training")
@@ -581,6 +584,7 @@ add_library(pywrap_tensorflow SHARED
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 target_include_directories(pywrap_tensorflow PUBLIC

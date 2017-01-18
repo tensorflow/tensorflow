@@ -21,24 +21,30 @@ import os.path
 import tempfile
 
 import six
-import tensorflow as tf
+from tensorflow.contrib.opt.python.training import moving_average_optimizer
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import saver
 
 
-class MovingAverageOptimizerTest(tf.test.TestCase):
+class MovingAverageOptimizerTest(test.TestCase):
 
   def testRun(self):
     for sequential_update in [True, False]:
-      for dtype in [tf.half, tf.float32, tf.float64]:
+      for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
         with self.test_session() as sess:
           orig_val0 = [1.0, 2.0]
           orig_val1 = [3.0, 4.0]
-          var0 = tf.Variable(orig_val0, name='var0', dtype=dtype)
-          var1 = tf.Variable(orig_val1, name='var1', dtype=dtype)
-          grads0 = tf.constant([0.1, 0.1], dtype=dtype)
-          grads1 = tf.constant([0.01, 0.01], dtype=dtype)
+          var0 = variables.Variable(orig_val0, name='var0', dtype=dtype)
+          var1 = variables.Variable(orig_val1, name='var1', dtype=dtype)
+          grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+          grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
 
-          opt = tf.contrib.opt.MovingAverageOptimizer(
-              tf.train.GradientDescentOptimizer(learning_rate=2.0),
+          opt = moving_average_optimizer.MovingAverageOptimizer(
+              gradient_descent.GradientDescentOptimizer(learning_rate=2.0),
               average_decay=0.5,
               sequential_update=sequential_update)
           save_dir = tempfile.mkdtemp(
@@ -47,8 +53,8 @@ class MovingAverageOptimizerTest(tf.test.TestCase):
           update = opt.apply_gradients(
               list(six.moves.zip([grads0, grads1], [var0, var1])))
           train_saver = opt.swapping_saver()
-          inference_saver = tf.train.Saver()
-          tf.global_variables_initializer().run()
+          inference_saver = saver.Saver()
+          variables.global_variables_initializer().run()
           # Step 1.
           update.run()
           val0 = var0.eval()
@@ -102,9 +108,9 @@ class MovingAverageOptimizerTest(tf.test.TestCase):
 
   def testFailWhenSaverCreatedBeforeInitialized(self):
     with self.test_session():
-      var = tf.Variable([1.0], name='var', dtype=tf.float32)
-      opt = tf.contrib.opt.MovingAverageOptimizer(
-          tf.train.GradientDescentOptimizer(learning_rate=2.0))
+      var = variables.Variable([1.0], name='var', dtype=dtypes.float32)
+      opt = moving_average_optimizer.MovingAverageOptimizer(
+          gradient_descent.GradientDescentOptimizer(learning_rate=2.0))
       # We didn't call apply_gradients yet.
       # This will raise an exception.
       with self.assertRaises(RuntimeError):
@@ -112,4 +118,4 @@ class MovingAverageOptimizerTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

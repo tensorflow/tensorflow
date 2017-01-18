@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Methods to read data in the graph."""
 
 from __future__ import absolute_import
@@ -20,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.input_pipeline.python.ops import input_pipeline_ops
-from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -34,18 +32,23 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.summary import summary
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner
-
 
 # Default name for key in the feature dict.
 KEY_FEATURE_NAME = '__key__'
 
 
-def read_batch_examples(file_pattern, batch_size, reader,
-                        randomize_input=True, num_epochs=None,
-                        queue_capacity=10000, num_threads=1,
-                        read_batch_size=1, parse_fn=None,
+def read_batch_examples(file_pattern,
+                        batch_size,
+                        reader,
+                        randomize_input=True,
+                        num_epochs=None,
+                        queue_capacity=10000,
+                        num_threads=1,
+                        read_batch_size=1,
+                        parse_fn=None,
                         name=None):
   """Adds operations to read, queue, batch `Example` protos.
 
@@ -86,19 +89,29 @@ def read_batch_examples(file_pattern, batch_size, reader,
     ValueError: for invalid inputs.
   """
   _, examples = read_keyed_batch_examples(
-      file_pattern=file_pattern, batch_size=batch_size, reader=reader,
-      randomize_input=randomize_input, num_epochs=num_epochs,
-      queue_capacity=queue_capacity, num_threads=num_threads,
-      read_batch_size=read_batch_size, parse_fn=parse_fn, name=name)
+      file_pattern=file_pattern,
+      batch_size=batch_size,
+      reader=reader,
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
+      queue_capacity=queue_capacity,
+      num_threads=num_threads,
+      read_batch_size=read_batch_size,
+      parse_fn=parse_fn,
+      name=name)
   return examples
 
 
-def read_keyed_batch_examples(
-    file_pattern, batch_size, reader,
-    randomize_input=True, num_epochs=None,
-    queue_capacity=10000, num_threads=1,
-    read_batch_size=1, parse_fn=None,
-    name=None):
+def read_keyed_batch_examples(file_pattern,
+                              batch_size,
+                              reader,
+                              randomize_input=True,
+                              num_epochs=None,
+                              queue_capacity=10000,
+                              num_threads=1,
+                              read_batch_size=1,
+                              parse_fn=None,
+                              name=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -143,12 +156,12 @@ def read_keyed_batch_examples(
       file_pattern,
       batch_size,
       reader,
-      randomize_input,
-      num_epochs,
-      queue_capacity,
-      num_threads,
-      read_batch_size,
-      parse_fn,
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
+      queue_capacity=queue_capacity,
+      num_threads=num_threads,
+      read_batch_size=read_batch_size,
+      parse_fn=parse_fn,
       setup_shared_queue=False,
       name=name)
 
@@ -212,12 +225,12 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
       file_pattern,
       batch_size,
       reader,
-      randomize_input,
-      num_epochs,
-      queue_capacity,
-      num_threads,
-      read_batch_size,
-      parse_fn,
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
+      queue_capacity=queue_capacity,
+      num_threads=num_threads,
+      read_batch_size=read_batch_size,
+      parse_fn=parse_fn,
       setup_shared_queue=True,
       name=name)
 
@@ -252,7 +265,7 @@ def _get_file_names(file_pattern, randomize_input):
 
 
 def _get_examples(file_name_queue, reader, num_threads, read_batch_size,
-                  parse_fn):
+                  filter_fn, parse_fn):
   with ops.name_scope('read'):
     example_list = []
     for _ in range(num_threads):
@@ -261,6 +274,10 @@ def _get_examples(file_name_queue, reader, num_threads, read_batch_size,
                                                    read_batch_size)
       else:
         keys, examples_proto = reader().read(file_name_queue)
+      if filter_fn:
+        mask = filter_fn(keys, examples_proto)
+        keys = array_ops.boolean_mask(keys, mask)
+        examples_proto = array_ops.boolean_mask(examples_proto, mask)
       if parse_fn:
         parsed_examples = parse_fn(examples_proto)
         # Map keys into example map because batch_join doesn't support
@@ -283,6 +300,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
                                       queue_capacity=10000,
                                       num_threads=1,
                                       read_batch_size=1,
+                                      filter_fn=None,
                                       parse_fn=None,
                                       setup_shared_queue=False,
                                       name=None):
@@ -303,6 +321,9 @@ def _read_keyed_batch_examples_helper(file_pattern,
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
+    filter_fn: Filtering function, takes both keys as well `Example` Tensors
+      and returns a boolean mask of the same shape as the input Tensors to
+      be applied for filtering. If `None`, no filtering is done.
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     setup_shared_queue: Whether to set up a shared queue for file names.
@@ -322,15 +343,12 @@ def _read_keyed_batch_examples_helper(file_pattern,
   # Check input parameters are given and reasonable.
   if (not queue_capacity) or (queue_capacity <= 0):
     raise ValueError('Invalid queue_capacity %s.' % queue_capacity)
-  if (batch_size is None) or (
-      (not isinstance(batch_size, ops.Tensor)) and
-      (batch_size <= 0 or batch_size > queue_capacity)):
-    raise ValueError(
-        'Invalid batch_size %s, with queue_capacity %s.' %
-        (batch_size, queue_capacity))
+  if (batch_size is None) or ((not isinstance(batch_size, ops.Tensor)) and
+                              (batch_size <= 0 or batch_size > queue_capacity)):
+    raise ValueError('Invalid batch_size %s, with queue_capacity %s.' %
+                     (batch_size, queue_capacity))
   if (read_batch_size is None) or (
-      (not isinstance(read_batch_size, ops.Tensor)) and
-      (read_batch_size <= 0)):
+      (not isinstance(read_batch_size, ops.Tensor)) and (read_batch_size <= 0)):
     raise ValueError('Invalid read_batch_size %s.' % read_batch_size)
   if (not num_threads) or (num_threads <= 0):
     raise ValueError('Invalid num_threads %s.' % num_threads)
@@ -356,7 +374,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
             name=file_name_queue_scope)
 
     example_list = _get_examples(file_name_queue, reader, num_threads,
-                                 read_batch_size, parse_fn)
+                                 read_batch_size, filter_fn, parse_fn)
 
     enqueue_many = read_batch_size > 1
 
@@ -372,14 +390,20 @@ def _read_keyed_batch_examples_helper(file_pattern,
       else:
         min_after_dequeue = max(queue_capacity - (3 * batch_size), batch_size)
       queued_examples_with_keys = input_ops.shuffle_batch_join(
-          example_list, batch_size, capacity=queue_capacity,
+          example_list,
+          batch_size,
+          capacity=queue_capacity,
           min_after_dequeue=min_after_dequeue,
-          enqueue_many=enqueue_many, name=scope,
+          enqueue_many=enqueue_many,
+          name=scope,
           allow_smaller_final_batch=allow_smaller_final_batch)
     else:
       queued_examples_with_keys = input_ops.batch_join(
-          example_list, batch_size, capacity=queue_capacity,
-          enqueue_many=enqueue_many, name=scope,
+          example_list,
+          batch_size,
+          capacity=queue_capacity,
+          enqueue_many=enqueue_many,
+          name=scope,
           allow_smaller_final_batch=allow_smaller_final_batch)
     if parse_fn and isinstance(queued_examples_with_keys, dict):
       queued_keys = queued_examples_with_keys.pop(KEY_FEATURE_NAME)
@@ -446,10 +470,16 @@ def read_keyed_batch_features(file_pattern,
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
     keys, examples = read_keyed_batch_examples(
-        file_pattern, batch_size, reader, randomize_input=randomize_input,
-        num_epochs=num_epochs, queue_capacity=queue_capacity,
-        num_threads=reader_num_threads, read_batch_size=batch_size,
-        parse_fn=parse_fn, name=scope)
+        file_pattern,
+        batch_size,
+        reader,
+        randomize_input=randomize_input,
+        num_epochs=num_epochs,
+        queue_capacity=queue_capacity,
+        num_threads=reader_num_threads,
+        read_batch_size=batch_size,
+        parse_fn=parse_fn,
+        name=scope)
     # Parse the example.
     feature_map = parsing_ops.parse_example(examples, features)
     return queue_parsed_features(
@@ -596,8 +626,8 @@ def queue_parsed_features(parsed_features,
       tensor = parsed_features[key]
       if isinstance(tensor, sparse_tensor.SparseTensor):
         tensors_mapping.append((key, True))
-        tensors_to_enqueue.extend([
-            tensor.indices, tensor.values, tensor.dense_shape])
+        tensors_to_enqueue.extend(
+            [tensor.indices, tensor.values, tensor.dense_shape])
       else:
         tensors_mapping.append((key, False))
         tensors_to_enqueue.append(tensor)
@@ -617,12 +647,16 @@ def queue_parsed_features(parsed_features,
     # Use a single QueueRunner with multiple threads to enqueue so the queue is
     # always full. The threads are coordinated so the last batch will not be
     # lost.
-    enqueue_ops = [input_queue.enqueue(tensors_to_enqueue)
-                   for _ in range(num_enqueue_threads)]
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(
-        input_queue, enqueue_ops,
-        queue_closed_exception_types=(errors.OutOfRangeError,
-                                      errors.CancelledError)))
+    enqueue_ops = [
+        input_queue.enqueue(tensors_to_enqueue)
+        for _ in range(num_enqueue_threads)
+    ]
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(
+            input_queue,
+            enqueue_ops,
+            queue_closed_exception_types=(errors.OutOfRangeError,
+                                          errors.CancelledError)))
 
     dequeued_tensors = input_queue.dequeue()
 
@@ -702,18 +736,27 @@ def read_batch_features(file_pattern,
     ValueError: for invalid inputs.
   """
   _, features = read_keyed_batch_features(
-      file_pattern, batch_size, features, reader,
-      randomize_input=randomize_input, num_epochs=num_epochs,
+      file_pattern,
+      batch_size,
+      features,
+      reader,
+      randomize_input=randomize_input,
+      num_epochs=num_epochs,
       queue_capacity=queue_capacity,
       feature_queue_capacity=feature_queue_capacity,
       reader_num_threads=reader_num_threads,
-      parse_fn=parse_fn, name=name)
+      parse_fn=parse_fn,
+      name=name)
   return features
 
 
-def read_batch_record_features(file_pattern, batch_size, features,
-                               randomize_input=True, num_epochs=None,
-                               queue_capacity=10000, reader_num_threads=1,
+def read_batch_record_features(file_pattern,
+                               batch_size,
+                               features,
+                               randomize_input=True,
+                               num_epochs=None,
+                               queue_capacity=10000,
+                               reader_num_threads=1,
                                name='dequeue_record_examples'):
   """Reads TFRecord, queues, batches and parses `Example` proto.
 

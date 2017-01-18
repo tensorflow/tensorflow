@@ -12,24 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A simple script for inspect checkpoint files."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
 
-import tensorflow as tf
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.platform import app
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string("file_name", "", "Checkpoint filename")
-tf.app.flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
-tf.app.flags.DEFINE_bool("all_tensors", "False",
-                         "If True, print the values of all the tensors.")
+FLAGS = None
 
 
-def print_tensors_in_checkpoint_file(file_name, tensor_name):
+def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors):
   """Prints tensors in a checkpoint file.
 
   If no `tensor_name` is provided, prints the tensor names and shapes
@@ -40,10 +37,11 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
   Args:
     file_name: Name of the checkpoint file.
     tensor_name: Name of the tensor in the checkpoint file to print.
+    all_tensors: Boolean indicating whether to print all tensors.
   """
   try:
-    reader = tf.train.NewCheckpointReader(file_name)
-    if FLAGS.all_tensors:
+    reader = pywrap_tensorflow.NewCheckpointReader(file_name)
+    if all_tensors:
       var_to_shape_map = reader.get_variable_to_shape_map()
       for key in var_to_shape_map:
         print("tensor_name: ", key)
@@ -66,7 +64,28 @@ def main(unused_argv):
           "[--tensor_name=tensor_to_print]")
     sys.exit(1)
   else:
-    print_tensors_in_checkpoint_file(FLAGS.file_name, FLAGS.tensor_name)
+    print_tensors_in_checkpoint_file(FLAGS.file_name, FLAGS.tensor_name,
+                                     FLAGS.all_tensors)
+
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--file_name", type=str, default="", help="Checkpoint filename. "
+                    "Note, if using Checkpoint V2 format, file_name is the "
+                    "shared prefix between all files in the checkpoint.")
+  parser.add_argument(
+      "--tensor_name",
+      type=str,
+      default="",
+      help="Name of the tensor to inspect")
+  parser.add_argument(
+      "--all_tensors",
+      nargs="?",
+      const=True,
+      type="bool",
+      default=False,
+      help="If True, print the values of all the tensors.")
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -76,7 +76,7 @@ class FlattenedFullyConnectedLayer(hybrid_layer.HybridLayer):
                 nn_activations[-1],
                 self.params.layer_size))
 
-      nn_activations_tensor = array_ops.concat_v2(
+      nn_activations_tensor = array_ops.concat(
           nn_activations, 1, name="flattened_nn_activations")
 
       return nn_activations_tensor

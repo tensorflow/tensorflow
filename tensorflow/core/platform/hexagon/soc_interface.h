@@ -48,7 +48,7 @@ bool soc_interface_ReadOutputNodeFloat(const char* const node_name,
                                        uint8_t** buf, uint64_t* buf_size);
 // Setup graph
 // TODO(satok): Remove and use runtime version
-bool soc_interface_SetupGraphDummy(int version);
+bool soc_interface_setupDummyGraph(int version);
 
 // Allocate memory for params of node inputs and node outputs
 bool soc_interface_AllocateNodeInputAndNodeOutputArray(int total_input_count,
@@ -80,6 +80,12 @@ bool soc_interface_InstantiateGraph();
 
 // Construct graph
 bool soc_interface_ConstructGraph();
+
+// Set log level
+void soc_interface_SetLogLevel(int log_level);
+
+// Set debug flag
+void soc_interface_SetDebugFlag(uint64_t flag);
 
 #ifdef __cplusplus
 }

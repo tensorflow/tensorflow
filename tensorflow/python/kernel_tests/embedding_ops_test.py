@@ -169,7 +169,7 @@ def _EmbeddingParamsAsPartitionedVariable(num_shards,
   partitioned_variable = variable_scope.get_variable(
       "p",
       shape=[vocab_size] + shape,
-      initializer=array_ops.concat_v2([params[p_i.name] for p_i in p], 0),
+      initializer=array_ops.concat([params[p_i.name] for p_i in p], 0),
       partitioner=partitioned_variables.min_max_variable_partitioner(
           max_partitions=num_shards, min_slice_size=1))
   return p, partitioned_variable, params, feed_dict

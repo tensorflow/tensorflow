@@ -10,7 +10,7 @@ This folder contains examples of how to build applications for iOS devices using
    [tensorflow/contrib/makefile](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile)
    under "iOS" to compile a static library containing the core TensorFlow code.
 
- - Download
+ - From the root of the Tensorflow folder, download
    [Inception v1](https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip),
    and extract the label and graph files into the data folders inside both the
    simple and camera examples:

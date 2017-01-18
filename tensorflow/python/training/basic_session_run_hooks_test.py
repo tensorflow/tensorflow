@@ -29,8 +29,10 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.testing.python.framework import fake_summary_writer
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -79,14 +81,14 @@ class SecondOrStepTimerTest(test.TestCase):
 
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
-      basic_session_run_hooks._SecondOrStepTimer(every_secs=2.0, every_steps=10)
+      basic_session_run_hooks.SecondOrStepTimer(every_secs=2.0, every_steps=10)
 
   def test_raise_in_none_secs_and_steps(self):
     with self.assertRaises(ValueError):
-      basic_session_run_hooks._SecondOrStepTimer()
+      basic_session_run_hooks.SecondOrStepTimer()
 
   def test_every_secs(self):
-    timer = basic_session_run_hooks._SecondOrStepTimer(every_secs=1.0)
+    timer = basic_session_run_hooks.SecondOrStepTimer(every_secs=1.0)
     self.assertTrue(timer.should_trigger_for_step(1))
 
     timer.update_last_triggered_step(1)
@@ -98,7 +100,7 @@ class SecondOrStepTimerTest(test.TestCase):
     self.assertTrue(timer.should_trigger_for_step(2))
 
   def test_every_steps(self):
-    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=3)
+    timer = basic_session_run_hooks.SecondOrStepTimer(every_steps=3)
     self.assertTrue(timer.should_trigger_for_step(1))
 
     timer.update_last_triggered_step(1)
@@ -108,7 +110,7 @@ class SecondOrStepTimerTest(test.TestCase):
     self.assertTrue(timer.should_trigger_for_step(4))
 
   def test_update_last_triggered_step(self):
-    timer = basic_session_run_hooks._SecondOrStepTimer(every_steps=1)
+    timer = basic_session_run_hooks.SecondOrStepTimer(every_steps=1)
 
     elapsed_secs, elapsed_steps = timer.update_last_triggered_step(1)
     self.assertEqual(None, elapsed_secs)
@@ -327,27 +329,20 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
-        mon_sess.run(self.train_op)
-        mon_sess.run(self.train_op)
-        # Not saved
+        mon_sess.run(self.train_op)  # Saved.
+        mon_sess.run(self.train_op)  # Not saved.
         self.assertEqual(1,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
         time.sleep(2.5)
-        mon_sess.run(self.train_op)
-        # saved
-        self.assertEqual(3,
-                         checkpoint_utils.load_variable(self.model_dir,
-                                                        self.global_step.name))
-        mon_sess.run(self.train_op)
-        mon_sess.run(self.train_op)
-        # Not saved
+        mon_sess.run(self.train_op)  # Saved.
+        mon_sess.run(self.train_op)  # Not saved.
+        mon_sess.run(self.train_op)  # Not saved.
         self.assertEqual(3,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
         time.sleep(2.5)
-        mon_sess.run(self.train_op)
-        # saved
+        mon_sess.run(self.train_op)  # Saved.
         self.assertEqual(6,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
@@ -759,6 +754,50 @@ class GlobalStepWaiterHookTest(test.TestCase):
         sess.run(state_ops.assign(gstep, 1100))
         time.sleep(1.2)
         self.assertFalse(waiter.is_alive())
+
+
+class FinalOpsHookTest(test.TestCase):
+
+  def test_final_ops_is_scalar_tensor(self):
+    with ops.Graph().as_default():
+      expected_value = 4
+      final_ops = constant_op.constant(expected_value)
+
+      hook = basic_session_run_hooks.FinalOpsHook(final_ops)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        hook.end(session)
+        self.assertEqual(expected_value,
+                         hook.final_ops_values)
+
+  def test_final_ops_is_tensor(self):
+    with ops.Graph().as_default():
+      expected_values = [1, 6, 3, 5, 2, 4]
+      final_ops = constant_op.constant(expected_values)
+
+      hook = basic_session_run_hooks.FinalOpsHook(final_ops)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        hook.end(session)
+        self.assertListEqual(expected_values,
+                             hook.final_ops_values.tolist())
+
+  def test_final_ops_with_dictionary(self):
+    with ops.Graph().as_default():
+      expected_values = [4, -3]
+      final_ops = array_ops.placeholder(dtype=dtypes.float32)
+      final_ops_feed_dict = {final_ops: expected_values}
+
+      hook = basic_session_run_hooks.FinalOpsHook(
+          final_ops, final_ops_feed_dict)
+      hook.begin()
+
+      with session_lib.Session() as session:
+        hook.end(session)
+        self.assertListEqual(expected_values,
+                             hook.final_ops_values.tolist())
 
 
 if __name__ == '__main__':

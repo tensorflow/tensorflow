@@ -182,7 +182,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                        int64 execution_count,
                        SimpleGraphExecutionState* execution_state,
                        PerStepState* pss, CallOptions* opts,
-                       const RunStepRequest& req, RunStepResponse* resp,
+                       const RunStepRequestWrapper& req,
+                       MutableRunStepResponseWrapper* resp,
                        CancellationManager* cm, const bool is_last_partial_run);
 
   // Calls workers to cleanup states for the step "step_id".  Calls
@@ -192,13 +193,14 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Post-processing of any runtime statistics gathered during execution.
   void ProcessStats(int64 step_id, PerStepState* pss,
                     SimpleGraphExecutionState* execution_state,
-                    ProfileHandler* ph, const RunStepRequest& req,
-                    RunStepResponse* resp);
+                    ProfileHandler* ph, const RunOptions& options,
+                    RunMetadata* resp);
   void ProcessDeviceStats(ProfileHandler* ph,
                           const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
   // Checks that the requested fetches can be computed from the provided feeds.
-  Status CheckFetches(const RunStepRequest& req, const RunState* run_state,
+  Status CheckFetches(const RunStepRequestWrapper& req,
+                      const RunState* run_state,
                       SimpleGraphExecutionState* execution_state);
 
   string DetailText(const NodeDef& def, const NodeExecStats& ns) {
@@ -462,8 +464,8 @@ class RunManyGraphs {
   // Returns the index-th call.
   struct Call {
     CallOptions opts;
-    RunGraphRequest req;
-    RunGraphResponse resp;
+    std::unique_ptr<MutableRunGraphRequestWrapper> req;
+    std::unique_ptr<MutableRunGraphResponseWrapper> resp;
   };
   Call* get(int index) { return &calls_[index]; }
 
@@ -511,17 +513,17 @@ class RunManyGraphs {
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
     SimpleGraphExecutionState* execution_state, PerStepState* pss,
-    CallOptions* call_opts, const RunStepRequest& req, RunStepResponse* resp,
-    CancellationManager* cm, const bool is_last_partial_run) {
+    CallOptions* call_opts, const RunStepRequestWrapper& req,
+    MutableRunStepResponseWrapper* resp, CancellationManager* cm,
+    const bool is_last_partial_run) {
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
-  // Build an index for feeds provided by the client.
-  std::unordered_map<StringPiece, const TensorProto*, StringPiece::Hasher>
-      feeds(3);
+  // Maps the names of fed tensors to their index in `req`.
+  std::unordered_map<StringPiece, size_t, StringPiece::Hasher> feeds(3);
 
-  for (const auto& feed : req.feed()) {
-    if (!feeds.insert({feed.name(), &feed.tensor()}).second) {
-      return errors::InvalidArgument("Duplicated feeds: ", feed.name());
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    if (!feeds.insert({req.feed_name(i), i}).second) {
+      return errors::InvalidArgument("Duplicated feeds: ", req.feed_name(i));
     }
   }
 
@@ -548,13 +550,15 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
     RunManyGraphs::Call* c = calls.get(i);
+    c->req.reset(part.worker->CreateRunGraphRequest());
+    c->resp.reset(part.worker->CreateRunGraphResponse());
     if (is_partial_) {
-      c->req.set_is_partial(is_partial_);
-      c->req.set_is_last_partial_run(is_last_partial_run);
+      c->req->set_is_partial(is_partial_);
+      c->req->set_is_last_partial_run(is_last_partial_run);
     }
-    c->req.set_graph_handle(part.graph_handle);
-    c->req.set_step_id(step_id);
-    *c->req.mutable_exec_opts() = exec_opts;
+    c->req->set_graph_handle(part.graph_handle);
+    c->req->set_step_id(step_id);
+    *c->req->mutable_exec_opts() = exec_opts;
     // If any feeds are provided, send the feed values together
     // in the RunGraph request.
     // In the partial case, we only want to include feeds provided in the req.
@@ -562,29 +566,31 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     // We keep these as separate paths for now, to ensure we aren't
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
-      for (const auto& feed : req.feed()) {
-        const string& name = feed.name();
+      for (int i = 0; i < req.num_feeds(); ++i) {
+        const string& name = req.feed_name(i);
         auto iter = part.feed_key.find(name);
         if (iter == part.feed_key.end()) {
           // The provided feed must be for a different partition.
           continue;
         }
         const string& key = iter->second;
-        const TensorProto* val = feeds[name];
-        if (val == nullptr) {
+        auto feeds_iter = feeds.find(name);
+        if (feeds_iter == feeds.end()) {
           return errors::InvalidArgument("No feed is provided for feed=", name,
                                          ", key=", key);
+        } else if (feeds_iter->second != i) {
+          return errors::Internal("Cannot find feed named \"", name,
+                                  " in request.");
         }
-        auto* send = c->req.add_send();
-        send->set_key(key);
-        *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
+        TF_RETURN_IF_ERROR(c->req->AddSendFromRunStepRequest(req, i, key));
       }
       // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
       // For now, we just iterate through partitions to find the matching key.
-      for (const auto& req_fetch : req.fetch()) {
+      for (int i = 0; i < req.num_fetches(); ++i) {
+        const string& req_fetch = req.fetch_name(i);
         for (const auto& key_fetch : part.key_fetch) {
           if (key_fetch.second == req_fetch) {
-            c->req.add_recv_key(key_fetch.first);
+            c->req->add_recv_key(key_fetch.first);
             break;
           }
         }
@@ -593,18 +599,13 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       for (const auto& feed_key : part.feed_key) {
         const string& feed = feed_key.first;
         const string& key = feed_key.second;
-        const TensorProto* val = feeds[feed];
-        if (val == nullptr) {
-          return errors::InvalidArgument("No feed is provided for feed=", feed,
-                                         ", key=", key);
-        }
-        auto* send = c->req.add_send();
-        send->set_key(key);
-        *(send->mutable_val()) = *val;  // TODO(mrry): make it faster if needed.
+        const int64 feed_index = feeds[feed];
+        TF_RETURN_IF_ERROR(
+            c->req->AddSendFromRunStepRequest(req, feed_index, key));
       }
       for (const auto& key_fetch : part.key_fetch) {
         const string& key = key_fetch.first;
-        c->req.add_recv_key(key);
+        c->req->add_recv_key(key);
       }
     }
   }
@@ -615,7 +616,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     RunManyGraphs::Call* call = calls.get(i);
     TRACEPRINTF("Partition %d %s", i, part.name.c_str());
     part.worker->RunGraphAsync(
-        &call->opts, &call->req, &call->resp,
+        &call->opts, call->req.get(), call->resp.get(),
         std::bind(&RunManyGraphs::WhenDone, &calls, i, std::placeholders::_1));
   }
 
@@ -640,28 +641,28 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   if (status.ok()) {
     for (int i = 0; i < num; ++i) {
       const Part& part = partitions_[i];
-      for (auto& recv : *(calls.get(i)->resp.mutable_recv())) {
-        auto* ret = resp->add_tensor();
-        auto iter = part.key_fetch.find(recv.key());
+      for (size_t j = 0; j < calls.get(i)->resp->num_recvs(); ++j) {
+        auto iter = part.key_fetch.find(calls.get(i)->resp->recv_key(j));
         if (iter == part.key_fetch.end()) {
-          status.Update(errors::Internal("Unexpected fetch key: ", recv.key()));
+          status.Update(errors::Internal("Unexpected fetch key: ",
+                                         calls.get(i)->resp->recv_key(j)));
           break;
         }
         const string& fetch = iter->second;
-        ret->set_name(fetch);
-        if (!CopyIfNeeded(recv.mutable_val(), ret->mutable_tensor())) {
-          status.Update(
-              errors::Internal("Unexpected unparseable tensor: ", recv.key()));
+        status.Update(resp->AddTensorFromRunGraphResponse(
+            fetch, calls.get(i)->resp.get(), j));
+        if (!status.ok()) {
           break;
         }
       }
-      if (pss->collect_timeline && calls.get(i)->resp.has_step_stats()) {
-        pss->step_stats[i].Swap(calls.get(i)->resp.mutable_step_stats());
+      if (pss->collect_timeline) {
+        pss->step_stats[i].Swap(calls.get(i)->resp->mutable_step_stats());
       }
-      if (pss->collect_costs && calls.get(i)->resp.has_cost_graph()) {
-        for (int j = 0; j < calls.get(i)->resp.cost_graph().node_size(); ++j) {
+      if (pss->collect_costs) {
+        CostGraphDef* cost_graph = calls.get(i)->resp->mutable_cost_graph();
+        for (int j = 0; j < cost_graph->node_size(); ++j) {
           resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
-              calls.get(i)->resp.mutable_cost_graph()->mutable_node(j));
+              cost_graph->mutable_node(j));
         }
       }
     }
@@ -739,7 +740,7 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
 void MasterSession::ReffedClientGraph::ProcessStats(
     int64 step_id, PerStepState* pss,
     SimpleGraphExecutionState* execution_state, ProfileHandler* ph,
-    const RunStepRequest& req, RunStepResponse* resp) {
+    const RunOptions& options, RunMetadata* resp) {
   if (!pss->collect_costs && !pss->collect_timeline) return;
 
   // Out-of-band logging data is collected now, during post-processing.
@@ -774,8 +775,8 @@ void MasterSession::ReffedClientGraph::ProcessStats(
     stats_publisher_->PublishStatsProto(step_stats_proto);
     // Copy the stats back, but only for on-demand profiling to avoid slowing
     // down calls that trigger the automatic profiling.
-    if (req.options().trace_level() == RunOptions::FULL_TRACE) {
-      resp->mutable_metadata()->mutable_step_stats()->Swap(&step_stats_proto);
+    if (options.trace_level() == RunOptions::FULL_TRACE) {
+      resp->mutable_step_stats()->Swap(&step_stats_proto);
     }
   }
 }
@@ -829,7 +830,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
 // on once at setup time to prevent us from computing the dependencies
 // everytime.
 Status MasterSession::ReffedClientGraph::CheckFetches(
-    const RunStepRequest& req, const RunState* run_state,
+    const RunStepRequestWrapper& req, const RunState* run_state,
     SimpleGraphExecutionState* execution_state) {
   // Build the set of pending feeds that we haven't seen.
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
@@ -841,14 +842,15 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
     }
     pending_feeds.insert(id);
   }
-  for (const auto& feed : req.feed()) {
-    TensorId id(ParseTensorName(feed.name()));
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    TensorId id(ParseTensorName(req.feed_name(i)));
     pending_feeds.erase(id);
   }
 
   // Initialize the stack with the fetch nodes.
   std::vector<const Node*> stack;
-  for (const string& fetch : req.fetch()) {
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    const string& fetch = req.fetch_name(i);
     TensorId id(ParseTensorName(fetch));
     auto it = name_to_node_.find(id.first);
     if (it == name_to_node_.end()) {
@@ -914,16 +916,16 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
   }
 }
 
-void BuildBuildGraphOptions(const RunStepRequest& req,
+void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
                             BuildGraphOptions* opts) {
-  for (const auto& feed : req.feed()) {
-    opts->feed_endpoints.push_back(feed.name());
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    opts->feed_endpoints.push_back(req.feed_name(i));
   }
-  for (const auto& fetch : req.fetch()) {
-    opts->fetch_endpoints.push_back(fetch);
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    opts->fetch_endpoints.push_back(req.fetch_name(i));
   }
-  for (const auto& target : req.target()) {
-    opts->target_nodes.push_back(target);
+  for (size_t i = 0; i < req.num_targets(); ++i) {
+    opts->target_nodes.push_back(req.target_name(i));
   }
 
   std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
@@ -1169,8 +1171,8 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
   return Status::OK();
 }
 
-Status MasterSession::Run(CallOptions* opts, const RunStepRequest* req,
-                          RunStepResponse* resp) {
+Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
+                          MutableRunStepResponseWrapper* resp) {
   UpdateLastAccessTime();
   {
     mutex_lock l(mu_);
@@ -1180,7 +1182,7 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequest* req,
     ++num_running_;
   }
   Status status;
-  if (!req->partial_run_handle().empty()) {
+  if (!req.partial_run_handle().empty()) {
     status = DoPartialRun(opts, req, resp);
   } else {
     status = DoRunWithLocalExecution(opts, req, resp);
@@ -1236,9 +1238,10 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
   return Status::OK();
 }
 
-Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
-                                   RunStepResponse* resp) {
-  const string& prun_handle = req->partial_run_handle();
+Status MasterSession::DoPartialRun(CallOptions* opts,
+                                   const RunStepRequestWrapper& req,
+                                   MutableRunStepResponseWrapper* resp) {
+  const string& prun_handle = req.partial_run_handle();
   RunState* run_state = nullptr;
   {
     mutex_lock l(mu_);
@@ -1257,7 +1260,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
 
     auto count = run_state->count;
     pss.collect_timeline =
-        req->options().trace_level() == RunOptions::FULL_TRACE;
+        req.options().trace_level() == RunOptions::FULL_TRACE;
 
     // Build the cost model every 'build_cost_model_every' steps after skipping
     // an
@@ -1271,7 +1274,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
         ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
 
     std::unique_ptr<ProfileHandler> ph = run_state->rcg->GetProfileHandler(
-        run_state->step_id, count, req->options());
+        run_state->step_id, count, req.options());
     if (ph) {
       pss.collect_timeline = true;
       pss.collect_rpcs = ph->should_collect_rpcs();
@@ -1282,15 +1285,16 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
   }
 
   // Make sure that this is a new set of feeds that are still pending.
-  for (const auto& feed : req->feed()) {
-    auto it = run_state->pending_inputs.find(feed.name());
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    auto it = run_state->pending_inputs.find(req.feed_name(i));
     if (it == run_state->pending_inputs.end()) {
-      return errors::InvalidArgument("The feed ", feed.name(),
+      return errors::InvalidArgument("The feed ", req.feed_name(i),
                                      " had already been fed.");
     }
   }
   // Check that this is a new set of fetches that are still pending.
-  for (const auto& fetch : req->fetch()) {
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    const string& fetch = req.fetch_name(i);
     auto it = run_state->pending_outputs.find(fetch);
     if (it == run_state->pending_outputs.end()) {
       return errors::InvalidArgument("The fetch ", fetch,
@@ -1300,21 +1304,21 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
 
   // Ensure that the requested fetches can be computed from the provided feeds.
   TF_RETURN_IF_ERROR(
-      run_state->rcg->CheckFetches(*req, run_state, execution_state_.get()));
+      run_state->rcg->CheckFetches(req, run_state, execution_state_.get()));
 
   // Determine if this partial run satisfies all the pending inputs and ouputs.
-  for (const auto& feed : req->feed()) {
-    run_state->pending_inputs.erase(feed.name());
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    run_state->pending_inputs.erase(req.feed_name(i));
   }
-  for (const auto& fetch : req->fetch()) {
-    run_state->pending_outputs.erase(fetch);
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    run_state->pending_outputs.erase(req.fetch_name(i));
   }
   bool is_last_partial_run =
       (run_state->pending_inputs.empty() && run_state->pending_outputs.empty());
 
   Status s = run_state->rcg->RunPartitions(
       env_, run_state->step_id, run_state->count, execution_state_.get(),
-      &run_state->pss, opts, *req, resp, cancellation_manager_,
+      &run_state->pss, opts, req, resp, cancellation_manager_,
       is_last_partial_run);
 
   // Delete the run state if there is an error or all fetches are done.
@@ -1324,7 +1328,8 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->Ref();
     rcg->ProcessStats(run_state->step_id, &run_state->pss,
-                      execution_state_.get(), run_state->ph.get(), *req, resp);
+                      execution_state_.get(), run_state->ph.get(),
+                      req.options(), resp->mutable_metadata());
     rcg->CleanupPartitionsAsync(
         run_state->step_id, [this, rcg, prun_handle](const Status& s) {
           if (!s.ok()) {
@@ -1338,17 +1343,17 @@ Status MasterSession::DoPartialRun(CallOptions* opts, const RunStepRequest* req,
   return s;
 }
 
-Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
-                                              const RunStepRequest* req,
-                                              RunStepResponse* resp) {
+Status MasterSession::DoRunWithLocalExecution(
+    CallOptions* opts, const RunStepRequestWrapper& req,
+    MutableRunStepResponseWrapper* resp) {
   VLOG(2) << "DoRunWithLocalExecution "
-          << "req: " << req->DebugString();
+          << "req: " << req.DebugString();
   PerStepState pss;
   pss.start_micros = Env::Default()->NowMicros();
 
   // Prepare.
   BuildGraphOptions bgopts;
-  BuildBuildGraphOptions(*req, &bgopts);
+  BuildBuildGraphOptions(req, &bgopts);
   ReffedClientGraph* rcg = nullptr;
   int64 count = 0;
   TF_RETURN_IF_ERROR(StartStep(bgopts, &count, &rcg, false));
@@ -1363,7 +1368,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   const uint64 step_id = (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
   TRACEPRINTF("stepid %llu", step_id);
 
-  pss.collect_timeline = req->options().trace_level() == RunOptions::FULL_TRACE;
+  pss.collect_timeline = req.options().trace_level() == RunOptions::FULL_TRACE;
 
   // Build the cost model every 'build_cost_model_every' steps after skipping an
   // initial 'build_cost_model_after' steps.
@@ -1376,22 +1381,22 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
       ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
 
   std::unique_ptr<ProfileHandler> ph =
-      rcg->GetProfileHandler(step_id, count, req->options());
+      rcg->GetProfileHandler(step_id, count, req.options());
   if (ph) {
     pss.collect_timeline = true;
     pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
-  TF_RETURN_IF_ERROR(
-      rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
-                         opts, *req, resp, cancellation_manager_, false));
+  TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
+                                        execution_state_.get(), &pss, opts, req,
+                                        resp, cancellation_manager_, false));
 
   pss.end_micros = Env::Default()->NowMicros();
 
   // Schedule post-processing and cleanup to be done asynchronously.
   rcg->Ref();
-  rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(), *req,
-                    resp);
+  rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
+                    req.options(), resp->mutable_metadata());
   rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;

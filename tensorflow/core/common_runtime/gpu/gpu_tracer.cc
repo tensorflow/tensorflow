@@ -215,7 +215,7 @@ Status CUPTIManager::DisableTrace() {
 void CUPTIManager::InternalBufferRequested(uint8_t **buffer, size_t *size,
                                            size_t *maxNumRecords) {
   VLOG(2) << "BufferRequested";
-  void *p = port::aligned_malloc(kBufferSize, kBufferAlignment);
+  void *p = port::AlignedMalloc(kBufferSize, kBufferAlignment);
   *size = kBufferSize;
   *buffer = reinterpret_cast<uint8_t *>(p);
   *maxNumRecords = 0;
@@ -246,7 +246,7 @@ void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
       LOG(WARNING) << "Dropped " << dropped << " activity records";
     }
   }
-  port::aligned_free(buffer);
+  port::AlignedFree(buffer);
 }
 
 CUPTIManager *GetCUPTIManager() {

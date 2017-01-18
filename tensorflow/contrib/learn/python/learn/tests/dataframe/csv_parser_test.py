@@ -11,31 +11,41 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Tests for learn.python.learn.dataframe.transforms.csv_parser."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import csv_parser
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.platform import test
 
 
-class CSVParserTestCase(tf.test.TestCase):
+class CSVParserTestCase(test.TestCase):
 
   def testParse(self):
-    parser = csv_parser.CSVParser(column_names=["col0", "col1", "col2"],
-                                  default_values=["", "", 1.4])
+    parser = csv_parser.CSVParser(
+        column_names=["col0", "col1", "col2"], default_values=["", "", 1.4])
     csv_lines = ["one,two,2.5", "four,five,6.0"]
-    csv_input = tf.constant(csv_lines, dtype=tf.string, shape=[len(csv_lines)])
+    csv_input = constant_op.constant(
+        csv_lines, dtype=dtypes.string, shape=[len(csv_lines)])
     csv_column = mocks.MockSeries("csv", csv_input)
-    expected_output = [np.array([b"one", b"four"]),
-                       np.array([b"two", b"five"]),
-                       np.array([2.5, 6.0])]
+    expected_output = [
+        np.array([b"one", b"four"]), np.array([b"two", b"five"]),
+        np.array([2.5, 6.0])
+    ]
     output_columns = parser(csv_column)
     self.assertEqual(3, len(output_columns))
     cache = {}
@@ -46,5 +56,6 @@ class CSVParserTestCase(tf.test.TestCase):
       for expected, actual in zip(expected_output, output):
         np.testing.assert_array_equal(actual, expected)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

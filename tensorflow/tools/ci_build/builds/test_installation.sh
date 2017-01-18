@@ -259,7 +259,7 @@ cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
 
 # Run tests
 DIR0=$(pwd)
-ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
+ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
 
 

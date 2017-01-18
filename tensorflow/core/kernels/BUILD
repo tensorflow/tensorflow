@@ -18,14 +18,13 @@ licenses(["notice"])  # Apache 2.0
 package_group(
     name = "friends",
     packages = [
-        "//learning/deepmind/tensorflow/...",
+        "//learning/deepmind/...",
         "//tensorflow/...",
     ],
 )
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -258,6 +257,15 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "stage_op",
+    srcs = ["stage_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
@@ -431,7 +439,6 @@ ARRAY_DEPS = [
 cc_library(
     name = "array_not_windows",
     deps = [
-        ":debug_ops",
         ":immutable_constant_op",
     ],
 )
@@ -470,6 +477,7 @@ cc_library(
         ":bitcast_op",
         ":concat_op",
         ":constant_op",
+        ":debug_ops",
         ":depth_space_ops",
         ":diag_op",
         ":edit_distance_op",
@@ -477,6 +485,7 @@ cc_library(
         ":gather_nd_op",
         ":gather_op",
         ":identity_op",
+        ":inplace_ops",
         ":listdiff_op",
         ":matrix_band_part_op",
         ":matrix_diag_op",
@@ -652,6 +661,12 @@ tf_kernel_library(
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "inplace_ops",
+    prefix = "inplace_ops",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -1162,6 +1177,7 @@ cc_library(
         ":session_ops",
         ":sparse_conditional_accumulator_op",
         ":stack_ops",
+        ":stage_op",
         ":tensor_array_ops",
     ],
 )
@@ -1451,6 +1467,7 @@ cc_library(
     deps = [
         ":adjust_contrast_op",
         ":adjust_hue_op",
+        ":adjust_saturation_op",
         ":attention_ops",
         ":colorspace_op",
         ":crop_and_resize_op",
@@ -1493,6 +1510,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "adjust_hue_op",
     prefix = "adjust_hue_op",
+    deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "adjust_saturation_op",
+    prefix = "adjust_saturation_op",
     deps = IMAGE_DEPS,
 )
 
@@ -2405,6 +2428,8 @@ cc_library(
         ":batch_norm_op",
         ":bias_op",
         ":conv_ops",
+        ":depthwise_conv_grad_op",
+        ":depthwise_conv_op",
         ":dilation_ops",
         ":fused_batch_norm_op",
         ":in_topk_op",
@@ -2416,10 +2441,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
-    ] + if_not_windows([
-        ":depthwise_conv_grad_op",
-        ":depthwise_conv_op",
-    ]),
+    ],
 )
 
 NN_DEPS = [
@@ -3231,6 +3253,7 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
+        ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:training_ops_op_lib",
@@ -3527,6 +3550,8 @@ filegroup(
         "conv_ops.cc",
         "conv_ops_fused.cc",
         "conv_ops_using_gemm.cc",
+        "crop_and_resize_op.cc",
+        "crop_and_resize_op.h",
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
@@ -3541,6 +3566,7 @@ filegroup(
         "cwise_op_less.cc",
         "cwise_op_log.cc",
         "cwise_op_logical_and.cc",
+        "cwise_op_logical_not.cc",
         "cwise_op_maximum.cc",
         "cwise_op_minimum.cc",
         "cwise_op_mul_1.cc",
@@ -3596,6 +3622,7 @@ filegroup(
         "queue_base.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "reduction_ops_any.cc",
         "reduction_ops_common.cc",
         "reduction_ops_max.cc",
         "reduction_ops_mean.cc",
@@ -3709,6 +3736,8 @@ filegroup(
             # See b/29213790
             "scatter_nd_op*",
             "sparse_matmul_op.*",
+            # Lib CURL is not supported on Android.
+            "bigquery*",
         ],
     ),
     visibility = ["//visibility:public"],

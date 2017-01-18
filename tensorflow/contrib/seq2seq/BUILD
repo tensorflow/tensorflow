@@ -14,6 +14,8 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -32,6 +34,18 @@ cuda_py_test(
     srcs = ["python/kernel_tests/decoder_fn_test.py"],
     additional_deps = [
         ":seq2seq_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "loss_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/loss_test.py"],
+    additional_deps = [
+        ":seq2seq_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -44,9 +58,17 @@ cuda_py_test(
     srcs = ["python/kernel_tests/seq2seq_test.py"],
     additional_deps = [
         ":seq2seq_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 

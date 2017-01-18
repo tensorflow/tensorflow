@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -123,7 +123,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.training.python.training import evaluation
-from tensorflow.python import summary
+from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 
@@ -136,7 +136,6 @@ __all__ = [
 
 wait_for_new_checkpoint = evaluation.wait_for_new_checkpoint
 checkpoints_iterator = evaluation.checkpoints_iterator
-
 
 _USE_DEFAULT = 0
 
@@ -185,9 +184,7 @@ def evaluate_once(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [
-      evaluation.StopAfterNEvalsHook(num_evals),
-  ]
+  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
     hooks.append(
@@ -262,9 +259,7 @@ def evaluation_loop(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [
-      evaluation.StopAfterNEvalsHook(num_evals),
-  ]
+  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
     hooks.append(
