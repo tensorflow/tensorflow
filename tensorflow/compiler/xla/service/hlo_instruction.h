@@ -487,6 +487,13 @@ class HloInstruction {
     return fusion_kind_;
   }
 
+  // Merges the fused instructions from 'instruction_to_merge' into the
+  // fused instruction set of 'this', updating operands as necessary.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  // Predondition: 'instruction_to_merge' must be an operand of 'this'.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion
   // instruction. instruction_to_fuse is unchanged. Instruction is cloned rather
