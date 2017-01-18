@@ -234,6 +234,20 @@ filegroup(
     visibility = [":__subpackages__"],
 )
 
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+
+filegroup(
+    name = "intel_binary_blob",
+    data = if_mkl([
+						"libiomp5.so",
+						"libmklml_intel.so",
+						],
+						),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------

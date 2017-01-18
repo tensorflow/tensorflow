@@ -19,6 +19,13 @@ load(
     "cuda_default_copts"
 )
 
+# INTEL_MKL start
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+# INTEL_MKL end
+
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
   return ["//tensorflow/core:" + p
@@ -96,6 +103,9 @@ def tf_copts():
            "-Wno-sign-compare",
            "-fno-exceptions",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
+# INTEL_MKL start
+          if_mkl(["-DINTEL_MKL=1"]) +
+# INTEL_MKL end
           if_android_arm(["-mfpu=neon"]) +
           if_x86(["-msse4.1"]) +
           select({
@@ -423,7 +433,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
           "//tensorflow/core:cuda",
           "@local_config_cuda//cuda:cuda_headers"
       ]),
-      copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
+      copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
       **kwargs)
 
 def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,

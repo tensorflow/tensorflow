@@ -1762,6 +1762,9 @@ tf_cc_tests(
         "graph/graph_test.cc",
         "graph/node_builder_test.cc",
         "graph/optimizer_cse_test.cc",
+# INTEL_MKL start
+        "graph/optimizer_merge_test.cc",
+# INTEL_MKL end
         "graph/quantize_training_test.cc",
         "graph/subgraph_test.cc",
         "graph/tensor_id_test.cc",

@@ -89,6 +89,8 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
+		cp -R \
+			bazel-bin/_solib_k8 "${TMPDIR}"
   else
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
@@ -99,6 +101,8 @@ function main() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
+			cp -R \
+				bazel-bin/_solib_k8 "${TMPDIR}"	
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
       cp -R \
@@ -109,6 +113,8 @@ function main() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
+			cp -R \
+				bazel-bin/_solib_k8 "${TMPDIR}"
     fi
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
   fi
