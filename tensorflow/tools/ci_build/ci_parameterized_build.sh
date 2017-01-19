@@ -332,6 +332,11 @@ else
   EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
 fi
 
+# For any "tool" dependencies in genrules, Bazel will build them for host
+# instead of the target configuration. We can save some build time by setting
+# this flag, and it only affects a few tests.
+EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
+
 # Process PIP install-test option
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
    [[ ${TF_BUILD_IS_PIP} == "both" ]]; then

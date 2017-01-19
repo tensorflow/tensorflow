@@ -388,12 +388,6 @@ class ShapeUtil {
                                 Shape shape);
 
  private:
-  // Recursive helper for comparing the equality of two shapes. Returns true if
-  // the shapes are the same. If compare_layouts is true, then layouts must also
-  // match.
-  static bool CompareShapes(const Shape& lhs, const Shape& rhs,
-                            bool compare_layouts);
-
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);

@@ -476,7 +476,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
                            "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value]))
+                           ",".join([compat.as_str(v) for v in field.value
+                                     if not input_map or v not in input_map]))
         break
 
   # Sets graph to default graph if it's not passed in.

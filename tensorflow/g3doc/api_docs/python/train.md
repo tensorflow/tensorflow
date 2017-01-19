@@ -1533,6 +1533,7 @@ See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
 for how to use threads and queues.  For documentation on the Queue API,
 see [Queues](../../api_docs/python/io_ops.md#queues).
 
+
 - - -
 
 ### `class tf.train.Coordinator` {#Coordinator}
@@ -1979,6 +1980,233 @@ Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
 
   A `QueueRunnerDef` protocol buffer, or `None` if the `Variable` is not in
   the specified name scope.
+
+
+
+- - -
+
+### `class tf.train.LooperThread` {#LooperThread}
+
+A thread that runs code repeatedly, optionally on a timer.
+
+This thread class is intended to be used with a `Coordinator`.  It repeatedly
+runs code specified either as `target` and `args` or by the `run_loop()`
+method.
+
+Before each run the thread checks if the coordinator has requested stop.  In
+that case the looper thread terminates immediately.
+
+If the code being run raises an exception, that exception is reported to the
+coordinator and the thread terminates.  The coordinator will then request all
+the other threads it coordinates to stop.
+
+You typically pass looper threads to the supervisor `Join()` method.
+- - -
+
+#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None, kwargs=None)` {#LooperThread.__init__}
+
+Create a LooperThread.
+
+##### Args:
+
+
+*  <b>`coord`</b>: A Coordinator.
+*  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
+    if it should be called back to back.
+*  <b>`target`</b>: Optional callable object that will be executed in the thread.
+*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.LooperThread.__repr__()` {#LooperThread.__repr__}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.daemon` {#LooperThread.daemon}
+
+A boolean value indicating whether this thread is a daemon thread (True) or not (False).
+
+This must be set before start() is called, otherwise RuntimeError is
+raised. Its initial value is inherited from the creating thread; the
+main thread is not a daemon thread and therefore all threads created in
+the main thread default to daemon = False.
+
+The entire Python program exits when no alive non-daemon threads are
+left.
+
+
+- - -
+
+#### `tf.train.LooperThread.getName()` {#LooperThread.getName}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.ident` {#LooperThread.ident}
+
+Thread identifier of this thread or None if it has not been started.
+
+This is a nonzero integer. See the thread.get_ident() function. Thread
+identifiers may be recycled when a thread exits and another thread is
+created. The identifier is available even after the thread has exited.
+
+
+- - -
+
+#### `tf.train.LooperThread.isAlive()` {#LooperThread.isAlive}
+
+Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. The module function enumerate()
+returns a list of all alive threads.
+
+
+- - -
+
+#### `tf.train.LooperThread.isDaemon()` {#LooperThread.isDaemon}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.is_alive()` {#LooperThread.is_alive}
+
+Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. The module function enumerate()
+returns a list of all alive threads.
+
+
+- - -
+
+#### `tf.train.LooperThread.join(timeout=None)` {#LooperThread.join}
+
+Wait until the thread terminates.
+
+This blocks the calling thread until the thread whose join() method is
+called terminates -- either normally or through an unhandled exception
+or until the optional timeout occurs.
+
+When the timeout argument is present and not None, it should be a
+floating point number specifying a timeout for the operation in seconds
+(or fractions thereof). As join() always returns None, you must call
+isAlive() after join() to decide whether a timeout happened -- if the
+thread is still alive, the join() call timed out.
+
+When the timeout argument is not present or None, the operation will
+block until the thread terminates.
+
+A thread can be join()ed many times.
+
+join() raises a RuntimeError if an attempt is made to join the current
+thread as that would cause a deadlock. It is also an error to join() a
+thread before it has been started and attempts to do so raises the same
+exception.
+
+
+- - -
+
+#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None, kwargs=None)` {#LooperThread.loop}
+
+Start a LooperThread that calls a function periodically.
+
+If `timer_interval_secs` is None the thread calls `target(args)`
+repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+seconds.  The thread terminates when a stop of the coordinator is
+requested.
+
+##### Args:
+
+
+*  <b>`coord`</b>: A Coordinator.
+*  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
+*  <b>`target`</b>: A callable object.
+*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+
+##### Returns:
+
+  The started thread.
+
+
+- - -
+
+#### `tf.train.LooperThread.name` {#LooperThread.name}
+
+A string used for identification purposes only.
+
+It has no semantics. Multiple threads may be given the same name. The
+initial name is set by the constructor.
+
+
+- - -
+
+#### `tf.train.LooperThread.run()` {#LooperThread.run}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.run_loop()` {#LooperThread.run_loop}
+
+Called at 'timer_interval_secs' boundaries.
+
+
+- - -
+
+#### `tf.train.LooperThread.setDaemon(daemonic)` {#LooperThread.setDaemon}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.setName(name)` {#LooperThread.setName}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.start()` {#LooperThread.start}
+
+Start the thread's activity.
+
+It must be called at most once per thread object. It arranges for the
+object's run() method to be invoked in a separate thread of control.
+
+This method will raise a RuntimeError if called more than once on the
+same thread object.
+
+
+- - -
+
+#### `tf.train.LooperThread.start_loop()` {#LooperThread.start_loop}
+
+Called when the thread starts.
+
+
+- - -
+
+#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
+
+Called when the thread stops.
 
 
 
@@ -3531,7 +3759,7 @@ with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
 
 - - -
 
-### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, config=None)` {#MonitoredTrainingSession}
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None)` {#MonitoredTrainingSession}
 
 Creates a `MonitoredSession` for training.
 
@@ -3559,8 +3787,12 @@ inialize/restore.
     using a default checkpoint saver. If `save_checkpoint_secs` is set to
     `None`, then the default checkpoint saver isn't used.
 *  <b>`save_summaries_steps`</b>: The frequency, in number of global steps, that the
-    summaries are written to disk using a default summary saver. If
-    `save_summaries_steps` is set to `None`, then the default summary saver
+    summaries are written to disk using a default summary saver. If both
+    `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
+    the default summary saver isn't used.
+*  <b>`save_summaries_secs`</b>: The frequency, in secs, that the summaries are written
+    to disk using a default summary saver.  If both `save_summaries_steps` and
+    `save_summaries_secs` are set to `None`, then the default summary saver
     isn't used.
 *  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
     It's the `config` argument of constructor of `tf.Session`.
@@ -4111,132 +4343,9 @@ for more information about their attributes.
 
 
 
-## Training Utilities
+## Training Hooks
 
-- - -
-
-### `tf.train.global_step(sess, global_step_tensor)` {#global_step}
-
-Small helper to get the global step.
-
-```python
-# Creates a variable to hold the global_step.
-global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
-# Creates a session.
-sess = tf.Session()
-# Initializes the variable.
-print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
-
-global_step: 10
-```
-
-##### Args:
-
-
-*  <b>`sess`</b>: A TensorFlow `Session` object.
-*  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
-    the global step.
-
-##### Returns:
-
-  The global step value.
-
-
-- - -
-
-### `tf.train.basic_train_loop(supervisor, train_step_fn, args=None, kwargs=None, master='')` {#basic_train_loop}
-
-Basic loop to train a model.
-
-Calls `train_step_fn` in a loop to train a model.  The function is called as:
-
-```python
-train_step_fn(session, *args, **kwargs)
-```
-
-It is passed a `tf.Session` in addition to `args` and `kwargs`.  The function
-typically runs one training step in the session.
-
-##### Args:
-
-
-*  <b>`supervisor`</b>: `tf.Supervisor` to run the training services.
-*  <b>`train_step_fn`</b>: Callable to execute one training step.  Called
-    repeatedly as `train_step_fn(session, *args **kwargs)`.
-*  <b>`args`</b>: Optional positional arguments passed to `train_step_fn`.
-*  <b>`kwargs`</b>: Optional keyword arguments passed to `train_step_fn`.
-*  <b>`master`</b>: Master to use to create the training session.  Defaults to
-    `""` which causes the session to be created in the local process.
-
-
-- - -
-
-### `tf.train.get_global_step(graph=None)` {#get_global_step}
-
-Get the global step tensor.
-
-The global step tensor must be an integer variable. We first try to find it
-in the collection `GLOBAL_STEP`, or by name `global_step:0`.
-
-##### Args:
-
-
-*  <b>`graph`</b>: The graph to find the global step in. If missing, use default graph.
-
-##### Returns:
-
-  The global step variable, or `None` if none was found.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If the global step tensor has a non-integer type, or if it is not
-    a `Variable`.
-
-
-- - -
-
-### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
-
-Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
-
-##### Args:
-
-
-*  <b>`global_step_tensor`</b>: `Tensor` to test.
-
-
-- - -
-
-### `tf.train.write_graph(graph_or_graph_def, logdir, name, as_text=True)` {#write_graph}
-
-Writes a graph proto to a file.
-
-The graph is written as a binary proto unless `as_text` is `True`.
-
-```python
-v = tf.Variable(0, name='my_variable')
-sess = tf.Session()
-tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
-```
-
-or
-
-```python
-v = tf.Variable(0, name='my_variable')
-sess = tf.Session()
-tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
-```
-
-##### Args:
-
-
-*  <b>`graph_or_graph_def`</b>: A `Graph` or a `GraphDef` protocol buffer.
-*  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
-    filesystems, such as Google Cloud Storage (GCS).
-*  <b>`name`</b>: Filename for the graph.
-*  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
-
+Hooks are tools that run in the process of training/evaluation of the model.
 
 - - -
 
@@ -4342,6 +4451,209 @@ such as saving a last checkpoint.
 
 - - -
 
+### `class tf.train.SessionRunArgs` {#SessionRunArgs}
+
+Represents arguments to be added to a `Session.run()` call.
+
+Args:
+  fetches: Exactly like the 'fetches' argument to Session.Run().
+    Can be a single tensor or op, a list of 'fetches' or a dictionary
+    of fetches.  For example:
+      fetches = global_step_tensor
+      fetches = [train_op, summary_op, global_step_tensor]
+      fetches = {'step': global_step_tensor, 'summ': summary_op}
+    Note that this can recurse as expected:
+      fetches = {'step': global_step_tensor,
+                 'ops': [train_op, check_nan_op]}
+  feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
+  options: Exactly like the `options` argument to `Session.run()`, i.e., a
+    config_pb2.RunOptions proto.
+- - -
+
+#### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__getstate__()` {#SessionRunArgs.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
+
+
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__repr__()` {#SessionRunArgs.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.feed_dict` {#SessionRunArgs.feed_dict}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
+
+Alias for field number 2
+
+
+
+- - -
+
+### `class tf.train.SessionRunContext` {#SessionRunContext}
+
+Provides information about the `session.run()` call being made.
+
+Provides information about original request to `Session.Run()` function.
+SessionRunHook objects can stop the loop by calling `request_stop()` of
+`run_context`. In the future we may use this object to add more information
+about run without changing the Hook API.
+- - -
+
+#### `tf.train.SessionRunContext.__init__(original_args, session)` {#SessionRunContext.__init__}
+
+Initializes SessionRunContext.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.original_args` {#SessionRunContext.original_args}
+
+A `SessionRunArgs` object holding the original arguments of `run()`.
+
+If user called `MonitoredSession.run(fetches=a, feed_dict=b)`, then this
+field is equal to SessionRunArgs(a, b).
+
+##### Returns:
+
+ A `SessionRunArgs` object
+
+
+- - -
+
+#### `tf.train.SessionRunContext.request_stop()` {#SessionRunContext.request_stop}
+
+Sets stop requested field.
+
+Hooks can use this function to request stop of iterations.
+`MonitoredSession` checks whether this is called or not.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.session` {#SessionRunContext.session}
+
+A TensorFlow session object which will execute the `run`.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.stop_requested` {#SessionRunContext.stop_requested}
+
+Returns whether a stop is requested or not.
+
+If true, `MonitoredSession` stops iterations.
+
+##### Returns:
+
+  A `bool`
+
+
+
+- - -
+
+### `class tf.train.SessionRunValues` {#SessionRunValues}
+
+Contains the results of `Session.run()`.
+
+In the future we may use this object to add more information about result of
+run without changing the Hook API.
+
+Args:
+  results: The return values from `Session.run()` corresponding to the fetches
+    attribute returned in the RunArgs. Note that this has the same shape as
+    the RunArgs fetches.  For example:
+      fetches = global_step_tensor
+      => results = nparray(int)
+      fetches = [train_op, summary_op, global_step_tensor]
+      => results = [None, nparray(string), nparray(int)]
+      fetches = {'step': global_step_tensor, 'summ': summary_op}
+      => results = {'step': nparray(int), 'summ': nparray(string)}
+  options: `RunOptions` from the `Session.run()` call.
+  run_metadata: `RunMetadata` from the `Session.run()` call.
+- - -
+
+#### `tf.train.SessionRunValues.__getnewargs__()` {#SessionRunValues.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__getstate__()` {#SessionRunValues.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
+
+Create new instance of SessionRunValues(results, options, run_metadata)
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__repr__()` {#SessionRunValues.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.train.SessionRunValues.options` {#SessionRunValues.options}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.train.SessionRunValues.results` {#SessionRunValues.results}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
+
+Alias for field number 2
+
+
+
+
+- - -
+
 ### `class tf.train.LoggingTensorHook` {#LoggingTensorHook}
 
 Prints the given tensors once every N local steps or once every N seconds.
@@ -4349,7 +4661,7 @@ Prints the given tensors once every N local steps or once every N seconds.
 The tensors will be printed to the log, with `INFO` severity.
 - - -
 
-#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None)` {#LoggingTensorHook.__init__}
+#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None, formatter=None)` {#LoggingTensorHook.__init__}
 
 Initializes a LoggingHook monitor.
 
@@ -4363,6 +4675,8 @@ Initializes a LoggingHook monitor.
 *  <b>`every_n_secs`</b>: `int` or `float`, print the values of `tensors` once every N
       seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
       provided.
+*  <b>`formatter`</b>: function, takes dict of `tag`->`Tensor` and returns a string.
+      If `None` uses default printing all tensors.
 
 ##### Raises:
 
@@ -4953,431 +5267,343 @@ such as saving a last checkpoint.
 
 - - -
 
-### `class tf.train.SessionRunArgs` {#SessionRunArgs}
+### `class tf.train.FinalOpsHook` {#FinalOpsHook}
 
-Represents arguments to be added to a `Session.run()` call.
-
-Args:
-  fetches: Exactly like the 'fetches' argument to Session.Run().
-    Can be a single tensor or op, a list of 'fetches' or a dictionary
-    of fetches.  For example:
-      fetches = global_step_tensor
-      fetches = [train_op, summary_op, global_step_tensor]
-      fetches = {'step': global_step_tensor, 'summ': summary_op}
-    Note that this can recurse as expected:
-      fetches = {'step': global_step_tensor,
-                 'ops': [train_op, check_nan_op]}
-  feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
-  options: Exactly like the `options` argument to `Session.run()`, i.e., a
-    config_pb2.RunOptions proto.
+A run hook which evaluates `Tensors` at the end of a session.
 - - -
 
-#### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
+#### `tf.train.FinalOpsHook.__init__(final_ops, final_ops_feed_dict=None)` {#FinalOpsHook.__init__}
 
-Return self as a plain tuple.  Used by copy and pickle.
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.__getstate__()` {#SessionRunArgs.__getstate__}
-
-Exclude the OrderedDict from pickling
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
-
-
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.__repr__()` {#SessionRunArgs.__repr__}
-
-Return a nicely formatted representation string
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.feed_dict` {#SessionRunArgs.feed_dict}
-
-Alias for field number 1
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
-
-Alias for field number 0
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
-
-Alias for field number 2
-
-
-
-- - -
-
-### `class tf.train.SessionRunContext` {#SessionRunContext}
-
-Provides information about the `session.run()` call being made.
-
-Provides information about original request to `Session.Run()` function.
-SessionRunHook objects can stop the loop by calling `request_stop()` of
-`run_context`. In the future we may use this object to add more information
-about run without changing the Hook API.
-- - -
-
-#### `tf.train.SessionRunContext.__init__(original_args, session)` {#SessionRunContext.__init__}
-
-Initializes SessionRunContext.
-
-
-- - -
-
-#### `tf.train.SessionRunContext.original_args` {#SessionRunContext.original_args}
-
-A `SessionRunArgs` object holding the original arguments of `run()`.
-
-If user called `MonitoredSession.run(fetches=a, feed_dict=b)`, then this
-field is equal to SessionRunArgs(a, b).
-
-##### Returns:
-
- A `SessionRunArgs` object
-
-
-- - -
-
-#### `tf.train.SessionRunContext.request_stop()` {#SessionRunContext.request_stop}
-
-Sets stop requested field.
-
-Hooks can use this function to request stop of iterations.
-`MonitoredSession` checks whether this is called or not.
-
-
-- - -
-
-#### `tf.train.SessionRunContext.session` {#SessionRunContext.session}
-
-A TensorFlow session object which will execute the `run`.
-
-
-- - -
-
-#### `tf.train.SessionRunContext.stop_requested` {#SessionRunContext.stop_requested}
-
-Returns whether a stop is requested or not.
-
-If true, `MonitoredSession` stops iterations.
-
-##### Returns:
-
-  A `bool`
-
-
-
-- - -
-
-### `class tf.train.SessionRunValues` {#SessionRunValues}
-
-Contains the results of `Session.run()`.
-
-In the future we may use this object to add more information about result of
-run without changing the Hook API.
-
-Args:
-  results: The return values from `Session.run()` corresponding to the fetches
-    attribute returned in the RunArgs. Note that this has the same shape as
-    the RunArgs fetches.  For example:
-      fetches = global_step_tensor
-      => results = nparray(int)
-      fetches = [train_op, summary_op, global_step_tensor]
-      => results = [None, nparray(string), nparray(int)]
-      fetches = {'step': global_step_tensor, 'summ': summary_op}
-      => results = {'step': nparray(int), 'summ': nparray(string)}
-  options: `RunOptions` from the `Session.run()` call.
-  run_metadata: `RunMetadata` from the `Session.run()` call.
-- - -
-
-#### `tf.train.SessionRunValues.__getnewargs__()` {#SessionRunValues.__getnewargs__}
-
-Return self as a plain tuple.  Used by copy and pickle.
-
-
-- - -
-
-#### `tf.train.SessionRunValues.__getstate__()` {#SessionRunValues.__getstate__}
-
-Exclude the OrderedDict from pickling
-
-
-- - -
-
-#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
-
-Create new instance of SessionRunValues(results, options, run_metadata)
-
-
-- - -
-
-#### `tf.train.SessionRunValues.__repr__()` {#SessionRunValues.__repr__}
-
-Return a nicely formatted representation string
-
-
-- - -
-
-#### `tf.train.SessionRunValues.options` {#SessionRunValues.options}
-
-Alias for field number 1
-
-
-- - -
-
-#### `tf.train.SessionRunValues.results` {#SessionRunValues.results}
-
-Alias for field number 0
-
-
-- - -
-
-#### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
-
-Alias for field number 2
-
-
-
-- - -
-
-### `class tf.train.LooperThread` {#LooperThread}
-
-A thread that runs code repeatedly, optionally on a timer.
-
-This thread class is intended to be used with a `Coordinator`.  It repeatedly
-runs code specified either as `target` and `args` or by the `run_loop()`
-method.
-
-Before each run the thread checks if the coordinator has requested stop.  In
-that case the looper thread terminates immediately.
-
-If the code being run raises an exception, that exception is reported to the
-coordinator and the thread terminates.  The coordinator will then request all
-the other threads it coordinates to stop.
-
-You typically pass looper threads to the supervisor `Join()` method.
-- - -
-
-#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None, kwargs=None)` {#LooperThread.__init__}
-
-Create a LooperThread.
+Constructs the FinalOpHook with ops to run at the end of the session.
 
 ##### Args:
 
 
-*  <b>`coord`</b>: A Coordinator.
-*  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
-    if it should be called back to back.
-*  <b>`target`</b>: Optional callable object that will be executed in the thread.
-*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
-*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+*  <b>`final_ops`</b>: A single `Tensor`, a list of `Tensors` or a dictionary of
+    names to `Tensors`.
+*  <b>`final_ops_feed_dict`</b>: A feed dictionary to use when running
+    `final_ops_dict`.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.after_create_session(session, coord)` {#FinalOpsHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.after_run(run_context, run_values)` {#FinalOpsHook.after_run}
+
+Called after each call to run().
+
+The `run_values` argument contains results of requested ops/tensors by
+`before_run()`.
+
+The `run_context` argument is the same one send to `before_run` call.
+`run_context.request_stop()` can be called to stop the iteration.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+*  <b>`run_values`</b>: A SessionRunValues object.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.before_run(run_context)` {#FinalOpsHook.before_run}
+
+Called before each call to run().
+
+You can return from this call a `SessionRunArgs` object indicating ops or
+tensors to add to the upcoming `run()` call.  These ops/tensors will be run
+together with the ops/tensors originally passed to the original run() call.
+The run args you return can also contain feeds to be added to the run()
+call.
+
+The `run_context` argument is a `SessionRunContext` that provides
+information about the upcoming `run()` call: the originally requested
+op/tensors, the TensorFlow Session.
+
+At this point graph is finalized and you can not add ops.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+
+##### Returns:
+
+  None or a `SessionRunArgs` object.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.begin()` {#FinalOpsHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.end(session)` {#FinalOpsHook.end}
+
+
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.final_ops_values` {#FinalOpsHook.final_ops_values}
+
+
+
+
+
+- - -
+
+### `class tf.train.FeedFnHook` {#FeedFnHook}
+
+Runs `feed_fn` and sets the `feed_dict` accordingly.
+- - -
+
+#### `tf.train.FeedFnHook.__init__(feed_fn)` {#FeedFnHook.__init__}
+
+Constructs the FeedFnHook with given `feed_fn`.
+
+##### Args:
+
+
+*  <b>`feed_fn`</b>: function, no arguments and returns `dict` to feed.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.after_create_session(session, coord)` {#FeedFnHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.after_run(run_context, run_values)` {#FeedFnHook.after_run}
+
+Called after each call to run().
+
+The `run_values` argument contains results of requested ops/tensors by
+`before_run()`.
+
+The `run_context` argument is the same one send to `before_run` call.
+`run_context.request_stop()` can be called to stop the iteration.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+*  <b>`run_values`</b>: A SessionRunValues object.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.before_run(run_context)` {#FeedFnHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.FeedFnHook.begin()` {#FeedFnHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.end(session)` {#FeedFnHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+
+## Training Utilities
+
+- - -
+
+### `tf.train.global_step(sess, global_step_tensor)` {#global_step}
+
+Small helper to get the global step.
+
+```python
+# Creates a variable to hold the global_step.
+global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
+# Creates a session.
+sess = tf.Session()
+# Initializes the variable.
+print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
+
+global_step: 10
+```
+
+##### Args:
+
+
+*  <b>`sess`</b>: A TensorFlow `Session` object.
+*  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
+    the global step.
+
+##### Returns:
+
+  The global step value.
+
+
+- - -
+
+### `tf.train.basic_train_loop(supervisor, train_step_fn, args=None, kwargs=None, master='')` {#basic_train_loop}
+
+Basic loop to train a model.
+
+Calls `train_step_fn` in a loop to train a model.  The function is called as:
+
+```python
+train_step_fn(session, *args, **kwargs)
+```
+
+It is passed a `tf.Session` in addition to `args` and `kwargs`.  The function
+typically runs one training step in the session.
+
+##### Args:
+
+
+*  <b>`supervisor`</b>: `tf.Supervisor` to run the training services.
+*  <b>`train_step_fn`</b>: Callable to execute one training step.  Called
+    repeatedly as `train_step_fn(session, *args **kwargs)`.
+*  <b>`args`</b>: Optional positional arguments passed to `train_step_fn`.
+*  <b>`kwargs`</b>: Optional keyword arguments passed to `train_step_fn`.
+*  <b>`master`</b>: Master to use to create the training session.  Defaults to
+    `""` which causes the session to be created in the local process.
+
+
+- - -
+
+### `tf.train.get_global_step(graph=None)` {#get_global_step}
+
+Get the global step tensor.
+
+The global step tensor must be an integer variable. We first try to find it
+in the collection `GLOBAL_STEP`, or by name `global_step:0`.
+
+##### Args:
+
+
+*  <b>`graph`</b>: The graph to find the global step in. If missing, use default graph.
+
+##### Returns:
+
+  The global step variable, or `None` if none was found.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If one of the arguments is invalid.
+*  <b>`TypeError`</b>: If the global step tensor has a non-integer type, or if it is not
+    a `Variable`.
 
 
 - - -
 
-#### `tf.train.LooperThread.__repr__()` {#LooperThread.__repr__}
+### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
-
-
-
-- - -
-
-#### `tf.train.LooperThread.daemon` {#LooperThread.daemon}
-
-A boolean value indicating whether this thread is a daemon thread (True) or not (False).
-
-This must be set before start() is called, otherwise RuntimeError is
-raised. Its initial value is inherited from the creating thread; the
-main thread is not a daemon thread and therefore all threads created in
-the main thread default to daemon = False.
-
-The entire Python program exits when no alive non-daemon threads are
-left.
-
-
-- - -
-
-#### `tf.train.LooperThread.getName()` {#LooperThread.getName}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.ident` {#LooperThread.ident}
-
-Thread identifier of this thread or None if it has not been started.
-
-This is a nonzero integer. See the thread.get_ident() function. Thread
-identifiers may be recycled when a thread exits and another thread is
-created. The identifier is available even after the thread has exited.
-
-
-- - -
-
-#### `tf.train.LooperThread.isAlive()` {#LooperThread.isAlive}
-
-Return whether the thread is alive.
-
-This method returns True just before the run() method starts until just
-after the run() method terminates. The module function enumerate()
-returns a list of all alive threads.
-
-
-- - -
-
-#### `tf.train.LooperThread.isDaemon()` {#LooperThread.isDaemon}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.is_alive()` {#LooperThread.is_alive}
-
-Return whether the thread is alive.
-
-This method returns True just before the run() method starts until just
-after the run() method terminates. The module function enumerate()
-returns a list of all alive threads.
-
-
-- - -
-
-#### `tf.train.LooperThread.join(timeout=None)` {#LooperThread.join}
-
-Wait until the thread terminates.
-
-This blocks the calling thread until the thread whose join() method is
-called terminates -- either normally or through an unhandled exception
-or until the optional timeout occurs.
-
-When the timeout argument is present and not None, it should be a
-floating point number specifying a timeout for the operation in seconds
-(or fractions thereof). As join() always returns None, you must call
-isAlive() after join() to decide whether a timeout happened -- if the
-thread is still alive, the join() call timed out.
-
-When the timeout argument is not present or None, the operation will
-block until the thread terminates.
-
-A thread can be join()ed many times.
-
-join() raises a RuntimeError if an attempt is made to join the current
-thread as that would cause a deadlock. It is also an error to join() a
-thread before it has been started and attempts to do so raises the same
-exception.
-
-
-- - -
-
-#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None, kwargs=None)` {#LooperThread.loop}
-
-Start a LooperThread that calls a function periodically.
-
-If `timer_interval_secs` is None the thread calls `target(args)`
-repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
-seconds.  The thread terminates when a stop of the coordinator is
-requested.
+Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
 ##### Args:
 
 
-*  <b>`coord`</b>: A Coordinator.
-*  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
-*  <b>`target`</b>: A callable object.
-*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
-*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+*  <b>`global_step_tensor`</b>: `Tensor` to test.
+
+
+- - -
+
+### `tf.train.write_graph(graph_or_graph_def, logdir, name, as_text=True)` {#write_graph}
+
+Writes a graph proto to a file.
+
+The graph is written as a binary proto unless `as_text` is `True`.
+
+```python
+v = tf.Variable(0, name='my_variable')
+sess = tf.Session()
+tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
+```
+
+or
+
+```python
+v = tf.Variable(0, name='my_variable')
+sess = tf.Session()
+tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
+```
+
+##### Args:
+
+
+*  <b>`graph_or_graph_def`</b>: A `Graph` or a `GraphDef` protocol buffer.
+*  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
+    filesystems, such as Google Cloud Storage (GCS).
+*  <b>`name`</b>: Filename for the graph.
+*  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 
 ##### Returns:
 
-  The started thread.
-
-
-- - -
-
-#### `tf.train.LooperThread.name` {#LooperThread.name}
-
-A string used for identification purposes only.
-
-It has no semantics. Multiple threads may be given the same name. The
-initial name is set by the constructor.
-
-
-- - -
-
-#### `tf.train.LooperThread.run()` {#LooperThread.run}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.run_loop()` {#LooperThread.run_loop}
-
-Called at 'timer_interval_secs' boundaries.
-
-
-- - -
-
-#### `tf.train.LooperThread.setDaemon(daemonic)` {#LooperThread.setDaemon}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.setName(name)` {#LooperThread.setName}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.start()` {#LooperThread.start}
-
-Start the thread's activity.
-
-It must be called at most once per thread object. It arranges for the
-object's run() method to be invoked in a separate thread of control.
-
-This method will raise a RuntimeError if called more than once on the
-same thread object.
-
-
-- - -
-
-#### `tf.train.LooperThread.start_loop()` {#LooperThread.start_loop}
-
-Called when the thread starts.
-
-
-- - -
-
-#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
-
-Called when the thread stops.
-
+  The path of the output proto file.
 
 
 
