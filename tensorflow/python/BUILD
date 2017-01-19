@@ -2292,6 +2292,7 @@ tf_py_wrap_cc(
         "util/port.i",
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
+        "util/transform_graph.i",
     ],
     deps = [
         ":cpp_shape_inference",
@@ -2310,6 +2311,7 @@ tf_py_wrap_cc(
         "//tensorflow/core:lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + tf_additional_lib_deps() + tf_additional_plugin_deps(),
