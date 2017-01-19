@@ -152,7 +152,7 @@ class Dirichlet(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         is_continuous=True,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._alpha, self._alpha_sum],
         name=ns)

@@ -119,7 +119,7 @@ class _Logistic(distribution.Distribution):
     super(_Logistic, self).__init__(
         dtype=self._scale.dtype,
         is_continuous=True,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,

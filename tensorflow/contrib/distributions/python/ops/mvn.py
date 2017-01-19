@@ -146,7 +146,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
         self._mu = self._assert_valid_mu(self._mu)
         super(_MultivariateNormalOperatorPD, self).__init__(
             dtype=self._mu.dtype,
-            is_reparameterized=True,
+            reparameterization_type=distribution.FULLY_REPARAMETERIZED,
             is_continuous=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,

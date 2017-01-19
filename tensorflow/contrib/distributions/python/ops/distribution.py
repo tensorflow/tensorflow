@@ -173,6 +173,56 @@ class _DistributionMeta(abc.ABCMeta):
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
 
 
+class ReparameterizationType(object):
+  """Instances of this class represent how sampling is reparameterized.
+
+  Two static instances exist in the distritributions library, signifying
+  one of two possible properties for samples from a distribution:
+
+  `FULLY_REPARAMETERIZED`: Samples from the distribution are fully
+    reparameterized, and straight-through gradients are supported.
+
+  `NOT_REPARAMETERIZED`: Samples from the distribution are not fully
+    reparameterized, and straight-through gradients are either partially
+    unsupported or are not supported at all.  In this case, for purposes of
+    e.g. RL or variational inference, it is generally safest to wrap the
+    sample results in a `stop_gradients` call and instead use policy
+    gradients / surrogate loss instead.
+  """
+
+  def __init__(self, rep_type):
+    self._rep_type = rep_type
+
+  def __repr__(self):
+    return "<Reparameteriation Type: %s>" % self._rep_type
+
+  def __eq__(self, other):
+    """Determine if this `ReparameterizationType` is equal to another.
+
+    Since RepaparameterizationType instances are constant static global
+    instances, equality checks if two instances' id() values are equal.
+
+    Args:
+      other: Object to compare against.
+
+    Returns:
+      `self is other`.
+    """
+    return self is other
+
+
+# Fully reparameterized distribution: samples from a fully
+# reparameterized distribution support straight-through gradients with
+# respect to all parameters.
+FULLY_REPARAMETERIZED = ReparameterizationType("FULLY_REPARAMETERIZED")
+
+
+# Not reparameterized distribution: samples from a non-
+# reparameterized distribution do not support straight-through gradients for
+# at least some of the parameters.
+NOT_REPARAMETERIZED = ReparameterizationType("NOT_REPARAMETERIZED")
+
+
 @six.add_metaclass(_DistributionMeta)
 class Distribution(_BaseDistribution):
   """A generic probability distribution base class.
@@ -293,7 +343,7 @@ class Distribution(_BaseDistribution):
   def __init__(self,
                dtype,
                is_continuous,
-               is_reparameterized,
+               reparameterization_type,
                validate_args,
                allow_nan_stats,
                parameters=None,
@@ -307,10 +357,12 @@ class Distribution(_BaseDistribution):
       dtype: The type of the event samples. `None` implies no type-enforcement.
       is_continuous: Python boolean. If `True` this
         `Distribution` is continuous over its supported domain.
-      is_reparameterized: Python boolean. If `True` this
+      reparameterization_type: Instance of `ReparameterizationType`.
+        If `distributions.FULLY_REPARAMETERIZED`, this
         `Distribution` can be reparameterized in terms of some standard
         distribution with a function whose Jacobian is constant for the support
-        of the standard distribution.
+        of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+        then no such reparameterization is available.
       validate_args: Python boolean.  Whether to validate input with asserts.
         If `validate_args` is `False`, and the inputs are invalid,
         correct behavior is not guaranteed.
@@ -333,7 +385,7 @@ class Distribution(_BaseDistribution):
     parameters = parameters or {}
     self._dtype = dtype
     self._is_continuous = is_continuous
-    self._is_reparameterized = is_reparameterized
+    self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._parameters = parameters
@@ -344,7 +396,11 @@ class Distribution(_BaseDistribution):
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
     """Shapes of parameters given the desired shape of a call to `sample()`.
 
-    Subclasses should override static method `_param_shapes`.
+    This is a class method that describes what key/value arguments are required
+    to instantiate the given `Distribution` so that a particular shape is
+    returned for that instance's call to `sample()`.
+
+    Subclasses should override class method `_param_shapes`.
 
     Args:
       sample_shape: `Tensor` or python list/tuple. Desired shape of a call to
@@ -359,7 +415,15 @@ class Distribution(_BaseDistribution):
 
   @classmethod
   def param_static_shapes(cls, sample_shape):
-    """param_shapes with static (i.e. TensorShape) shapes.
+    """param_shapes with static (i.e. `TensorShape`) shapes.
+
+    This is a class method that describes what key/value arguments are required
+    to instantiate the given `Distribution` so that a particular shape is
+    returned for that instance's call to `sample()`.  Assumes that
+    the sample's shape is known statically.
+
+    Subclasses should override class method `_param_shapes` to return
+    constant-valued tensors when constant values are fed.
 
     Args:
       sample_shape: `TensorShape` or python list/tuple. Desired shape of a call
@@ -412,8 +476,17 @@ class Distribution(_BaseDistribution):
     return self._is_continuous
 
   @property
-  def is_reparameterized(self):
-    return self._is_reparameterized
+  def reparameterization_type(self):
+    """Describes how samples from the distribution are reparameterized.
+
+    Currently this is one of the static instances
+    `distributions.FULLY_REPARAMETERIZED`
+    or `distributions.NOT_REPARAMETERIZED`.
+
+    Returns:
+      An instance of `ReparameterizationType`.
+    """
+    return self._reparameterization_type
 
   @property
   def allow_nan_stats(self):
@@ -756,7 +829,7 @@ class Distribution(_BaseDistribution):
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+      `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
         `self.dtype`.
     """
     with self._name_scope(name, values=[value]):

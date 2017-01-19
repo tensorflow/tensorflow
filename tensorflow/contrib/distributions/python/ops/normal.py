@@ -119,7 +119,7 @@ class Normal(distribution.Distribution):
     super(Normal, self).__init__(
         dtype=self._sigma.dtype,
         is_continuous=True,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
