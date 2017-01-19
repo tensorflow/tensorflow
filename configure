@@ -362,7 +362,12 @@ while true; do
   fi
 
   if [ "$OSNAME" == "Linux" ]; then
+    PATH_BEFORE_LDCONFIG="$PATH"
+    PATH="$PATH":/sbin
+    export PATH
     CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
+    PATH="$PATH_BEFORE_LDCONFIG"
+    export PATH
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
       export CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
