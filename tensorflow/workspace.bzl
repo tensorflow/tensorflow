@@ -191,6 +191,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       build_file = str(Label("//third_party:six.BUILD")),
   )
 
+  native.new_http_archive(
+      name = "werkzeug",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
+          "https://pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
+      ],
+      strip_prefix = "Werkzeug-0.11.10",
+      sha256 = "cc64dafbacc716cdd42503cf6c44cb5a35576443d82f29f6829e5c49264aeeee",
+      build_file = str(Label("//third_party:werkzeug.BUILD")),
+  )
+
   native.bind(
       name = "six",
       actual = "@six_archive//:six",
@@ -314,7 +325,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
   # Switch to an official source of snapshots if/when possible.
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "llvm",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
@@ -323,6 +334,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       sha256 = "ec67c57dfd85c2bb857fd13011c5c2aa3f1dc9f40c0a5bac13e78e76d6b61aa6",
       strip_prefix = "llvm-4e9e4f277ad254e02a0cff33c61cd827e600da62",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
+      repository = tf_repo_name,
   )
 
   native.new_http_archive(
@@ -395,7 +407,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@junit_jar//jar",
   )
 
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "jemalloc",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
@@ -404,4 +416,5 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
       strip_prefix = "jemalloc-4.4.0",
       build_file = str(Label("//third_party:jemalloc.BUILD")),
+      repository = tf_repo_name,
   )

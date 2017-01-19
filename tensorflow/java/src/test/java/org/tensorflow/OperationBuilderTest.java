@@ -17,6 +17,7 @@ package org.tensorflow;
 
 import static org.junit.Assert.fail;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -26,7 +27,8 @@ import org.junit.runners.JUnit4;
 public class OperationBuilderTest {
   // TODO(ashankar): Restore this test once the C API gracefully handles mixing graphs and
   // operations instead of segfaulting.
-  // @Test
+  @Test
+  @Ignore
   public void failWhenMixingOperationsOnDifferentGraphs() {
     try (Graph g1 = new Graph();
         Graph g2 = new Graph()) {

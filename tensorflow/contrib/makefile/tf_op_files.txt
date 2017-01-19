@@ -28,6 +28,7 @@ tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
 tensorflow/core/kernels/split_lib_cpu.cc
 tensorflow/core/kernels/sparse_to_dense_op.cc
+tensorflow/core/kernels/sparse_matmul_op.cc
 tensorflow/core/kernels/softsign_op.cc
 tensorflow/core/kernels/softplus_op.cc
 tensorflow/core/kernels/softmax_op.cc

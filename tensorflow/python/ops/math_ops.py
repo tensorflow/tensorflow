@@ -260,6 +260,8 @@ def argmax(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name)
 
 
@@ -273,6 +275,8 @@ def argmin(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name)
 
 
@@ -399,11 +403,11 @@ def negative(x, name=None):
   """
   with ops.name_scope(name, "Neg", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
-      x_neg = gen_math_ops.neg(x.values, name=name)
+      x_neg = gen_math_ops._neg(x.values, name=name)
       return sparse_tensor.SparseTensor(
           indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
-      return gen_math_ops.neg(x, name=name)
+      return gen_math_ops._neg(x, name=name)
 # pylint: enable=g-docstring-has-escape
 
 
@@ -857,7 +861,7 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
+ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
 ops.Tensor._override_operator("__abs__", abs)
 # __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
 # ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean

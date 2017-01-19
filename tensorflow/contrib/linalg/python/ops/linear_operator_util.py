@@ -83,10 +83,10 @@ def assert_compatible_matrix_dimensions(operator, x):
   Returns:
     `Assert` `Op`.
   """
-  # Static checks are done in the base class.  Only dynamic asserts here.
+  # Static checks are done in the base class.  Only tensor asserts here.
   assert_same_dd = check_ops.assert_equal(
       array_ops.shape(x)[-2],
-      operator.domain_dimension_dynamic(),
+      operator.domain_dimension_tensor(),
       message=(
           "Incompatible matrix dimensions.  "
           "shape[-2] of argument to be the same as this operator"))

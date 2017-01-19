@@ -180,13 +180,15 @@ class LinearOperator(object):
     self._is_positive_definite = is_positive_definite
     self._name = name or type(self).__name__
 
-    # We will cache some values to avoid repeatedly adding shape
-    # manipulation ops to the graph.  Cleaner.
-    self._cached_shape_dynamic = None
-    self._cached_batch_shape_dynamic = None
-    self._cached_domain_dimension_dynamic = None
-    self._cached_range_dimension_dynamic = None
-    self._cached_tensor_rank_dynamic = None
+    # We will cache some tensors to avoid repeatedly adding shape
+    # manipulation ops to the graph.
+    # Naming convention:
+    #   self._cached_X_tensor is the cached version of self._X_tensor.
+    self._cached_shape_tensor = None
+    self._cached_batch_shape_tensor = None
+    self._cached_domain_dimension_tensor = None
+    self._cached_range_dimension_tensor = None
+    self._cached_tensor_rank_tensor = None
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
@@ -240,10 +242,10 @@ class LinearOperator(object):
     """
     return self._shape()
 
-  def _shape_dynamic(self):
-    raise NotImplementedError("_shape_dynamic is not implemented.")
+  def _shape_tensor(self):
+    raise NotImplementedError("_shape_tensor is not implemented.")
 
-  def shape_dynamic(self, name="shape_dynamic"):
+  def shape_tensor(self, name="shape_tensor"):
     """Shape of this `LinearOperator`, determined at runtime.
 
     If this operator acts like the batch matrix `A` with
@@ -258,14 +260,14 @@ class LinearOperator(object):
     """
     with self._name_scope(name):
       # Be clean by avoiding adding shape Ops to the graph too many times.
-      if self._cached_shape_dynamic is None:
+      if self._cached_shape_tensor is None:
         # Prefer to use statically defined shape if available.
         if self.shape.is_fully_defined():
-          self._cached_shape_dynamic = linear_operator_util.shape_tensor(
+          self._cached_shape_tensor = linear_operator_util.shape_tensor(
               self.shape.as_list())
         else:
-          self._cached_shape_dynamic = self._shape_dynamic()
-      return self._cached_shape_dynamic
+          self._cached_shape_tensor = self._shape_tensor()
+      return self._cached_shape_tensor
 
   @property
   def batch_shape(self):
@@ -281,7 +283,7 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape is implemented.
     return self.shape[:-2]
 
-  def batch_shape_dynamic(self, name="batch_shape_dynamic"):
+  def batch_shape_tensor(self, name="batch_shape_tensor"):
     """Shape of batch dimensions of this operator, determined at runtime.
 
     If this operator acts like the batch matrix `A` with
@@ -296,14 +298,14 @@ class LinearOperator(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      if self._cached_batch_shape_dynamic is None:
+      if self._cached_batch_shape_tensor is None:
         # Prefer to use statically defined shape if available.
         if self.batch_shape.is_fully_defined():
-          self._cached_batch_shape_dynamic = linear_operator_util.shape_tensor(
+          self._cached_batch_shape_tensor = linear_operator_util.shape_tensor(
               self.batch_shape.as_list(), name="batch_shape")
         else:
-          self._cached_batch_shape_dynamic = self.shape_dynamic()[:-2]
-      return self._cached_batch_shape_dynamic
+          self._cached_batch_shape_tensor = self.shape_tensor()[:-2]
+      return self._cached_batch_shape_tensor
 
   @property
   def tensor_rank(self, name="tensor_rank"):
@@ -322,7 +324,7 @@ class LinearOperator(object):
     with self._name_scope(name):
       return self.shape.ndims
 
-  def tensor_rank_dynamic(self, name="tensor_rank_dynamic"):
+  def tensor_rank_tensor(self, name="tensor_rank_tensor"):
     """Rank (in the sense of tensors) of matrix corresponding to this operator.
 
     If this operator acts like the batch matrix `A` with
@@ -336,15 +338,15 @@ class LinearOperator(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      if self._cached_tensor_rank_dynamic is None:
+      if self._cached_tensor_rank_tensor is None:
         # Prefer to use statically defined shape if available.
         if self.tensor_rank is not None:
-          self._cached_tensor_rank_dynamic = ops.convert_to_tensor(
+          self._cached_tensor_rank_tensor = ops.convert_to_tensor(
               self.tensor_rank)
         else:
-          self._cached_tensor_rank_dynamic = array_ops.size(
-              self.shape_dynamic())
-      return self._cached_tensor_rank_dynamic
+          self._cached_tensor_rank_tensor = array_ops.size(
+              self.shape_tensor())
+      return self._cached_tensor_rank_tensor
 
   @property
   def domain_dimension(self):
@@ -359,7 +361,7 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape is implemented.
     return self.shape[-1]
 
-  def domain_dimension_dynamic(self, name="domain_dimension_dynamic"):
+  def domain_dimension_tensor(self, name="domain_dimension_tensor"):
     """Dimension (in the sense of vector spaces) of the domain of this operator.
 
     Determined at runtime.
@@ -375,14 +377,14 @@ class LinearOperator(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      if self._cached_domain_dimension_dynamic is None:
+      if self._cached_domain_dimension_tensor is None:
         # Prefer to use statically defined shape if available.
         if self.domain_dimension.value is not None:
-          self._cached_domain_dimension_dynamic = ops.convert_to_tensor(
+          self._cached_domain_dimension_tensor = ops.convert_to_tensor(
               self.domain_dimension.value)
         else:
-          self._cached_domain_dimension_dynamic = self.shape_dynamic()[-1]
-      return self._cached_domain_dimension_dynamic
+          self._cached_domain_dimension_tensor = self.shape_tensor()[-1]
+      return self._cached_domain_dimension_tensor
 
   @property
   def range_dimension(self):
@@ -397,7 +399,7 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape is implemented.
     return self.shape[-2]
 
-  def range_dimension_dynamic(self, name="range_dimension_dynamic"):
+  def range_dimension_tensor(self, name="range_dimension_tensor"):
     """Dimension (in the sense of vector spaces) of the range of this operator.
 
     Determined at runtime.
@@ -413,14 +415,14 @@ class LinearOperator(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      if self._cached_range_dimension_dynamic is None:
+      if self._cached_range_dimension_tensor is None:
         # Prefer to use statically defined shape if available.
         if self.range_dimension.value is not None:
-          self._cached_range_dimension_dynamic = ops.convert_to_tensor(
+          self._cached_range_dimension_tensor = ops.convert_to_tensor(
               self.range_dimension.value)
         else:
-          self._cached_range_dimension_dynamic = self.shape_dynamic()[-2]
-      return self._cached_range_dimension_dynamic
+          self._cached_range_dimension_tensor = self.shape_tensor()[-2]
+      return self._cached_range_dimension_tensor
 
   def _assert_non_singular(self):
     raise NotImplementedError("assert_non_singular is not implemented.")
@@ -574,12 +576,12 @@ class LinearOperator(object):
     if self.batch_shape.is_fully_defined():
       batch_shape = self.batch_shape
     else:
-      batch_shape = self.batch_shape_dynamic()
+      batch_shape = self.batch_shape_tensor()
 
     if self.domain_dimension.value is not None:
       n = self.domain_dimension.value
     else:
-      n = self.domain_dimension_dynamic()
+      n = self.domain_dimension_tensor()
 
     eye = linalg_ops.eye(num_rows=n, batch_shape=batch_shape, dtype=self.dtype)
     return self.apply(eye)

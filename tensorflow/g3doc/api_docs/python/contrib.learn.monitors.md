@@ -2384,7 +2384,7 @@ Can do early stopping on validation metrics if `early_stopping_rounds` is
 provided.
 - - -
 
-#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
+#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, hooks=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
 
 Initializes a ValidationMonitor.
 
@@ -2399,6 +2399,8 @@ Initializes a ValidationMonitor.
 *  <b>`every_n_steps`</b>: Check for new checkpoints to evaluate every N steps. If a
       new checkpoint is found, it is evaluated. See `EveryN`.
 *  <b>`metrics`</b>: See `BaseEstimator.evaluate`.
+*  <b>`hooks`</b>: A list of `SessionRunHook` hooks to pass to the
+    `Estimator`'s `evaluate` function.
 *  <b>`early_stopping_rounds`</b>: `int`. If the metric indicated by
       `early_stopping_metric` does not change according to
       `early_stopping_metric_minimize` for this many steps, then training
