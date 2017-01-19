@@ -185,3 +185,8 @@ static void InitializeCudaPlatform() {
 
 REGISTER_MODULE_INITIALIZER(cuda_platform,
                             perftools::gputools::InitializeCudaPlatform());
+
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
+// Note that module initialization sequencing is not supported in the
+// open-source project, so this will be a no-op there.
+REGISTER_MODULE_INITIALIZER_SEQUENCE(cuda_platform, multi_platform_manager);
