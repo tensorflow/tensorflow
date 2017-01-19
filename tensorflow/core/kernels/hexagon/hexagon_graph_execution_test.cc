@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/profile_utils/clock_cycle_profiler.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -47,6 +48,7 @@ const int WIDTH = 299;
 const int HEIGHT = 299;
 const int DEPTH = 3;
 const int EXPECTED_FIRST_RESULT_ID = 59;
+const int EXECUTION_REPEAT_COUNT = 3;
 
 static void DumpTop10Results(
     const std::vector<ISocControlWrapper::ByteArray>& outputs) {
@@ -176,13 +178,22 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   hexagon_control_wrapper.FillInputNode("Mul", ba);
 
   // 4. Execute graph
-  hexagon_control_wrapper.ExecuteGraph();
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  for (int i = 0; i < EXECUTION_REPEAT_COUNT; ++i) {
+    prof.Start();
+    hexagon_control_wrapper.ExecuteGraph();
+    prof.Stop();
+  }
 
-  // 5. Read output node's outputs
+  // 5-1. Read output node's outputs
   std::vector<ISocControlWrapper::ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
+
+  // 5-2. Dump results
   DumpTop10Results(outputs);
   CheckFirstResult(outputs, EXPECTED_FIRST_RESULT_ID);
+  prof.DumpStatistics("Graph Execution");
 
   // 6. Teardown graph in hexagon
   hexagon_control_wrapper.TeardownGraph();
