@@ -36,7 +36,6 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -1216,7 +1215,6 @@ class Estimator(BaseEstimator):
         self._labels_info)
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
-  @experimental
   def export_savedmodel(
       self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,

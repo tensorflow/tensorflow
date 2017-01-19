@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import framework as contrib_framework
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 
@@ -355,7 +354,6 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
     # pylint: enable=protected-access
     return result
 
-  @experimental
   def export_savedmodel(self,
                         export_dir_base,
                         serving_input_fn,
