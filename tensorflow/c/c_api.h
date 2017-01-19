@@ -160,7 +160,7 @@ extern const char* TF_Message(const TF_Status* s);
 // By default, TF_Buffer itself does not do any memory management of the
 // pointed-to block.  If need be, users of this struct should specify how to
 // deallocate the block by setting the `data_deallocator` function pointer.
-typedef struct {
+typedef struct TF_Buffer {
   const void* data;
   size_t length;
   void (*data_deallocator)(void* data, size_t length);
@@ -594,7 +594,7 @@ typedef enum {
 } TF_AttrType;
 
 // TF_AttrMetadata describes the value of an attribute on an operation.
-typedef struct {
+typedef struct TF_AttrMetadata {
   // A boolean: 1 if the attribute value is a list, 0 otherwise.
   unsigned char is_list;
 
