@@ -299,10 +299,10 @@ class SavedModelExportUtilsTest(test.TestCase):
 
   def test_make_export_strategy(self):
     """Only tests that an ExportStrategy instance is created."""
-    def _export_input_fn():
+    def _serving_input_fn():
       return array_ops.constant([1]), None
     export_strategy = saved_model_export_utils.make_export_strategy(
-        export_input_fn=_export_input_fn,
+        serving_input_fn=_serving_input_fn,
         default_output_alternative_key="default",
         assets_extra={"from/path": "to/path"},
         as_text=False,

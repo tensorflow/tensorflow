@@ -211,12 +211,12 @@ def _build_estimator_for_export_tests(tmpdir):
 
   feature_spec = feature_column_lib.create_feature_spec_for_parsing(
       feature_columns)
-  export_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
 
   # hack in an op that uses an asset, in order to test asset export.
   # this is not actually valid, of course.
-  def export_input_fn_with_asset():
-    features, labels, inputs = export_input_fn()
+  def serving_input_fn_with_asset():
+    features, labels, inputs = serving_input_fn()
 
     vocab_file_name = os.path.join(tmpdir, 'my_vocab_file')
     vocab_file = gfile.GFile(vocab_file_name, mode='w')
@@ -229,7 +229,7 @@ def _build_estimator_for_export_tests(tmpdir):
 
     return input_fn_utils.InputFnOps(features, labels, inputs)
 
-  return est, export_input_fn_with_asset
+  return est, serving_input_fn_with_asset
 
 
 class CheckCallsMonitor(monitors_lib.BaseMonitor):
@@ -821,7 +821,7 @@ class EstimatorTest(test.TestCase):
 
   def test_export_savedmodel(self):
     tmpdir = tempfile.mkdtemp()
-    est, export_input_fn = _build_estimator_for_export_tests(tmpdir)
+    est, serving_input_fn = _build_estimator_for_export_tests(tmpdir)
 
     extra_file_name = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('my_extra_file'))
@@ -833,7 +833,7 @@ class EstimatorTest(test.TestCase):
     export_dir_base = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('export'))
     export_dir = est.export_savedmodel(
-        export_dir_base, export_input_fn, assets_extra=assets_extra)
+        export_dir_base, serving_input_fn, assets_extra=assets_extra)
 
     self.assertTrue(gfile.Exists(export_dir_base))
     self.assertTrue(gfile.Exists(export_dir))

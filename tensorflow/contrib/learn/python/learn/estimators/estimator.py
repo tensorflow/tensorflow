@@ -1218,7 +1218,7 @@ class Estimator(BaseEstimator):
 
   @experimental
   def export_savedmodel(
-      self, export_dir_base, input_fn,
+      self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
       as_text=False):
@@ -1227,7 +1227,7 @@ class Estimator(BaseEstimator):
     Args:
       export_dir_base: A string containing a directory to write the exported
         graph and checkpoints.
-      input_fn: A function that takes no argument and
+      serving_input_fn: A function that takes no argument and
         returns an `InputFnOps`.
       default_output_alternative_key: the name of the head to serve when none is
         specified.  Not needed for single-headed models.
@@ -1246,14 +1246,14 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if an unrecognized export_type is requested.
     """
-    if input_fn is None:
-      raise ValueError('input_fn must be defined.')
+    if serving_input_fn is None:
+      raise ValueError('serving_input_fn must be defined.')
 
     with ops.Graph().as_default() as g:
       contrib_variables.create_global_step(g)
 
-      # Call the input_fn and collect the input alternatives.
-      input_ops = input_fn()
+      # Call the serving_input_fn and collect the input alternatives.
+      input_ops = serving_input_fn()
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
 

@@ -358,13 +358,13 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
   @experimental
   def export_savedmodel(self,
                         export_dir_base,
-                        input_fn,
+                        serving_input_fn,
                         default_output_alternative_key=None,
                         assets_extra=None,
                         as_text=False):
     return self._estimator.export_savedmodel(
         export_dir_base,
-        input_fn,
+        serving_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
         as_text=as_text)

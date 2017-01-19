@@ -113,9 +113,9 @@ class TestEstimator(evaluable.Evaluable, trainable.Trainable):
       self.monitors = kwargs['monitors']
     return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
 
-  def export_savedmodel(self, export_dir_base, export_input_fn, **kwargs):
+  def export_savedmodel(self, export_dir_base, serving_input_fn, **kwargs):
     tf_logging.info('export_savedmodel called with args: %s, %s, %s' %
-                    (export_dir_base, export_input_fn, kwargs))
+                    (export_dir_base, serving_input_fn, kwargs))
     self.export_count += 1
     return os.path.join(
         compat.as_bytes(export_dir_base), compat.as_bytes('bogus_timestamp'))

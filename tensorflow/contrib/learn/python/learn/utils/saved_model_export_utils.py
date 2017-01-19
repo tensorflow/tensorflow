@@ -271,7 +271,7 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
     gfile.DeleteRecursively(p.path)
 
 
-def make_export_strategy(export_input_fn,
+def make_export_strategy(serving_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
                          as_text=False,
@@ -280,7 +280,7 @@ def make_export_strategy(export_input_fn,
   """Create an ExportStrategy for use with Experiment.
 
   Args:
-    export_input_fn: A function that takes no arguments and returns an
+    serving_input_fn: A function that takes no arguments and returns an
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
@@ -318,7 +318,7 @@ def make_export_strategy(export_input_fn,
     """
     export_result = estimator.export_savedmodel(
         export_dir_base,
-        export_input_fn,
+        serving_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
         as_text=as_text)
