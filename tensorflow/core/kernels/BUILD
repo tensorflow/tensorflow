@@ -256,7 +256,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "stage_op",
     srcs = ["stage_op.cc"],
     deps = [
