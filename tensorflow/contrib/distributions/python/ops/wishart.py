@@ -360,7 +360,7 @@ class _WishartOperatorPD(distribution.Distribution):
       return linalg_ops.cholesky(v)
     return v
 
-  def _std(self):
+  def _stddev(self):
     if self.cholesky_input_output_matrices:
       raise ValueError(
           "Computing std. dev. when is cholesky_input_output_matrices=True "

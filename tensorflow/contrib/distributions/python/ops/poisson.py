@@ -126,9 +126,6 @@ class Poisson(distribution.Distribution):
   def _variance(self):
     return array_ops.identity(self.lam)
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
   @distribution_util.AppendDocstring(
       """Note that when `lam` is an integer, there are actually two modes.
       Namely, `lam` and `lam - 1` are both modes. Here we return

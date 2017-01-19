@@ -198,7 +198,7 @@ class Gamma(distribution.Distribution):
   def _variance(self):
     return self.alpha / math_ops.square(self.beta)
 
-  def _std(self):
+  def _stddev(self):
     return math_ops.sqrt(self.alpha) / self.beta
 
   @distribution_util.AppendDocstring(

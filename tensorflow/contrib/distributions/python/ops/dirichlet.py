@@ -224,9 +224,6 @@ class Dirichlet(distribution.Distribution):
     return array_ops.matrix_set_diag(outer_prod,
                                      alpha * (self.alpha_sum / scale - alpha))
 
-  def _std(self):
-    return math_ops.sqrt(self._variance())
-
   @distribution_util.AppendDocstring(
       """Note that the mode for the Dirichlet distribution is only defined
       when `alpha > 1`. This returns the mode when `alpha > 1`,

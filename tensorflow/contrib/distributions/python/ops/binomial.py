@@ -210,9 +210,6 @@ class Binomial(distribution.Distribution):
   def _variance(self):
     return self._n * self._p * (1 - self._p)
 
-  def _std(self):
-    return math_ops.sqrt(self._variance())
-
   @distribution_util.AppendDocstring(
       """Note that when `(n + 1) * p` is an integer, there are actually two
       modes.  Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here

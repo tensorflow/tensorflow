@@ -115,7 +115,7 @@ class StudentT(distribution.Distribution):
       mu: Numeric `Tensor`. The mean(s) of the distribution(s).
       sigma: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
         Note that `sigma` is not technically the standard deviation of this
-        distribution but has semantics more similar to std. deviation than
+        distribution but has semantics more similar to standard deviation than
         variance.
       validate_args: `Boolean`, default `False`.  Whether to assert that
         `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
@@ -309,9 +309,6 @@ class StudentT(distribution.Distribution):
                   message="variance not defined for components of df <= 1"),
           ],
           result_where_defined)
-
-  def _std(self):
-    return math_ops.sqrt(self.variance())
 
   def _mode(self):
     return array_ops.identity(self.mu)

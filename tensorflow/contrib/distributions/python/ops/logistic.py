@@ -195,10 +195,7 @@ class _Logistic(distribution.Distribution):
   def _mean(self):
     return self.loc * array_ops.ones_like(self.scale)
 
-  def _variance(self):
-    return math_ops.square(self.std())
-
-  def _std(self):
+  def _stddev(self):
     return self.scale * array_ops.ones_like(self.loc) * math.pi / math.sqrt(3)
 
   def _mode(self):

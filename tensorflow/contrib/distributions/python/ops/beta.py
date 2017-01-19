@@ -240,9 +240,6 @@ class Beta(distribution.Distribution):
   def _variance(self):
     return (self.a * self.b) / (self.a_b_sum**2. * (self.a_b_sum + 1.))
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
   @distribution_util.AppendDocstring(
       """Note that the mode for the Beta distribution is only defined
       when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,

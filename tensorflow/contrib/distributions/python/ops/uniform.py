@@ -177,5 +177,5 @@ class Uniform(distribution.Distribution):
   def _variance(self):
     return math_ops.square(self.range()) / 12.
 
-  def _std(self):
+  def _stddev(self):
     return self.range() / math.sqrt(12.)

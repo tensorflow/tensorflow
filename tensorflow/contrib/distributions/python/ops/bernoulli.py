@@ -162,9 +162,6 @@ class Bernoulli(distribution.Distribution):
   def _variance(self):
     return self.q * self.p
 
-  def _std(self):
-    return math_ops.sqrt(self._variance())
-
   def _mode(self):
     """Returns `1` if `p > 1-p` and `0` otherwise."""
     return math_ops.cast(self.p > self.q, self.dtype)

@@ -161,10 +161,7 @@ class Laplace(distribution.Distribution):
   def _mean(self):
     return self.loc + array_ops.zeros_like(self.scale)
 
-  def _variance(self):
-    return math_ops.square(self._std())
-
-  def _std(self):
+  def _stddev(self):
     return math.sqrt(2.) * self.scale + array_ops.zeros_like(self.loc)
 
   def _median(self):

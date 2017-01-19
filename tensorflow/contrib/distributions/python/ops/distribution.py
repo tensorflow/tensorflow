@@ -40,7 +40,7 @@ from tensorflow.python.ops import math_ops
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
     "batch_shape", "get_batch_shape", "event_shape", "get_event_shape",
     "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
-    "survival_function", "entropy", "mean", "variance", "std", "mode"]
+    "survival_function", "entropy", "mean", "variance", "stddev", "mode"]
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -791,15 +791,27 @@ class Distribution(_BaseDistribution):
   def variance(self, name="variance"):
     """Variance."""
     with self._name_scope(name):
-      return self._variance()
+      try:
+        return self._variance()
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.square(self._stddev())
+        except NotImplementedError:
+          raise original_exception
 
-  def _std(self):
-    raise NotImplementedError("std is not implemented")
+  def _stddev(self):
+    raise NotImplementedError("stddev is not implemented")
 
-  def std(self, name="std"):
+  def stddev(self, name="stddev"):
     """Standard deviation."""
     with self._name_scope(name):
-      return self._std()
+      try:
+        return self._stddev()
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.sqrt(self._variance())
+        except NotImplementedError:
+          raise original_exception
 
   def _mode(self):
     raise NotImplementedError("mode is not implemented")
