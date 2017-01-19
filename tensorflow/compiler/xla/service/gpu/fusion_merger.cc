@@ -243,8 +243,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " }";
   // Remove 'fusion' instruction.
   CHECK_EQ(0, fusion->user_count());
-  computation_->RemoveInstruction(fusion);
-  return Status::OK();
+  return computation_->RemoveInstruction(fusion);
 }
 
 StatusOr<bool> FusionMerger::Run(HloModule* module) {

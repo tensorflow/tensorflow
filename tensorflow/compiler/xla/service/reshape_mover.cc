@@ -95,7 +95,8 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
       default:
         LOG(FATAL) << "Bad opcode";
     }
-    computation->ReplaceWithNewInstruction(instruction, std::move(new_reshape));
+    TF_CHECK_OK(computation->ReplaceWithNewInstruction(instruction,
+                                                       std::move(new_reshape)));
     return true;
   }
   return false;
