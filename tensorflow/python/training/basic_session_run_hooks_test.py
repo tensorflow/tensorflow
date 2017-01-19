@@ -320,28 +320,48 @@ class CheckpointSaverHookTest(test.TestCase):
           'end': 1
       }, listener.get_counts())
 
-  def test_save_secs_saves_periodically(self):
+  @test.mock.patch('time.time')
+  def test_save_secs_saves_periodically(self, mock_time):
+    # Let's have a realistic start time
+    current_time = 1484695987.209386
+
     with self.graph.as_default():
+      mock_time.return_value = current_time
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir, save_secs=2, scaffold=self.scaffold)
       hook.begin()
       self.scaffold.finalize()
+
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
+
+        mock_time.return_value = current_time
         mon_sess.run(self.train_op)  # Saved.
+
+        mock_time.return_value = current_time + 0.5
         mon_sess.run(self.train_op)  # Not saved.
+
         self.assertEqual(1,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
-        time.sleep(2.5)
+
+        # Simulate 2.5 seconds of sleep.
+        mock_time.return_value = current_time + 2.5
         mon_sess.run(self.train_op)  # Saved.
+
+        mock_time.return_value = current_time + 2.6
         mon_sess.run(self.train_op)  # Not saved.
+
+        mock_time.return_value = current_time + 2.7
         mon_sess.run(self.train_op)  # Not saved.
+
         self.assertEqual(3,
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
-        time.sleep(2.5)
+
+        # Simulate 7.5 more seconds of sleep (10 seconds from start.
+        mock_time.return_value = current_time + 10
         mon_sess.run(self.train_op)  # Saved.
         self.assertEqual(6,
                          checkpoint_utils.load_variable(self.model_dir,
