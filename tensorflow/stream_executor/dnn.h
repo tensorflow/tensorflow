@@ -444,6 +444,17 @@ class FilterDescriptor {
   FilterLayout layout_;
 };
 
+// Describes how padding should be aligned when the total number of pad
+// elements is odd.
+enum class PadAlignment : int64 {
+  kDefault = 0,        // default padding for the device.
+  kCudnnPadding,       // cuDNN padding - prefer to pad at the start.
+  kTensorFlowPadding,  // TensorFlow padding - prefer to pad at the end.
+};
+
+// Returns a string representation of the given padding alignment.
+string PadAlignmentString(PadAlignment alignment);
+
 // Describes a convolution.
 //
 // Uses the named argument construction form:
@@ -500,7 +511,10 @@ class ConvolutionDescriptor {
     SetDim(&filter_strides_, dim, value);
     return *this;
   }
-
+  ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
+    pad_alignment_ = pad_alignment;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -516,6 +530,7 @@ class ConvolutionDescriptor {
 
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
+  PadAlignment pad_alignment() const { return pad_alignment_; }
   int ndims() const { return ndims_; }
 
   std::vector<int64> strides() const { return filter_strides_; }
@@ -525,6 +540,7 @@ class ConvolutionDescriptor {
   // Stored as: .. y, x.
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
+  PadAlignment pad_alignment_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
