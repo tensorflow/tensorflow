@@ -177,7 +177,7 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
     specified.  Not needed for single-headed models.
