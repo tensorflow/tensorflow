@@ -93,6 +93,38 @@ namespace xla {
       ComputationBuilder::CreateDefaultConvDimensionNumbers());
 }
 
+/* static */ std::unique_ptr<Array4D<float>>
+ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
+                                    const Array4D<float>& depthwise_weights,
+                                    const Array4D<float>& pointwise_weights,
+                                    std::pair<int64, int64> kernel_stride,
+                                    Padding padding) {
+  const int64 depth_multiplier = depthwise_weights.planes();
+  CHECK_EQ(pointwise_weights.depth(), input.depth() * depth_multiplier);
+
+  // Combine the two weights by reducing the depth_multiplier, so that we can
+  // apply a single convolution on the combined weights.
+  Array4D<float> weights(pointwise_weights.planes(), input.depth(),
+                         depthwise_weights.height(), depthwise_weights.width());
+  for (int64 kx = 0; kx < depthwise_weights.width(); ++kx) {
+    for (int64 ky = 0; ky < depthwise_weights.height(); ++ky) {
+      for (int64 kz = 0; kz < input.depth(); ++kz) {
+        for (int64 out = 0; out < pointwise_weights.planes(); ++out) {
+          float weight = 0.0;
+          for (int64 depth = 0; depth < depth_multiplier; ++depth) {
+            weight +=
+                depthwise_weights(depth, kz, ky, kx) *
+                pointwise_weights(out, depth + kz * depth_multiplier, 0, 0);
+          }
+          weights(out, kz, ky, kx) = weight;
+        }
+      }
+    }
+  }
+
+  return ConvArray4D(input, weights, kernel_stride, padding);
+}
+
 /* static */ int64 ReferenceUtil::WindowCount(int64 unpadded_width,
                                               int64 window_len, int64 stride,
                                               Padding padding) {
