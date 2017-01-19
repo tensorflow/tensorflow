@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import mock
 import shutil
 import tempfile
 import threading
@@ -321,7 +320,7 @@ class CheckpointSaverHookTest(test.TestCase):
           'end': 1
       }, listener.get_counts())
 
-  @mock.patch('time.time')
+  @test.mock.patch('time.time')
   def test_save_secs_saves_periodically(self, mock_time):
     # Let's have a realistic start time
     current_time = 1484695987.209386
