@@ -152,7 +152,7 @@ def _linear_model_fn(features, labels, mode, params, config=None):
     return (_get_optimizer(optimizer).apply_gradients(
         zip(grads, my_vars), global_step=global_step))
 
-  return head.head_ops(features, labels, mode, _train_op_fn, logits)
+  return head.create_model_fn_ops(features, labels, mode, _train_op_fn, logits)
 
 
 def sdca_model_fn(features, labels, mode, params):
@@ -230,7 +230,8 @@ def sdca_model_fn(features, labels, mode, params):
       update_weights_hook.set_parameters(sdca_model, train_op)
     return train_op
 
-  model_fn_ops = head.head_ops(features, labels, mode, _train_op_fn, logits)
+  model_fn_ops = head.create_model_fn_ops(
+      features, labels, mode, _train_op_fn, logits)
   if update_weights_hook is not None:
     return model_fn_ops._replace(
         training_chief_hooks=(model_fn_ops.training_chief_hooks +

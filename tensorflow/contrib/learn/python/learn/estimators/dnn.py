@@ -172,7 +172,7 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
         # Empty summaries to prevent optimizers from logging the training_loss.
         summaries=[])
 
-  return head.head_ops(features, labels, mode, _train_op_fn, logits)
+  return head.create_model_fn_ops(features, labels, mode, _train_op_fn, logits)
 
 
 class DNNClassifier(estimator.Estimator):

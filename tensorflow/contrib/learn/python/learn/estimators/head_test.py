@@ -106,7 +106,7 @@ class RegressionModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       prediction = constant_op.constant([[1.], [1.], [3.]])
       labels = constant_op.constant([[0.], [1.], [1.]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -121,7 +121,7 @@ class RegressionModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       prediction = constant_op.constant([[1.], [1.], [3.]])
       labels = constant_op.constant([[0.], [1.], [1.]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.EVAL, _noop_train_op, logits=prediction)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
@@ -134,7 +134,7 @@ class RegressionModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       prediction = constant_op.constant([[1.], [1.], [3.]])
       labels = {label_name: constant_op.constant([[0.], [1.], [1.]])}
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -151,7 +151,7 @@ class RegressionModelHeadTest(test.TestCase):
       features = {"label_weight": constant_op.constant(weights)}
       prediction = constant_op.constant([[1.], [1.], [3.]])
       labels = constant_op.constant([[0.], [1.], [1.]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           features,
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -167,7 +167,7 @@ class RegressionModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       prediction = constant_op.constant([[1.], [1.], [3.]])
       labels = constant_op.constant([[0.], [1.], [1.]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -194,7 +194,7 @@ class RegressionModelHeadTest(test.TestCase):
           dense_shape=[3, 1])
       with self.assertRaisesRegexp(ValueError,
                                    "SparseTensor is not supported as labels."):
-        head.head_ops(
+        head.create_model_fn_ops(
             {},
             labels,
             model_fn.ModeKeys.TRAIN,
@@ -237,7 +237,7 @@ class MultiLabelModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       logits = constant_op.constant(self._logits)
       labels = constant_op.constant(self._labels)
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
@@ -252,7 +252,7 @@ class MultiLabelModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       logits = constant_op.constant([[1., 0., 0.]])
       labels = constant_op.constant([[0, 0, 1]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.EVAL, _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
@@ -271,7 +271,7 @@ class MultiLabelModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       logits = constant_op.constant([[1., 0., 0.]])
       labels = {label_name: constant_op.constant([[0, 0, 1]])}
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
@@ -289,7 +289,7 @@ class MultiLabelModelHeadTest(test.TestCase):
       features = {"label_weight": constant_op.constant(.1)}
       logits = constant_op.constant([[1., 0., 0.]])
       labels = constant_op.constant([[0, 0, 1]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           features,
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -309,7 +309,7 @@ class MultiLabelModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       logits = constant_op.constant([[1., 0., 0.]])
       labels = constant_op.constant([[0, 0, 1]])
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_variables(
           self,
@@ -354,7 +354,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
@@ -370,7 +370,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.EVAL, _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
@@ -387,7 +387,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.INFER, _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
@@ -407,7 +407,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
           dense_shape=[3, 1])
       with self.assertRaisesRegexp(ValueError,
                                    "SparseTensor is not supported as labels."):
-        head.head_ops(
+        head.create_model_fn_ops(
             {},
             labels,
             model_fn.ModeKeys.TRAIN,
@@ -422,7 +422,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       labels = {label_name: constant_op.constant(self._labels)}
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
@@ -441,7 +441,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           features,
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -474,7 +474,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_variables(
           self,
@@ -526,7 +526,7 @@ class MultiClassModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.TRAIN, _noop_train_op, logits=logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
@@ -543,7 +543,7 @@ class MultiClassModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {}, labels, model_fn.ModeKeys.EVAL, _noop_train_op, logits=logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
@@ -565,7 +565,7 @@ class MultiClassModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           features,
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -599,7 +599,7 @@ class BinarySvmModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       predictions = constant_op.constant(self._predictions)
       labels = constant_op.constant(self._labels)
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -618,7 +618,7 @@ class BinarySvmModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       predictions = constant_op.constant(self._predictions)
       labels = constant_op.constant(self._labels)
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.EVAL,
@@ -639,7 +639,7 @@ class BinarySvmModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       predictions = constant_op.constant(self._predictions)
       labels = {label_name: constant_op.constant(self._labels)}
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -660,7 +660,7 @@ class BinarySvmModelHeadTest(test.TestCase):
       labels = constant_op.constant(self._labels)
       weights = (7., 11.)
       features = {"weights": constant_op.constant(weights)}
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           features,
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -680,7 +680,7 @@ class BinarySvmModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       predictions = constant_op.constant(self._predictions)
       labels = constant_op.constant(self._labels)
-      model_fn_ops = head.head_ops(
+      model_fn_ops = head.create_model_fn_ops(
           {},
           labels,
           model_fn.ModeKeys.TRAIN,
@@ -715,7 +715,7 @@ class MultiHeadTest(test.TestCase):
         "label2": constant_op.constant([1])
     }
     features = {"weights": constant_op.constant([2.0, 10.0])}
-    model_fn_ops = head.head_ops(
+    model_fn_ops = head.create_model_fn_ops(
         features,
         labels,
         model_fn.ModeKeys.TRAIN,
@@ -743,7 +743,7 @@ class MultiHeadTest(test.TestCase):
         "label2": constant_op.constant([1])
     }
     features = {"weights": constant_op.constant([2.0, 10.0])}
-    model_fn_ops = head.head_ops(
+    model_fn_ops = head.create_model_fn_ops(
         features,
         labels,
         model_fn.ModeKeys.TRAIN,
@@ -770,7 +770,7 @@ class MultiHeadTest(test.TestCase):
         "label2": constant_op.constant([1])
     }
     features = {"weights": constant_op.constant([2.0, 10.0])}
-    model_fn_ops = head.head_ops(
+    model_fn_ops = head.create_model_fn_ops(
         features,
         labels,
         model_fn.ModeKeys.INFER,
@@ -822,7 +822,7 @@ class MultiHeadTest(test.TestCase):
         "label2": constant_op.constant([1])
     }
     features = {"weights": constant_op.constant([2.0, 10.0])}
-    model_fn_ops = head.head_ops(
+    model_fn_ops = head.create_model_fn_ops(
         features, labels, model_fn.ModeKeys.EVAL, _noop_train_op, logits=logits)
 
     self.assertTrue(model_fn_ops.predictions)

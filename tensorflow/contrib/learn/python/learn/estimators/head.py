@@ -269,14 +269,14 @@ class _Head(object):
     raise NotImplementedError("Calling an abstract method.")
 
   @abc.abstractmethod
-  def head_ops(self,
-               features,
-               labels,
-               mode,
-               train_op_fn,
-               logits=None,
-               logits_input=None,
-               scope=None):
+  def create_model_fn_ops(self,
+                          features,
+                          labels,
+                          mode,
+                          train_op_fn,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
     """Returns ops for a model_fn.
 
     Args:
@@ -370,14 +370,14 @@ class _RegressionHead(_Head):
   def logits_dimension(self):
     return self._logits_dimension
 
-  def head_ops(self,
-               features,
-               labels,
-               mode,
-               train_op_fn,
-               logits=None,
-               logits_input=None,
-               scope=None):
+  def create_model_fn_ops(self,
+                          features,
+                          labels,
+                          mode,
+                          train_op_fn,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
     _check_logits_input_not_supported(logits, logits_input)
@@ -494,14 +494,14 @@ class _BinaryLogisticHead(_Head):
   def logits_dimension(self):
     return 1
 
-  def head_ops(self,
-               features,
-               labels,
-               mode,
-               train_op_fn,
-               logits=None,
-               logits_input=None,
-               scope=None):
+  def create_model_fn_ops(self,
+                          features,
+                          labels,
+                          mode,
+                          train_op_fn,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
     _check_logits_input_not_supported(logits, logits_input)
@@ -686,14 +686,14 @@ class _MultiClassHead(_Head):
   def logits_dimension(self):
     return self._logits_dimension
 
-  def head_ops(self,
-               features,
-               labels,
-               mode,
-               train_op_fn,
-               logits=None,
-               logits_input=None,
-               scope=None):
+  def create_model_fn_ops(self,
+                          features,
+                          labels,
+                          mode,
+                          train_op_fn,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
     _check_logits_input_not_supported(logits, logits_input)
@@ -1061,15 +1061,15 @@ class _MultiHead(_Head):
   def logits_dimension(self):
     return self._logits_dimension
 
-  def head_ops(self,
-               features,
-               target,
-               mode,
-               train_op_fn,
-               logits=None,
-               logits_input=None,
-               scope=None):
-    """See _Head.head_ops.
+  def create_model_fn_ops(self,
+                          features,
+                          target,
+                          mode,
+                          train_op_fn,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
+    """See _Head.create_model_fn_ops.
 
     Args:
       features: input dict.
@@ -1103,13 +1103,13 @@ class _MultiHead(_Head):
       all_logits = self._split_logits(logits)
       for head, logits in zip(self._heads, all_logits):
         all_model_fn_ops.append(
-            head.head_ops(
+            head.create_model_fn_ops(
                 features, target, mode, _noop, logits=logits, scope=scope))
     else:
       # Uses logits_input
       for head in self._heads:
         all_model_fn_ops.append(
-            head.head_ops(
+            head.create_model_fn_ops(
                 features,
                 target,
                 mode,
@@ -1149,8 +1149,8 @@ class _MultiHead(_Head):
 
     Args:
       all_model_fn_ops: list of ModelFnOps for the individual heads.
-      train_op_fn: Function to create train op. See head_ops documentaion for
-          more details.
+      train_op_fn: Function to create train op. See `create_model_fn_ops`
+          documentaion for more details.
 
     Returns:
       ModelFnOps that combines all the heads.
