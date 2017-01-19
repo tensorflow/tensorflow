@@ -1308,7 +1308,12 @@ class InteractiveSession(BaseSession):
       config: (Optional) `ConfigProto` proto used to configure the session.
     """
     if not config:
-      config = config_pb2.ConfigProto()
+      # If config is not provided, choose some reasonable defaults for
+      # interactive use:
+      #
+      #   - Grow GPU memory as needed at the cost of fragmentation.
+      gpu_options = config_pb2.GPUOptions(allow_growth=True)
+      config = config_pb2.ConfigProto(gpu_options=gpu_options)
     # Interactive sessions always place pruned graphs.
     config.graph_options.place_pruned_graph = True
 

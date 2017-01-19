@@ -20,6 +20,12 @@ load(
 # -----------------------------------------------------------------------------
 # Public targets
 
+filegroup(
+    name = "headers",
+    srcs = ["c_api.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 tf_cuda_library(
     name = "c_api",
     srcs = ["c_api.cc"],

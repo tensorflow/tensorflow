@@ -14,7 +14,7 @@ for an extensive description of how reusing works. Here is a basic example:
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 

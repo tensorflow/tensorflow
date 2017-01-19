@@ -258,6 +258,7 @@ cc_library(
         "platform/net.h",
         "platform/notification.h",
         "platform/prefetch.h",
+        "platform/profile_utils/clock_cycle_profiler.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",
         "platform/stacktrace.h",

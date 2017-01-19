@@ -1977,7 +1977,7 @@ class AffineLinearOperator(Bijector):
         if scale.tensor_rank is not None:
           batch_ndims = scale.tensor_rank - 2
         else:
-          batch_ndims = scale.tensor_rank_dynamic() - 2
+          batch_ndims = scale.tensor_rank_tensor() - 2
           graph_parents += [batch_ndims]
       else:
         batch_ndims = 0  # We won't need shape inference when scale is None.

@@ -200,7 +200,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorScaledIdentity.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorScaledIdentity.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -250,7 +250,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorScaledIdentity.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorScaledIdentity.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -350,7 +350,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorScaledIdentity.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorScaledIdentity.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -386,7 +386,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.shape_dynamic(name='shape_dynamic')` {#LinearOperatorScaledIdentity.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.shape_tensor(name='shape_tensor')` {#LinearOperatorScaledIdentity.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -467,7 +467,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorScaledIdentity.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorScaledIdentity.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
