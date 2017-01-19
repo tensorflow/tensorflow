@@ -44,6 +44,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
@@ -66,6 +67,8 @@ def freeze_graph(input_graph,
                  initializer_nodes,
                  variable_names_blacklist=""):
   """Converts all variables in a graph and checkpoint into constants."""
+
+  del restore_op_name, filename_tensor_name  # Unused by updated loading code.
 
   if not gfile.Exists(input_graph):
     print("Input graph file '" + input_graph + "' does not exist!")
@@ -96,6 +99,7 @@ def freeze_graph(input_graph,
   if clear_devices:
     for node in input_graph_def.node:
       node.device = ""
+
   _ = importer.import_graph_def(input_graph_def, name="")
 
   with session.Session() as sess:
@@ -109,7 +113,19 @@ def freeze_graph(input_graph,
         saver = saver_lib.Saver(saver_def=saver_def)
         saver.restore(sess, input_checkpoint)
     else:
-      sess.run([restore_op_name], {filename_tensor_name: input_checkpoint})
+      var_list = {}
+      reader = pywrap_tensorflow.NewCheckpointReader(input_checkpoint)
+      var_to_shape_map = reader.get_variable_to_shape_map()
+      for key in var_to_shape_map:
+        try:
+          tensor = sess.graph.get_tensor_by_name(key + ":0")
+        except KeyError:
+          # This tensor doesn't exist in the graph (for example it's
+          # 'global_step' or a similar housekeeping element) so skip it.
+          continue
+        var_list[key] = tensor
+      saver = saver_lib.Saver(var_list=var_list)
+      saver.restore(sess, input_checkpoint)
       if initializer_nodes:
         sess.run(initializer_nodes)
 

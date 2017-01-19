@@ -569,10 +569,11 @@ class SoftplusTest(test.TestCase):
   def testInverseSoftplusGradientNeverNan(self):
     with self.test_session():
       # Note that this range contains both zero and inf.
-      x = constant_op.constant((10.**np.arange(-8, 6)).astype(np.float16))
-      y = distribution_util.softplus_inverse(x).eval()
+      x = constant_op.constant(np.logspace(-8, 6).astype(np.float16))
+      y = distribution_util.softplus_inverse(x)
+      grads = gradients_impl.gradients(y, x)[0].eval()
       # Equivalent to `assertAllFalse` (if it existed).
-      self.assertAllEqual(np.zeros_like(y).astype(np.bool), np.isnan(y))
+      self.assertAllEqual(np.zeros_like(grads).astype(np.bool), np.isnan(grads))
 
 if __name__ == "__main__":
   test.main()

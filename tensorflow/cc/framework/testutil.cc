@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace test {
 
 void GetTensors(const Scope& scope, OutputList tensors,

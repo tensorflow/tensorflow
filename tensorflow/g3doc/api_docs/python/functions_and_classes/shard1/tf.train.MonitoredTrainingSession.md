@@ -1,4 +1,4 @@
-### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, config=None)` {#MonitoredTrainingSession}
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None)` {#MonitoredTrainingSession}
 
 Creates a `MonitoredSession` for training.
 
@@ -26,8 +26,12 @@ inialize/restore.
     using a default checkpoint saver. If `save_checkpoint_secs` is set to
     `None`, then the default checkpoint saver isn't used.
 *  <b>`save_summaries_steps`</b>: The frequency, in number of global steps, that the
-    summaries are written to disk using a default summary saver. If
-    `save_summaries_steps` is set to `None`, then the default summary saver
+    summaries are written to disk using a default summary saver. If both
+    `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
+    the default summary saver isn't used.
+*  <b>`save_summaries_secs`</b>: The frequency, in secs, that the summaries are written
+    to disk using a default summary saver.  If both `save_summaries_steps` and
+    `save_summaries_secs` are set to `None`, then the default summary saver
     isn't used.
 *  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
     It's the `config` argument of constructor of `tf.Session`.

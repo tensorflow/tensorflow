@@ -237,7 +237,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperator.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperator.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperator.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -287,7 +287,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperator.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperator.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperator.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -380,7 +380,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperator.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperator.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperator.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -416,7 +416,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.shape_dynamic(name='shape_dynamic')` {#LinearOperator.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperator.shape_tensor(name='shape_tensor')` {#LinearOperator.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -497,7 +497,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperator.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperator.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperator.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -720,7 +720,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorDiag.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorDiag.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorDiag.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -770,7 +770,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorDiag.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorDiag.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorDiag.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -863,7 +863,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorDiag.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorDiag.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorDiag.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -899,7 +899,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.shape_dynamic(name='shape_dynamic')` {#LinearOperatorDiag.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorDiag.shape_tensor(name='shape_tensor')` {#LinearOperatorDiag.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -980,7 +980,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorDiag.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorDiag.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorDiag.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorDiag.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -1237,7 +1237,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorIdentity.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorIdentity.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -1287,7 +1287,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorIdentity.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorIdentity.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -1380,7 +1380,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorIdentity.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorIdentity.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -1416,7 +1416,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.shape_dynamic(name='shape_dynamic')` {#LinearOperatorIdentity.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.shape_tensor(name='shape_tensor')` {#LinearOperatorIdentity.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -1497,7 +1497,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorIdentity.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorIdentity.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorIdentity.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorIdentity.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -1728,7 +1728,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorScaledIdentity.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorScaledIdentity.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -1778,7 +1778,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorScaledIdentity.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorScaledIdentity.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -1878,7 +1878,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorScaledIdentity.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorScaledIdentity.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -1914,7 +1914,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.shape_dynamic(name='shape_dynamic')` {#LinearOperatorScaledIdentity.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.shape_tensor(name='shape_tensor')` {#LinearOperatorScaledIdentity.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -1995,7 +1995,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorScaledIdentity.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorScaledIdentity.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorScaledIdentity.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -2209,7 +2209,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorMatrix.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorMatrix.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -2259,7 +2259,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorMatrix.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorMatrix.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -2352,7 +2352,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorMatrix.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorMatrix.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -2388,7 +2388,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.shape_dynamic(name='shape_dynamic')` {#LinearOperatorMatrix.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.shape_tensor(name='shape_tensor')` {#LinearOperatorMatrix.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -2469,7 +2469,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorMatrix.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorMatrix.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -2685,7 +2685,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorTriL.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorTriL.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorTriL.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -2735,7 +2735,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorTriL.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorTriL.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorTriL.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -2828,7 +2828,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorTriL.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorTriL.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorTriL.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -2864,7 +2864,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorTriL.shape_dynamic(name='shape_dynamic')` {#LinearOperatorTriL.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.shape_tensor(name='shape_tensor')` {#LinearOperatorTriL.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -2945,7 +2945,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorTriL.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorTriL.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorTriL.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorTriL.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
@@ -3172,7 +3172,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorComposition.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorComposition.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorComposition.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorComposition.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -3222,7 +3222,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorComposition.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorComposition.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorComposition.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorComposition.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -3322,7 +3322,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorComposition.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorComposition.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorComposition.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorComposition.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -3358,7 +3358,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorComposition.shape_dynamic(name='shape_dynamic')` {#LinearOperatorComposition.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorComposition.shape_tensor(name='shape_tensor')` {#LinearOperatorComposition.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -3439,7 +3439,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorComposition.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorComposition.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorComposition.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorComposition.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 

@@ -96,7 +96,7 @@ class DomainDimensionStubOperator(object):
   def __init__(self, domain_dimension):
     self._domain_dimension = ops.convert_to_tensor(domain_dimension)
 
-  def domain_dimension_dynamic(self):
+  def domain_dimension_tensor(self):
     return self._domain_dimension
 
 

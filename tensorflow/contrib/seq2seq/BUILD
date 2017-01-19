@@ -72,6 +72,46 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "sampling_decoder_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/sampling_decoder_test.py"],
+    additional_deps = [
+        ":seq2seq_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "decoder_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/decoder_test.py"],
+    additional_deps = [
+        ":seq2seq_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

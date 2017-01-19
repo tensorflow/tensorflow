@@ -200,16 +200,16 @@ class NonSquareLinearOperatorCompositionTest(
     operator = linalg.LinearOperatorComposition(operators)
     self.assertAllEqual((2, 3, 5), operator.shape)
 
-  def test_dynamic_shapes_when_statically_available(self):
+  def test_shape_tensors_when_statically_available(self):
     operators = [
         linalg.LinearOperatorMatrix(rng.rand(2, 3, 4)),
         linalg.LinearOperatorMatrix(rng.rand(2, 4, 5))
     ]
     operator = linalg.LinearOperatorComposition(operators)
     with self.test_session():
-      self.assertAllEqual((2, 3, 5), operator.shape_dynamic().eval())
+      self.assertAllEqual((2, 3, 5), operator.shape_tensor().eval())
 
-  def test_dynamic_shapes_when_only_dynamically_available(self):
+  def test_shape_tensors_when_only_dynamically_available(self):
     mat_1 = rng.rand(1, 2, 3, 4)
     mat_2 = rng.rand(1, 2, 4, 5)
     mat_ph_1 = array_ops.placeholder(dtypes.float64)
@@ -223,7 +223,7 @@ class NonSquareLinearOperatorCompositionTest(
     operator = linalg.LinearOperatorComposition(operators)
     with self.test_session():
       self.assertAllEqual(
-          (1, 2, 3, 5), operator.shape_dynamic().eval(feed_dict=feed_dict))
+          (1, 2, 3, 5), operator.shape_tensor().eval(feed_dict=feed_dict))
 
 
 if __name__ == "__main__":

@@ -22,20 +22,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns in 'max_error' the maximum element-wise error for dy/dx between the
-// computed and numeric Jacobian matrices where 'xs' and 'ys' are tensors.
-// This function adds operations to the graph associated with 'scope'.
+/// Returns in 'max_error' the maximum element-wise error for dy/dx between the
+/// computed and numeric Jacobian matrices where 'xs' and 'ys' are tensors.
+/// This function adds operations to the graph associated with 'scope'.
 template <typename T>
-Status ComputeGradientError(const Scope& scope, const ops::OutputList& xs,
+Status ComputeGradientError(const Scope& scope, const OutputList& xs,
                             const std::vector<TensorShape>& x_shapes,
-                            const ops::OutputList& ys,
+                            const OutputList& ys,
                             const std::vector<TensorShape>& y_shapes,
                             T* max_error);
 
-// Overload of ComputeGradientError which takes an initial value for 'x'.
+/// Overload of ComputeGradientError which takes an initial value for 'x'.
 template <typename T>
-Status ComputeGradientError(const Scope& scope, const ops::Output& x,
-                            const Tensor& x_init_value, const ops::Output& y,
+Status ComputeGradientError(const Scope& scope, const Output& x,
+                            const Tensor& x_init_value, const Output& y,
                             const TensorShape& y_shape, T* max_error);
 
 }  // namespace tensorflow

@@ -183,7 +183,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorMatrix.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorMatrix.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -233,7 +233,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorMatrix.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorMatrix.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -326,7 +326,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorMatrix.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorMatrix.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -362,7 +362,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.shape_dynamic(name='shape_dynamic')` {#LinearOperatorMatrix.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.shape_tensor(name='shape_tensor')` {#LinearOperatorMatrix.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -443,7 +443,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorMatrix.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorMatrix.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 

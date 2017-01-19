@@ -592,6 +592,18 @@ py_test(
     ],
 )
 
+sh_test(
+    name = "examples_test",
+    size = "small",
+    srcs = ["examples/examples_test.sh"],
+    data = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
