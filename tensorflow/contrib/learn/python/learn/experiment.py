@@ -139,8 +139,8 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
+    self._train_monitors = train_monitors or []
     # Mutable fields, using the setters.
-    self.train_monitors = train_monitors
     self.eval_hooks = eval_hooks
     self.export_strategies = export_strategies
     self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
@@ -170,12 +170,9 @@ class Experiment(object):
     return self._eval_steps
 
   @property
-  def train_monitors(self):
-    return self._train_monitors
-
-  @train_monitors.setter
-  def train_monitors(self, value):
-    self._train_monitors = value or []
+  def train_hooks(self):
+    """Returns a shallow copy of train hooks for inspecting."""
+    return [m for m in self._train_monitors]
 
   @property
   def eval_hooks(self):
@@ -231,6 +228,10 @@ class Experiment(object):
     else:
       raise ValueError("`export_strategies` must be an ExportStrategy, "
                        "a list of ExportStrategies, or None.")
+
+  def extend_train_hooks(self, additional_hooks):
+    """Extends the hooks for training."""
+    self._train_monitors.extend(additional_hooks)
 
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.

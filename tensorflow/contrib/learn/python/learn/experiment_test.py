@@ -368,6 +368,28 @@ class ExperimentTest(test.TestCase):
     self.assertEquals([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
+  def test_train_monitors_returns_shallow_copy(self):
+    noop_hook = _NoopHook()
+    ex = experiment.Experiment(
+        TestEstimator(),
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        train_monitors=[noop_hook],
+        train_steps=100,
+        eval_steps=100,
+        local_eval_frequency=10)
+    self.assertAllEqual([noop_hook], ex.train_hooks)
+
+    another_noop_hook = _NoopHook()
+    # Assert that the property getter returns a shallow copy.
+    ex.train_hooks.extend([another_noop_hook])
+    self.assertAllEqual([noop_hook], ex.train_hooks)
+
+    # Assert that the extend API mutates the monitors.
+    ex.extend_train_hooks([another_noop_hook])
+    self.assertAllEqual([noop_hook, another_noop_hook], ex.train_hooks)
+
   def test_train_and_evaluate(self):
     est = TestEstimator()
     noop_hook = _NoopHook()
