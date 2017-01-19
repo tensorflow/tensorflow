@@ -772,6 +772,7 @@
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
+  * [`ReparameterizationType`](../../api_docs/python/contrib.distributions.md#ReparameterizationType)
   * [`softplus_inverse`](../../api_docs/python/contrib.distributions.md#softplus_inverse)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`StudentTWithAbsDfSoftplusSigma`](../../api_docs/python/contrib.distributions.md#StudentTWithAbsDfSoftplusSigma)
