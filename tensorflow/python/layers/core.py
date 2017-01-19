@@ -167,7 +167,7 @@ def dense(
     activity_regularizer=None,
     trainable=True,
     name=None,
-    reuse=False):
+    reuse=None):
   """Functional interface for the densely-connected layer.
 
   This layer implements the operation:

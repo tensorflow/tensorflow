@@ -207,6 +207,16 @@ class DenseTest(test.TestCase):
     vars2 = variables.trainable_variables()
     self.assertEqual(vars1, vars2)
 
+  def testFunctionalDenseTwiceReuseFromScope(self):
+    with variable_scope.variable_scope('scope'):
+      inputs = random_ops.random_uniform((5, 3), seed=1)
+      core_layers.dense(inputs, 2, name='my_dense')
+      vars1 = variables.trainable_variables()
+    with variable_scope.variable_scope('scope', reuse=True):
+      core_layers.dense(inputs, 2, name='my_dense')
+      vars2 = variables.trainable_variables()
+    self.assertEqual(vars1, vars2)
+
   def testFunctionalDenseInitializerFromScope(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
