@@ -59,7 +59,9 @@ def _regression_head(label_name=None,
     weight_column_name: A string defining feature column name representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
-    label_dimension: dimension of the label for multilabels.
+    label_dimension: Number of regression targets per example. This is the size
+      of the last dimension of the labels `Tensor` (typically, this has shape
+      `[batch_size, label_dimension]`).
     enable_centered_bias: A bool. If True, estimator will learn a centered
       bias variable for each class. Rest of the model structure learns the
       residual after centered bias.
@@ -266,6 +268,13 @@ class _Head(object):
 
   @abc.abstractproperty
   def logits_dimension(self):
+    """Size of the last dimension of the logits `Tensor`.
+
+    Typically, logits is of shape `[batch_size, logits_dimension]`.
+
+    Returns:
+      Number of logits values per example.
+    """
     raise NotImplementedError("Calling an abstract method.")
 
   @abc.abstractmethod
@@ -349,7 +358,9 @@ class _RegressionHead(_Head):
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
-      label_dimension: Integer, number of label columns.
+      label_dimension: Number of regression targets per example. This is the
+        size of the last dimension of the labels `Tensor` (typically, this has
+        shape `[batch_size, label_dimension]`).
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
@@ -646,9 +657,9 @@ class _MultiClassHead(_Head):
 
     Args:
       n_classes: Number of classes, must be greater than 2 (for 2 classes, use
-          `_BinaryLogisticHead`).
+        `_BinaryLogisticHead`).
       label_name: String, name of the key in label dict. Can be null if label
-          is a tensor (single headed models).
+        is a tensor (single headed models).
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.

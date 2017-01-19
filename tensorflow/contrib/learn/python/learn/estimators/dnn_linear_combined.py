@@ -856,7 +856,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      label_dimension: TODO(zakaria): dimension of the label for multilabels.
+      label_dimension: Number of regression targets per example. This is the
+        size of the last dimension of the labels and logits `Tensor` objects
+        (typically, these have shape `[batch_size, label_dimension]`).
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
                         labels which are the output of `input_fn` and

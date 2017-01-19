@@ -568,7 +568,9 @@ class DNNRegressor(estimator.Estimator):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
-      label_dimension: Dimension of the label for multilabels. Defaults to 1.
+      label_dimension: Number of regression targets per example. This is the
+        size of the last dimension of the labels and logits `Tensor` objects
+        (typically, these have shape `[batch_size, label_dimension]`).
       embedding_lr_multipliers: Optional. A dictionary from `EbeddingColumn` to
           a `float` multiplier. Multiplier will be used to multiply with
           learning rate for the embedding variables.
