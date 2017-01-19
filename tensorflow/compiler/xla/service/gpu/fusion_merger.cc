@@ -147,7 +147,7 @@ class FusionInstructionMerger {
   int total_visited_ = 0;
   int total_merged_ = 0;
   int num_fail_no_users_ = 0;
-  int num_fail_dot_root_ = 0;
+  int num_fail_not_loop_fusion_ = 0;
   int num_fail_merge_all_users_ = 0;
   int num_fail_flops_to_byte_ratio_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
@@ -167,7 +167,7 @@ Status FusionInstructionMerger::Run() {
           << " total_visited: " << total_visited_
           << " total_merged: " << total_merged_ << " merge failures { "
           << " no_users: " << num_fail_no_users_
-          << " dot_root: " << num_fail_dot_root_
+          << " not_loop_fusion: " << num_fail_not_loop_fusion_
           << " merge_all_users: " << num_fail_merge_all_users_
           << " flops_to_byte_ratio: " << num_fail_flops_to_byte_ratio_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
@@ -184,10 +184,13 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     ++num_fail_no_users_;
     return Status::OK();
   }
-  // Skip 'fusion' instruction if its fused root is kDot, as IrEmitterUnnested
-  // expects a specific structure (kParameter operands) for this case.
-  if (fusion->fused_expression_root()->opcode() == HloOpcode::kDot) {
-    ++num_fail_dot_root_;
+
+  // Skip 'fusion' instruction if it is not a loop fusion. Library fusion
+  // instructions match specific patterns, so they shouldn't be further fused.
+  // Input fusion instructions need to be rooted at a particular HLO (e.g.
+  // kReduce), so they shouldn't be further fused either.
+  if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    ++num_fail_not_loop_fusion_;
     return Status::OK();
   }
   // Skip 'fusion' instruction if we cannot merge into all of its users.
@@ -196,8 +199,8 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   if (!std::all_of(fusion->users().begin(), fusion->users().end(),
                    [](const HloInstruction* instruction) {
                      return instruction->opcode() == HloOpcode::kFusion &&
-                            instruction->fused_expression_root()->opcode() !=
-                                HloOpcode::kDot;
+                            instruction->fusion_kind() ==
+                                HloInstruction::FusionKind::kLoop;
                    })) {
     ++num_fail_merge_all_users_;
     return Status::OK();
