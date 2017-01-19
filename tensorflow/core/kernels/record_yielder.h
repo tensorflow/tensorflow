@@ -50,7 +50,7 @@ namespace tensorflow {
 //   RecordYielder yielder(opts);
 //   string val;
 //   while (true) {
-//     yielder.Yield(&val);
+//     yielder.YieldOne(&val);
 //     // process val
 //   }
 //
@@ -88,7 +88,7 @@ class RecordYielder {
   RecordYielder& operator=(const RecordYielder&) = delete;
 
   // Yields one 'value'.
-  Status Yield(string* value);
+  Status YieldOne(string* value);
 
   // Returns the current epoch number.
   int64 current_epoch() const { return epoch_; }
