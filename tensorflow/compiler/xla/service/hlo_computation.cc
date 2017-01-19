@@ -392,6 +392,7 @@ Status HloComputation::AddControlDependency(HloInstruction* predecessor,
   TF_RET_CHECK(instruction_iterators_.count(predecessor) > 0);
   TF_RET_CHECK(instruction_iterators_.count(successor) > 0);
   successor->AddControlPredecessor(predecessor);
+  predecessor->AddControlSuccessor(successor);
   return Status::OK();
 }
 
@@ -510,6 +511,7 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   // Visit all dead roots.
   for (auto& instruction : instructions()) {
     if (instruction->user_count() == 0 &&
+        instruction->control_successors().empty() &&
         instruction.get() != root_instruction()) {
       // Call FinishVisit only at the end.
       TF_RETURN_IF_ERROR(
