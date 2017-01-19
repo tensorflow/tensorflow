@@ -31,7 +31,7 @@ rng = np.random.RandomState(123)
 
 
 class LinearOperatorShape(linalg.LinearOperator):
-  """LinearOperator that implements the methods ._shape and _shape_dynamic."""
+  """LinearOperator that implements the methods ._shape and _shape_tensor."""
 
   def __init__(self,
                shape,
@@ -49,7 +49,7 @@ class LinearOperatorShape(linalg.LinearOperator):
   def _shape(self):
     return tensor_shape.TensorShape(self._stored_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return constant_op.constant(self._stored_shape, dtype=dtypes.int32)
 
 
@@ -71,7 +71,7 @@ class LinearOperatorApplyOnly(linalg.LinearOperator):
   def _shape(self):
     return self._matrix.get_shape()
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
   def _apply(self, x, adjoint=False):
@@ -96,11 +96,11 @@ class LinearOperatorTest(test.TestCase):
       shape = (1, 2, 3, 4)
       operator = LinearOperatorShape(shape)
 
-      self.assertAllEqual(shape, operator.shape_dynamic().eval())
-      self.assertAllEqual(4, operator.tensor_rank_dynamic().eval())
-      self.assertAllEqual((1, 2), operator.batch_shape_dynamic().eval())
-      self.assertAllEqual(4, operator.domain_dimension_dynamic().eval())
-      self.assertAllEqual(3, operator.range_dimension_dynamic().eval())
+      self.assertAllEqual(shape, operator.shape_tensor().eval())
+      self.assertAllEqual(4, operator.tensor_rank_tensor().eval())
+      self.assertAllEqual((1, 2), operator.batch_shape_tensor().eval())
+      self.assertAllEqual(4, operator.domain_dimension_tensor().eval())
+      self.assertAllEqual(3, operator.range_dimension_tensor().eval())
 
   def test_is_x_properties(self):
     operator = LinearOperatorShape(
@@ -120,7 +120,7 @@ class LinearOperatorTest(test.TestCase):
       self.assertAllEqual((2, 3, 4), operator_dense.get_shape())
       self.assertAllClose(matrix, operator_dense.eval())
 
-  def test_generic_to_dense_method_non_square_matrix_dynamic(self):
+  def test_generic_to_dense_method_non_square_matrix_tensor(self):
     matrix = rng.randn(2, 3, 4)
     matrix_ph = array_ops.placeholder(dtypes.float64)
     operator = LinearOperatorApplyOnly(matrix_ph)

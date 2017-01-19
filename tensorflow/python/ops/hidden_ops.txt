@@ -237,6 +237,7 @@ Max
 Mean
 Min
 Mul
+Neg
 Pow
 Prod
 Range
