@@ -1115,8 +1115,7 @@ Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
   TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
                       CreateCopyWithNewLayout(operand_layout.shape(), operand));
 
-  instruction->ReplaceOperandWith(operand_no, operand_copy);
-  return Status::OK();
+  return instruction->ReplaceOperandWith(operand_no, operand_copy);
 }
 
 // For fusion instructions, set the layout of each fused parameter instruction
