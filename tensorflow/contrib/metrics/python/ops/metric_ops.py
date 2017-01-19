@@ -167,10 +167,10 @@ def streaming_true_positives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -206,10 +206,10 @@ def streaming_true_negatives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -233,11 +233,11 @@ def streaming_true_negatives(predictions, labels, weights=None,
   with variable_scope.variable_scope(
       name, 'true_negatives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_true_negative = math_ops.logical_and(math_ops.equal(labels, 0),
-                                            math_ops.equal(predictions, 0))
+    is_true_negative = math_ops.logical_and(math_ops.equal(labels, False),
+                                            math_ops.equal(predictions, False))
     return _count_condition(is_true_negative, weights, metrics_collections,
                             updates_collections)
 
@@ -251,10 +251,10 @@ def streaming_false_positives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -290,10 +290,10 @@ def streaming_false_negatives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`

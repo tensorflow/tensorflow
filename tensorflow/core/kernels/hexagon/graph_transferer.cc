@@ -38,14 +38,11 @@ const string INPUTS_NODE_PREFIX = "inputs_for_";
 const string OUTPUTS_NODE_PREFIX = "outputs_for_";
 const string DATA_NODE_PREFIX = "data_for_op_";
 const string CONST_SHAPE_PREFIX = "const_shape_";
-const string PADDING_PREFIX = "NN_PAD_";
 const string PADDING_ATTR_NAME = "padding";
 const string STRIDES_ATTR_NAME = "strides";
 const string KSIZE_ATTR_NAME = "ksize";
-const string PADDING_VALID_STR = "VALID";
-const string PADDING_SAME_STR = "SAME";
-const string PADDING_NA = "NA";
 const string NULL_OUTPUT_NAME = "NULL";
+const int PADDING_NA_ID = 0;  // VALID = 1, SAME = 2
 
 // This is a temporary workaround to support android build
 // where std::string is not supported even with c++11 option.
@@ -413,7 +410,6 @@ void GraphTransferer::RegisterConstantNode(
   VLOG(1) << "Register constant node: " << node.name();
   CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string data_name = DATA_NODE_PREFIX + ToString(id);
   const int output_node_size = node.num_outputs();
   CHECK(output_node_size == 1);
   // TODO(satok): support multiple outputs?
@@ -448,7 +444,6 @@ void GraphTransferer::RegisterConstantNode(
       ConstNodeTransferParams{node.name(),
                               id,
                               {{shape[0], shape[1], shape[2], shape[3]}},
-                              data_name,
                               data_size});
   // TODO(satok): Remove. Determine constant value without dryrun
   if (!output_tensor_map.empty() && data_size != 0) {
@@ -474,7 +469,7 @@ int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
     const int id = node_name_cache_list_.size() - 1;
     node_name_to_id_cache_map_.emplace(shape_name, id);
     const_node_transfer_params_list_.emplace_back(ConstNodeTransferParams{
-        shape_name, id, {{shape[0], shape[1], shape[2], shape[3]}}, "", 0});
+        shape_name, id, {{shape[0], shape[1], shape[2], shape[3]}}, 0});
   }
   return node_name_to_id_cache_map_[shape_name];
 }
@@ -545,17 +540,17 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
     const int ksize_id = RegisterConstantShape(kernel_sizes);
     extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }
-  const std::string padding_str =
-      padding == VALID ? PADDING_VALID_STR : PADDING_SAME_STR;
   const int op_type_id = ops_definitions.GetOpIdFor(node.type_string());
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
       << "Op " << node.type_string() << " not found in map(id = " << op_type_id
       << ")";
-  AppendNodeParamsWithIoParams(shape_refiner, output_tensor_map, node,
-                               node.name(), id, node.type_string(), op_type_id,
-                               padding_str, node.num_inputs(), extra_inputs,
-                               node.num_outputs(), true /* append_input */,
-                               true /* append_output */);
+  // Safety check of padding id
+  CHECK(padding == Padding::VALID ? 1 : 2);
+  AppendNodeParamsWithIoParams(
+      shape_refiner, output_tensor_map, node, node.name(), id,
+      node.type_string(), op_type_id, static_cast<int>(padding),
+      node.num_inputs(), extra_inputs, node.num_outputs(),
+      true /* append_input */, true /* append_output */);
 }
 
 void GraphTransferer::RegisterInputNode(
@@ -570,7 +565,7 @@ void GraphTransferer::RegisterInputNode(
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
   AppendNodeParamsWithIoParams(
       shape_refiner, output_tensor_map, node, node.name(), id,
-      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.type_string(), op_type_id, PADDING_NA_ID, node.num_inputs(), {},
       node.num_outputs(), true /* append_input */, true /* append_output */);
 }
 
@@ -587,7 +582,7 @@ void GraphTransferer::RegisterOutputNode(
   // TODO(satok): Set output for output node?
   AppendNodeParamsWithIoParams(
       shape_refiner, output_tensor_map, node, node.name(), id,
-      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.type_string(), op_type_id, PADDING_NA_ID, node.num_inputs(), {},
       0 /* outputs_size */, true /* append_input */, false /* append_output */);
 }
 
@@ -604,7 +599,7 @@ void GraphTransferer::RegisterFlattenNode(
 
   AppendNodeParamsWithIoParams(
       shape_refiner, output_tensor_map, node, node.name(), id,
-      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.type_string(), op_type_id, PADDING_NA_ID, node.num_inputs(), {},
       node.num_outputs(), true /* append_input */, true /* append_output */);
 }
 
@@ -620,7 +615,7 @@ void GraphTransferer::RegisterGenericNode(
 
   AppendNodeParamsWithIoParams(
       shape_refiner, output_tensor_map, node, node.name(), id,
-      node.type_string(), op_type_id, PADDING_NA, node.num_inputs(), {},
+      node.type_string(), op_type_id, PADDING_NA_ID, node.num_inputs(), {},
       node.num_outputs(), true /* append_input */, true /* append_output */);
 }
 
@@ -644,18 +639,13 @@ Status GraphTransferer::RegisterNodeIfAllInputsAreCached(
 // CAVEAT: Append inputs and outputs params accordingly
 void GraphTransferer::AppendNodeParams(const string& name, const int id,
                                        const string& type, const int type_id,
-                                       const string& padding_str,
-                                       const int inputs_size,
+                                       const int padding, const int inputs_size,
                                        const std::vector<int>& extra_inputs,
                                        const int outputs_size) {
   VLOG(1) << "Append node params: " << name;
-  // TODO(satok): store padding as Padding?
-  const string output_name = OUTPUTS_NODE_PREFIX + ToString(id);
   node_transfer_params_list_.emplace_back(
-      NodeTransferParams{name, id, type, type_id, PADDING_PREFIX + padding_str,
-                         INPUTS_NODE_PREFIX + ToString(id),
+      NodeTransferParams{name, id, type, type_id, padding,
                          inputs_size + static_cast<int>(extra_inputs.size()),
-                         outputs_size <= 0 ? NULL_OUTPUT_NAME : output_name,
                          static_cast<int>(outputs_size)});
 }
 
@@ -738,7 +728,7 @@ void GraphTransferer::AppendNodeOutputParams(
 void GraphTransferer::AppendNodeParamsWithIoParams(
     const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
     const Node& node, const string& name, const int id, const string& type,
-    const int type_id, const string& padding_str, const int inputs_size,
+    const int type_id, const int padding, const int inputs_size,
     const std::vector<int>& extra_inputs, const int outputs_size,
     const bool append_input_params, const bool append_output_params) {
   VLOG(1) << "Append node with io params: " << node.name();
@@ -748,8 +738,8 @@ void GraphTransferer::AppendNodeParamsWithIoParams(
   if (append_output_params) {
     AppendNodeOutputParams(shape_refiner, output_tensor_map, id, node);
   }
-  AppendNodeParams(name, id, type, type_id, padding_str, inputs_size,
-                   extra_inputs, outputs_size);
+  AppendNodeParams(name, id, type, type_id, padding, inputs_size, extra_inputs,
+                   outputs_size);
 }
 
 /* static */ std::array<int64, GraphTransferer::SHAPE_ARRAY_SIZE>
@@ -805,6 +795,20 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
       // TODO(satok): Support more ranks?
       CHECK(false);
       return std::array<int64, SHAPE_ARRAY_SIZE>();
+  }
+}
+
+/* static */ string GraphTransferer::ToPaddingDebugString(const int padding) {
+  switch (padding) {
+    case 0:
+      return "NN_PAD_NA";
+    case Padding::VALID:
+      return "NN_PAD_VALID";
+    case Padding::SAME:
+      return "NN_PAD_SAME";
+    default:
+      CHECK(false);
+      return "";
   }
 }
 
@@ -903,7 +907,10 @@ void GraphTransferer::DumpNodeTransferParams() const {
     LOG(INFO) << "[ " << params.node_id << " \"" << params.name << "\" (Const)";
     LOG(INFO) << "  shape: " << params.shape[0] << params.shape[1]
               << params.shape[2] << params.shape[3];
-    LOG(INFO) << "  data_name: " << params.data_name;
+    LOG(INFO) << "  data_name: "
+              << (params.data_size <= 0
+                      ? ""
+                      : DATA_NODE_PREFIX + ToString(params.node_id));
     LOG(INFO) << "  data_size: " << params.data_size << " bytes"
               << " ]";
   }
@@ -911,11 +918,14 @@ void GraphTransferer::DumpNodeTransferParams() const {
   LOG(INFO) << "*** Op Nodes ***";
   for (const NodeTransferParams& params : node_transfer_params_list_) {
     LOG(INFO) << "[ " << params.node_id << " \"" << params.name;
-    LOG(INFO) << "  type: " << params.type;
-    LOG(INFO) << "  padding: " << params.padding;
-    LOG(INFO) << "  inputs: " << params.inputs_name
+    LOG(INFO) << "  type: " << params.type_name;
+    LOG(INFO) << "  padding: " << ToPaddingDebugString(params.padding);
+    LOG(INFO) << "  inputs: " << INPUTS_NODE_PREFIX + ToString(params.node_id)
               << ", size = " << params.inputs_size;
-    LOG(INFO) << "  outputs: " << params.outputs_name
+    LOG(INFO) << "  outputs: "
+              << (params.outputs_size <= 0
+                      ? NULL_OUTPUT_NAME
+                      : (OUTPUTS_NODE_PREFIX + ToString(params.node_id)))
               << ", size = " << params.outputs_size << " ]";
   }
   LOG(INFO) << "******\n";
@@ -946,8 +956,10 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
     sstream << "---(CONST) [" << std::hex << params.node_id << std::dec << ","
             << params.shape[0] << "," << params.shape[1] << ","
             << params.shape[2] << "," << params.shape[3] << ","
-            << params.data_name << "," << params.data_size << "," << params.name
-            << "]";
+            << (params.data_size <= 0
+                    ? ""
+                    : DATA_NODE_PREFIX + ToString(params.node_id))
+            << "," << params.data_size << "," << params.name << "]";
     LOG(INFO) << sstream.str();
   }
   LOG(INFO) << "Const node count = " << const_node_transfer_params_list_.size();
@@ -955,9 +967,13 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
     std::stringstream sstream;
     sstream << "---(OP) [" << params.name.c_str() << "," << std::hex
             << params.node_id << std::dec << "," << params.soc_op_id << ","
-            << params.padding << "," << params.inputs_name << ","
-            << params.inputs_size << "," << params.outputs_name << ","
-            << params.outputs_size << "," << params.type << "]";
+            << ToPaddingDebugString(params.padding) << ","
+            << INPUTS_NODE_PREFIX + ToString(params.node_id) << ","
+            << params.inputs_size << ","
+            << (params.outputs_size <= 0
+                    ? NULL_OUTPUT_NAME
+                    : (OUTPUTS_NODE_PREFIX + ToString(params.node_id)))
+            << "," << params.outputs_size << "," << params.type_name << "]";
     LOG(INFO) << sstream.str();
   }
   LOG(INFO) << "Op node count = " << node_transfer_params_list_.size();

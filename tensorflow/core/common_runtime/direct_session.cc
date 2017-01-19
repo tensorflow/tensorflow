@@ -739,8 +739,7 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
   for (const auto& input : inputs) {
     auto it = executors_and_keys->input_keys.find(input.first);
     if (it == executors_and_keys->input_keys.end()) {
-      return errors::InvalidArgument("'", input.first,
-                                     "' is not a pre-defined feed!");
+      return errors::Internal("'", input.first, "' is not a pre-defined feed.");
     }
     const string& input_key = it->second;
 
@@ -775,9 +774,8 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
     const string& output_name = output_names[output_offset];
     auto it = executors_and_keys->output_keys.find(output_name);
     if (it == executors_and_keys->output_keys.end()) {
-      return errors::InvalidArgument("'", output_name,
-                                     "' was not defined as a fetch"
-                                     " target in PRunSetup.");
+      return errors::Internal("'", output_name,
+                              "' is not a pre-defined fetch.");
     }
     const string& output_key = it->second;
     Tensor output_tensor;

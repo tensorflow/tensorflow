@@ -30,6 +30,7 @@ py_binary(
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend:server",
+        "@werkzeug",
     ],
 )
 

@@ -157,7 +157,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   def _shape(self):
     return self._tril.get_shape()
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return array_ops.shape(self._tril)
 
   def _assert_non_singular(self):

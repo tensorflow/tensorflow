@@ -45,20 +45,20 @@ SessionOptions ClientSession::MakeDefaultSessionOptions(
   return options;
 }
 
-Status ClientSession::Run(const std::vector<ops::Output>& fetch_outputs,
+Status ClientSession::Run(const std::vector<Output>& fetch_outputs,
                           std::vector<Tensor>* outputs) const {
   return Run(FeedType{}, fetch_outputs, {}, outputs);
 }
 
 Status ClientSession::Run(const FeedType& inputs,
-                          const std::vector<ops::Output>& fetch_outputs,
+                          const std::vector<Output>& fetch_outputs,
                           std::vector<Tensor>* outputs) const {
   return Run(inputs, fetch_outputs, {}, outputs);
 }
 
 Status ClientSession::Run(const FeedType& inputs,
-                          const std::vector<ops::Output>& fetch_outputs,
-                          const std::vector<ops::Operation>& run_outputs,
+                          const std::vector<Output>& fetch_outputs,
+                          const std::vector<Operation>& run_outputs,
                           std::vector<Tensor>* outputs) const {
   return Run(RunOptions(), inputs, fetch_outputs, run_outputs, outputs,
              nullptr);
@@ -77,8 +77,8 @@ Status ClientSession::MaybeExtendGraph() const {
 }
 
 Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
-                          const std::vector<ops::Output>& fetch_outputs,
-                          const std::vector<ops::Operation>& run_outputs,
+                          const std::vector<Output>& fetch_outputs,
+                          const std::vector<Operation>& run_outputs,
                           std::vector<Tensor>* outputs,
                           RunMetadata* run_metadata) const {
   std::vector<std::pair<string, Tensor>> feeds;

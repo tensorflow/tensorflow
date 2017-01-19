@@ -215,7 +215,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperator.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperator.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperator.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -265,7 +265,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperator.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperator.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperator.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -358,7 +358,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperator.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperator.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperator.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -394,7 +394,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.shape_dynamic(name='shape_dynamic')` {#LinearOperator.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperator.shape_tensor(name='shape_tensor')` {#LinearOperator.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -475,7 +475,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperator.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperator.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperator.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
