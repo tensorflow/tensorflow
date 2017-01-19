@@ -216,16 +216,29 @@ class LoggingTensorHookTest(test.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       mon_sess.run(train_op)
       self.assertRegexpMatches(str(self.logged_message), t.name)
-      for j in range(3):
-        _ = j
+      for _ in range(3):
         self.logged_message = ''
-        for i in range(9):
-          _ = i
+        for _ in range(9):
           mon_sess.run(train_op)
           # assertNotRegexpMatches is not supported by python 3.1 and later
           self.assertEqual(str(self.logged_message).find(t.name), -1)
         mon_sess.run(train_op)
         self.assertRegexpMatches(str(self.logged_message), t.name)
+
+  def test_print_first_step(self):
+    # if it runs every iteration, first iteration has None duration.
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      t = constant_op.constant(42.0, name='foo')
+      train_op = constant_op.constant(3)
+      hook = basic_session_run_hooks.LoggingTensorHook(
+          tensors={'foo': t}, every_n_iter=1)
+      hook.begin()
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      sess.run(variables_lib.global_variables_initializer())
+      mon_sess.run(train_op)
+      self.assertRegexpMatches(str(self.logged_message), 'foo')
+      # in first run, elapsed time is None.
+      self.assertEqual(str(self.logged_message).find('sec'), -1)
 
   def test_print_every_n_secs(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
