@@ -223,6 +223,33 @@ def get_timestamped_export_dir(export_dir_base):
   return export_dir
 
 
+# create a simple parser that pulls the export_version from the directory.
+def _export_version_parser(path):
+  filename = os.path.basename(path.path)
+  if not (len(filename) == 10 and filename.isdigit()):
+    return None
+  return path._replace(export_version=int(filename))
+
+
+def get_most_recent_export(export_dir_base):
+  """Locate the most recent SavedModel export in a directory of many exports.
+
+  This method assumes that SavedModel subdirectories are named as a timestamp
+  (seconds from epoch), as produced by get_timestamped_export_dir().
+
+  Args:
+    export_dir_base: A base directory containing multiple timestamped
+                     directories.
+
+  Returns:
+    A gc.Path, whith is just a namedtuple of (path, export_version).
+  """
+  select_filter = gc.largest_export_versions(1)
+  results = select_filter(gc.get_paths(export_dir_base,
+                                       parser=_export_version_parser))
+  return next(iter(results or []), None)
+
+
 def garbage_collect_exports(export_dir_base, exports_to_keep):
   """Deletes older exports, retaining only a given number of the most recent.
 
@@ -239,15 +266,8 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
   keep_filter = gc.largest_export_versions(exports_to_keep)
   delete_filter = gc.negation(keep_filter)
-
-  # create a simple parser that pulls the export_version from the directory.
-  def parser(path):
-    filename = os.path.basename(path.path)
-    if not (len(filename) == 10 and filename.isdigit()):
-      return None
-    return path._replace(export_version=int(filename))
-
-  for p in delete_filter(gc.get_paths(export_dir_base, parser=parser)):
+  for p in delete_filter(gc.get_paths(export_dir_base,
+                                      parser=_export_version_parser)):
     gfile.DeleteRecursively(p.path)
 
 
@@ -255,11 +275,12 @@ def make_export_strategy(export_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
                          as_text=False,
-                         exports_to_keep=5):
+                         exports_to_keep=5,
+                         end_fn=None):
   """Create an ExportStrategy for use with Experiment.
 
   Args:
-    export_input_fn: A function that takes no argument and returns an
+    export_input_fn: A function that takes no arguments and returns an
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
@@ -275,6 +296,10 @@ def make_export_strategy(export_input_fn,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
+    end_fn: A function to be run at the end of training, taking a single
+      argument naming the ExportStrategy-specific export directory.  This is
+      typically used to take some action regarding the most recent export, such
+      as copying it to another location.
 
   Returns:
     an ExportStrategy that can be passed to the Experiment constructor.
@@ -301,4 +326,4 @@ def make_export_strategy(export_input_fn,
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn)
+  return export_strategy.ExportStrategy('Servo', export_fn, end_fn)

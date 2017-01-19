@@ -281,6 +281,22 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertTrue(gfile.Exists(export_dir_3))
     self.assertTrue(gfile.Exists(export_dir_4))
 
+  def test_get_most_recent_export(self):
+    export_dir_base = tempfile.mkdtemp() + "export/"
+    gfile.MkDir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    export_dir_4 = _create_test_export_dir(export_dir_base)
+
+    (most_recent_export_dir, most_recent_export_version) = (
+        saved_model_export_utils.get_most_recent_export(export_dir_base))
+
+    self.assertEqual(export_dir_4, most_recent_export_dir)
+    self.assertEqual(export_dir_4,
+                     os.path.join(export_dir_base,
+                                  str(most_recent_export_version)))
+
   def test_make_export_strategy(self):
     """Only tests that an ExportStrategy instance is created."""
     def _export_input_fn():

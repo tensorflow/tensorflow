@@ -355,48 +355,51 @@ class Experiment(object):
     previous_path = None
     eval_result = None
     last_warning_time = 0
-    while (not self.continuous_eval_predicate_fn or
-           self.continuous_eval_predicate_fn(eval_result)):
-      start = time.time()
+    try:
+      while (not self.continuous_eval_predicate_fn or
+             self.continuous_eval_predicate_fn(eval_result)):
+        start = time.time()
 
-      error_msg = None
-      latest_path = saver.latest_checkpoint(self._estimator.model_dir)
-      if not latest_path:
-        error_msg = ("Estimator is not fitted yet. "
-                     "Will start an evaluation when a checkpoint is ready.")
-      elif evaluate_checkpoint_only_once and latest_path == previous_path:
-        error_msg = "No new checkpoint ready for evaluation."
+        error_msg = None
+        latest_path = saver.latest_checkpoint(self._estimator.model_dir)
+        if not latest_path:
+          error_msg = ("Estimator is not fitted yet. "
+                       "Will start an evaluation when a checkpoint is ready.")
+        elif evaluate_checkpoint_only_once and latest_path == previous_path:
+          error_msg = "No new checkpoint ready for evaluation."
 
-      if error_msg:
-        # Print warning message every 10 mins.
-        eval_result = {}
-        if time.time() - last_warning_time > 600:
-          logging.warning(error_msg)
-          last_warning_time = time.time()
-      else:
-        eval_result = self._estimator.evaluate(input_fn=input_fn,
-                                               steps=self._eval_steps,
-                                               metrics=self._eval_metrics,
-                                               name=name,
-                                               checkpoint_path=latest_path,
-                                               hooks=self._eval_hooks)
-        # Ensure eval result is not None for next round of evaluation.
-        if not eval_result:
+        if error_msg:
+          # Print warning message every 10 mins.
           eval_result = {}
+          if time.time() - last_warning_time > 600:
+            logging.warning(error_msg)
+            last_warning_time = time.time()
+        else:
+          eval_result = self._estimator.evaluate(input_fn=input_fn,
+                                                 steps=self._eval_steps,
+                                                 metrics=self._eval_metrics,
+                                                 name=name,
+                                                 checkpoint_path=latest_path,
+                                                 hooks=self._eval_hooks)
+          # Ensure eval result is not None for next round of evaluation.
+          if not eval_result:
+            eval_result = {}
 
-        # TODO(soergel): further throttle how often export happens?
-        self._maybe_export(eval_result)
+          # TODO(soergel): further throttle how often export happens?
+          self._maybe_export(eval_result)
 
-        # Clear warning timer and update last evaluated checkpoint
-        last_warning_time = 0
-        previous_path = latest_path
+          # Clear warning timer and update last evaluated checkpoint
+          last_warning_time = 0
+          previous_path = latest_path
 
-      duration = time.time() - start
-      if duration < throttle_delay_secs:
-        difference = throttle_delay_secs - duration
-        logging.info("Waiting %f secs before starting next eval run.",
-                     difference)
-        time.sleep(difference)
+        duration = time.time() - start
+        if duration < throttle_delay_secs:
+          difference = throttle_delay_secs - duration
+          logging.info("Waiting %f secs before starting next eval run.",
+                       difference)
+          time.sleep(difference)
+    finally:
+      self._finalize_exports()
 
   def continuous_eval(self,
                       delay_secs=None,
@@ -465,13 +468,17 @@ class Experiment(object):
                                            name=eval_dir_suffix,
                                            hooks=self._eval_hooks)
     export_results = self._maybe_export(eval_result)
+    self._finalize_exports()
     return eval_result, export_results
 
-  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
-    """Export the Estimator using export_fn, if defined."""
-    export_dir_base = os.path.join(
+  def _get_export_dir_base(self):
+    return os.path.join(
         compat.as_bytes(self._estimator.model_dir),
         compat.as_bytes("export"))
+
+  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+    """Export the Estimator using ExportStrategies, if defined."""
+    export_dir_base = self._get_export_dir_base()
 
     export_results = []
     for strategy in self._export_strategies:
@@ -486,6 +493,17 @@ class Experiment(object):
                   compat.as_bytes(strategy.name))))
 
     return export_results
+
+  def _finalize_exports(self):
+    """Perform any final cleanup defined by the ExportStrategies."""
+    export_dir_base = self._get_export_dir_base()
+
+    for strategy in self._export_strategies:
+      if strategy.end_fn:
+        strategy.end_fn(
+            os.path.join(
+                compat.as_bytes(export_dir_base),
+                compat.as_bytes(strategy.name)))
 
   def run_std_server(self):
     """Starts a TensorFlow server and joins the serving thread.
