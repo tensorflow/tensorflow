@@ -303,7 +303,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
     weights = 2.3
     with self.test_session():
       loss = losses.sparse_softmax_cross_entropy(
-          labels, logits, constant_op.constant(weights, shape=(1, 1)))
+          labels, logits, constant_op.constant((weights,)))
       self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
 
   def testNonZeroLossWithPlaceholderForWeights(self):
@@ -432,7 +432,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       labels = constant_op.constant([[0, 1], [2, 3]])
       weights = constant_op.constant(1.2)
 
-      with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.assertRaisesRegexp(ValueError, 'dimension'):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
@@ -1240,6 +1240,9 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def testInvalid1x2Weight(self):
     self._test_invalid_weights((17.0, 3.0,),)
+
+  def testInvalidScalar1DWeight(self):
+    self._test_invalid_weights((17.0,),)
 
   def _test_valid_weights(self, weights):
     with ops.Graph().as_default():

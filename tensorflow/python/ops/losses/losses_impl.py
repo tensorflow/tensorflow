@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import confusion_matrix
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
@@ -130,16 +132,11 @@ def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES):
   """Computes the weighted loss.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
     losses: `Tensor` of shape `[batch_size, d1, ... dN]`.
-    weights: `Tensor` of shape `[]`, `[batch_size]` or
-      `[batch_size, d1, ... dK]`, where K < N.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `losses`, and must be broadcastable to `losses` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     scope: the scope for the operations performed in computing the loss.
     loss_collection: the loss will be added to these collections.
 
@@ -180,17 +177,12 @@ def absolute_difference(
   measurable element of `predictions` is scaled by the corresponding value of
   `weights`.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
     labels: The ground truth output tensor, same dimensions as 'predictions'.
     predictions: The predicted outputs.
-    weights: Coefficients for the loss a scalar, a tensor of shape
-      `[batch_size]` or a tensor whose shape matches `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
 
@@ -218,18 +210,13 @@ def cosine_distance(
   Note that the function assumes that `predictions` and `labels` are already
   unit-normalized.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
     labels: `Tensor` whose shape matches 'predictions'
     predictions: An arbitrary matrix.
     dim: The dimension along which the cosine distance is computed.
-    weights: Coefficients for the loss a scalar, a tensor of shape
-      `[batch_size]` or a tensor whose shape matches `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
 
@@ -257,18 +244,13 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES):
   """Adds a hinge loss to the training procedure.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
     labels: The ground truth output tensor. Its shape should match the shape of
       logits. The values of the tensor are expected to be 0.0 or 1.0.
     logits: The logits, a float tensor.
-    weights: Coefficients for the loss a scalar, a tensor of shape
-      `[batch_size]` or a tensor whose shape matches `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
 
@@ -302,17 +284,12 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
   measurable element of `predictions` is scaled by the corresponding value of
   `weights`.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
     labels: The ground truth output tensor, same dimensions as 'predictions'.
     predictions: The predicted outputs.
-    weights: Coefficients for the loss a scalar, a tensor of shape
-      `[batch_size]` or a tensor whose shape matches `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     epsilon: A small increment to add to avoid taking a log of zero.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -427,17 +404,12 @@ def mean_squared_error(labels, predictions, weights=1.0, scope=None,
   measurable element of `predictions` is scaled by the corresponding value of
   `weights`.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
     labels: The ground truth output tensor, same dimensions as 'predictions'.
     predictions: The predicted outputs.
-    weights: Coefficients for the loss a scalar, a tensor of shape
-      `[batch_size]` or a tensor whose shape matches `predictions`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
 
@@ -467,12 +439,6 @@ def sigmoid_cross_entropy(
   tensor of shape `[batch_size]`, then the loss weights apply to each
   corresponding sample.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   If `label_smoothing` is nonzero, smooth the labels towards 1/2:
 
       new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
@@ -482,8 +448,9 @@ def sigmoid_cross_entropy(
     multi_class_labels: `[batch_size, num_classes]` target integer labels in
       `(0, 1)`.
     logits: `[batch_size, num_classes]` logits outputs of the network.
-    weights: Coefficients for the loss. This must be of shape `[]`,
-      `[batch_size]` or `[batch_size, num_classes]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
     label_smoothing: If greater than `0` then smooth the labels.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -522,12 +489,6 @@ def softmax_cross_entropy(
   tensor of shape `[batch_size]`, then the loss weights apply to each
   corresponding sample.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
       new_onehot_labels = onehot_labels * (1 - label_smoothing)
                           + label_smoothing / num_classes
@@ -535,8 +496,10 @@ def softmax_cross_entropy(
   Args:
     onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
     logits: [batch_size, num_classes] logits outputs of the network .
-    weights: Coefficients for the loss. This must be of shape `[]`,
-      `[batch_size]` or `[batch_size, num_classes]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `onehot_labels`, and must be broadcastable to `onehot_labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `losses`
+      dimension).
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -567,6 +530,57 @@ def softmax_cross_entropy(
     return compute_weighted_loss(losses, weights, scope, loss_collection)
 
 
+# TODO(ptucker): Merge this with similar method in metrics_impl.
+def _remove_squeezable_dimensions(
+    labels, predictions, weights=None, expected_rank_diff=0):
+  """Internal version of _remove_squeezable_dimensions which handles weights.
+
+  Squeezes `predictions` and `labels` if their ranks differ from expected by
+  exactly 1.
+  Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
+
+  This will use static shape if available. Otherwise, it will add graph
+  operations, which could result in a performance hit.
+
+  Args:
+    labels: Label values, a `Tensor` whose dimensions match `predictions`.
+    predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    weights: Optional weight `Tensor`. It will be squeezed if it's not scalar,
+      and its rank is 1 more than the new rank of `labels`.
+    expected_rank_diff: Expected result of `rank(predictions) - rank(labels)`.
+
+  Returns:
+    Tuple of `predictions`, `labels` and `weights`, possibly with the last
+    dimension squeezed.
+  """
+  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
+      labels, predictions, expected_rank_diff=expected_rank_diff)
+
+  if weights is not None:
+    weights = ops.convert_to_tensor(weights)
+    labels_rank = labels.get_shape().ndims
+    weights_shape = weights.get_shape()
+    weights_rank = weights_shape.ndims
+
+    if (labels_rank is not None) and (weights_rank is not None):
+      # Use static rank.
+      rank_diff = weights_rank - labels_rank
+      if rank_diff == 1:
+        weights = array_ops.squeeze(weights, [-1])
+      return labels, predictions, weights
+
+    # Use dynamic rank.
+    rank_diff = array_ops.rank(weights) - array_ops.rank(labels)
+    if (weights_rank is None) or (
+        weights_shape.dims[-1].is_compatible_with(1)):
+      weights = control_flow_ops.cond(
+          math_ops.equal(1, rank_diff),
+          lambda: array_ops.squeeze(weights, [-1]),
+          lambda: weights)
+
+  return labels, predictions, weights
+
+
 def sparse_softmax_cross_entropy(labels, logits, weights=1.0, scope=None,
                                  loss_collection=ops.GraphKeys.LOSSES):
   """Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`.
@@ -576,18 +590,16 @@ def sparse_softmax_cross_entropy(labels, logits, weights=1.0, scope=None,
   tensor of shape [`batch_size`], then the loss weights apply to each
   corresponding sample.
 
-  WARNING: `weights` also supports dimensions of 1, but the broadcasting does
-  not work as advertised, you'll wind up with weighted sum instead of weighted
-  mean for any but the last dimension. This will be cleaned up soon, so please
-  do not rely on the current behavior for anything but the shapes documented for
-  `weights` below.
-
   Args:
-    labels: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
-      `int64` in the range `[0, num_classes)`.
-    logits: [batch_size, num_classes] logits outputs of the network .
-    weights: Coefficients for the loss. This must be scalar or of shape
-      `[batch_size, 1]`.
+    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+      `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
+      must be an index in `[0, num_classes)`. Other values will raise an
+      exception when this op is run on CPU, and return `NaN` for corresponding
+      loss and gradient rows on GPU.
+    logits: Unscaled log probabilities of shape
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+    weights: Coefficients for the loss. This must be scalar or of same rank as
+      `labels`
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
 
@@ -600,12 +612,12 @@ def sparse_softmax_cross_entropy(labels, logits, weights=1.0, scope=None,
   """
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       (logits, labels, weights)) as scope:
-    labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
-
+    # As documented above in Args, labels contain class IDs and logits contains
+    # 1 probability per class ID, so we expect rank(logits) - rank(labels) == 1;
+    # therefore, expected_rank_diff=1.
+    labels, logits, weights = _remove_squeezable_dimensions(
+        labels, logits, weights, expected_rank_diff=1)
     losses = nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
                                                          logits=logits,
                                                          name="xentropy")
-    # Reshape losses to [batch_size, 1] to be consistent with weights.
-    # TODO(ptucker): reshape to (-1, 1) more efficient?
-    losses = array_ops.reshape(losses, shape=[array_ops.shape(losses)[0], 1])
     return compute_weighted_loss(losses, weights, scope, loss_collection)
