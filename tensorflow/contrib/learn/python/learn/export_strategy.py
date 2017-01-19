@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-"""ExportStrategy class represents different flavors of model export."""
+"""ExportStrategy class that provides strategies to export model so later it
+can be used for TensorFlow serving."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,13 +26,8 @@ __all__ = ['ExportStrategy']
 
 
 class ExportStrategy(collections.namedtuple('ExportStrategy',
-                                            ['name',
-                                             'export_fn',
-                                             'end_fn'])):
+                                            ['name', 'export_fn'])):
 
   def export(self, estimator, export_path):
     return self.export_fn(estimator, export_path)
-
-  def end(self, export_path):
-    return self.end_fn(export_path)
 
