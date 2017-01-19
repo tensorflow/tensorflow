@@ -227,16 +227,19 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
-    HloInstruction* operand) {
+    HloInstruction* operand, int64 channel_id) {
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kSend, ShapeUtil::MakeNil()));
   instruction->AppendOperand(operand);
+  instruction->channel_id_ = channel_id;
   return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
-    const Shape& shape) {
-  return WrapUnique(new HloInstruction(HloOpcode::kRecv, shape));
+    const Shape& shape, int64 channel_id) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kRecv, shape));
+  instruction->channel_id_ = channel_id;
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(
@@ -790,7 +793,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                     operands[1], operands[2], scatter_);
     case HloOpcode::kRecv:
       CHECK_EQ(operands.size(), 0);
-      return CreateRecv(shape);
+      return CreateRecv(shape, channel_id_);
     case HloOpcode::kReverse:
       CHECK_EQ(operands.size(), 1);
       return CreateReverse(shape, operands[0], dimensions_);
@@ -801,7 +804,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateReshape(shape, operands[0]);
     case HloOpcode::kSend:
       CHECK_EQ(operands.size(), 1);
-      return CreateSend(operands[0]);
+      return CreateSend(operands[0], channel_id_);
     case HloOpcode::kSlice:
       CHECK_EQ(operands.size(), 1);
       return CreateSlice(shape, operands[0], slice_starts_, slice_limits_);
@@ -970,6 +973,10 @@ bool HloInstruction::HasConstantOperand() const {
 
 void HloInstruction::AddControlPredecessor(HloInstruction* instruction) {
   control_predecessors_.insert(instruction);
+}
+
+void HloInstruction::AddControlSuccessor(HloInstruction* instruction) {
+  control_successors_.insert(instruction);
 }
 
 bool HloInstruction::Identical(
