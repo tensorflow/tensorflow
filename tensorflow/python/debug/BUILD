@@ -194,6 +194,13 @@ py_library(
 )
 
 py_library(
+    name = "grpc_wrapper",
+    srcs = ["wrappers/grpc_wrapper.py"],
+    srcs_version = "PY2AND3",
+    deps = [":framework"],
+)
+
+py_library(
     name = "local_cli_wrapper",
     srcs = ["wrappers/local_cli_wrapper.py"],
     srcs_version = "PY2AND3",
@@ -551,6 +558,7 @@ py_test(
     deps = [
         ":dumping_wrapper",
         ":hooks",
+        ":stepper",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -581,6 +589,18 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+    ],
+)
+
+sh_test(
+    name = "examples_test",
+    size = "small",
+    srcs = ["examples/examples_test.sh"],
+    data = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 

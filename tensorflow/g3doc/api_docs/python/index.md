@@ -119,6 +119,7 @@
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
   * [`scatter_update`](../../api_docs/python/state_ops.md#scatter_update)
   * [`sparse_mask`](../../api_docs/python/state_ops.md#sparse_mask)
+  * [`tables_initializer`](../../api_docs/python/state_ops.md#tables_initializer)
   * [`trainable_variables`](../../api_docs/python/state_ops.md#trainable_variables)
   * [`truncated_normal_initializer`](../../api_docs/python/state_ops.md#truncated_normal_initializer)
   * [`uniform_unit_scaling_initializer`](../../api_docs/python/state_ops.md#uniform_unit_scaling_initializer)
@@ -259,7 +260,6 @@
   * [`minimum`](../../api_docs/python/math_ops.md#minimum)
   * [`mod`](../../api_docs/python/math_ops.md#mod)
   * [`multiply`](../../api_docs/python/math_ops.md#multiply)
-  * [`neg`](../../api_docs/python/math_ops.md#neg)
   * [`negative`](../../api_docs/python/math_ops.md#negative)
   * [`norm`](../../api_docs/python/math_ops.md#norm)
   * [`polygamma`](../../api_docs/python/math_ops.md#polygamma)
@@ -415,6 +415,7 @@
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
   * [`rot90`](../../api_docs/python/image.md#rot90)
   * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
+  * [`total_variation`](../../api_docs/python/image.md#total_variation)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 
 * **[Sparse Tensors](../../api_docs/python/sparse_ops.md)**:
@@ -617,6 +618,8 @@
   * [`do_quantize_training_on_graphdef`](../../api_docs/python/train.md#do_quantize_training_on_graphdef)
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
+  * [`FeedFnHook`](../../api_docs/python/train.md#FeedFnHook)
+  * [`FinalOpsHook`](../../api_docs/python/train.md#FinalOpsHook)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
   * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
   * [`get_checkpoint_mtimes`](../../api_docs/python/train.md#get_checkpoint_mtimes)
@@ -769,6 +772,7 @@
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
+  * [`softplus_inverse`](../../api_docs/python/contrib.distributions.md#softplus_inverse)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`StudentTWithAbsDfSoftplusSigma`](../../api_docs/python/contrib.distributions.md#StudentTWithAbsDfSoftplusSigma)
   * [`TransformedDistribution`](../../api_docs/python/contrib.distributions.md#TransformedDistribution)
@@ -1030,6 +1034,7 @@
   * [`LinearOperatorDiag`](../../api_docs/python/contrib.linalg.md#LinearOperatorDiag)
   * [`LinearOperatorIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorIdentity)
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
+  * [`LinearOperatorScaledIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorScaledIdentity)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:

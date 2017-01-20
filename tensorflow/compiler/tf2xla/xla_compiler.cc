@@ -186,9 +186,7 @@ Status XlaCompiler::CompileFunctionBody(
   // for devices other than CPU.
   OptimizerOptions opts;
   GraphOptimizer optimizer(opts);
-  Graph* g = graph.release();
-  OptimizeGraph(flr, &g);
-  graph.reset(g);
+  OptimizeGraph(flr, &graph);
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile(
@@ -332,6 +330,8 @@ Status XlaCompiler::CompileGraph(string const& name,
       &result->computation, &result->requires_runtime_context,
       &compile_time_constants, &num_nonconst_outputs));
 
+  VLOG(2) << "Outputs: constant: " << compile_time_constants.size()
+          << " nonconstant: " << num_nonconst_outputs;
   result->outputs.resize(compile_time_constants.size() + num_nonconst_outputs);
   for (const auto& c : compile_time_constants) {
     if (!c.status.ok()) {

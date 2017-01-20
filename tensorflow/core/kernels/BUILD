@@ -318,6 +318,19 @@ cc_library(
 )
 
 cc_library(
+    name = "record_input_op",
+    srcs = [
+        "record_input_op.cc",
+        "record_yielder.cc",
+        "record_yielder.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
@@ -785,11 +798,21 @@ tf_cc_test(
 tf_cc_test(
     name = "xsmm_conv2d_test",
     size = "small",
-    srcs = ["xsmm_conv2d_test.cc"],
+    srcs = select({
+        ":xsmm": ["xsmm_conv2d_test.cc"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":conv_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1167,6 +1190,7 @@ cc_library(
         ":priority_queue_op",
         ":queue_ops",
         ":random_shuffle_queue_op",
+        ":record_input_op",
         ":session_ops",
         ":sparse_conditional_accumulator_op",
         ":stack_ops",
@@ -1669,6 +1693,7 @@ tf_cc_tests(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -2102,8 +2127,20 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matmul_op",
+    defines = select({
+        ":xsmm": [
+            "TENSORFLOW_USE_LIBXSMM",
+            "EIGEN_USE_LIBXSMM",
+        ],
+        "//conditions:default": [],
+    }),
     prefix = "matmul_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_kernel_library(
@@ -2352,7 +2389,10 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     defines = select({
-        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
+        ":xsmm": [
+            "TENSORFLOW_USE_LIBXSMM",
+            "EIGEN_USE_LIBXSMM",
+        ],
         "//conditions:default": [],
     }) + select({
         ":xsmm_backward": ["TENSORFLOW_USE_LIBXSMM_BACKWARD"],
@@ -2372,7 +2412,6 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
     ] + select({
         ":xsmm": [
-            "@libxsmm_archive//:libxsmm_headers",
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
@@ -3717,10 +3756,9 @@ filegroup(
             "ctc_loss_op.*",
             # Excluded due to experimental status:
             "debug_ops.*",
-            # Ops excluded because they do not build correctly for Android.
-            # See b/29213790
             "scatter_nd_op*",
-            "sparse_matmul_op.*",
+            # Lib CURL is not supported on Android.
+            "bigquery*",
         ],
     ),
     visibility = ["//visibility:public"],

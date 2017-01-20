@@ -50,7 +50,7 @@ class Master {
                        PartialRunSetupResponse* resp, MyClosure done);
 
   void RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
-               RunStepResponse* resp, MyClosure done);
+               MutableRunStepResponseWrapper* resp, MyClosure done);
 
   void CloseSession(const CloseSessionRequest* req, CloseSessionResponse* resp,
                     MyClosure done);

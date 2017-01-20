@@ -31,27 +31,27 @@ cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
  - You should see a single-screen app with a "Run Model" button. Tap that, and
    you should see some debug output appear below indicating that the example
    Grace Hopper image has been analyzed, with a military uniform recognized.
- 
+
  - Once you have success there, make sure you have a real device connected and
-   open up the Xcode project in the camera subfolder. Once you build and run
+   open up the Xcode project in the `camera` subfolder. Once you build and run
    that, you should get a live camera view that you can point at objects to get
    real-time recognition results.
- 
+
 ## Troubleshooting
 
 If you're hitting problems, here's a checklist of common things to investigate:
 
- - Make sure that you've run the `build_all_ios.sh` script 
+ - Make sure that you've run the `build_all_ios.sh` script.
    This will run `download_dependencies.sh`,`compile_ios_protobuf.sh` and `compile_ios_tensorflow.sh`.
    (check each one if they have run successful.)
- 
+
  - Check that you have version 7.3 of Xcode.
- 
+
  - If there's a complaint about no Sessions registered, that means that the C++
    global constructors that TensorFlow relies on for registration haven't been
    linked in properly. You'll have to make sure your project uses force_load, as
    described below.
- 
+
 ## Creating your Own App
 
 You'll need to update various settings in your app to link against
@@ -62,11 +62,11 @@ rundown:
    `tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`. You'll need to add
    this to your linking build stage, and in Search Paths add
    `tensorflow/contrib/makefile/gen/lib` to the Library Search Paths setting.
- 
+
  - You'll also need to add `libprotobuf.a` and `libprotobuf-lite.a` from
    `tensorflow/contrib/makefile/gen/protobuf_ios/lib` to your _Build Stages_ and
    _Library Search Paths_.
- 
+
  - The _Header Search_ paths needs to contain:
    - the root folder of tensorflow,
    - `tensorflow/contrib/makefile/downloads/protobuf/src`
@@ -83,10 +83,10 @@ rundown:
 
  - You'll need to include the Accelerate framework in the "Link Binary with
    Libraries" build phase of your project.
- 
+
  - C++11 support (or later) should be enabled by setting `C++ Language Dialect` to
    `GNU++11` (or `GNU++14`), and `C++ Standard Library` to `libc++`.
- 
+
  - The library doesn't currently support bitcode, so you'll need to disable that
    in your project settings.
 

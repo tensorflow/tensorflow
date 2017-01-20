@@ -152,7 +152,7 @@ tfprof>
 -min_float_ops              0
 -device_regexes             .*
 -order_by                   name
--account_type_regexes       Variable
+-account_type_regexes       Variable,VariableV2
 -start_name_regexes         .*
 -trim_name_regexes
 -show_name_regexes          .*

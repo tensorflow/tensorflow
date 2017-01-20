@@ -42,6 +42,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
 from tensorflow.python.util.all_util import reveal_undocumented
 
@@ -74,6 +75,7 @@ class TestEstimator(evaluable.Evaluable, trainable.Trainable):
     self._max_evals = max_evals
     self.export_count = 0
     self.monitors = []
+    self.eval_hooks = []
     self._config = config or run_config.RunConfig()
     self._model_dir = tempfile.mkdtemp()
 
@@ -87,6 +89,8 @@ class TestEstimator(evaluable.Evaluable, trainable.Trainable):
 
   def evaluate(self, **kwargs):
     tf_logging.info('evaluate called with args: %s' % kwargs)
+    if 'hooks' in kwargs:
+      self.eval_hooks = kwargs['hooks']
     self.eval_count += 1
     if self.eval_count > self._max_evals:
       tf_logging.info('Ran %d evals. Done.' % self.eval_count)
@@ -109,12 +113,16 @@ class TestEstimator(evaluable.Evaluable, trainable.Trainable):
       self.monitors = kwargs['monitors']
     return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
 
-  def export_savedmodel(self, export_dir_base, export_input_fn, **kwargs):
+  def export_savedmodel(self, export_dir_base, serving_input_fn, **kwargs):
     tf_logging.info('export_savedmodel called with args: %s, %s, %s' %
-                    (export_dir_base, export_input_fn, kwargs))
+                    (export_dir_base, serving_input_fn, kwargs))
     self.export_count += 1
     return os.path.join(
         compat.as_bytes(export_dir_base), compat.as_bytes('bogus_timestamp'))
+
+
+class _NoopHook(session_run_hook.SessionRunHook):
+  pass
 
 
 class ExperimentTest(test.TestCase):
@@ -253,52 +261,63 @@ class ExperimentTest(test.TestCase):
   def test_evaluate(self):
     est = TestEstimator()
     est.fake_checkpoint()
+    noop_hook = _NoopHook()
     ex = experiment.Experiment(
         est,
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
         eval_steps='steps',
         eval_delay_secs=0)
     ex.evaluate()
-    self.assertEquals(1, est.eval_count)
     self.assertEquals(0, est.fit_count)
+    self.assertEquals(1, est.eval_count)
+    self.assertEquals([noop_hook], est.eval_hooks)
 
   def test_evaluate_delay(self):
     est = TestEstimator()
     est.fake_checkpoint()
+    noop_hook = _NoopHook()
     ex = experiment.Experiment(
-        est, train_input_fn='train_input', eval_input_fn='eval_input')
+        est, train_input_fn='train_input', eval_input_fn='eval_input',
+        eval_hooks=[noop_hook])
 
     for delay in [0, 1, 3]:
       with test.mock.patch('time.sleep', SheepCounter()) as sheep:
         ex.evaluate(delay_secs=delay)
       self.assertAlmostEqual(delay, sheep.total_time, delta=0.1)
+      self.assertEquals([noop_hook], est.eval_hooks)
 
   def test_continuous_eval(self):
     est = TestEstimator()
     est.fake_checkpoint()
+    noop_hook = _NoopHook()
     ex = experiment.Experiment(
         est,
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
         eval_delay_secs=0,
         continuous_eval_throttle_secs=0)
     self.assertRaises(
         StopIteration, ex.continuous_eval, evaluate_checkpoint_only_once=False)
-    self.assertEquals(6, est.eval_count)
     self.assertEquals(0, est.fit_count)
+    self.assertEquals(6, est.eval_count)
+    self.assertEquals([noop_hook], est.eval_hooks)
 
   def test_continuous_eval_throttle_delay(self):
     for delay in [0, 1, 2]:
       est = TestEstimator()
       est.fake_checkpoint()
+      noop_hook = _NoopHook()
       ex = experiment.Experiment(
           est,
           train_input_fn='train_input',
           eval_input_fn='eval_input',
           eval_metrics='eval_metrics',
+          eval_hooks=[noop_hook],
           continuous_eval_throttle_secs=delay,
           eval_delay_secs=0)
       with test.mock.patch('time.sleep', SheepCounter()) as sheep:
@@ -311,6 +330,7 @@ class ExperimentTest(test.TestCase):
   def test_continuous_eval_predicate_fn(self):
     est = TestEstimator()
     est.fake_checkpoint()
+    noop_hook = _NoopHook()
 
     def _predicate_fn(unused_eval_result):
       return est.eval_count < 3
@@ -320,20 +340,24 @@ class ExperimentTest(test.TestCase):
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
         eval_delay_secs=0,
         continuous_eval_throttle_secs=0,
         continuous_eval_predicate_fn=_predicate_fn)
     ex.continuous_eval(evaluate_checkpoint_only_once=False)
-    self.assertEquals(3, est.eval_count)
     self.assertEquals(0, est.fit_count)
+    self.assertEquals(3, est.eval_count)
+    self.assertEquals([noop_hook], est.eval_hooks)
 
   def test_run_local(self):
     est = TestEstimator()
+    noop_hook = _NoopHook()
     ex = experiment.Experiment(
         est,
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
         train_steps=100,
         eval_steps=100,
         local_eval_frequency=10)
@@ -341,17 +365,42 @@ class ExperimentTest(test.TestCase):
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
     self.assertEquals(1, len(est.monitors))
+    self.assertEquals([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
+
+  def test_train_monitors_returns_shallow_copy(self):
+    noop_hook = _NoopHook()
+    ex = experiment.Experiment(
+        TestEstimator(),
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        train_monitors=[noop_hook],
+        train_steps=100,
+        eval_steps=100,
+        local_eval_frequency=10)
+    self.assertAllEqual([noop_hook], ex.train_hooks)
+
+    another_noop_hook = _NoopHook()
+    # Assert that the property getter returns a shallow copy.
+    ex.train_hooks.extend([another_noop_hook])
+    self.assertAllEqual([noop_hook], ex.train_hooks)
+
+    # Assert that the extend API mutates the monitors.
+    ex.extend_train_hooks([another_noop_hook])
+    self.assertAllEqual([noop_hook, another_noop_hook], ex.train_hooks)
 
   def test_train_and_evaluate(self):
     est = TestEstimator()
+    noop_hook = _NoopHook()
     export_strategy = saved_model_export_utils.make_export_strategy(
-        est, 'export_input')
+        est, 'export_input', exports_to_keep=None)
     ex = experiment.Experiment(
         est,
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
         train_steps=100,
         eval_steps=100,
         export_strategies=export_strategy)
@@ -360,6 +409,7 @@ class ExperimentTest(test.TestCase):
     self.assertEquals(1, est.eval_count)
     self.assertEquals(1, est.export_count)
     self.assertEquals(1, len(est.monitors))
+    self.assertEquals([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
   @test.mock.patch.object(server_lib, 'Server')

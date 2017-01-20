@@ -39,6 +39,7 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _as_type_list(dtypes):
@@ -1053,7 +1054,21 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
+@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
+  """Returns an Op that initializes all tables of the default graph.
+
+  Args:
+    name: Optional name for the initialization op.
+
+  Returns:
+    An Op that initializes all tables.  Note that if there are
+    not tables the returned Op is a NoOp.
+  """
+  return tables_initializer(name)
+
+
+def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
   Args:
@@ -1598,3 +1613,65 @@ class StagingArea(object):
       output.set_shape(shape)
 
     return self._get_return_value(ret)
+
+
+class RecordInput(object):
+  """RecordInput asynchronously reads and randomly yields TFRecords.
+
+  A RecordInput Op will continuously read a batch of records asynchronously
+  into a buffer of some fixed capacity. It can also asynchronously yield
+  random records from this buffer.
+
+  It will not start yielding until at least `buffer_size / 2` elements have been
+  placed into the buffer so that sufficient randomization can take place.
+
+  The order the files are read will be shifted each epoch by `shift_amount` so
+  that the data is presented in a different order every epoch.
+  """
+
+  def __init__(self,
+               file_pattern,
+               batch_size=1,
+               buffer_size=1,
+               parallelism=1,
+               shift_ratio=0,
+               seed=0,
+               name=None):
+    """Constructs a RecordInput Op.
+
+    Args:
+      file_pattern: File path to the dataset, possibly containing wildcards.
+        All matching files will be iterated over each epoch.
+      batch_size: How many records to return at a time.
+      buffer_size: The maximum number of records the buffer will contain.  This
+        _must_ be smaller than the total number of records in an epoch or
+        deadlock can occur.
+      parallelism: How many reader threads to use for reading from files.
+      shift_ratio: What percentage of the total number files to move the start
+        file forward by each epoch.
+      seed: Specify the random number seed used by generator that randomizes
+        records.
+      name: Optional name for the operation.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+
+    self._batch_size = batch_size
+    self._file_pattern = file_pattern
+    self._buffer_size = buffer_size
+    self._parallelism = parallelism
+    self._shift_ratio = shift_ratio
+    self._seed = seed
+    self._name = name
+
+  def get_yield_op(self):
+    """Add a node that yields a minibatch every time it is executed."""
+    return gen_data_flow_ops.record_input(
+        file_pattern=self._file_pattern,
+        file_buffer_size=self._buffer_size,
+        file_parallelism=self._parallelism,
+        file_shuffle_shift_ratio=self._shift_ratio,
+        batch_size=self._batch_size,
+        file_random_seed=self._seed,
+        name=self._name)

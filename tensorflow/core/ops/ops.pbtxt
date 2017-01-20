@@ -6372,48 +6372,6 @@ op {
   summary: "Computes gradients for the exponential linear (Elu) operation."
 }
 op {
-  name: "Empty"
-  input_arg {
-    name: "shape"
-    description: "1-D `Tensor` indicating the shape of the output."
-    type_attr: "Tshape"
-  }
-  output_arg {
-    name: "output"
-    description: "An empty Tensor of the specified type."
-    type_attr: "dtype"
-  }
-  attr {
-    name: "dtype"
-    type: "type"
-    description: "The element type of the returned tensor."
-  }
-  attr {
-    name: "Tshape"
-    type: "type"
-    default_value {
-      type: DT_INT32
-    }
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  attr {
-    name: "init"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "`bool` indicating whether or not to zero the allocated memory."
-  }
-  summary: "Creates an empty Tensor with shape `shape` and type `dtype`."
-  description: "The memory can optionally be initialized. This is usually useful in\nconjunction with inplace operations."
-  is_stateful: true
-}
-op {
   name: "EncodeBase64"
   input_arg {
     name: "input"
@@ -8893,132 +8851,6 @@ op {
   }
   summary: "Initializes a table from a text file."
   description: "It inserts one key-value pair into the table for each line of the file.\nThe key and value is extracted from the whole line content, elements from the\nsplit line based on `delimiter` or the line number (starting from zero).\nWhere to extract the key and value from a line is specified by `key_index` and\n`value_index`.\n\n- A value of -1 means use the line number(starting from zero), expects `int64`.\n- A value of -2 means use the whole line content, expects `string`.\n- A value >= 0 means use the index (starting at zero) of the split line based\n  on `delimiter`."
-}
-op {
-  name: "InplaceAdd"
-  input_arg {
-    name: "value"
-    description: "A `Tensor` object that will be updated in-place."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "loc"
-    description: "A scalar or 1-D `Tensor` indicating the indices of the first dimension\nsuch that value[loc, :] is updated."
-    type_attr: "Tshape"
-  }
-  input_arg {
-    name: "update"
-    description: "A `Tensor` of rank one less than `value` if `loc` is a scalar,\notherwise of rank equal to `value` that contains the new values\nthat will be added to `value`."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "`value` where `update` has been added as appropriate."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "Tshape"
-    type: "type"
-    default_value {
-      type: DT_INT32
-    }
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  summary: "Updates input `value` at `loc` by adding `update` elementwise."
-  description: "If `loc` is None, `value` and `update` must be the same size.\n```\nvalue += update\n```\n\nIf `loc` is a scalar, `value` has rank 1 higher than `update`\n```\nvalue[i, :] += update\n```\n\nIf `loc` is a vector, `value` has the same rank as `update`\n```\nvalue[loc, :] += update\n```\n\nIf you use this function you will almost certainly want to add\na control dependency as done in the implementation of parallel_stack to\navoid race conditions."
-}
-op {
-  name: "InplaceSubtract"
-  input_arg {
-    name: "value"
-    description: "A `Tensor` object that will be updated in-place."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "loc"
-    description: "A scalar or 1-D `Tensor` indicating the indices of the first dimension\nsuch that value[loc, :] is updated."
-    type_attr: "Tshape"
-  }
-  input_arg {
-    name: "update"
-    description: "A `Tensor` of rank one less than `value` if `loc` is a scalar,\notherwise of rank equal to `value` that contains the new values\nthat will be subtracted from `value`."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "`value` where `update` has been subtracted as appropriate."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "Tshape"
-    type: "type"
-    default_value {
-      type: DT_INT32
-    }
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  summary: "Updates input `value` at `loc` by subtracting `update` elementwise."
-  description: "If `loc` is None, `value` and `update` must be the same size.\n```\nvalue -= update\n```\n\nIf `loc` is a scalar, `value` has rank 1 higher than `update`\n```\nvalue[i, :] -= update\n```\n\nIf `loc` is a vector, `value` has the same rank as `update`\n```\nvalue[loc, :] -= update\n```\n\nIf you use this function you will almost certainly want to add\na control dependency as done in the implementation of parallel_stack to\navoid race conditions."
-}
-op {
-  name: "InplaceUpdate"
-  input_arg {
-    name: "value"
-    description: "A `Tensor` object that will be updated in-place."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "loc"
-    description: "A scalar or 1-D `Tensor` indicating the indices of the first dimension\nsuch that value[loc, :] is updated."
-    type_attr: "Tshape"
-  }
-  input_arg {
-    name: "update"
-    description: "A `Tensor` of rank one less than `value` if `loc` is a scalar,\notherwise of rank equal to `value` that contains the new values\nfor `value`."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "`value` that has been updated accordingly."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "Tshape"
-    type: "type"
-    default_value {
-      type: DT_INT32
-    }
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  summary: "Updates input `value` at `loc` with `update`."
-  description: "If `loc` is None, `value` and `update` must be the same size.\n```\nvalue = update\n```\n\nIf `loc` is a scalar, `value` has rank 1 higher than `update`\n```\nvalue[i, :] = update\n```\n\nIf `loc` is a vector, `value` has the same rank as `update`\n```\nvalue[loc, :] = update\n```\n\nIf you use this function you will almost certainly want to add\na control dependency as done in the implementation of parallel_stack to\navoid race conditions."
 }
 op {
   name: "Inv"
@@ -11829,6 +11661,37 @@ op {
   summary: "A queue that produces elements in first-in first-out order."
   description: "Variable-size shapes are allowed by setting the corresponding shape dimensions\nto 0 in the shape attr.  In this case DequeueMany will pad up to the maximum\nsize of any given element in the minibatch.  See below for details."
   is_stateful: true
+}
+op {
+  name: "ParallelConcat"
+  input_arg {
+    name: "values"
+    description: "Tensors to be concatenated. All must have size 1 in the first dimension\nand same shape."
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    description: "The concatenated tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "the final shape of the result; should be equal to the shapes of any input\nbut with the number of input values in the first dimension."
+  }
+  summary: "Concatenates a list of `N` tensors along the first dimension."
+  description: "The input tensors are all required to have size 1 in the first dimension.\n\nFor example:\n\n```prettyprint\n# \'x\' is [[1, 4]]\n# \'y\' is [[2, 5]]\n# \'z\' is [[3, 6]]\nparallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\n```\n\nThe difference between concat and parallel_concat is that concat requires all\nof the inputs be computed before the operation will begin but doesn\'t require\nthat the input shapes be known during graph construction.  Parallel concat\nwill copy pieces of the input into the output as they become available, in\nsome situations this can provide a performance benefit."
 }
 op {
   name: "ParameterizedTruncatedNormal"
@@ -15165,6 +15028,61 @@ op {
   description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
 }
 op {
+  name: "RecordInput"
+  output_arg {
+    name: "records"
+    description: "A tensor of shape [batch_size]."
+    type: DT_STRING
+  }
+  attr {
+    name: "file_pattern"
+    type: "string"
+    description: "Glob pattern for the data files."
+  }
+  attr {
+    name: "file_random_seed"
+    type: "int"
+    default_value {
+      i: 301
+    }
+    description: "Random seeds used to produce randomized records."
+  }
+  attr {
+    name: "file_shuffle_shift_ratio"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Shifts the list of files after the list is randomly\nshuffled."
+  }
+  attr {
+    name: "file_buffer_size"
+    type: "int"
+    default_value {
+      i: 10000
+    }
+    description: "The randomization shuffling buffer."
+  }
+  attr {
+    name: "file_parallelism"
+    type: "int"
+    default_value {
+      i: 16
+    }
+    description: "How many sstables are opened and concurrently iterated over."
+  }
+  attr {
+    name: "batch_size"
+    type: "int"
+    default_value {
+      i: 32
+    }
+    description: "The batch size."
+  }
+  summary: "Emits randomized records."
+  is_stateful: true
+}
+op {
   name: "ReduceJoin"
   input_arg {
     name: "inputs"
@@ -17590,7 +17508,7 @@ op {
   }
   input_arg {
     name: "seq_lengths"
-    description: "1-D with length `input.dims(batch_dim)` and\n`max(seq_lengths) < input.dims(seq_dim)`"
+    description: "1-D with length `input.dims(batch_dim)` and\n`max(seq_lengths) <= input.dims(seq_dim)`"
     type_attr: "Tlen"
   }
   output_arg {
@@ -17629,7 +17547,7 @@ op {
     }
   }
   summary: "Reverses variable length slices."
-  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
+  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
 }
 op {
   name: "ReverseV2"

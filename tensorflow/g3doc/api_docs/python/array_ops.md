@@ -1109,7 +1109,7 @@ This op first slices `input` along the dimension `batch_axis`, and for each
 slice `i`, reverses the first `seq_lengths[i]` elements along
 the dimension `seq_axis`.
 
-The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
 and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
 The output slice `i` along dimension `batch_axis` is then given by input
@@ -1166,7 +1166,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 *  <b>`input`</b>: A `Tensor`. The input to reverse.
 *  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
-    `max(seq_lengths) < input.dims(seq_dim)`
+    `max(seq_lengths) <= input.dims(seq_dim)`
 *  <b>`seq_axis`</b>: An `int`. The dimension which is partially reversed.
 *  <b>`batch_axis`</b>: An optional `int`. Defaults to `0`.
     The dimension along which reversal is performed.
@@ -2044,7 +2044,7 @@ The attr `block_size` indicates the input block size and how the data is moved.
 
   * Chunks of data of size `block_size * block_size` from depth are rearranged
     into non-overlapping blocks of size `block_size x block_size`
-  * The width the output tensor is `input_width * block_size`, whereas the
+  * The width the output tensor is `input_depth * block_size`, whereas the
     height is `input_height * block_size`.
   * The depth of the input tensor must be divisible by
     `block_size * block_size`.

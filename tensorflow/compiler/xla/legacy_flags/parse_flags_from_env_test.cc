@@ -127,7 +127,6 @@ static const char* binary_name;
 // Test that when we use both the environment variable and actual
 // commend line flags (when the latter is possible), the latter win.
 TEST(ParseFlagsFromEnv, EnvAndFlag) {
-  // TODO(m3b):  convert to Subprocess when CL 137771604 is finished.
   static struct {
     const char* env;
     const char* arg;

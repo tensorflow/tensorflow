@@ -80,15 +80,22 @@ def iris_input_fn():
 
 
 def main(_):
-  training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
-
   # Load datasets.
-  training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-      filename=training_data_path,
-      target_dtype=np.int,
-      features_dtype=np.float32)
-  test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-      filename=test_data_path, target_dtype=np.int, features_dtype=np.float32)
+  if FLAGS.fake_data:
+    training_set = tf.contrib.learn.datasets.base.Dataset(
+        np.random.random([120, 4]),
+        np.random.random_integers(3, size=[120]) - 1)
+    test_set = tf.contrib.learn.datasets.base.Dataset(
+        np.random.random([30, 4]),
+        np.random.random_integers(3, size=[30]) - 1)
+  else:
+    training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
+    training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+        filename=training_data_path,
+        target_dtype=np.int,
+        features_dtype=np.float32)
+    test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+        filename=test_data_path, target_dtype=np.int, features_dtype=np.float32)
 
   # Specify that all features have real-value data
   feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
@@ -102,8 +109,11 @@ def main(_):
       n_classes=3,
       model_dir=model_dir)
 
-  hooks = ([tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type)] if FLAGS.debug
-           else None)
+  hooks = None
+  if FLAGS.debug:
+    debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type)
+    debug_hook.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+    hooks = [debug_hook]
 
   if not FLAGS.use_experiment:
     # Fit model.
@@ -162,6 +172,13 @@ if __name__ == "__main__":
       type=str,
       default="curses",
       help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--fake_data",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use fake MNIST data for unit testing")
   parser.add_argument(
       "--debug",
       type="bool",

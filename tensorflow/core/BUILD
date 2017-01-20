@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_ios",
+    "if_not_mobile",
     "if_not_windows",
     "tf_copts",
     "tf_cc_test",
@@ -100,6 +101,8 @@ load(
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
+    "tf_additional_cloud_op_deps",
+    "tf_additional_cloud_kernel_deps",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -255,6 +258,7 @@ cc_library(
         "platform/net.h",
         "platform/notification.h",
         "platform/prefetch.h",
+        "platform/profile_utils/clock_cycle_profiler.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",
         "platform/stacktrace.h",
@@ -455,6 +459,16 @@ cc_library(
 )
 
 cc_library(
+    name = "cloud_ops_op_lib",
+    srcs = ["ops/cloud_ops.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [":framework"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -484,7 +498,7 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-    ],
+    ] + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
 
@@ -606,7 +620,7 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
-    ] + if_not_windows([
+    ] + tf_additional_cloud_kernel_deps() + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",

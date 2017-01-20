@@ -1400,7 +1400,8 @@ def fully_connected(inputs,
   if not isinstance(num_outputs, six.integer_types):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
 
-  layer_variable_getter = _build_variable_getter({'bias': 'biases'})
+  layer_variable_getter = _build_variable_getter({'bias': 'biases',
+                                                  'kernel': 'weights'})
 
   with variable_scope.variable_scope(
       scope, 'fully_connected', [inputs],
@@ -1410,9 +1411,9 @@ def fully_connected(inputs,
         units=num_outputs,
         activation=None,
         use_bias=not normalizer_fn and biases_initializer,
-        weights_initializer=weights_initializer,
+        kernel_initializer=weights_initializer,
         bias_initializer=biases_initializer,
-        weights_regularizer=weights_regularizer,
+        kernel_regularizer=weights_regularizer,
         bias_regularizer=biases_regularizer,
         activity_regularizer=None,
         trainable=trainable,
@@ -1423,7 +1424,7 @@ def fully_connected(inputs,
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
-    _add_variable_to_collections(layer.w, variables_collections, 'weights')
+    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
     if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
