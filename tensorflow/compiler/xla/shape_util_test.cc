@@ -150,6 +150,26 @@ TEST(ShapeUtilTest, EmptyLayoutEqualsMissingLayout) {
   EXPECT_TRUE(ShapeUtil::Equal(scalar1, scalar2));
 }
 
+TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
+  shape1.mutable_layout()->add_padded_dimensions(10);
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
+  shape2.mutable_layout()->add_padded_dimensions(11);
+
+  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
+}
+
+TEST(ShapeUtilTest, CompareShapesWithPaddingValueMismatch) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
+  shape1.mutable_layout()->set_padding_value(ZERO_PAD);
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
+  shape2.mutable_layout()->set_padding_value(LOWEST_PAD);
+
+  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
+}
+
 TEST(ShapeUtilTest, ScalarUnpopulatedLayoutEqualsScalarLayout) {
   Shape scalar_unpopulated = ShapeUtil::MakeShape(F32, {});
   scalar_unpopulated.clear_layout();

@@ -766,9 +766,9 @@ class SaveRestoreShardedTest(test.TestCase):
         if partitioner:
           return new_vs[0].as_tensor().eval()
         elif slices and slices[0] != 1:
-          return array_ops.concat_v2(new_vs, 0).eval()
+          return array_ops.concat(new_vs, 0).eval()
         elif slices and slices[1] != 1:
-          return array_ops.concat_v2(new_vs, 1).eval()
+          return array_ops.concat(new_vs, 1).eval()
         else:  # Non-sliced.
           return new_vs[0].eval()
 
@@ -1609,7 +1609,7 @@ class MetaGraphTest(test.TestCase):
       batch_size = array_ops.size(labels)
       labels = array_ops.expand_dims(labels, 1)
       indices = array_ops.expand_dims(math_ops.range(0, batch_size), 1)
-      concated = array_ops.concat_v2([indices, labels], 1)
+      concated = array_ops.concat([indices, labels], 1)
       onehot_labels = sparse_ops.sparse_to_dense(
           concated, array_ops.stack([batch_size, 10]), 1.0, 0.0)
       logits = ops_lib.get_collection("logits")[0]
@@ -1837,14 +1837,22 @@ class WriteGraphTest(test.TestCase):
   def testWriteGraph(self):
     test_dir = _TestDir("write_graph_dir")
     variables.Variable([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32, name="v0")
-    graph_io.write_graph(ops_lib.get_default_graph(),
-                         "/".join([test_dir, "l1"]), "graph.pbtxt")
+    path = graph_io.write_graph(ops_lib.get_default_graph(),
+                                os.path.join(test_dir, "l1"), "graph.pbtxt")
+    truth = os.path.join(test_dir, "l1", "graph.pbtxt")
+    self.assertEqual(path, truth)
+    self.assertTrue(os.path.exists(path))
+
 
   def testRecursiveCreate(self):
     test_dir = _TestDir("deep_dir")
     variables.Variable([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32, name="v0")
-    graph_io.write_graph(ops_lib.get_default_graph().as_graph_def(),
-                         "/".join([test_dir, "l1/l2/l3"]), "graph.pbtxt")
+    path = graph_io.write_graph(ops_lib.get_default_graph().as_graph_def(),
+                                os.path.join(test_dir, "l1", "l2", "l3"),
+                                "graph.pbtxt")
+    truth = os.path.join(test_dir, 'l1', 'l2', 'l3', "graph.pbtxt")
+    self.assertEqual(path, truth)
+    self.assertTrue(os.path.exists(path))
 
 
 class SaverUtilsTest(test.TestCase):

@@ -111,10 +111,9 @@ python mnist_softmax_xla.py --xla=false
 ```
 
 Using the Chrome Trace Event Profiler (browse to chrome://tracing),
-open the timeline file created when the script finishes: `timeline.ctf.json`.  \
-The rendered timeline should look similar to the
-picture below with multiple green boxes labeled `MatMul`, possibly across
-multiple CPUs.
+open the timeline file created when the script finishes: `timeline.ctf.json`.
+The rendered timeline should look similar to the picture below with multiple
+green boxes labeled `MatMul`, possibly across multiple CPUs.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="../../images/jit_timeline_cpu.png">
 </div>

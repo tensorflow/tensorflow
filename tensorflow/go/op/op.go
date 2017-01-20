@@ -41,7 +41,6 @@ func Const(scope *Scope, value interface{}) (output tf.Output) {
 		}
 	}
 	return scope.AddOperation(tf.OpSpec{
-		Name: scope.opName("Const"),
 		Type: "Const",
 		Attrs: map[string]interface{}{
 			"dtype": t.DataType(),

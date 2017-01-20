@@ -213,18 +213,32 @@ TEST(BundleShimTest, DefaultSignatureGeneric) {
   EXPECT_EQ(0, meta_graph_def.signature_def_size());
 }
 
+// Helper function to validate that the SignatureDef found in the MetaGraphDef
+// with the provided key has the expected string representation.
+void ValidateSignatureDef(const MetaGraphDef& meta_graph_def, const string& key,
+                          const string& expected_string_signature_def) {
+  tensorflow::SignatureDef expected_signature;
+  CHECK(protobuf::TextFormat::ParseFromString(expected_string_signature_def,
+                                              &expected_signature));
+  auto iter = meta_graph_def.signature_def().find(key);
+  ASSERT_TRUE(iter != meta_graph_def.signature_def().end());
+  EXPECT_EQ(expected_signature.DebugString(), iter->second.DebugString());
+}
+
 TEST(BundleShimTest, NamedRegressionSignatures) {
   Signatures signatures;
 
-  RegressionSignature* inputs_regression_signature =
-      (*signatures.mutable_named_signatures())[kRegressInputs]
+  RegressionSignature* foo_regression_signature =
+      (*signatures.mutable_named_signatures())["foo"]
           .mutable_regression_signature();
-  inputs_regression_signature->mutable_input()->set_tensor_name("foo-input");
+  foo_regression_signature->mutable_input()->set_tensor_name("foo-input");
+  foo_regression_signature->mutable_output()->set_tensor_name("foo-output");
 
-  RegressionSignature* outputs_regression_signature =
-      (*signatures.mutable_named_signatures())[kRegressOutputs]
+  RegressionSignature* bar_regression_signature =
+      (*signatures.mutable_named_signatures())["bar"]
           .mutable_regression_signature();
-  outputs_regression_signature->mutable_output()->set_tensor_name("foo-output");
+  bar_regression_signature->mutable_input()->set_tensor_name("bar-input");
+  bar_regression_signature->mutable_output()->set_tensor_name("bar-output");
 
   MetaGraphDef meta_graph_def;
   (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
@@ -232,7 +246,36 @@ TEST(BundleShimTest, NamedRegressionSignatures) {
       ->add_value()
       ->PackFrom(signatures);
   ConvertSignaturesToSignatureDefs(&meta_graph_def);
-  EXPECT_EQ(2, meta_graph_def.signature_def_size());
+  ASSERT_EQ(2, meta_graph_def.signature_def_size());
+
+  ValidateSignatureDef(meta_graph_def, "foo",
+                       "inputs { "
+                       "  key: \"inputs\" "
+                       "  value { "
+                       "name: \"foo-input\" "
+                       "  } "
+                       "} "
+                       "outputs { "
+                       "  key: \"outputs\" "
+                       "  value { "
+                       "    name: \"foo-output\" "
+                       "  } "
+                       "} "
+                       "method_name: \"tensorflow/serving/regress\" ");
+  ValidateSignatureDef(meta_graph_def, "bar",
+                       "inputs { "
+                       "  key: \"inputs\" "
+                       "  value { "
+                       "name: \"bar-input\" "
+                       "  } "
+                       "} "
+                       "outputs { "
+                       "  key: \"outputs\" "
+                       "  value { "
+                       "    name: \"bar-output\" "
+                       "  } "
+                       "} "
+                       "method_name: \"tensorflow/serving/regress\" ");
 }
 
 TEST(BundleShimTest, NamedClassificationSignatures) {
@@ -257,7 +300,36 @@ TEST(BundleShimTest, NamedClassificationSignatures) {
       ->add_value()
       ->PackFrom(signatures);
   ConvertSignaturesToSignatureDefs(&meta_graph_def);
-  EXPECT_EQ(2, meta_graph_def.signature_def_size());
+  ASSERT_EQ(2, meta_graph_def.signature_def_size());
+
+  ValidateSignatureDef(meta_graph_def, "foo",
+                       "inputs { "
+                       "  key: \"inputs\" "
+                       "  value { "
+                       "name: \"foo-input\" "
+                       "  } "
+                       "} "
+                       "outputs { "
+                       "  key: \"classes\" "
+                       "  value { "
+                       "    name: \"foo-classes\" "
+                       "  } "
+                       "} "
+                       "method_name: \"tensorflow/serving/classify\" ");
+  ValidateSignatureDef(meta_graph_def, "bar",
+                       "inputs { "
+                       "  key: \"inputs\" "
+                       "  value { "
+                       "name: \"bar-input\" "
+                       "  } "
+                       "} "
+                       "outputs { "
+                       "  key: \"scores\" "
+                       "  value { "
+                       "    name: \"bar-scores\" "
+                       "  } "
+                       "} "
+                       "method_name: \"tensorflow/serving/classify\" ");
 }
 
 // Checks the Predict SignatureDef created when the named signatures have

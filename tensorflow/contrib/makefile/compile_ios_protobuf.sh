@@ -76,14 +76,17 @@ make distclean
 "CFLAGS=${CFLAGS} \
 -mios-simulator-version-min=${MIN_SDK_VERSION} \
 -arch i386 \
+-fembed-bitcode \
 -isysroot ${IPHONESIMULATOR_SYSROOT}" \
 "CXX=${CXX}" \
 "CXXFLAGS=${CXXFLAGS} \
 -mios-simulator-version-min=${MIN_SDK_VERSION} \
 -arch i386 \
+-fembed-bitcode \
 -isysroot \
 ${IPHONESIMULATOR_SYSROOT}" \
 LDFLAGS="-arch i386 \
+-fembed-bitcode \
 -mios-simulator-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
@@ -103,14 +106,17 @@ make distclean
 "CFLAGS=${CFLAGS} \
 -mios-simulator-version-min=${MIN_SDK_VERSION} \
 -arch x86_64 \
+-fembed-bitcode \
 -isysroot ${IPHONESIMULATOR_SYSROOT}" \
 "CXX=${CXX}" \
 "CXXFLAGS=${CXXFLAGS} \
 -mios-simulator-version-min=${MIN_SDK_VERSION} \
 -arch x86_64 \
+-fembed-bitcode \
 -isysroot \
 ${IPHONESIMULATOR_SYSROOT}" \
 LDFLAGS="-arch x86_64 \
+-fembed-bitcode \
 -mios-simulator-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
@@ -129,13 +135,16 @@ make distclean
 "CFLAGS=${CFLAGS} \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 -arch armv7 \
+-fembed-bitcode \
 -isysroot ${IPHONEOS_SYSROOT}" \
 "CXX=${CXX}" \
 "CXXFLAGS=${CXXFLAGS} \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 -arch armv7 \
+-fembed-bitcode \
 -isysroot ${IPHONEOS_SYSROOT}" \
 LDFLAGS="-arch armv7 \
+-fembed-bitcode \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
@@ -152,13 +161,16 @@ make distclean
 "CFLAGS=${CFLAGS} \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 -arch armv7s \
+-fembed-bitcode \
 -isysroot ${IPHONEOS_SYSROOT}" \
 "CXX=${CXX}" \
 "CXXFLAGS=${CXXFLAGS} \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 -arch armv7s \
+-fembed-bitcode \
 -isysroot ${IPHONEOS_SYSROOT}" \
 LDFLAGS="-arch armv7s \
+-fembed-bitcode \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
@@ -175,12 +187,15 @@ make distclean
 "CFLAGS=${CFLAGS} \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 -arch arm64 \
+-fembed-bitcode \
 -isysroot ${IPHONEOS_SYSROOT}" \
 "CXXFLAGS=${CXXFLAGS} \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 -arch arm64 \
+-fembed-bitcode \
 -isysroot ${IPHONEOS_SYSROOT}" \
 LDFLAGS="-arch arm64 \
+-fembed-bitcode \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"

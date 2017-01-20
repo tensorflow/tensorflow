@@ -50,6 +50,7 @@ from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_manager as session_manager_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
+from tensorflow.python.util.deprecation import deprecated
 
 # Singleton for SummaryWriter per logdir folder.
 _SUMMARY_WRITERS = {}
@@ -57,7 +58,13 @@ _SUMMARY_WRITERS = {}
 # Lock protecting _SUMMARY_WRITERS
 _summary_writer_lock = threading.Lock()
 
+_graph_action_deprecation = deprecated(
+    '2017-02-15',
+    'graph_actions.py will be deleted. Use tf.train.* utilities instead. '
+    'You can use learn/estimators/estimator.py as an example.')
 
+
+@_graph_action_deprecation
 def clear_summary_writers():
   """Clear cached summary writers. Currently only used for unit tests."""
   return summary_io.SummaryWriterCache.clear()
@@ -312,7 +319,8 @@ def _monitored_train(graph,
     summary_io.SummaryWriterCache.clear()
     return loss
 
-# TODO(ispir): Deprecate train in favor of supervised_train
+
+@_graph_action_deprecation
 def train(graph,
           output_dir,
           train_op,
@@ -626,7 +634,7 @@ def _get_local_init_op():
       ops.GraphKeys.LOCAL_INIT_OP)
   if local_init_op is None:
     op_list = [variables.local_variables_initializer(),
-               data_flow_ops.initialize_all_tables()]
+               data_flow_ops.tables_initializer()]
     if op_list:
       local_init_op = control_flow_ops.group(*op_list)
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
@@ -658,6 +666,7 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
   summary_writer.flush()
 
 
+@_graph_action_deprecation
 def evaluate(graph,
              output_dir,
              checkpoint_path,
@@ -811,6 +820,7 @@ def evaluate(graph,
   return eval_results, current_global_step
 
 
+@_graph_action_deprecation
 def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
   """Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
@@ -832,7 +842,7 @@ def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
       restore_checkpoint_path=restore_checkpoint_path)
 
 
-# TODO(ptucker): Add save_checkpoint_path.
+@_graph_action_deprecation
 def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
   """Run `output_dict` tensors with each input in `feed_dicts`.
 
@@ -871,7 +881,7 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
       else:
         session.run(variables.global_variables_initializer())
       session.run(variables.local_variables_initializer())
-      session.run(data_flow_ops.initialize_all_tables())
+      session.run(data_flow_ops.tables_initializer())
       coord = coordinator.Coordinator()
       threads = None
       try:
@@ -884,11 +894,13 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
           coord.join(threads, stop_grace_period_secs=120)
 
 
+@_graph_action_deprecation
 def run_feeds(*args, **kwargs):
   """See run_feeds_iter(). Returns a `list` instead of an iterator."""
   return list(run_feeds_iter(*args, **kwargs))
 
 
+@_graph_action_deprecation
 def infer(restore_checkpoint_path, output_dict, feed_dict=None):
   """Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
 

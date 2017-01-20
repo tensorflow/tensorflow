@@ -149,6 +149,9 @@ class Backend {
   // used for scheduling work. For other platforms, returns NULL.
   const Eigen::ThreadPoolDevice* eigen_intra_op_thread_pool_device() const;
 
+  // Resets the devices associated with this backend.
+  Status ResetDevices();
+
  private:
   struct EigenThreadPoolWrapper;
   Backend(int64 replica_count, perftools::gputools::Platform* platform,

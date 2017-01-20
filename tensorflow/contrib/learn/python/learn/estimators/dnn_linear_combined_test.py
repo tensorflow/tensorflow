@@ -251,7 +251,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         embedding_lr_multipliers={embedding_language: 0.8})
     self.assertEqual({
         embedding_language: 0.8
-    }, classifier._estimator.params['embedding_lr_multipliers'])
+    }, classifier.params['embedding_lr_multipliers'])
 
   def testInputPartitionSize(self):
     def _input_fn_float_label(num_epochs=None):
@@ -285,8 +285,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         input_layer_min_slice_size=1)
 
     # Ensure the param is passed in.
-    self.assertEqual(1,
-                     classifier._estimator.params['input_layer_min_slice_size'])
+    self.assertEqual(1, classifier.params['input_layer_min_slice_size'])
 
     # Ensure the partition count is 10.
     classifier.fit(input_fn=_input_fn_float_label, steps=50)
@@ -631,7 +630,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
     probs = list(classifier.predict_proba(input_fn=_input_fn_predict))
     self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.05)
-    classes = list(classifier.predict(input_fn=_input_fn_predict))
+    classes = list(classifier.predict_classes(input_fn=_input_fn_predict))
     self.assertListEqual([0] * 4, classes)
 
   def testCustomMetrics(self):
@@ -683,7 +682,8 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric']).issubset(
             set(scores.keys())))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(classifier.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(classifier.predict_classes(
+        input_fn=predict_input_fn)))
     self.assertEqual(
         _sklearn.accuracy_score([1, 0, 0, 0], predictions),
         scores['my_accuracy'])
@@ -1095,7 +1095,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores.keys())
-    regressor.predict(input_fn=_input_fn, as_iterable=False)
+    regressor.predict_scores(input_fn=_input_fn, as_iterable=False)
 
   def testPredict_AsIterable(self):
     """Tests predict method with as_iterable=True."""
@@ -1135,7 +1135,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores.keys())
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    regressor.predict(input_fn=predict_input_fn, as_iterable=True)
+    regressor.predict_scores(input_fn=predict_input_fn, as_iterable=True)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
@@ -1173,7 +1173,8 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(regressor.predict_scores(
+        input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -1239,7 +1240,8 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
+    predictions = np.array(list(regressor.predict_scores(
+        input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -1320,7 +1322,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
 
     model_dir = tempfile.mkdtemp()
     # pylint: disable=g-long-lambda
-    new_estimator = lambda: dnn_linear_combined.DNNLinearCombinedRegressor(
+    new_regressor = lambda: dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=[feature_column.real_valued_column('x')],
         dnn_feature_columns=[feature_column.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
@@ -1328,13 +1330,13 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
         config=run_config.RunConfig(tf_random_seed=1))
 
     predict_input_fn = functools.partial(_input_fn, num_epochs=1)
-    classifier = new_estimator()
-    classifier.fit(input_fn=_input_fn, steps=10)
-    predictions = list(classifier.predict(input_fn=predict_input_fn))
-    del classifier
+    regressor = new_regressor()
+    regressor.fit(input_fn=_input_fn, steps=10)
+    predictions = list(regressor.predict_scores(input_fn=predict_input_fn))
+    del regressor
 
-    classifier = new_estimator()
-    predictions2 = list(classifier.predict(input_fn=predict_input_fn))
+    regressor = new_regressor()
+    predictions2 = list(regressor.predict_scores(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
   def testTrainWithPartitionedVariables(self):
@@ -1527,11 +1529,11 @@ class FeatureEngineeringFunctionTest(test.TestCase):
 
     # predictions = y
     prediction_with_fe_fn = next(
-        estimator_with_fe_fn.predict(
+        estimator_with_fe_fn.predict_scores(
             input_fn=input_fn, as_iterable=True))
     self.assertAlmostEqual(1000., prediction_with_fe_fn, delta=10.0)
     prediction_without_fe_fn = next(
-        estimator_without_fe_fn.predict(
+        estimator_without_fe_fn.predict_scores(
             input_fn=input_fn, as_iterable=True))
     self.assertAlmostEqual(100., prediction_without_fe_fn, delta=1.0)
 

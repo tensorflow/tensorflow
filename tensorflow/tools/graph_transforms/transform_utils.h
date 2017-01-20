@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_TRANSFORM_UTILS_H_
 
 #include <set>
+#include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -201,9 +203,11 @@ Status ReplaceMatchingOpTypes(
 // Returns a list of the unique nodes found in this match.
 void MatchedNodesAsArray(const NodeMatch& match, std::vector<NodeDef>* result);
 
-// Changes all input references to a particular node name.
+// Changes all input references to a particular node name. Any nodes with names
+// listed in nodes_to_ignore will not have their inputs rewritten.
 Status RenameNodeInputs(const GraphDef& input_graph_def,
                         const std::map<string, string>& inputs_to_rename,
+                        const std::unordered_set<string>& nodes_to_ignore,
                         GraphDef* output_graph_def);
 
 // Utility function that copies all the nodes found in a match into the
@@ -225,11 +229,17 @@ struct TransformFuncContext {
   Status GetOneStringParameter(const string& name, const string& default_value,
                                string* result) const;
 
-  // Gets a single occurrence of a parameter as an integer, falling back to a
-  // default if it isn't present and returning an error if it isn't convertible
-  // to a number.
-  Status GetOneIntParameter(const string& name, int64 default_value,
-                            int64* result) const;
+  // Gets a single occurrence of a parameter as a 32-bit integer, falling back
+  // to a default if it isn't present and returning an error if it isn't
+  // convertible to a number.
+  Status GetOneInt32Parameter(const string& name, int32 default_value,
+                              int32* result) const;
+
+  // Gets a single occurrence of a parameter as a 64-bit integer, falling back
+  // to a default if it isn't present and returning an error if it isn't
+  // convertible to a number.
+  Status GetOneInt64Parameter(const string& name, int64 default_value,
+                              int64* result) const;
 
   // Gets a single occurrence of a parameter as a floating point number, falling
   // back to a default if it isn't present and returning an error if it isn't

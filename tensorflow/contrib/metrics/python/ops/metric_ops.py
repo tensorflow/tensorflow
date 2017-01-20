@@ -167,10 +167,10 @@ def streaming_true_positives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -206,10 +206,10 @@ def streaming_true_negatives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -233,11 +233,11 @@ def streaming_true_negatives(predictions, labels, weights=None,
   with variable_scope.variable_scope(
       name, 'true_negatives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_true_negative = math_ops.logical_and(math_ops.equal(labels, 0),
-                                            math_ops.equal(predictions, 0))
+    is_true_negative = math_ops.logical_and(math_ops.equal(labels, False),
+                                            math_ops.equal(predictions, False))
     return _count_condition(is_true_negative, weights, metrics_collections,
                             updates_collections)
 
@@ -251,10 +251,10 @@ def streaming_false_positives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -290,10 +290,10 @@ def streaming_false_negatives(predictions, labels, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions
       must be either `1`, or the same as the corresponding `labels`
@@ -1502,12 +1502,12 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
             array_ops.size(tensor.dense_shape) + dim, [1])
       else:
         expand_dims = [dim]
-      expanded_shape = array_ops.concat_v2(
-          (array_ops.strided_slice(tensor.dense_shape, [0], expand_dims),
-           [1],
+      expanded_shape = array_ops.concat(
+          (array_ops.strided_slice(tensor.dense_shape, [0], expand_dims), [1],
            array_ops.strided_slice(
                tensor.dense_shape, expand_dims, [-1], end_mask=1 << 0)),
-          0, name='expanded_shape')
+          0,
+          name='expanded_shape')
       expanded = sparse_ops.sparse_reshape(
           tensor, shape=expanded_shape, name='expand')
       if multiple == 1:
@@ -1521,7 +1521,7 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
     if multiple == 1:
       return expanded
     ones = array_ops.ones_like(array_ops.shape(tensor))
-    tile_multiples = array_ops.concat_v2(
+    tile_multiples = array_ops.concat(
         (ones[:dim], (multiple,), ones[dim:]), 0, name='multiples')
     return array_ops.tile(expanded, tile_multiples, name=scope)
 
@@ -2306,8 +2306,8 @@ def streaming_covariance(predictions,
     else:
       weights = _broadcast_weights(weights, labels)
       batch_count = math_ops.reduce_sum(weights)  # n_B in eqn
-      weighted_predictions = math_ops.mul(predictions, weights)
-      weighted_labels = math_ops.mul(labels, weights)
+      weighted_predictions = math_ops.multiply(predictions, weights)
+      weighted_labels = math_ops.multiply(labels, weights)
 
     update_count = state_ops.assign_add(count, batch_count)  # n_AB in eqn
     prev_count = update_count - batch_count  # n_A in update equation

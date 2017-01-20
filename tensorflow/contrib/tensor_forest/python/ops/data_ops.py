@@ -146,7 +146,7 @@ def ParseDataTensorOrDict(data):
     processed_dense_features = None
     processed_sparse_features = None
     if dense_features:
-      processed_dense_features = array_ops.concat_v2(dense_features, 1)
+      processed_dense_features = array_ops.concat(dense_features, 1)
       data_spec.dense_features_size = dense_features_size
     if sparse_features:
       processed_sparse_features = sparse_ops.sparse_concat(1, sparse_features)
@@ -186,7 +186,7 @@ def ParseLabelTensorOrDict(labels):
   """
   if isinstance(labels, dict):
     return math_ops.to_float(
-        array_ops.concat_v2(
+        array_ops.concat(
             [
                 sparse_ops.sparse_tensor_to_dense(
                     labels[k], default_value=-1) if isinstance(

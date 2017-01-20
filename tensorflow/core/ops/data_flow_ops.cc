@@ -2180,4 +2180,58 @@ Delete the tensor specified by its handle in the session.
 handle: The handle for a tensor stored in the session state.
 )doc");
 
+REGISTER_OP("Stage")
+    .Input("values: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Stage values similar to a lightweight Enqueue.  The basic functionality of this
+Op is similar to a queue with many fewer capabilities and options.  This Op is
+optimized for performance.
+
+values: a list of tensors
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+    )doc");
+
+REGISTER_OP("Unstage")
+    .Output("values: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
+dequeue with many fewer capabilities and options.  This Op is optimized for
+performance.
+    )doc");
+
+REGISTER_OP("RecordInput")
+    .Output("records: string")
+    .Attr("file_pattern: string")
+    .Attr("file_random_seed: int = 301")
+    .Attr("file_shuffle_shift_ratio: float = 0")
+    .Attr("file_buffer_size: int = 10000")
+    .Attr("file_parallelism: int = 16")
+    .Attr("batch_size: int = 32")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Emits randomized records.
+
+records: A tensor of shape [batch_size].
+file_pattern: Glob pattern for the data files.
+file_random_seed: Random seeds used to produce randomized records.
+file_shuffle_shift_ratio: Shifts the list of files after the list is randomly
+    shuffled.
+file_buffer_size: The randomization shuffling buffer.
+file_parallelism: How many sstables are opened and concurrently iterated over.
+batch_size: The batch size.
+)doc");
+
 }  // namespace tensorflow

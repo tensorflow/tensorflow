@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Result is written to files dot_h and dot_cc.
+/// Result is written to files dot_h and dot_cc.
 void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
                 const std::string& dot_cc_fname);
 

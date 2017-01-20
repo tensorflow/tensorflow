@@ -359,7 +359,7 @@ class KMeans(object):
             inp, unique_idx, num_unique_cluster_idx)
         # Shape to enable broadcasting count_updates and learning_rate to inp.
         # It extends the shape with 1's to match the rank of inp.
-        broadcast_shape = array_ops.concat_v2(
+        broadcast_shape = array_ops.concat(
             [
                 array_ops.reshape(num_unique_cluster_idx, [1]), array_ops.ones(
                     array_ops.reshape(array_ops.rank(inp) - 1, [1]),

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -27,7 +28,7 @@ class TestableSizeTrackingAllocator : public Allocator {
  public:
   string Name() override { return "test"; }
   void* AllocateRaw(size_t /*alignment*/, size_t num_bytes) override {
-    void* ptr = malloc(num_bytes);
+    void* ptr = port::Malloc(num_bytes);
     size_map_[ptr] = num_bytes;
     return ptr;
   }
@@ -35,7 +36,7 @@ class TestableSizeTrackingAllocator : public Allocator {
     const auto& iter = size_map_.find(ptr);
     EXPECT_NE(size_map_.end(), iter);
     size_map_.erase(iter);
-    free(ptr);
+    port::Free(ptr);
   }
   bool TracksAllocationSizes() override { return true; }
   size_t RequestedSize(void* ptr) override {

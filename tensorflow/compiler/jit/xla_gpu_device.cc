@@ -45,7 +45,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
                         name_prefix, &device);
   if (!status.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
-    LOG(WARNING) << "Failed to create XLA_GPU device: " << status;
+    VLOG(1) << "Failed to create XLA_GPU device: " << status;
     return Status::OK();
   }
   devices->push_back(device.release());

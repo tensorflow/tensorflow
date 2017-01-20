@@ -30,6 +30,12 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
 
 
+METADATA_FILE_PREFIX = "_tfdbg_"
+GRAPH_FILE_TAG = "graph_"
+FETCHES_INFO_FILE_TAG = "fetches_info_"
+FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
+
+
 def load_tensor_from_event_file(event_file_path):
   """Load a tensor from an event file.
 
@@ -67,6 +73,14 @@ def _load_graph_def_from_event_file(event_file_path):
   return graph_pb2.GraphDef.FromString(event.graph_def)
 
 
+def _load_log_message_from_event_file(event_file_path):
+  event = event_pb2.Event()
+  with gfile.Open(event_file_path, "rb") as f:
+    event.ParseFromString(f.read())
+
+  return event.log_message.message
+
+
 def parse_node_or_tensor_name(name):
   """Get the node name from a string that can be node or tensor name.
 
@@ -92,7 +106,15 @@ def parse_node_or_tensor_name(name):
 
 
 def _is_graph_file(file_name):
-  return file_name.startswith("_tfdbg_graph_")
+  return file_name.startswith(METADATA_FILE_PREFIX + GRAPH_FILE_TAG)
+
+
+def _is_run_fetches_info_file(file_name):
+  return file_name == METADATA_FILE_PREFIX + FETCHES_INFO_FILE_TAG
+
+
+def _is_run_feed_keys_info_file(file_name):
+  return file_name == METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG
 
 
 def get_node_name(element_name):
@@ -290,7 +312,7 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
-    namespace = os.path.dirname(debug_dump_rel_path)
+    namespace = os.path.dirname(debug_dump_rel_path).replace("\\", "/")
     node_base_name = "_".join(base.split("_")[:-3])
     if not namespace or namespace == ".":
       self._node_name = node_base_name
@@ -300,6 +322,9 @@ class DebugTensorDatum(object):
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
     self._dump_size_bytes = (gfile.Stat(self._file_path).length if
                              gfile.Exists(self._file_path) else None)
+
+    self._run_fetches_info = None
+    self._run_feed_keys_info = None
 
   def __str__(self):
     return "{DebugTensorDatum: %s:%d @ %s @ %d}" % (self.node_name,
@@ -467,9 +492,19 @@ class DebugDumpDir(object):
 
     for root, _, files in gfile.Walk(self._dump_root):
       for f in files:
-        if _is_graph_file(f):
-          self._dump_graph_file_paths.append(
-              os.path.join(self._dump_root, root, f))
+        if f.startswith(METADATA_FILE_PREFIX):
+          if _is_graph_file(f):
+            self._dump_graph_file_paths.append(
+                os.path.join(self._dump_root, root, f))
+
+          if _is_run_fetches_info_file(f):
+            self._run_fetches_info = _load_log_message_from_event_file(
+                os.path.join(root, f))
+
+          if _is_run_feed_keys_info_file(f):
+            self._run_feed_keys_info = _load_log_message_from_event_file(
+                os.path.join(root, f))
+
           continue
 
         datum = self._dump_file_name_to_datum(root, f)
@@ -823,6 +858,28 @@ class DebugDumpDir(object):
       raise LookupError("No partition graphs have been loaded.")
 
     return self._partition_graphs
+
+  @property
+  def run_fetches_info(self):
+    """Get a str representation of the fetches used in the Session.run() call.
+
+    Returns:
+      If the information is available, a `str` obtained from `repr(fetches)`.
+      If the information is not available, `None`.
+    """
+
+    return self._run_fetches_info
+
+  @property
+  def run_feed_keys_info(self):
+    """Get a str representation of the feed_dict used in the Session.run() call.
+
+    Returns:
+      If the information is available, a `str` obtained from `repr(feed_dict)`.
+      If the information is not available, `None`.
+    """
+
+    return self._run_feed_keys_info
 
   def nodes(self):
     """Get a list of all nodes from the partition graphs.

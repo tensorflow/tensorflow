@@ -557,7 +557,7 @@ class RNNCellTest(test.TestCase):
                 dtype=dtypes.float32)
             output, state = cell(inputs, zero_state)
             if state_is_tuple:
-              concat_state = array_ops.concat_v2(
+              concat_state = array_ops.concat(
                   [state[0][0], state[0][1], state[1], state[2]], 1)
             else:
               concat_state = state
@@ -617,14 +617,14 @@ class RNNCellTest(test.TestCase):
               (batch_size, attn_length * num_units), 0.0, 1.0, seed=seed + 4)
           zero_state = ((zeros1, zeros2), zeros3, attn_state_zeros)
           if not state_is_tuple:
-            zero_state = array_ops.concat_v2([
+            zero_state = array_ops.concat([
                 zero_state[0][0], zero_state[0][1], zero_state[1], zero_state[2]
             ], 1)
           inputs = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 5)
           output, state = cell(inputs, zero_state)
           if state_is_tuple:
-            state = array_ops.concat_v2(
+            state = array_ops.concat(
                 [state[0][0], state[0][1], state[1], state[2]], 1)
           sess.run(variables.global_variables_initializer())
           self.assertAllClose(sess.run(output), expected_output)

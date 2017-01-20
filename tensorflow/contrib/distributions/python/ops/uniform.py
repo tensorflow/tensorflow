@@ -136,7 +136,7 @@ class Uniform(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat_v2(([n], self.batch_shape()), 0)
+    shape = array_ops.concat(([n], self.batch_shape()), 0)
     samples = random_ops.random_uniform(shape=shape,
                                         dtype=self.dtype,
                                         seed=seed)

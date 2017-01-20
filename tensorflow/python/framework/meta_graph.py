@@ -151,12 +151,8 @@ def ops_used_by_graph_def(graph_def):
     mark_op_as_used(node.op)
   while functions_to_process:
     fun = functions_to_process.pop()
-    if fun.node_def:
-      for node in fun.node_def:
-        mark_op_as_used(node.op)
-    else:  # TODO(josh11b): Eventually remove this case.
-      for node in fun.node:
-        mark_op_as_used(node.op)
+    for node in fun.node_def:
+      mark_op_as_used(node.op)
 
   return [op for op in used_ops if op not in name_to_function]
 
@@ -480,7 +476,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
                            "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value]))
+                           ",".join([compat.as_str(v) for v in field.value
+                                     if not input_map or v not in input_map]))
         break
 
   # Sets graph to default graph if it's not passed in.

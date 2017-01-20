@@ -202,7 +202,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     # Avoid messy broadcasting if possible.
     if self.shape.is_fully_defined():
       return ops.convert_to_tensor(
@@ -212,17 +212,17 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     # the graph.  Things will fail at runtime naturally if shapes are
     # incompatible.
     matrix_shape = array_ops.stack([
-        self.operators[0].range_dimension_dynamic(),
-        self.operators[-1].domain_dimension_dynamic()
+        self.operators[0].range_dimension_tensor(),
+        self.operators[-1].domain_dimension_tensor()
     ])
 
     # Dummy Tensor of zeros.  Will never be materialized.
-    zeros = array_ops.zeros(shape=self.operators[0].batch_shape_dynamic())
+    zeros = array_ops.zeros(shape=self.operators[0].batch_shape_tensor())
     for operator in self.operators[1:]:
-      zeros += array_ops.zeros(shape=operator.batch_shape_dynamic())
+      zeros += array_ops.zeros(shape=operator.batch_shape_tensor())
     batch_shape = array_ops.shape(zeros)
 
-    return array_ops.concat_v2((batch_shape, matrix_shape), 0)
+    return array_ops.concat((batch_shape, matrix_shape), 0)
 
   def _apply(self, x, adjoint=False):
     # If self.operators = [A, B], and not adjoint, then

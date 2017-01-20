@@ -260,6 +260,8 @@ def argmax(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name)
 
 
@@ -273,6 +275,8 @@ def argmin(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name)
 
 
@@ -319,9 +323,37 @@ def abs(x, name=None):
 # pylint: enable=g-docstring-has-escape
 
 
+class DivideDelegateWithName(object):
+  """Use Python2/Python3 division delegation to implement divide for tensors."""
+
+  def __init__(self, x, name):
+    """Construct DivideDelegateWithName.
+
+    Args:
+      x: Tensor to use as left operand in operator overloads
+      name: The name that is preferred for the op created.
+    """
+    self.x = x
+    self.name = name
+
+  def __truediv__(self, y):
+    return _truediv_python3(self.x, y, self.name)
+
+  def __floordiv__(self, y):
+    return floordiv(self.x, y, self.name)
+
+  def __div__(self, y):
+    return _div_python2(self.x, y, self.name)
+
+
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
-  with ops.name_scope(name, "Divide", [x]) as name:
+
+  if name is not None:
+    # Cannot use tensors operator overload, because it has no way to track
+    # override names. Use a dummy class to track the runtime division behavior
+    return DivideDelegateWithName(x, name) / y
+  else:
     return x / y
 
 
@@ -331,13 +363,13 @@ multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-# @deprecated(
-#     "2016-12-30",
-#     "`tf.mul(x, y)` is deprecated, please use `tf.negative(x, y)` or `x * y`")
-def mul(x, y, name=None):
+@deprecated(
+    "2016-12-30",
+    "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
+def _mul(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
-mul.__doc__ = (gen_math_ops._mul.__doc__
-               + ("" if mul.__doc__ is None else mul.__doc__))
+_mul.__doc__ = (gen_math_ops._mul.__doc__
+                + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
 def subtract(x, y, name=None):
@@ -346,13 +378,13 @@ subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-# @deprecated(
-#     "2016-12-30",
-#     "`tf.mul(x, y)` is deprecated, please use `tf.negative(x, y)` or `x * y`")
-def sub(x, y, name=None):
+@deprecated(
+    "2016-12-30",
+    "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
+def _sub(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
-sub.__doc__ = (gen_math_ops._sub.__doc__
-               + ("" if sub.__doc__ is None else sub.__doc__))
+_sub.__doc__ = (gen_math_ops._sub.__doc__
+                + ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
 # pylint: disable=g-docstring-has-escape
@@ -371,11 +403,11 @@ def negative(x, name=None):
   """
   with ops.name_scope(name, "Neg", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
-      x_neg = gen_math_ops.neg(x.values, name=name)
+      x_neg = gen_math_ops._neg(x.values, name=name)
       return sparse_tensor.SparseTensor(
           indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
-      return gen_math_ops.neg(x, name=name)
+      return gen_math_ops._neg(x, name=name)
 # pylint: enable=g-docstring-has-escape
 
 
@@ -383,7 +415,7 @@ def negative(x, name=None):
 @deprecated(
     "2016-12-30",
     "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
-def neg(x, name=None):
+def _neg(x, name=None):
   """Computes numerical negative value element-wise.
 
   I.e., \\(y = -x\\).
@@ -829,7 +861,7 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
+ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
 ops.Tensor._override_operator("__abs__", abs)
 # __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
 # ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean
@@ -2306,12 +2338,12 @@ def tensordot(a, b, axes, name=None):
       axes_dims = array_ops.gather(shape_a, axes)
       prod_free_dims = reduce_prod(free_dims)
       prod_axes_dims = reduce_prod(axes_dims)
-      perm = array_ops.concat_v2([axes_dims, free_dims], 0)
+      perm = array_ops.concat([axes_dims, free_dims], 0)
       if flipped:
-        perm = array_ops.concat_v2([axes, free], 0)
+        perm = array_ops.concat([axes, free], 0)
         new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
       else:
-        perm = array_ops.concat_v2([free, axes], 0)
+        perm = array_ops.concat([free, axes], 0)
         new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims
@@ -2356,5 +2388,4 @@ def tensordot(a, b, axes, name=None):
       a_free_dims = ops.convert_to_tensor(a_free_dims)
       b_free_dims = ops.convert_to_tensor(b_free_dims)
       return array_ops.reshape(
-          ab_matmul, array_ops.concat_v2([a_free_dims, b_free_dims], 0),
-          name=name)
+          ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)

@@ -37,32 +37,62 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ bool ShapeUtil::CompareShapes(const Shape& lhs, const Shape& rhs,
-                                           bool compare_layouts) {
-  if (IsTuple(lhs)) {
-    return IsTuple(rhs) &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts);
-                           });
+namespace {
+
+// Recursive helper for comparing the equality of two shapes. Returns true if
+// the shapes are the same. If compare_layouts is true, then layouts must also
+// match.
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
+  if (ShapeUtil::IsTuple(lhs)) {
+    if (!ShapeUtil::IsTuple(rhs)) {
+      VLOG(3) << "CompareShapes: lhs is a tuple, rhs not a tuple";
+      return false;
+    }
+
+    if (!ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [=](const Shape& l, const Shape& r) {
+                           return CompareShapes(l, r, compare_layouts);
+                         })) {
+      VLOG(3) << "CompareShapes: tuples on lhs and rhs not equal";
+      return false;
+    }
   }
   // Explicitly compare the fields rather than using MessageDifferencer because
   // we want empty layouts to be treated identically to missing layouts.
-  if (compare_layouts &&
-      (!ContainersEqual(lhs.layout().minor_to_major(),
-                        rhs.layout().minor_to_major()) ||
-       !ContainersEqual(lhs.layout().padded_dimensions(),
-                        rhs.layout().padded_dimensions()) ||
-       lhs.layout().padding_value() != rhs.layout().padding_value())) {
+  if (compare_layouts) {
+    if (!ContainersEqual(lhs.layout().minor_to_major(),
+                         rhs.layout().minor_to_major())) {
+      VLOG(3) << "CompareShapes: lhs layout != rhs layout";
+      return false;
+    }
+    if (!ContainersEqual(lhs.layout().padded_dimensions(),
+                         rhs.layout().padded_dimensions())) {
+      VLOG(3)
+          << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
+      return false;
+    }
+    if (lhs.layout().padding_value() != rhs.layout().padding_value()) {
+      VLOG(3) << "CompareShapes: lhs padding value != rhs padding_value";
+      return false;
+    }
+  }
+
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
     return false;
   }
-  return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
+  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs element type != rhs element type";
+    return false;
+  }
+  return true;
 }
+
+}  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
   bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
   if (!equal && VLOG_IS_ON(3)) {
-    // TODO(jeff): Maybe print more info about where lhs and rhs differ
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
   }
@@ -767,57 +797,20 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
 /* static */ std::vector<std::pair<int64, int64>>
 ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
                                          const Shape& output_shape) {
-  // Returns nil if the input/output shape has zero elements. This is safe but
-  // might be too conservative. Not a big deal for now because IR emitted for
-  // zero-element shapes are often trivially optimizable without the help of
-  // this method.
-  if (ShapeUtil::ElementsIn(input_shape) == 0 ||
-      ShapeUtil::ElementsIn(output_shape) == 0) {
-    return std::vector<std::pair<int64, int64>>();
-  }
-
-  std::vector<std::pair<int64, int64>> unmodified_dims;
-  int64 input_dim = 0;
-  int64 output_dim = 0;
-
-  // A reshape preserves input_dim as output_dim iff
-  // 1. input_dim and output_dim have the same size.
-  // 2. The size of the input subarray from dimension 0 to input_dim-1 equals
-  //    that of the output subarray from dimension 0 to output_dim-1.
-  VLOG(3) << "DimensionsUnmodifiedByReshape: input_shape="
-          << ShapeUtil::HumanString(input_shape)
-          << ", output_shape=" << ShapeUtil::HumanString(output_shape);
-  while (input_dim < ShapeUtil::Rank(input_shape) &&
-         output_dim < ShapeUtil::Rank(output_shape)) {
-    // partial_input_size is the product of sizes of input dimensions
-    // inclusively between the input_dim when this loop iteration starts and the
-    // current input_dim. partial_output_size is that of output dimensions. We
-    // compute these two values incrementally to save time.
-    int64 partial_input_size = input_shape.dimensions(input_dim);
-    int64 partial_output_size = output_shape.dimensions(output_dim);
-    // Move input_dim and output_dim forward until
-    // partial_input_size==partial_output_size.
-    while (partial_input_size != partial_output_size) {
-      if (partial_input_size < partial_output_size) {
-        ++input_dim;
-        partial_input_size *= input_shape.dimensions(input_dim);
-      } else {
-        ++output_dim;
-        partial_output_size *= output_shape.dimensions(output_dim);
-      }
+  // Unmodified dimensions are merely common factors of rank 1.
+  auto common_factors = CommonFactors(AsInt64Slice(input_shape.dimensions()),
+                                      AsInt64Slice(output_shape.dimensions()));
+  for (size_t i = 0; i < common_factors.size() - 1;) {
+    if (1 != common_factors[i + 1].first - common_factors[i].first ||
+        1 != common_factors[i + 1].second - common_factors[i].second) {
+      common_factors.erase(common_factors.begin() + i);
+    } else {
+      ++i;
     }
-    CHECK_LT(input_dim, ShapeUtil::Rank(input_shape));
-    CHECK_LT(output_dim, ShapeUtil::Rank(output_shape));
-    if (input_shape.dimensions(input_dim) ==
-        output_shape.dimensions(output_dim)) {
-      unmodified_dims.push_back({input_dim, output_dim});
-      VLOG(3) << "Matching dimension pair: " << input_dim << ' ' << output_dim;
-    }
-    ++input_dim;
-    ++output_dim;
   }
-
-  return unmodified_dims;
+  // `CommonFactors(a, b).back() == (a.rank, b.rank)` so we must pop it.
+  common_factors.pop_back();
+  return common_factors;
 }
 
 /* static */ bool ShapeUtil::TransposeIsBitcast(
@@ -1019,6 +1012,40 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   };
   return check_input_unit_indices(input_shape, output_shape) &&
          check_input_unit_indices(output_shape, input_shape);
+}
+
+/* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
+                                              Shape shape) {
+  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  if (LayoutUtil::HasLayout(shape)) {
+    Layout* layout = shape.mutable_layout();
+    for (size_t i = 0; i < layout->minor_to_major().size();) {
+      if (layout->minor_to_major(i) == dim_to_delete) {
+        layout->mutable_minor_to_major()->erase(
+            layout->minor_to_major().begin() + i);
+        continue;
+      }
+      if (layout->minor_to_major(i) > dim_to_delete) {
+        (*layout->mutable_minor_to_major())[i] -= 1;
+      }
+      ++i;
+    }
+  }
+  return shape;
+}
+
+/* static */ Shape ShapeUtil::FilterDimensions(
+    const std::function<bool(int64)>& p, Shape shape) {
+  std::vector<int64> dims_to_delete;
+  for (int64 i = shape.dimensions().size() - 1; i >= 0; --i) {
+    if (!p(i)) {
+      dims_to_delete.push_back(i);
+    }
+  }
+  for (int64 dim : dims_to_delete) {
+    shape = DeleteDimension(dim, shape);
+  }
+  return shape;
 }
 
 }  // namespace xla

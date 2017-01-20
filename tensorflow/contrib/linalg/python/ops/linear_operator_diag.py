@@ -166,10 +166,10 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     d_shape = self._diag.get_shape()
     return d_shape.concatenate(d_shape[-1:])
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     d_shape = array_ops.shape(self._diag)
     k = d_shape[-1]
-    return array_ops.concat_v2((d_shape, [k]), 0)
+    return array_ops.concat((d_shape, [k]), 0)
 
   def _assert_non_singular(self):
     return linear_operator_util.assert_no_entries_with_modulus_zero(

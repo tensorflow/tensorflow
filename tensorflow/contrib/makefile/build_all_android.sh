@@ -22,8 +22,18 @@ usage() {
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
   echo "-T only build tensorflow"
-  echo "-x use hexagon library located at ../hexagon/<libs and include>"
+  echo "-x use hexagon library located at tensorflow/contrib/makefile/downloads/hexagon"
+  echo "-X download hexagon deps and run hexagon_graph_execution"
   exit 1
+}
+
+download_and_push() {
+    URL="$1"
+    LOCAL_DEST="$2"
+    ANDROID_DEST="$3"
+    curl -Ls "${URL}" -o "${LOCAL_DEST}"
+    adb shell mkdir -p "${ANDROID_DEST}"
+    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
 }
 
 if [[ -z "${NDK_ROOT}" ]]; then
@@ -31,12 +41,13 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-while getopts "s:t:Tx" opt_name; do
+while getopts "s:t:TxX" opt_name; do
   case "$opt_name" in
     s) SUB_MAKEFILES="${OPTARG}";;
     t) BUILD_TARGET="${OPTARG}";;
     T) ONLY_MAKE_TENSORFLOW="true";;
     x) USE_HEXAGON="true";;
+    X) DOWNLOAD_AND_USE_HEXAGON="true";;
     *) usage;;
   esac
 done
@@ -48,6 +59,8 @@ cd ${SCRIPT_DIR}/../../../
 
 source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
+
+HEXAGON_DOWNLOAD_PATH="tensorflow/contrib/makefile/downloads/hexagon"
 
 if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
   # Remove any old files first.
@@ -63,10 +76,30 @@ else
   make -f tensorflow/contrib/makefile/Makefile clean_except_protobuf_libs
 fi
 
+if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
+    URL_BASE="https://storage.googleapis.com/download.tensorflow.org"
+
+    rm -rf "${HEXAGON_DOWNLOAD_PATH}"
+    mkdir -p "${HEXAGON_DOWNLOAD_PATH}/libs"
+
+    download_and_push "${URL_BASE}/deps/hexagon/libhexagon_controller.so" \
+"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_controller.so" "/data/local/tmp"
+
+    download_and_push "${URL_BASE}/deps/hexagon/libhexagon_nn_skel.so" \
+"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_nn_skel.so" "/vendor/lib/rfsa/adsp"
+
+    download_and_push "${URL_BASE}/example_images/img_299x299.jpg" \
+"${HEXAGON_DOWNLOAD_PATH}/img_299x299.jpg" "/data/local/tmp"
+
+    USE_HEXAGON="true"
+    SUB_MAKEFILES="$(pwd)/tensorflow/contrib/makefile/sub_makefiles/hexagon_graph_execution/Makefile.in"
+    BUILD_TARGET="hexagon_graph_execution"
+fi
+
 if [[ "${USE_HEXAGON}" == "true" ]]; then
-    HEXAGON_PARENT_DIR=$(cd ../hexagon && pwd)
+    HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE=$(cd tensorflow/core/platform/hexagon && pwd)
+    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" && pwd)
 fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then
@@ -79,4 +112,15 @@ else
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
 SUB_MAKEFILES="${SUB_MAKEFILES}" "${BUILD_TARGET}"
+fi
+
+if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
+    ANDROID_EXEC_FILE_MODE=755
+    echo "Run hexagon_graph_execution"
+    adb push -p "./tensorflow/contrib/makefile/gen/bin/hexagon_graph_execution" "/data/local/tmp/"
+    adb wait-for-device
+    adb shell chmod "${ANDROID_EXEC_FILE_MODE}" "/data/local/tmp/hexagon_graph_execution"
+    adb wait-for-device
+    adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
+    "/data/local/tmp/hexagon_graph_execution"
 fi

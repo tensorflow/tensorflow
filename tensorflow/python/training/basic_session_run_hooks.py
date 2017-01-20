@@ -46,7 +46,7 @@ from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
-class _SecondOrStepTimer(object):
+class SecondOrStepTimer(object):
   """Timer that triggers at most once every N seconds or once every N steps.
   """
 
@@ -122,7 +122,8 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
   The tensors will be printed to the log, with `INFO` severity.
   """
 
-  def __init__(self, tensors, every_n_iter=None, every_n_secs=None):
+  def __init__(self, tensors, every_n_iter=None, every_n_secs=None,
+               formatter=None):
     """Initializes a LoggingHook monitor.
 
     Args:
@@ -133,6 +134,8 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       every_n_secs: `int` or `float`, print the values of `tensors` once every N
           seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
           provided.
+      formatter: function, takes dict of `tag`->`Tensor` and returns a string.
+          If `None` uses default printing all tensors.
 
     Raises:
       ValueError: if `every_n_iter` is non-positive.
@@ -143,10 +146,14 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     if every_n_iter is not None and every_n_iter <= 0:
       raise ValueError("invalid every_n_iter=%s." % every_n_iter)
     if not isinstance(tensors, dict):
+      self._tag_order = tensors
       tensors = {item: item for item in tensors}
+    else:
+      self._tag_order = tensors.keys()
     self._tensors = tensors
-    self._timer = _SecondOrStepTimer(every_secs=every_n_secs,
-                                     every_steps=every_n_iter)
+    self._formatter = formatter
+    self._timer = SecondOrStepTimer(every_secs=every_n_secs,
+                                    every_steps=every_n_iter)
 
   def begin(self):
     self._iter_count = 0
@@ -164,11 +171,17 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     _ = run_context
     if self._should_trigger:
-      stats = []
-      for tag in self._current_tensors.keys():
-        stats.append("%s = %s" % (tag, run_values.results[tag]))
-      logging.info("%s", ", ".join(stats))
-      self._timer.update_last_triggered_step(self._iter_count)
+      original = np.get_printoptions()
+      np.set_printoptions(suppress=True)
+      elapsed_secs, _ = self._timer.update_last_triggered_step(self._iter_count)
+      if self._formatter:
+        logging.info(self._formatter(run_values.results))
+      else:
+        stats = []
+        for tag in self._tag_order:
+          stats.append("%s = %s" % (tag, run_values.results[tag]))
+        logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
+      np.set_printoptions(**original)
     self._iter_count += 1
 
 
@@ -314,14 +327,14 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       raise ValueError("Exactly one of saver or scaffold must be provided.")
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
-    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
-    self._timer = _SecondOrStepTimer(every_secs=save_secs,
-                                     every_steps=save_steps)
+    self._timer = SecondOrStepTimer(every_secs=save_secs,
+                                    every_steps=save_steps)
     self._listeners = listeners or []
 
   def begin(self):
+    self._summary_writer = SummaryWriterCache.get(self._checkpoint_dir)
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
@@ -397,14 +410,15 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     if (every_n_steps is None) == (every_n_secs is None):
       raise ValueError(
           "exactly one of every_n_steps and every_n_secs should be provided.")
-    self._timer = _SecondOrStepTimer(every_steps=every_n_steps,
-                                     every_secs=every_n_secs)
+    self._timer = SecondOrStepTimer(every_steps=every_n_steps,
+                                    every_secs=every_n_secs)
 
     self._summary_writer = summary_writer
-    if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+    self._output_dir = output_dir
 
   def begin(self):
+    if self._summary_writer is None and self._output_dir:
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
@@ -504,14 +518,15 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
           "Exactly one of scaffold or summary_op must be provided.")
     self._summary_op = summary_op
     self._summary_writer = summary_writer
-    if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+    self._output_dir = output_dir
     self._scaffold = scaffold
-    self._timer = _SecondOrStepTimer(every_secs=save_secs,
-                                     every_steps=save_steps)
+    self._timer = SecondOrStepTimer(every_secs=save_secs,
+                                    every_steps=save_steps)
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def begin(self):
+    if self._summary_writer is None and self._output_dir:
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._next_step = None
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
@@ -643,6 +658,22 @@ class FinalOpsHook(session_run_hook.SessionRunHook):
     if self._final_ops is not None:
       self._final_ops_values = session.run(self._final_ops,
                                            feed_dict=self._final_ops_feed_dict)
+
+
+class FeedFnHook(session_run_hook.SessionRunHook):
+  """Runs `feed_fn` and sets the `feed_dict` accordingly."""
+
+  def __init__(self, feed_fn):
+    """Constructs the FeedFnHook with given `feed_fn`.
+
+    Args:
+      feed_fn: function, no arguments and returns `dict` to feed.
+    """
+    self.feed_fn = feed_fn
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(
+        fetches=None, feed_dict=self.feed_fn())
 
 
 def _as_graph_element(obj):

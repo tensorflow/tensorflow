@@ -18,6 +18,7 @@ MirrorPadGrad
 OneHot
 Pack
 Pad
+ParallelConcat
 Placeholder
 RefIdentity
 Reverse
@@ -236,6 +237,7 @@ Max
 Mean
 Min
 Mul
+Neg
 Pow
 Prod
 Range

@@ -1154,24 +1154,8 @@ class CursesUI(base_ui.BaseUI):
       appended by the common prefix of the candidates.
     """
 
-    command_str = command_str.lstrip()
-
-    if not command_str:
-      # Empty (top-level) context.
-      context = ""
-      prefix = ""
-      items = []
-    else:
-      items = command_str.split(" ")
-      if len(items) == 1:
-        # Single word: top-level context.
-        context = ""
-        prefix = items[0]
-      else:
-        # Multiple words.
-        context = items[0]
-        prefix = items[-1]
-
+    context, prefix, except_last_word = self._analyze_tab_complete_input(
+        command_str)
     candidates, common_prefix = self._tab_completion_registry.get_completions(
         context, prefix)
 
@@ -1186,9 +1170,9 @@ class CursesUI(base_ui.BaseUI):
     if common_prefix:
       # Common prefix is not None and non-empty. The completed string will
       # incorporate the common prefix.
-      return " ".join(items[:-1] + [common_prefix])
+      return except_last_word + common_prefix
     else:
-      return " ".join(items)
+      return except_last_word + prefix
 
   def _display_candidates(self, candidates):
     """Show candidates (e.g., tab-completion candidates) on multiple lines.

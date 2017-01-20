@@ -41,7 +41,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/ops/tensor_forest_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/best_splits_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/count_extremely_random_stats_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/finished_nodes_op.cc"
@@ -101,6 +101,24 @@ file(GLOB_RECURSE tf_core_gpu_kernels_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
    "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
 )
+
+if(WIN32 AND tensorflow_ENABLE_GPU)
+  file(GLOB_RECURSE tf_core_kernels_cpu_only_srcs
+      # GPU implementation not working on Windows yet.
+      "${tensorflow_source_dir}/tensorflow/core/kernels/matrix_diag_op.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/one_hot_op.cc")
+  list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_cpu_only_srcs})
+  add_library(tf_core_kernels_cpu_only OBJECT ${tf_core_kernels_cpu_only_srcs})
+  add_dependencies(tf_core_kernels_cpu_only tf_core_cpu)
+  # Undefine GOOGLE_CUDA to avoid registering unsupported GPU kernel symbols.
+  get_target_property(target_compile_flags tf_core_kernels_cpu_only COMPILE_FLAGS)
+  if(target_compile_flags STREQUAL "target_compile_flags-NOTFOUND")
+    set(target_compile_flags "/UGOOGLE_CUDA")
+  else()
+    set(target_compile_flags "${target_compile_flags} /UGOOGLE_CUDA")
+  endif()
+  set_target_properties(tf_core_kernels_cpu_only PROPERTIES COMPILE_FLAGS ${target_compile_flags})
+endif(WIN32 AND tensorflow_ENABLE_GPU)
 
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)

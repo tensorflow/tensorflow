@@ -18,9 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import os
-import re
 import time
 
 from tensorflow.contrib.learn.python.learn import export_strategy
@@ -128,10 +126,15 @@ def get_input_alternatives(input_ops):
   if not features:
     raise ValueError('Features must be defined.')
 
+  # TODO(b/34253951): reinstate the "features" input_signature.
+  # The "features" input_signature, as written, does not work with
+  # SparseTensors.  It is simply commented out as a stopgap, pending discussion
+  # on the bug as to the correct solution.
+
   # Add the "features" input_signature in any case.
   # Note defensive copy because model_fns alter the features dict.
-  input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
-      copy.copy(features))
+  # input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
+  #    copy.copy(features))
 
   return input_alternatives, features
 
@@ -163,6 +166,8 @@ def get_output_alternatives(
   # interpret the model as single-headed of unknown type.
   default_problem_type = constants.ProblemType.UNSPECIFIED
   default_outputs = model_fn_ops.predictions
+  if not isinstance(default_outputs, dict):
+    default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
   actual_default_output_alternative_key = DEFAULT_OUTPUT_ALTERNATIVE_KEY
   output_alternatives = {actual_default_output_alternative_key:
                          (default_problem_type, default_outputs)}
@@ -182,9 +187,10 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
       in output_alternatives.items()}
 
   # Add the default SignatureDef
-  default_inputs = input_alternatives[DEFAULT_INPUT_ALTERNATIVE_KEY]
+  default_inputs = input_alternatives.get(DEFAULT_INPUT_ALTERNATIVE_KEY)
   if not default_inputs:
-    default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
+    raise ValueError('A default input_alternative must be provided.')
+    # default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
   # default outputs are guaranteed to exist above
   (default_problem_type, default_outputs) = (
       output_alternatives[actual_default_output_alternative_key])
@@ -201,7 +207,7 @@ def get_timestamped_export_dir(export_dir_base):
   Each export is written into a new subdirectory named using the
   current time.  This guarantees monotonically increasing version
   numbers even across multiple runs of the pipeline.
-  The timestamp used is the number of milliseconds since epoch UTC.
+  The timestamp used is the number of seconds since epoch UTC.
 
   Args:
     export_dir_base: A string containing a directory to write the exported
@@ -209,7 +215,7 @@ def get_timestamped_export_dir(export_dir_base):
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
   """
-  export_timestamp = int(time.time() * 1e3)
+  export_timestamp = int(time.time())
 
   export_dir = os.path.join(
       compat.as_bytes(export_dir_base),
@@ -234,37 +240,63 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
   keep_filter = gc.largest_export_versions(exports_to_keep)
   delete_filter = gc.negation(keep_filter)
 
-  # Export dir must not end with / or it will break the re match below.
-  if export_dir_base.endswith('/'):
-    export_dir_base = export_dir_base[:-1]
-
   # create a simple parser that pulls the export_version from the directory.
   def parser(path):
-    match = re.match('^' + export_dir_base + '/(\\d{13})$', path.path)
-    if not match:
+    filename = os.path.basename(path.path)
+    if not (len(filename) == 10 and filename.isdigit()):
       return None
-    return path._replace(export_version=int(match.group(1)))
+    return path._replace(export_version=int(filename))
 
   for p in delete_filter(gc.get_paths(export_dir_base, parser=parser)):
     gfile.DeleteRecursively(p.path)
 
 
-def make_export_strategy(export_input_fn,
+def make_export_strategy(serving_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
-                         export_as_text=False,
-                         exports_to_keep=None):
-  """Create an ExportStrategy for use with Experiment."""
+                         as_text=False,
+                         exports_to_keep=5):
+  """Create an ExportStrategy for use with Experiment.
+
+  Args:
+    serving_input_fn: A function that takes no arguments and returns an
+      `InputFnOps`.
+    default_output_alternative_key: the name of the head to serve when an
+      incoming serving request does not explicitly request a specific head.
+      Not needed for single-headed models.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel.  Each key should give the destination
+      path (including the filename) relative to the assets.extra directory.
+      The corresponding value gives the full path of the source file to be
+      copied.  For example, the simple case of copying a single file without
+      renaming it is specified as
+      `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+    as_text: whether to write the SavedModel proto in text format.
+    exports_to_keep: Number of exports to keep.  Older exports will be
+      garbage-collected.  Defaults to 5.  Set to None to disable garbage
+      collection.
+
+  Returns:
+    an ExportStrategy that can be passed to the Experiment constructor.
+  """
 
   def export_fn(estimator, export_dir_base):
-    """Exports the given Estimator as a SavedModel."""
+    """Exports the given Estimator as a SavedModel.
+
+    Args:
+      estimator: the Estimator to export.
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+
+    Returns:
+      The string path to the exported directory.
+    """
     export_result = estimator.export_savedmodel(
         export_dir_base,
-        export_input_fn,
+        serving_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        export_as_text=export_as_text,
-        exports_to_keep=exports_to_keep)
+        as_text=as_text)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
