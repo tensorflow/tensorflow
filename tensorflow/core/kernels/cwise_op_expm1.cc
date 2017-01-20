@@ -21,4 +21,7 @@ REGISTER5(UnaryOp, CPU, "Expm1", functor::expm1, float, Eigen::half, double,
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Expm1", functor::expm1, float, Eigen::half, double);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(UnaryOp, SYCL, "Expm1", functor::expm1, float);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -57,4 +57,27 @@ REGISTER_KERNEL_BUILDER(
 
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)         \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Max")                           \
+          .Device(DEVICE_SYCL)              \
+          .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<SYCLDevice, type, Eigen::internal::MaxReducer<type>>);
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+
+REGISTER_KERNEL_BUILDER(
+    Name("Max")
+        .Device(DEVICE_SYCL)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx"),
+    ReductionOp<CPUDevice, int32, Eigen::internal::MaxReducer<int32>>);
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

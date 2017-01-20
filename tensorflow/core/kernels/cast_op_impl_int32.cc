@@ -34,4 +34,14 @@ GetGpuCastFromInt32(DataType dst_dtype) {
 }
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromInt32(DataType dst_dtype) {
+  CURRY_TYPES3(CAST_CASE, CPUDevice, int32);
+  return nullptr;
+}
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow
+

@@ -151,25 +151,31 @@ struct functor_traits<scalar_rsqrt_gradient_op<T>> {
 namespace tensorflow {
 
 namespace functor {
+template <typename Device, typename Functor>
+struct SimpleBinaryFunctor {};
 
 template <typename Device, typename Functor>
-struct SimpleBinaryFunctor {
+struct SimpleBinaryFunctorBase {
   void operator()(const Device& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
-                  typename Functor::tin_type in1);
+                  typename Functor::tin_type in1) {
+    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
+  }
 };
 
 // Partial specialization of BinaryFunctor for CPU devices
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename Functor>
-struct SimpleBinaryFunctor<CPUDevice, Functor> {
-  void operator()(const CPUDevice& d, typename Functor::tout_type out,
-                  typename Functor::tin_type in0,
-                  typename Functor::tin_type in1) {
-    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
-  }
-};
+struct SimpleBinaryFunctor<CPUDevice, Functor>
+        : SimpleBinaryFunctorBase<CPUDevice, Functor> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+template <typename Functor>
+struct SimpleBinaryFunctor<SYCLDevice, Functor>
+        : SimpleBinaryFunctorBase<SYCLDevice, Functor> {};
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct tanh_grad : base<T, Eigen::internal::scalar_tanh_gradient_op<T>> {};
