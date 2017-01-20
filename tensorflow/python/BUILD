@@ -2369,6 +2369,111 @@ py_test(
     ],
 )
 
+py_test(
+    name = "server_lib_multiple_containers_test",
+    size = "small",
+    srcs = ["training/server_lib_multiple_containers_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_clear_container_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_clear_container_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_clear_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_clear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_no_clear_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_no_clear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_sparse_job_test",
+    size = "small",
+    srcs = ["training/server_lib_sparse_job_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "localhost_cluster_performance_test",
     size = "medium",
