@@ -300,10 +300,37 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     vars->input_tensors[input_name] = input_pair;                          \
   }
 
+#define FILL_NODE_NIO_BUFFER_METHOD(DTYPE, CTYPE, TENSOR_DTYPE)            \
+  FILL_NODE_NIO_BUFFER_SIGNATURE(DTYPE) {                                  \
+    SessionVariables* vars = GetSessionVars(env, thiz);                    \
+    tensorflow::TensorShape shape;                                         \
+    const int* dim_vals = reinterpret_cast<const int*>(                    \
+            env->GetDirectBufferAddress(dims_buffer));                     \
+    const int num_dims = env->GetDirectBufferCapacity(dims_buffer);        \
+    for (int i = 0; i < num_dims; ++i) {                                   \
+      shape.AddDim(dim_vals[i]);                                           \
+    }                                                                      \
+    tensorflow::Tensor input_tensor(TENSOR_DTYPE, shape);                  \
+    auto tensor_mapped = input_tensor.flat<CTYPE>();                       \
+    const CTYPE* values = reinterpret_cast<const CTYPE*>(                  \
+            env->GetDirectBufferAddress(src_buffer));                      \
+    const CTYPE* value_ptr = values;                                       \
+    const int array_size = env->GetDirectBufferCapacity(src_buffer);       \
+    for (int i = 0;                                                        \
+         i < std::min(static_cast<int>(tensor_mapped.size()), array_size); \
+         ++i) {                                                            \
+      tensor_mapped(i) = *value_ptr++;                                     \
+    }                                                                      \
+    std::string input_name = GetString(env, node_name);                    \
+    std::pair<std::string, tensorflow::Tensor> input_pair(input_name,      \
+                                                          input_tensor);   \
+    vars->input_tensors[input_name] = input_pair;                          \
+  }
+
 #define READ_NODE_METHOD(DTYPE, JAVA_DTYPE, CTYPE)                         \
   READ_NODE_SIGNATURE(DTYPE, JAVA_DTYPE) {                                 \
     SessionVariables* vars = GetSessionVars(env, thiz);                    \
-    Tensor* t = GetTensor(env, thiz, node_name_jstring);                   \
+    Tensor* t = GetTensor(env, thiz, node_name);                           \
     if (t == nullptr) {                                                    \
       return -1;                                                           \
     }                                                                      \
@@ -320,12 +347,43 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     return 0;                                                              \
   }
 
+#define READ_NODE_NIO_BUFFER_METHOD(DTYPE, CTYPE)                          \
+  READ_NODE_NIO_BUFFER_SIGNATURE(DTYPE) {                                  \
+    SessionVariables* vars = GetSessionVars(env, thiz);                    \
+    Tensor* t = GetTensor(env, thiz, node_name);                           \
+    if (t == nullptr) {                                                    \
+      return -1;                                                           \
+    }                                                                      \
+    auto tensor_mapped = t->flat<CTYPE>();                                 \
+    CTYPE* values = reinterpret_cast<CTYPE*>(                              \
+            env->GetDirectBufferAddress(dst_buffer));                      \
+    CTYPE* value_ptr = values;                                             \
+    const int dst_buffer_capacity = static_cast<int>(                      \
+            env->GetDirectBufferCapacity(dst_buffer));                     \
+    const int num_items = std::min(static_cast<int>(tensor_mapped.size()), \
+                                   dst_buffer_capacity);                   \
+    for (int i = 0; i < num_items; ++i) {                                  \
+      *value_ptr++ = tensor_mapped(i);                                     \
+    }                                                                      \
+    return 0;                                                              \
+  }
+
 FILL_NODE_METHOD(Float, float, float, tensorflow::DT_FLOAT)
 FILL_NODE_METHOD(Int, int, int, tensorflow::DT_INT32)
 FILL_NODE_METHOD(Double, double, double, tensorflow::DT_DOUBLE)
 FILL_NODE_METHOD(Byte, byte, uint8_t, tensorflow::DT_UINT8)
 
+FILL_NODE_NIO_BUFFER_METHOD(Float, float, tensorflow::DT_FLOAT)
+FILL_NODE_NIO_BUFFER_METHOD(Int, int, tensorflow::DT_INT32)
+FILL_NODE_NIO_BUFFER_METHOD(Double, double, tensorflow::DT_DOUBLE)
+FILL_NODE_NIO_BUFFER_METHOD(Byte, uint8_t, tensorflow::DT_UINT8)
+
 READ_NODE_METHOD(Float, float, float)
 READ_NODE_METHOD(Int, int, int)
 READ_NODE_METHOD(Double, double, double)
 READ_NODE_METHOD(Byte, byte, uint8_t)
+
+READ_NODE_NIO_BUFFER_METHOD(Float, float);
+READ_NODE_NIO_BUFFER_METHOD(Int, int);
+READ_NODE_NIO_BUFFER_METHOD(Double, double);
+READ_NODE_NIO_BUFFER_METHOD(Byte, uint8_t);
