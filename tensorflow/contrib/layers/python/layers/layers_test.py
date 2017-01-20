@@ -1563,7 +1563,7 @@ class FCTest(test.TestCase):
       _layers.fully_connected(inputs, 32, weights_regularizer=weight_decay)
       wd = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                       'fully_connected/weights/Regularizer/l2_regularizer')
+                       'fully_connected/kernel/Regularizer/l2_regularizer')
       sess.run(variables_lib.global_variables_initializer())
       self.assertLess(sess.run(wd), 0.4)
 

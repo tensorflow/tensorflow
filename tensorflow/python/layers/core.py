@@ -41,10 +41,12 @@ from tensorflow.python.layers import utils
 class Dense(base._Layer):  # pylint: disable=protected-access
   """Densely-connected layer class.
 
-  This layer implements the operation `outputs = activation(inputs.w + b)`
+  This layer implements the operation:
+  `outputs = activation(inputs.kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
-  argument (if not `None`), `w` is a weights matrix created by the layer,
-  and `b` is a bias vector created by the layer (only if `use_bias` is `True`).
+  argument (if not `None`), `kernel` is a weights matrix created by the layer,
+  and `bias` is a bias vector created by the layer
+  (only if `use_bias` is `True`).
 
   Note: if the input to the layer has a rank greater than 2, then it is
   flattened prior to the initial matrix multiply by `w`.
@@ -54,9 +56,9 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    weights_initializer: Initializer function for the weight matrix.
+    kernel_initializer: Initializer function for the weight matrix.
     bias_initializer: Initializer function for the bias.
-    weights_regularizer: Regularizer function for the weight matrix.
+    kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
@@ -70,21 +72,21 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     units: Python integer, dimensionality of the output space.
     activation: Activation function (callable).
     use_bias: Boolean, whether the layer uses a bias.
-    weights_initializer: Initializer instance (or name) for the weight matrix.
+    kernel_initializer: Initializer instance (or name) for the weight matrix.
     bias_initializer: Initializer instance (or name) for the bias.
-    weights_regularizer: Regularizer instance for the weight matrix (callable)
+    kernel_regularizer: Regularizer instance for the weight matrix (callable)
     bias_regularizer: Regularizer instance for the bias (callable).
     activity_regularizer: Regularizer instance for the output (callable)
-    weights: Weight matrix (TensorFlow variable or tensor).
+    kernel: Weight matrix (TensorFlow variable or tensor).
     bias: Bias vector, if applicable (TensorFlow variable or tensor).
   """
 
   def __init__(self, units,
                activation=None,
                use_bias=True,
-               weights_initializer=None,
+               kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
-               weights_regularizer=None,
+               kernel_regularizer=None,
                bias_regularizer=None,
                activity_regularizer=None,
                trainable=True,
@@ -94,9 +96,9 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
-    self.weights_initializer = weights_initializer
+    self.kernel_initializer = kernel_initializer
     self.bias_initializer = bias_initializer
-    self.weights_regularizer = weights_regularizer
+    self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
     self.activity_regularizer = activity_regularizer
 
@@ -113,12 +115,12 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     # weight of the layer. If the layer is not trainable
     # (self.trainable = False), the variable will not be added to
     # tf.trainable_variables(), and self.trainable_weights will be empty.
-    self.w = vs.get_variable('weights',
-                             shape=[input_shape[-1].value, self.units],
-                             initializer=self.weights_initializer,
-                             regularizer=self.weights_regularizer,
-                             dtype=self.dtype,
-                             trainable=True)
+    self.kernel = vs.get_variable('kernel',
+                                  shape=[input_shape[-1].value, self.units],
+                                  initializer=self.kernel_initializer,
+                                  regularizer=self.kernel_regularizer,
+                                  dtype=self.dtype,
+                                  trainable=True)
     if self.use_bias:
       self.bias = vs.get_variable('bias',
                                   shape=[self.units,],
@@ -140,7 +142,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       output_shape_tensor = array_ops.stack(output_shape_tensors)
       inputs = array_ops.reshape(inputs, [-1, input_dim])
 
-    outputs = standard_ops.matmul(inputs, self.w)
+    outputs = standard_ops.matmul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
 
@@ -158,20 +160,22 @@ def dense(
     inputs, units,
     activation=None,
     use_bias=True,
-    weights_initializer=None,
+    kernel_initializer=None,
     bias_initializer=init_ops.zeros_initializer(),
-    weights_regularizer=None,
+    kernel_regularizer=None,
     bias_regularizer=None,
     activity_regularizer=None,
     trainable=True,
     name=None,
-    reuse=False):
+    reuse=None):
   """Functional interface for the densely-connected layer.
 
-  This layer implements the operation `outputs = activation(inputs.w + b)`
+  This layer implements the operation:
+  `outputs = activation(inputs.kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
-  argument (if not `None`), `w` is a weights matrix created by the layer,
-  and `b` is a bias vector created by the layer (only if `use_bias` is `True`).
+  argument (if not `None`), `kernel` is a weights matrix created by the layer,
+  and `bias` is a bias vector created by the layer
+  (only if `use_bias` is `True`).
 
   Note: if the `inputs` tensor has a rank greater than 2, then it is
   flattened prior to the initial matrix multiply by `w`.
@@ -182,9 +186,9 @@ def dense(
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    weights_initializer: Initializer function for the weight matrix.
+    kernel_initializer: Initializer function for the weight matrix.
     bias_initializer: Initializer function for the bias.
-    weights_regularizer: Regularizer function for the weight matrix.
+    kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
@@ -199,9 +203,9 @@ def dense(
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
-                weights_initializer=weights_initializer,
+                kernel_initializer=kernel_initializer,
                 bias_initializer=bias_initializer,
-                weights_regularizer=weights_regularizer,
+                kernel_regularizer=kernel_regularizer,
                 bias_regularizer=bias_regularizer,
                 activity_regularizer=activity_regularizer,
                 trainable=trainable,
