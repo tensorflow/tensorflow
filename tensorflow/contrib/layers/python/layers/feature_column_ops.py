@@ -181,7 +181,7 @@ def _input_from_feature_columns(columns_to_tensors,
           except ValueError as e:
             raise ValueError('Error creating input layer for column: {}.\n'
                              '{}, {}'.format(column.name, e, ee))
-    return array_ops.concat(output_tensors, output_rank - 1)
+    return array_ops.concat_v2(output_tensors, output_rank - 1)
 
 
 def input_from_feature_columns(columns_to_tensors,

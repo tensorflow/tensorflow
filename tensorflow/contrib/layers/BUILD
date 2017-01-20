@@ -74,33 +74,6 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_custom_op_library(
-    name = "python/ops/_layer_norm_fused_op.so",
-    srcs = [
-        "ops/layer_norm_fused_op.cc",
-        ],
-    deps = [
-        "//tensorflow/contrib/layers/kernels:layer_norm_fused_kernel",
-    ]
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["layer_norm_fused_op"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "layer_norm_fused_op",
-    deps = [":layer_norm_fused_op_op_lib"],
-)
-
-tf_kernel_library(
-    name = "layer_norm_fused_op_kernel",
-    deps = [
-        "//tensorflow/contrib/layers/kernels:layer_norm_fused_kernel",
-        "//tensorflow/core:framework",
-    ],
-)
-
 py_library(
     name = "layers_py",
     srcs = [
@@ -124,13 +97,11 @@ py_library(
     data = [
         ":python/ops/_bucketization_op.so",
         ":python/ops/_sparse_feature_cross_op.so",
-        ":python/ops/_layer_norm_fused_op.so",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":bucketization_op",
         ":sparse_feature_cross_op",
-        ":layer_norm_fused_op",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
@@ -191,18 +162,6 @@ cuda_py_test(
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-    ],
-)
-
-cuda_py_test(
-    name = "layer_norm_fused_test",
-    size = "small",
-    srcs = ["python/layers/layer_norm_fused_test.py"],
-    additional_deps = [
-        ":layers_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
     ],
 )
 

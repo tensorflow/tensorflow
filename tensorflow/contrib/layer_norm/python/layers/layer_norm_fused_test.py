@@ -28,20 +28,20 @@ class LayerNormFusedTest(tf.test.TestCase):
         with tf.Graph().as_default() as g, self.test_session(g):
             inputs = tf.placeholder(dtype=tf.float32)
             with self.assertRaisesRegexp(ValueError, 'undefined rank'):
-                tf.contrib.layers.layer_norm_fused(inputs)
+                tf.contrib.layer_norm.layer_norm_fused(inputs)
 
     def testUnknownLastDim(self):
         with tf.Graph().as_default() as g, self.test_session(g):
             inputs = tf.placeholder(dtype=tf.float32)
             inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
             with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
-                tf.contrib.layers.layer_norm_fused(inputs)
+                tf.contrib.layer_norm.layer_norm_fused(inputs)
 
     def testCreateOp(self):
         height, width = 3, 3
         with self.test_session():
             images = np.random.uniform(size=(5, height, width, 3))
-            output = tf.contrib.layers.layer_norm_fused(images)
+            output = tf.contrib.layer_norm.layer_norm_fused(images)
             self.assertTrue(output.op.name.startswith(
                 'LayerNorm/LayerNormFusedCustom'))
             self.assertListEqual(output.get_shape().as_list(), [
@@ -51,7 +51,7 @@ class LayerNormFusedTest(tf.test.TestCase):
         height, width = 3, 3
         with self.test_session():
             images = tf.random_uniform((5, height, width, 3), seed=1)
-            tf.contrib.layers.layer_norm_fused(images)
+            tf.contrib.layer_norm.layer_norm_fused(images)
             beta = tf.contrib.framework.get_variables_by_name('beta')[0]
             gamma = tf.contrib.framework.get_variables_by_name('gamma')[0]
             self.assertEqual(beta.op.name, 'LayerNorm/beta')
@@ -61,8 +61,9 @@ class LayerNormFusedTest(tf.test.TestCase):
         height, width = 3, 3
         with self.test_session():
             images = tf.random_uniform((5, height, width, 3), seed=1)
-            tf.contrib.layers.layer_norm_fused(images, scope='ln')
-            tf.contrib.layers.layer_norm_fused(images, scope='ln', reuse=True)
+            tf.contrib.layer_norm.layer_norm_fused(images, scope='ln')
+            tf.contrib.layer_norm.layer_norm_fused(
+                images, scope='ln', reuse=True)
             beta = tf.contrib.framework.get_variables_by_name('beta')
             gamma = tf.contrib.framework.get_variables_by_name('gamma')
             self.assertEqual(len(beta), 1)
@@ -75,11 +76,11 @@ class LayerNormFusedTest(tf.test.TestCase):
             image_values = np.random.rand(*image_shape)
             images = tf.constant(
                 image_values, shape=image_shape, dtype=tf.float32)
-            output_train = tf.contrib.layers.layer_norm_fused(
+            output_train = tf.contrib.layer_norm.layer_norm_fused(
                 images, scope='LN')
-            output_eval = tf.contrib.layers.layer_norm_fused(images,
-                                                             scope='LN',
-                                                             reuse=True)
+            output_eval = tf.contrib.layer_norm.layer_norm_fused(images,
+                                                                 scope='LN',
+                                                                 reuse=True)
             # Initialize all variables
             sess.run(tf.global_variables_initializer())
             # output_train and output_eval should be the same.
@@ -91,7 +92,7 @@ class LayerNormFusedTest(tf.test.TestCase):
             input_values = np.random.rand(*input_shape)
             inputs = tf.constant(
                 input_values, shape=input_shape, dtype=tf.float32)
-            output_op = tf.contrib.layers.layer_norm_fused(
+            output_op = tf.contrib.layer_norm.layer_norm_fused(
                 inputs, center=center, scale=scale,
                 scope='LN')
             # reshape input to 2D so the built-in layer_norm layer
@@ -140,7 +141,7 @@ class LayerNormFusedTest(tf.test.TestCase):
             input_values = np.random.rand(*input_shape)
             inputs = tf.constant(
                 input_values, shape=input_shape, dtype=tf.float32)
-            output_op = tf.contrib.layers.layer_norm_fused(
+            output_op = tf.contrib.layer_norm.layer_norm_fused(
                 inputs, center=center, scale=scale,
                 variables_collections=["_var_cust"],
                 scope='LN')

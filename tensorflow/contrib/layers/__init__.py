@@ -28,7 +28,6 @@ common machine learning algorithms.
 @@flatten
 @@fully_connected
 @@layer_norm
-@@layer_norm_fused
 @@max_pool2d
 @@one_hot_encoding
 @@repeat

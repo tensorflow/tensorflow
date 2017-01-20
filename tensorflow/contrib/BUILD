@@ -30,6 +30,7 @@ py_library(
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/layer_norm:layer_norm_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
         "//tensorflow/contrib/linalg:linalg_py",
@@ -66,7 +67,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/layers:layer_norm_fused_op_kernel",
+        "//tensorflow/contrib/layer_norm:layer_norm_fused_op_kernel",
     ],
 )
 
@@ -79,7 +80,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-        "//tensorflow/contrib/layers:layer_norm_fused_op_op_lib",
+        "//tensorflow/contrib/layer_norm:layer_norm_fused_op_op_lib",
     ],
 )
 

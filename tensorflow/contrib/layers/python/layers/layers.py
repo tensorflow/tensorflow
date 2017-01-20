@@ -27,13 +27,12 @@ from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
-from tensorflow.contrib.layers.python.ops.layer_norm_fused_op import layer_norm_fused_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
-from tensorflow.python.layers import normalization as normalization_layers
+from tensorflow.python.layers import  normalization as normalization_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -62,7 +61,6 @@ __all__ = ['avg_pool2d',
            'flatten',
            'fully_connected',
            'layer_norm',
-           'layer_norm_fused',
            'linear',
            'pool',
            'max_pool2d',
@@ -91,44 +89,44 @@ def avg_pool2d(inputs,
                data_format=DATA_FORMAT_NHWC,
                outputs_collections=None,
                scope=None):
-    """Adds a 2D average pooling op.
+  """Adds a 2D average pooling op.
 
-    It is assumed that the pooling is done per image but not in batch or channels.
+  It is assumed that the pooling is done per image but not in batch or channels.
 
-    Args:
-      inputs: A 4-D tensor of shape `[batch_size, height, width, channels]` if
-        `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
-        `data_format` is `NCHW`.
-      kernel_size: A list of length 2: [kernel_height, kernel_width] of the
-        pooling kernel over which the op is computed. Can be an int if both
-        values are the same.
-      stride: A list of length 2: [stride_height, stride_width].
-        Can be an int if both strides are the same. Note that presently
-        both strides must have the same value.
-      padding: The padding method, either 'VALID' or 'SAME'.
-      data_format: A string. `NHWC` (default) and `NCHW` are supported.
-      outputs_collections: The collections to which the outputs are added.
-      scope: Optional scope for name_scope.
+  Args:
+    inputs: A 4-D tensor of shape `[batch_size, height, width, channels]` if
+      `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+      `data_format` is `NCHW`.
+    kernel_size: A list of length 2: [kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
 
-    Returns:
-      A `Tensor` representing the results of the pooling operation.
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
 
-    Raises:
-      ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    """
-    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
-        raise ValueError('data_format has to be either NCHW or NHWC.')
-    with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        df = ('channels_first' if data_format and data_format.startswith('NC')
-              else 'channels_last')
-        layer = pooling_layers.AveragePooling2D(pool_size=kernel_size,
-                                                strides=stride,
-                                                padding=padding,
-                                                data_format=df,
-                                                _scope=sc)
-        outputs = layer.apply(inputs)
-        return utils.collect_named_outputs(outputs_collections, sc, outputs)
+  Raises:
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+  """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.AveragePooling2D(pool_size=kernel_size,
+                                            strides=stride,
+                                            padding=padding,
+                                            data_format=df,
+                                            _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 def _fused_batch_norm(
@@ -175,12 +173,10 @@ def _fused_batch_norm(
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
     decay: decay for the moving average. Reasonable values for `decay` are close
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
-      Lower `decay` value (recommend trying `decay`=0.9) if model experiences
-      reasonably good training performance but poor validation and/or test
-      performance.
-    center: If True, add offset of `beta` to normalized tensor.  If False, 
-      `beta` is ignored.
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
+      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
+      good training performance but poor validation and/or test performance.
+    center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -411,8 +407,7 @@ def batch_norm(
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
       performance. Try zero_debias_moving_mean=True for improved stability.
-    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
-      is ignored.
+    center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -635,12 +630,16 @@ def batch_norm(
     if need_moments:
       # Calculate the moments based on the individual batch.
       if batch_weights is None:
+        # Use a copy of moving_mean as a shift to compute more reliable moments.
+        shift = math_ops.add(moving_mean, 0)
         if data_format == DATA_FORMAT_NCHW:
-          mean, variance = nn.moments(inputs, moments_axes, keep_dims=True)
+          shift = array_ops.reshape(shift, params_shape_broadcast)
+          mean, variance = nn.moments(inputs, moments_axes, shift=shift,
+                                      keep_dims=True)
           mean = array_ops.reshape(mean, [-1])
           variance = array_ops.reshape(variance, [-1])
         else:
-          mean, variance = nn.moments(inputs, moments_axes)
+          mean, variance = nn.moments(inputs, moments_axes, shift=shift)
       else:
         if data_format == DATA_FORMAT_NCHW:
           mean, variance = nn.weighted_moments(inputs, moments_axes,
@@ -712,66 +711,66 @@ def bias_add(inputs,
              trainable=True,
              data_format=DATA_FORMAT_NHWC,
              scope=None):
-    """Adds a bias to the inputs.
+  """Adds a bias to the inputs.
 
-    Can be used as a normalizer function for conv2d and fully_connected.
+  Can be used as a normalizer function for conv2d and fully_connected.
 
-    Args:
-      inputs: a tensor of with at least rank 2 and value for the last dimension,
-        e.g. `[batch_size, depth]`, `[None, None, None, depth]`.
-      activation_fn: activation function, default set to None to skip it and
-        maintain a linear activation.
-      initializer: An initializer for the bias, defaults to 0.
-      regularizer: A regularizer like the result of
-        `l1_regularizer` or `l2_regularizer`.
-      reuse: whether or not the layer and its variables should be reused. To be
-        able to reuse the layer scope must be given.
-      variables_collections: optional collections for the variables.
-      outputs_collections: collections to add the outputs.
-      trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-      data_format: A string. 'NHWC' and 'NCHW' are supported.
-      scope: Optional scope for variable_scope.
+  Args:
+    inputs: a tensor of with at least rank 2 and value for the last dimension,
+      e.g. `[batch_size, depth]`, `[None, None, None, depth]`.
+    activation_fn: activation function, default set to None to skip it and
+      maintain a linear activation.
+    initializer: An initializer for the bias, defaults to 0.
+    regularizer: A regularizer like the result of
+      `l1_regularizer` or `l2_regularizer`.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional collections for the variables.
+    outputs_collections: collections to add the outputs.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    scope: Optional scope for variable_scope.
 
-    Returns:
-      a tensor representing the result of adding biases to the inputs.
+  Returns:
+    a tensor representing the result of adding biases to the inputs.
 
-    Raises:
-      ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-      ValueError: if `data_format` is `NCHW` and rank of `inputs` is not 4.
-      ValueError: if the rank of `inputs` is undefined.
-      ValueError: if rank or `C` dimension of `inputs` is undefined.
-    """
-    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
-        raise ValueError('data_format has to be either NCHW or NHWC.')
-    with variable_scope.variable_scope(scope, 'BiasAdd', [inputs],
-                                       reuse=reuse) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        dtype = inputs.dtype.base_dtype
-        inputs_shape = inputs.get_shape()
-        inputs_rank = inputs_shape.ndims
-        if inputs_rank is None:
-            raise ValueError('Dims of shape must be known but is None')
-        elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
-            raise ValueError('Data format NCHW only supports 4D Tensor')
-        axis = 1 if data_format == DATA_FORMAT_NCHW else -1
-        num_features = inputs_shape[axis].value
-        if num_features is None:
-            raise ValueError('`C` dimension must be known but is None')
-        biases_collections = utils.get_variable_collections(variables_collections,
-                                                            'biases')
-        biases = variables.model_variable('biases',
-                                          shape=[num_features, ],
-                                          dtype=dtype,
-                                          initializer=initializer,
-                                          regularizer=regularizer,
-                                          collections=biases_collections,
-                                          trainable=trainable)
-        outputs = nn.bias_add(inputs, biases, data_format=data_format)
-        if activation_fn is not None:
-            outputs = activation_fn(outputs)
-        return utils.collect_named_outputs(outputs_collections,
-                                           sc.original_name_scope, outputs)
+  Raises:
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: if `data_format` is `NCHW` and rank of `inputs` is not 4.
+    ValueError: if the rank of `inputs` is undefined.
+    ValueError: if rank or `C` dimension of `inputs` is undefined.
+  """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  with variable_scope.variable_scope(scope, 'BiasAdd', [inputs],
+                                     reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    dtype = inputs.dtype.base_dtype
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Dims of shape must be known but is None')
+    elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
+      raise ValueError('Data format NCHW only supports 4D Tensor')
+    axis = 1 if data_format == DATA_FORMAT_NCHW else -1
+    num_features = inputs_shape[axis].value
+    if num_features is None:
+      raise ValueError('`C` dimension must be known but is None')
+    biases_collections = utils.get_variable_collections(variables_collections,
+                                                        'biases')
+    biases = variables.model_variable('biases',
+                                      shape=[num_features,],
+                                      dtype=dtype,
+                                      initializer=initializer,
+                                      regularizer=regularizer,
+                                      collections=biases_collections,
+                                      trainable=trainable)
+    outputs = nn.bias_add(inputs, biases, data_format=data_format)
+    if activation_fn is not None:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 # TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
@@ -796,133 +795,131 @@ def convolution(inputs,
                 outputs_collections=None,
                 trainable=True,
                 scope=None):
-    """Adds an N-D convolution followed by an optional batch_norm layer.
+  """Adds an N-D convolution followed by an optional batch_norm layer.
 
-    It is required that 1 <= N <= 3.
+  It is required that 1 <= N <= 3.
 
-    `convolution` creates a variable called `weights`, representing the
-    convolutional kernel, that is convolved (actually cross-correlated) with the
-    `inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
-    provided (such as `batch_norm`), it is then applied. Otherwise, if
-    `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
-    variable would be created and added the activations. Finally, if
-    `activation_fn` is not `None`, it is applied to the activations as well.
+  `convolution` creates a variable called `weights`, representing the
+  convolutional kernel, that is convolved (actually cross-correlated) with the
+  `inputs` to produce a `Tensor` of activations. If a `normalizer_fn` is
+  provided (such as `batch_norm`), it is then applied. Otherwise, if
+  `normalizer_fn` is None and a `biases_initializer` is provided then a `biases`
+  variable would be created and added the activations. Finally, if
+  `activation_fn` is not `None`, it is applied to the activations as well.
 
-    Performs a'trous convolution with input stride/dilation rate equal to `rate`
-    if a value > 1 for any dimension of `rate` is specified.  In this case
-    `stride` values != 1 are not supported.
+  Performs a'trous convolution with input stride/dilation rate equal to `rate`
+  if a value > 1 for any dimension of `rate` is specified.  In this case
+  `stride` values != 1 are not supported.
 
-    Args:
-      inputs: a Tensor of rank N+2 of shape
-        `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
-        not start with "NC" (default), or
-        `[batch_size, in_channels] + input_spatial_shape` if data_format starts
-        with "NC".
-      num_outputs: integer, the number of output filters.
-      kernel_size: a sequence of N positive integers specifying the spatial
-        dimensions of of the filters.  Can be a single integer to specify the same
-        value for all spatial dimensions.
-      stride: a sequence of N positive integers specifying the stride at which to
-        compute output.  Can be a single integer to specify the same value for all
-        spatial dimensions.  Specifying any `stride` value != 1 is incompatible
-        with specifying any `rate` value != 1.
-      padding: one of `"VALID"` or `"SAME"`.
-      data_format: A string or None.  Specifies whether the channel dimension of
-        the `input` and output is the last dimension (default, or if `data_format`
-        does not start with "NC"), or the second dimension (if `data_format`
-        starts with "NC").  For N=1, the valid values are "NWC" (default) and
-        "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
-        N=3, currently the only valid value is "NDHWC".
-      rate: a sequence of N positive integers specifying the dilation rate to use
-        for a'trous convolution.  Can be a single integer to specify the same
-        value for all spatial dimensions.  Specifying any `rate` value != 1 is
-        incompatible with specifying any `stride` value != 1.
-      activation_fn: activation function, set to None to skip it and maintain
-        a linear activation.
-      normalizer_fn: normalization function to use instead of `biases`. If
-        `normalizer_fn` is provided then `biases_initializer` and
-        `biases_regularizer` are ignored and `biases` are not created nor added.
-        default set to None for no normalizer function
-      normalizer_params: normalization function parameters.
-      weights_initializer: An initializer for the weights.
-      weights_regularizer: Optional regularizer for the weights.
-      biases_initializer: An initializer for the biases. If None skip biases.
-      biases_regularizer: Optional regularizer for the biases.
-      reuse: whether or not the layer and its variables should be reused. To be
-        able to reuse the layer scope must be given.
-      variables_collections: optional list of collections for all the variables or
-        a dictionary containing a different list of collection per variable.
-      outputs_collections: collection to add the outputs.
-      trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-      scope: Optional scope for `variable_scope`.
+  Args:
+    inputs: a Tensor of rank N+2 of shape
+      `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
+      not start with "NC" (default), or
+      `[batch_size, in_channels] + input_spatial_shape` if data_format starts
+      with "NC".
+    num_outputs: integer, the number of output filters.
+    kernel_size: a sequence of N positive integers specifying the spatial
+      dimensions of of the filters.  Can be a single integer to specify the same
+      value for all spatial dimensions.
+    stride: a sequence of N positive integers specifying the stride at which to
+      compute output.  Can be a single integer to specify the same value for all
+      spatial dimensions.  Specifying any `stride` value != 1 is incompatible
+      with specifying any `rate` value != 1.
+    padding: one of `"VALID"` or `"SAME"`.
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+      N=3, currently the only valid value is "NDHWC".
+    rate: a sequence of N positive integers specifying the dilation rate to use
+      for a'trous convolution.  Can be a single integer to specify the same
+      value for all spatial dimensions.  Specifying any `rate` value != 1 is
+      incompatible with specifying any `stride` value != 1.
+    activation_fn: activation function, set to None to skip it and maintain
+      a linear activation.
+    normalizer_fn: normalization function to use instead of `biases`. If
+      `normalizer_fn` is provided then `biases_initializer` and
+      `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalizer function
+    normalizer_params: normalization function parameters.
+    weights_initializer: An initializer for the weights.
+    weights_regularizer: Optional regularizer for the weights.
+    biases_initializer: An initializer for the biases. If None skip biases.
+    biases_regularizer: Optional regularizer for the biases.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional list of collections for all the variables or
+      a dictionary containing a different list of collection per variable.
+    outputs_collections: collection to add the outputs.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope for `variable_scope`.
 
-    Returns:
-      a tensor representing the output of the operation.
+  Returns:
+    a tensor representing the output of the operation.
 
-    Raises:
-      ValueError: if `data_format` is invalid.
-      ValueError: both 'rate' and `stride` are not uniformly 1.
-    """
-    if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
-        raise ValueError('Invalid data_format: %r' % (data_format,))
+  Raises:
+    ValueError: if `data_format` is invalid.
+    ValueError: both 'rate' and `stride` are not uniformly 1.
+  """
+  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
+    raise ValueError('Invalid data_format: %r' % (data_format,))
 
-    layer_variable_getter = _build_variable_getter(
-        {'bias': 'biases', 'kernel': 'weights'})
+  layer_variable_getter = _build_variable_getter(
+      {'bias': 'biases', 'kernel': 'weights'})
 
-    with variable_scope.variable_scope(
-            scope, 'Conv', [inputs], reuse=reuse,
-            custom_getter=layer_variable_getter) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        input_rank = inputs.get_shape().ndims
+  with variable_scope.variable_scope(
+      scope, 'Conv', [inputs], reuse=reuse,
+      custom_getter=layer_variable_getter) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    input_rank = inputs.get_shape().ndims
 
-        if input_rank == 3:
-            layer_class = convolutional_layers.Convolution1D
-        elif input_rank == 4:
-            layer_class = convolutional_layers.Convolution2D
-        elif input_rank == 5:
-            layer_class = convolutional_layers.Convolution3D
-        else:
-            raise ValueError('Convolution not supported for input with rank',
-                             input_rank)
+    if input_rank == 3:
+      layer_class = convolutional_layers.Convolution1D
+    elif input_rank == 4:
+      layer_class = convolutional_layers.Convolution2D
+    elif input_rank == 5:
+      layer_class = convolutional_layers.Convolution3D
+    else:
+      raise ValueError('Convolution not supported for input with rank',
+                       input_rank)
 
-        df = ('channels_first' if data_format and data_format.startswith('NC')
-              else 'channels_last')
-        layer = layer_class(filters=num_outputs,
-                            kernel_size=kernel_size,
-                            strides=stride,
-                            padding=padding,
-                            data_format=df,
-                            dilation_rate=rate,
-                            activation=None,
-                            use_bias=not normalizer_fn and biases_initializer,
-                            kernel_initializer=weights_initializer,
-                            bias_initializer=biases_initializer,
-                            kernel_regularizer=weights_regularizer,
-                            bias_regularizer=biases_regularizer,
-                            activity_regularizer=None,
-                            trainable=trainable,
-                            name=sc.name,
-                            dtype=inputs.dtype.base_dtype,
-                            _scope=sc,
-                            _reuse=reuse)
-        outputs = layer.apply(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = layer_class(filters=num_outputs,
+                        kernel_size=kernel_size,
+                        strides=stride,
+                        padding=padding,
+                        data_format=df,
+                        dilation_rate=rate,
+                        activation=None,
+                        use_bias=not normalizer_fn and biases_initializer,
+                        kernel_initializer=weights_initializer,
+                        bias_initializer=biases_initializer,
+                        kernel_regularizer=weights_regularizer,
+                        bias_regularizer=biases_regularizer,
+                        activity_regularizer=None,
+                        trainable=trainable,
+                        name=sc.name,
+                        dtype=inputs.dtype.base_dtype,
+                        _scope=sc,
+                        _reuse=reuse)
+    outputs = layer.apply(inputs)
 
-        # Add variables to collections.
-        _add_variable_to_collections(
-            layer.kernel, variables_collections, 'weights')
-        if layer.use_bias:
-            _add_variable_to_collections(
-                layer.bias, variables_collections, 'biases')
+    # Add variables to collections.
+    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
+    if layer.use_bias:
+      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
-        if normalizer_fn is not None:
-            normalizer_params = normalizer_params or {}
-            outputs = normalizer_fn(outputs, **normalizer_params)
+    if normalizer_fn is not None:
+      normalizer_params = normalizer_params or {}
+      outputs = normalizer_fn(outputs, **normalizer_params)
 
-        if activation_fn is not None:
-            outputs = activation_fn(outputs)
-        return utils.collect_named_outputs(outputs_collections,
-                                           sc.original_name_scope, outputs)
+    if activation_fn is not None:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 convolution2d = convolution
 
@@ -1150,37 +1147,37 @@ def dropout(inputs,
             is_training=True,
             outputs_collections=None,
             scope=None):
-    """Returns a dropout op applied to the input.
+  """Returns a dropout op applied to the input.
 
-    With probability `keep_prob`, outputs the input element scaled up by
-    `1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
-    sum is unchanged.
+  With probability `keep_prob`, outputs the input element scaled up by
+  `1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
+  sum is unchanged.
 
-    Args:
-      inputs: the tensor to pass to the nn.dropout op.
-      keep_prob: A scalar `Tensor` with the same type as x. The probability
-        that each element is kept.
-      noise_shape: A 1-D `Tensor` of type `int32`, representing the
-        shape for randomly generated keep/drop flags.
-      is_training: A bool `Tensor` indicating whether or not the model
-        is in training mode. If so, dropout is applied and values scaled.
-        Otherwise, inputs is returned.
-      outputs_collections: collection to add the outputs.
-      scope: Optional scope for name_scope.
+  Args:
+    inputs: the tensor to pass to the nn.dropout op.
+    keep_prob: A scalar `Tensor` with the same type as x. The probability
+      that each element is kept.
+    noise_shape: A 1-D `Tensor` of type `int32`, representing the
+      shape for randomly generated keep/drop flags.
+    is_training: A bool `Tensor` indicating whether or not the model
+      is in training mode. If so, dropout is applied and values scaled.
+      Otherwise, inputs is returned.
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for name_scope.
 
-    Returns:
-      a tensor representing the output of the operation.
-    """
-    with variable_scope.variable_scope(
-            scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        layer = core_layers.Dropout(rate=1 - keep_prob,
-                                    noise_shape=noise_shape,
-                                    name=sc.name,
-                                    _scope=sc)
-        outputs = layer.apply(inputs, training=is_training)
-        return utils.collect_named_outputs(
-            outputs_collections, sc.original_name_scope, outputs)
+  Returns:
+    a tensor representing the output of the operation.
+  """
+  with variable_scope.variable_scope(
+      scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    layer = core_layers.Dropout(rate=1 - keep_prob,
+                                noise_shape=noise_shape,
+                                name=sc.name,
+                                _scope=sc)
+    outputs = layer.apply(inputs, training=is_training)
+    return utils.collect_named_outputs(
+        outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1219,8 +1216,8 @@ def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
   outer_dimensions = inputs.dense_shape[:new_rank - 1]
   inner_dimensions = inputs.dense_shape[new_rank - 1:]
-  new_shape = array_ops.concat((outer_dimensions,
-                                [math_ops.reduce_prod(inner_dimensions)]), 0)
+  new_shape = array_ops.concat_v2((outer_dimensions,
+                                   [math_ops.reduce_prod(inner_dimensions)]), 0)
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)
   return flattened
 
@@ -1232,7 +1229,7 @@ def _dense_inner_flatten(inputs, new_rank):
   with ops.control_dependencies([rank_assertion]):
     outer_dimensions = array_ops.strided_slice(
         array_ops.shape(inputs), [0], [new_rank - 1])
-    new_shape = array_ops.concat((outer_dimensions, [-1]), 0)
+    new_shape = array_ops.concat_v2((outer_dimensions, [-1]), 0)
     reshaped = array_ops.reshape(inputs, new_shape)
 
   # if `new_rank` is an integer, try to calculate new shape.
@@ -1254,78 +1251,78 @@ def _dense_inner_flatten(inputs, new_rank):
 
 @add_arg_scope
 def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
-    """Flattens inner dimensions of `inputs`, returns a Tensor with `new_rank`.
+  """Flattens inner dimensions of `inputs`, returns a Tensor with `new_rank`.
 
-    For example:
-    '''
-        x = tf.random_uniform(shape=[1, 2, 3, 4, 5, 6])
-        y = _inner_flatten(x, 4)
-        assert y.get_shape().as_list() == [1, 2, 3, (4 * 5 * 6)]
-    '''
-    This layer will fail at run time if `new_rank` is greater than the current
-    rank of `inputs`.
+  For example:
+  '''
+      x = tf.random_uniform(shape=[1, 2, 3, 4, 5, 6])
+      y = _inner_flatten(x, 4)
+      assert y.get_shape().as_list() == [1, 2, 3, (4 * 5 * 6)]
+  '''
+  This layer will fail at run time if `new_rank` is greater than the current
+  rank of `inputs`.
 
-    Args:
-      inputs: a `Tensor` or `SparseTensor`.
-      new_rank: the desired rank of the returned `Tensor` or `SparseTensor`.
-      output_collections: collection to which the outputs will be added.
-      scope: optional scope for `name_scope`.
-    Returns:
-      A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
-      with innermost dimensions flattened to obtain rank `new_rank`.
+  Args:
+    inputs: a `Tensor` or `SparseTensor`.
+    new_rank: the desired rank of the returned `Tensor` or `SparseTensor`.
+    output_collections: collection to which the outputs will be added.
+    scope: optional scope for `name_scope`.
+  Returns:
+    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    with innermost dimensions flattened to obtain rank `new_rank`.
 
-    Raises:
-      TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
-    """
-    with ops.name_scope(scope, 'InnerFlatten', [inputs, new_rank]) as sc:
-        if isinstance(inputs, sparse_tensor.SparseTensor):
-            flattened = _sparse_inner_flatten(inputs, new_rank)
-        else:
-            inputs = ops.convert_to_tensor(inputs)
-            flattened = _dense_inner_flatten(inputs, new_rank)
-    return utils.collect_named_outputs(output_collections, sc, flattened)
+  Raises:
+    TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
+  """
+  with ops.name_scope(scope, 'InnerFlatten', [inputs, new_rank]) as sc:
+    if isinstance(inputs, sparse_tensor.SparseTensor):
+      flattened = _sparse_inner_flatten(inputs, new_rank)
+    else:
+      inputs = ops.convert_to_tensor(inputs)
+      flattened = _dense_inner_flatten(inputs, new_rank)
+  return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
 def _model_variable_getter(getter, name, shape=None, dtype=None,
                            initializer=None, regularizer=None, trainable=True,
                            collections=None, caching_device=None,
                            partitioner=None, rename=None, **_):
-    """Getter that uses model_variable for compatibility with core layers."""
-    short_name = name.split('/')[-1]
-    if rename and short_name in rename:
-        name_components = name.split('/')
-        name_components[-1] = rename[short_name]
-        name = '/'.join(name_components)
-    return variables.model_variable(
-        name, shape=shape, dtype=dtype, initializer=initializer,
-        regularizer=regularizer, collections=collections, trainable=trainable,
-        caching_device=caching_device, partitioner=partitioner,
-        custom_getter=getter)
+  """Getter that uses model_variable for compatibility with core layers."""
+  short_name = name.split('/')[-1]
+  if rename and short_name in rename:
+    name_components = name.split('/')
+    name_components[-1] = rename[short_name]
+    name = '/'.join(name_components)
+  return variables.model_variable(
+      name, shape=shape, dtype=dtype, initializer=initializer,
+      regularizer=regularizer, collections=collections, trainable=trainable,
+      caching_device=caching_device, partitioner=partitioner,
+      custom_getter=getter)
 
 
 def _build_variable_getter(rename=None):
-    """Build a model variable getter that respects scope getter and renames."""
-    # Respect current getter, if one is set.
-    current_custom_getter = variable_scope.get_variable_scope().custom_getter
-    def layer_variable_getter(getter, *args, **kwargs):
-        if current_custom_getter is not None:
-            getter = functools.partial(current_custom_getter, getter)
-        kwargs['rename'] = rename
-        return _model_variable_getter(getter, *args, **kwargs)
-    return layer_variable_getter
+  """Build a model variable getter that respects scope getter and renames."""
+  # Respect current getter, if one is set.
+  current_custom_getter = variable_scope.get_variable_scope().custom_getter
+  def layer_variable_getter(getter, *args, **kwargs):
+    if current_custom_getter is not None:
+      getter = functools.partial(current_custom_getter, getter)
+    kwargs['rename'] = rename
+    return _model_variable_getter(getter, *args, **kwargs)
+  return layer_variable_getter
 
 
 def _add_variable_to_collections(variable, collections_set, collections_name):
-    """Adds variable (or all its parts) to all collections with that name."""
-    collections = utils.get_variable_collections(
-        collections_set, collections_name) or []
-    variables_list = [variable]
-    if isinstance(variable, tf_variables.PartitionedVariable):
-        variables_list = [v for v in variable]
-    for collection in collections:
-        for var in variables_list:
-            if var not in ops.get_collection(collection):
-                ops.add_to_collection(collection, var)
+  """Adds variable (or all its parts) to all collections with that name."""
+  collections = utils.get_variable_collections(
+      collections_set, collections_name) or []
+  variables_list = [variable]
+  if isinstance(variable, tf_variables.PartitionedVariable):
+    variables_list = [v for v in variable]
+  for collection in collections:
+    for var in variables_list:
+      if var not in ops.get_collection(collection):
+        ops.add_to_collection(collection, var)
 
 
 @add_arg_scope
@@ -1386,7 +1383,7 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not isinstance(num_outputs, six.integer_types):
+  if not (isinstance(num_outputs, six.integer_types)):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
 
   layer_variable_getter = _build_variable_getter({'bias': 'biases'})
@@ -1450,8 +1447,7 @@ def layer_norm(inputs,
   Args:
     inputs: a tensor with 2 or more dimensions. The normalization
             occurs over all but the first dimension.
-    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
-      is ignored.
+    center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -1519,98 +1515,6 @@ def layer_norm(inputs,
                                        sc.original_name_scope,
                                        outputs)
 
-@add_arg_scope
-def layer_norm_fused(inputs,
-                     center=True,
-                     scale=True,
-                     activation_fn=None,
-                     reuse=None,
-                     variables_collections=None,
-                     outputs_collections=None,
-                     trainable=True,
-                     epsilon=1E-12,
-                     scope=None):
-    """Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
-      "Layer Normalization"
-      Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
-
-    Faster and more efficient implementation of layer normalization,
-    only works on GPU.  
-
-    Can be used as a normalizer function for any shape of input larger than 2-D,
-    only accepts dtypes of float and double.
-
-    IMPORTANT: This layer is not the same as layer_norm if the rank of the input tensor
-    is larger than 2, since layer_norm normalizes over all dimensions except the first,
-    while this layer normalizes along the last dimension. You can reshape the input to 2-D
-    before passing it into this layer, to achieve similar effect as layer_norm, but note
-    that the current implementation of layer_norm_fused kernel has a size limit of 5120 
-    for last dimension.
-
-    Args:
-      inputs: a tensor with 2 or more dimensions. The normalization
-              occurs along the LAST DIMENSION.
-      center: If True, subtract `beta`. If False, `beta` is ignored.
-      scale: If True, multiply by `gamma`. If False, `gamma` is
-        not used. When the next layer is linear (also e.g. `nn.relu`), this can be
-        disabled since the scaling can be done by the next layer.
-      activation_fn: activation function, default set to None to skip it and
-        maintain a linear activation.
-      reuse: whether or not the layer and its variables should be reused. To be
-        able to reuse the layer scope must be given.
-      variables_collections: optional collections for the variables.
-      outputs_collections: collections to add the outputs.
-      trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-      epsilon: small value added to prevent NaN outputs.
-      scope: Optional scope for `variable_scope`.
-    Returns:
-      A `Tensor` representing the output of the operation.
-    Raises:
-      ValueError: if rank or last dimension of `inputs` is undefined.
-    """
-    with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
-                                       reuse=reuse) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        inputs_shape = inputs.get_shape()
-        inputs_rank = inputs_shape.ndims
-        if inputs_rank is None:
-            raise ValueError('Inputs %s has undefined rank.' % inputs.name)
-        dtype = inputs.dtype.base_dtype
-        params_shape = inputs_shape[-1:]
-        if not params_shape.is_fully_defined():
-            raise ValueError('Inputs %s has undefined last dimension %s.' % (
-                inputs.name, params_shape))
-        # Allocate parameters for the beta and gamma of the normalization.
-        beta, gamma = None, None
-        if center:
-            beta_collections = utils.get_variable_collections(variables_collections,
-                                                              'beta')
-            beta = variables.model_variable('beta',
-                                            shape=params_shape,
-                                            dtype=dtype,
-                                            initializer=init_ops.zeros_initializer,
-                                            collections=beta_collections,
-                                            trainable=trainable)
-        if scale:
-            gamma_collections = utils.get_variable_collections(variables_collections,
-                                                               'gamma')
-            gamma = variables.model_variable(
-                'gamma',
-                shape=params_shape,
-                dtype=dtype,
-                initializer=init_ops.ones_initializer(),
-                collections=gamma_collections,
-                trainable=trainable)
-
-        outputs = layer_norm_fused_op(inputs, gamma=gamma, beta=beta,
-                                      epsilon=epsilon)
-
-        if activation_fn is not None:
-            outputs = activation_fn(outputs)
-        return utils.collect_named_outputs(outputs_collections,
-                                           sc.original_name_scope,
-                                           outputs)
 
 @add_arg_scope
 def max_pool2d(inputs,
@@ -1620,45 +1524,45 @@ def max_pool2d(inputs,
                data_format=DATA_FORMAT_NHWC,
                outputs_collections=None,
                scope=None):
-    """Adds a 2D Max Pooling op.
+  """Adds a 2D Max Pooling op.
 
-    It is assumed that the pooling is done per image but not in batch or channels.
+  It is assumed that the pooling is done per image but not in batch or channels.
 
-    Args:
-      inputs: A 4-D tensor of shape `[batch_size, height, width, channels]` if
-        `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
-        `data_format` is `NCHW`.
-      kernel_size: A list of length 2: [kernel_height, kernel_width] of the
-        pooling kernel over which the op is computed. Can be an int if both
-        values are the same.
-      stride: A list of length 2: [stride_height, stride_width].
-        Can be an int if both strides are the same. Note that presently
-        both strides must have the same value.
-      padding: The padding method, either 'VALID' or 'SAME'.
-      data_format: A string. `NHWC` (default) and `NCHW` are supported.
-      outputs_collections: The collections to which the outputs are added.
-      scope: Optional scope for name_scope.
+  Args:
+    inputs: A 4-D tensor of shape `[batch_size, height, width, channels]` if
+      `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+      `data_format` is `NCHW`.
+    kernel_size: A list of length 2: [kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
 
-    Returns:
-      A `Tensor` representing the results of the pooling operation.
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
 
-    Raises:
-      ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-      ValueError: If 'kernel_size' is not a 2-D list
-    """
-    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
-        raise ValueError('data_format has to be either NCHW or NHWC.')
-    with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        df = ('channels_first' if data_format and data_format.startswith('NC')
-              else 'channels_last')
-        layer = pooling_layers.MaxPooling2D(pool_size=kernel_size,
-                                            strides=stride,
-                                            padding=padding,
-                                            data_format=df,
-                                            _scope=sc)
-        outputs = layer.apply(inputs)
-        return utils.collect_named_outputs(outputs_collections, sc, outputs)
+  Raises:
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If 'kernel_size' is not a 2-D list
+  """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.MaxPooling2D(pool_size=kernel_size,
+                                        strides=stride,
+                                        padding=padding,
+                                        data_format=df,
+                                        _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 @add_arg_scope
@@ -1671,65 +1575,64 @@ def pool(inputs,
          stride=1,
          outputs_collections=None,
          scope=None):
-    # pylint: disable=line-too-long
-    """Adds a pooling op.
+  # pylint: disable=line-too-long
+  """Adds a pooling op.
 
 
-    Args:
-      inputs: Tensor of rank N+2, of shape
-        `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
-        not start with "NC" (default), or
-        `[batch_size, num_channels] + input_spatial_shape` if data_format starts
-        with "NC".  Pooling happens over the spatial dimensions only.
-      kernel_size: Sequence of N ints >= 1.  Can also be a single integer to
-        specify the same value for all spatial dimensions.
-      pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
-      padding: The padding algorithm, must be "SAME" or "VALID".
-      data_format: A string or None.  Specifies whether the channel dimension of
-        the `input` and output is the last dimension (default, or if `data_format`
-        does not start with "NC"), or the second dimension (if `data_format`
-        starts with "NC").  For N=1, the valid values are "NWC" (default) and
-        "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
-        N=3, currently the only valid value is "NDHWC".
-      dilation_rate: Optional.  Dilation rate.  Sequence of N ints >= 1.  Defaults
-        to [1]*N.  Can also be a single integer to specify the same value for all
-        spatial dimensions.  If any value of dilation_rate is > 1, then all values
-        of stride must be 1.
-      stride: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.  Can also be
-        a single integer to specify the same value for all spatial dimensions.  If
-        any value of stride is > 1, then all values of dilation_rate must be 1.
-      outputs_collections: The collections to which the outputs are added.
-      scope: Optional scope for name_scope.
+  Args:
+    inputs: Tensor of rank N+2, of shape
+      `[batch_size] + input_spatial_shape + [num_channels]` if data_format does
+      not start with "NC" (default), or
+      `[batch_size, num_channels] + input_spatial_shape` if data_format starts
+      with "NC".  Pooling happens over the spatial dimensions only.
+    kernel_size: Sequence of N ints >= 1.  Can also be a single integer to
+      specify the same value for all spatial dimensions.
+    pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
+    padding: The padding algorithm, must be "SAME" or "VALID".
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+      N=3, currently the only valid value is "NDHWC".
+    dilation_rate: Optional.  Dilation rate.  Sequence of N ints >= 1.  Defaults
+      to [1]*N.  Can also be a single integer to specify the same value for all
+      spatial dimensions.  If any value of dilation_rate is > 1, then all values
+      of stride must be 1.
+    stride: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.  Can also be
+      a single integer to specify the same value for all spatial dimensions.  If
+      any value of stride is > 1, then all values of dilation_rate must be 1.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
 
-    Returns:
-      A `Tensor` representing the results of the pooling operation.
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
 
-    Raises:
-      ValueError: if arguments are invalid.
+  Raises:
+    ValueError: if arguments are invalid.
 
-    """
-    # pylint: enable=line-too-long
-    with ops.name_scope(scope, '%s_pool' %
-                        (pooling_type.lower()), [inputs]) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        input_rank = inputs.get_shape().ndims
-        if input_rank is None:
-            raise ValueError('Rank of inputs must be known')
-        if input_rank < 3:
-            raise ValueError('Rank of inputs must be >= 3')
-        num_spatial_dims = input_rank - 2
-        output = nn.pool(
-            input=inputs,
-            window_shape=utils.n_positive_integers(
-                num_spatial_dims, kernel_size),
-            pooling_type=pooling_type,
-            padding=padding,
-            data_format=data_format,
-            dilation_rate=utils.n_positive_integers(num_spatial_dims,
-                                                    dilation_rate),
-            strides=utils.n_positive_integers(num_spatial_dims, stride),
-            name=sc)
-        return utils.collect_named_outputs(outputs_collections, sc, output)
+  """
+  # pylint: enable=line-too-long
+  with ops.name_scope(scope, '%s_pool' %
+                      (pooling_type.lower()), [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    input_rank = inputs.get_shape().ndims
+    if input_rank is None:
+      raise ValueError('Rank of inputs must be known')
+    if input_rank < 3:
+      raise ValueError('Rank of inputs must be >= 3')
+    num_spatial_dims = input_rank - 2
+    output = nn.pool(
+        input=inputs,
+        window_shape=utils.n_positive_integers(num_spatial_dims, kernel_size),
+        pooling_type=pooling_type,
+        padding=padding,
+        data_format=data_format,
+        dilation_rate=utils.n_positive_integers(num_spatial_dims,
+                                                dilation_rate),
+        strides=utils.n_positive_integers(num_spatial_dims, stride),
+        name=sc)
+    return utils.collect_named_outputs(outputs_collections, sc, output)
 
 
 @add_arg_scope
@@ -1739,83 +1642,82 @@ def one_hot_encoding(labels,
                      off_value=0.0,
                      outputs_collections=None,
                      scope=None):
-    """Transform numeric labels into onehot_labels using `tf.one_hot`.
+  """Transform numeric labels into onehot_labels using `tf.one_hot`.
 
-    Args:
-      labels: [batch_size] target labels.
-      num_classes: total number of classes.
-      on_value: A scalar defining the on-value.
-      off_value: A scalar defining the off-value.
-      outputs_collections: collection to add the outputs.
-      scope: Optional scope for name_scope.
+  Args:
+    labels: [batch_size] target labels.
+    num_classes: total number of classes.
+    on_value: A scalar defining the on-value.
+    off_value: A scalar defining the off-value.
+    outputs_collections: collection to add the outputs.
+    scope: Optional scope for name_scope.
 
-    Returns:
-      one hot encoding of the labels.
-    """
-    with ops.name_scope(scope, 'OneHotEncoding', [labels, num_classes]) as sc:
-        labels = ops.convert_to_tensor(labels)
-        if labels.dtype == dtypes.int32:
-            labels = standard_ops.to_int64(labels)
-        outputs = standard_ops.one_hot(labels,
-                                       num_classes,
-                                       on_value=on_value,
-                                       off_value=off_value)
-        return utils.collect_named_outputs(outputs_collections, sc, outputs)
+  Returns:
+    one hot encoding of the labels.
+  """
+  with ops.name_scope(scope, 'OneHotEncoding', [labels, num_classes]) as sc:
+    labels = ops.convert_to_tensor(labels)
+    if labels.dtype == dtypes.int32:
+      labels = standard_ops.to_int64(labels)
+    outputs = standard_ops.one_hot(labels,
+                                   num_classes,
+                                   on_value=on_value,
+                                   off_value=off_value)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 def _apply_activation(y, activation_fn, output_collections):
-    if activation_fn is not None:
-        y = activation_fn(y)
-    ops.add_to_collections(list(output_collections or []) +
-                           [ops.GraphKeys.ACTIVATIONS], y)
-    return y
+  if activation_fn is not None:
+    y = activation_fn(y)
+  ops.add_to_collections(list(output_collections or []) +
+                         [ops.GraphKeys.ACTIVATIONS], y)
+  return y
 
 
 def repeat(inputs, repetitions, layer, *args, **kwargs):
-    """Applies the same layer with the same arguments repeatedly.
+  """Applies the same layer with the same arguments repeatedly.
 
-    ```python
-      y = repeat(x, 3, conv2d, 64, [3, 3], scope='conv1')
-      # It is equivalent to:
+  ```python
+    y = repeat(x, 3, conv2d, 64, [3, 3], scope='conv1')
+    # It is equivalent to:
 
-      x = conv2d(x, 64, [3, 3], scope='conv1/conv1_1')
-      x = conv2d(x, 64, [3, 3], scope='conv1/conv1_2')
-      y = conv2d(x, 64, [3, 3], scope='conv1/conv1_3')
-    ```
+    x = conv2d(x, 64, [3, 3], scope='conv1/conv1_1')
+    x = conv2d(x, 64, [3, 3], scope='conv1/conv1_2')
+    y = conv2d(x, 64, [3, 3], scope='conv1/conv1_3')
+  ```
 
-    If the `scope` argument is not given in `kwargs`, it is set to
-    `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
-    objects). If neither `__name__` nor `func.__name__` is available, the
-    layers are called with `scope='stack'`.
+  If the `scope` argument is not given in `kwargs`, it is set to
+  `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+  objects). If neither `__name__` nor `func.__name__` is available, the
+  layers are called with `scope='stack'`.
 
-    Args:
-      inputs: A `Tensor` suitable for layer.
-      repetitions: Int, number of repetitions.
-      layer: A layer with arguments `(inputs, *args, **kwargs)`
-      *args: Extra args for the layer.
-      **kwargs: Extra kwargs for the layer.
+  Args:
+    inputs: A `Tensor` suitable for layer.
+    repetitions: Int, number of repetitions.
+    layer: A layer with arguments `(inputs, *args, **kwargs)`
+    *args: Extra args for the layer.
+    **kwargs: Extra kwargs for the layer.
 
-    Returns:
-      a tensor result of applying the layer, repetitions times.
-    Raises:
-      ValueError: if the op is unknown or wrong.
-    """
-    scope = kwargs.pop('scope', None)
-    with variable_scope.variable_scope(scope, 'Repeat', [inputs]):
-        inputs = ops.convert_to_tensor(inputs)
-        if scope is None:
-            if hasattr(layer, '__name__'):
-                scope = layer.__name__
-            elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
-                # In case layer is a functools.partial.
-                scope = layer.func.__name__
-            else:
-                scope = 'repeat'
-        outputs = inputs
-        for i in range(repetitions):
-            kwargs['scope'] = scope + '_' + str(i + 1)
-            outputs = layer(outputs, *args, **kwargs)
-        return outputs
+  Returns:
+    a tensor result of applying the layer, repetitions times.
+  Raises:
+    ValueError: if the op is unknown or wrong.
+  """
+  scope = kwargs.pop('scope', None)
+  with variable_scope.variable_scope(scope, 'Repeat', [inputs]):
+    inputs = ops.convert_to_tensor(inputs)
+    if scope is None:
+      if hasattr(layer, '__name__'):
+        scope = layer.__name__
+      elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
+        scope = layer.func.__name__  # In case layer is a functools.partial.
+      else:
+        scope = 'repeat'
+    outputs = inputs
+    for i in range(repetitions):
+      kwargs['scope'] = scope + '_' + str(i+1)
+      outputs = layer(outputs, *args, **kwargs)
+    return outputs
 
 
 @add_arg_scope
@@ -1982,82 +1884,81 @@ def separable_convolution2d(
 
 @add_arg_scope
 def softmax(logits, scope=None):
-    """Performs softmax on Nth dimension of N-dimensional logit tensor.
+  """Performs softmax on Nth dimension of N-dimensional logit tensor.
 
-    For two-dimensional logits this reduces to tf.nn.softmax. The N-th dimension
-    needs to have a specified number of elements (number of classes).
+  For two-dimensional logits this reduces to tf.nn.softmax. The N-th dimension
+  needs to have a specified number of elements (number of classes).
 
-    Args:
-      logits: N-dimensional `Tensor` with logits, where N > 1.
-      scope: Optional scope for variable_scope.
+  Args:
+    logits: N-dimensional `Tensor` with logits, where N > 1.
+    scope: Optional scope for variable_scope.
 
-    Returns:
-      a `Tensor` with same shape and type as logits.
-    """
-    # TODO(jrru): Add axis argument which defaults to last dimension.
-    with variable_scope.variable_scope(scope, 'softmax', [logits]):
-        num_logits = utils.last_dimension(logits.get_shape(), min_rank=2)
-        logits_2d = array_ops.reshape(logits, [-1, num_logits])
-        predictions = nn.softmax(logits_2d)
-        predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-        predictions.set_shape(logits.get_shape())
-        return predictions
+  Returns:
+    a `Tensor` with same shape and type as logits.
+  """
+  # TODO(jrru): Add axis argument which defaults to last dimension.
+  with variable_scope.variable_scope(scope, 'softmax', [logits]):
+    num_logits = utils.last_dimension(logits.get_shape(), min_rank=2)
+    logits_2d = array_ops.reshape(logits, [-1, num_logits])
+    predictions = nn.softmax(logits_2d)
+    predictions = array_ops.reshape(predictions, array_ops.shape(logits))
+    predictions.set_shape(logits.get_shape())
+    return predictions
 
 
 def stack(inputs, layer, stack_args, **kwargs):
-    """Builds a stack of layers by applying layer repeatedly using stack_args.
+  """Builds a stack of layers by applying layer repeatedly using stack_args.
 
-    `stack` allows you to repeatedly apply the same operation with different
-    arguments `stack_args[i]`. For each application of the layer, `stack` creates
-    a new scope appended with an increasing number. For example:
+  `stack` allows you to repeatedly apply the same operation with different
+  arguments `stack_args[i]`. For each application of the layer, `stack` creates
+  a new scope appended with an increasing number. For example:
 
-    ```python
-      y = stack(x, fully_connected, [32, 64, 128], scope='fc')
-      # It is equivalent to:
+  ```python
+    y = stack(x, fully_connected, [32, 64, 128], scope='fc')
+    # It is equivalent to:
 
-      x = fully_connected(x, 32, scope='fc/fc_1')
-      x = fully_connected(x, 64, scope='fc/fc_2')
-      y = fully_connected(x, 128, scope='fc/fc_3')
-    ```
+    x = fully_connected(x, 32, scope='fc/fc_1')
+    x = fully_connected(x, 64, scope='fc/fc_2')
+    y = fully_connected(x, 128, scope='fc/fc_3')
+  ```
 
-    If the `scope` argument is not given in `kwargs`, it is set to
-    `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
-    objects). If neither `__name__` nor `func.__name__` is available, the
-    layers are called with `scope='stack'`.
+  If the `scope` argument is not given in `kwargs`, it is set to
+  `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+  objects). If neither `__name__` nor `func.__name__` is available, the
+  layers are called with `scope='stack'`.
 
-    Args:
-      inputs: A `Tensor` suitable for layer.
-      layer: A layer with arguments `(inputs, *args, **kwargs)`
-      stack_args: A list/tuple of parameters for each call of layer.
-      **kwargs: Extra kwargs for the layer.
+  Args:
+    inputs: A `Tensor` suitable for layer.
+    layer: A layer with arguments `(inputs, *args, **kwargs)`
+    stack_args: A list/tuple of parameters for each call of layer.
+    **kwargs: Extra kwargs for the layer.
 
-    Returns:
-      a `Tensor` result of applying the stacked layers.
+  Returns:
+    a `Tensor` result of applying the stacked layers.
 
-    Raises:
-      ValueError: if the op is unknown or wrong.
-    """
-    scope = kwargs.pop('scope', None)
-    if not isinstance(stack_args, (list, tuple)):
-        raise ValueError('stack_args need to be a list or tuple')
-    with variable_scope.variable_scope(scope, 'Stack', [inputs]):
-        inputs = ops.convert_to_tensor(inputs)
-        if scope is None:
-            if hasattr(layer, '__name__'):
-                scope = layer.__name__
-            elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
-                # In case layer is a functools.partial.
-                scope = layer.func.__name__
-            else:
-                scope = 'stack'
-        outputs = inputs
-        for i in range(len(stack_args)):
-            kwargs['scope'] = scope + '_' + str(i + 1)
-            layer_args = stack_args[i]
-            if not isinstance(layer_args, (list, tuple)):
-                layer_args = [layer_args]
-            outputs = layer(outputs, *layer_args, **kwargs)
-        return outputs
+  Raises:
+    ValueError: if the op is unknown or wrong.
+  """
+  scope = kwargs.pop('scope', None)
+  if not isinstance(stack_args, (list, tuple)):
+    raise ValueError('stack_args need to be a list or tuple')
+  with variable_scope.variable_scope(scope, 'Stack', [inputs]):
+    inputs = ops.convert_to_tensor(inputs)
+    if scope is None:
+      if hasattr(layer, '__name__'):
+        scope = layer.__name__
+      elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
+        scope = layer.func.__name__  # In case layer is a functools.partial.
+      else:
+        scope = 'stack'
+    outputs = inputs
+    for i in range(len(stack_args)):
+      kwargs['scope'] = scope + '_' + str(i+1)
+      layer_args = stack_args[i]
+      if not isinstance(layer_args, (list, tuple)):
+        layer_args = [layer_args]
+      outputs = layer(outputs, *layer_args, **kwargs)
+    return outputs
 
 
 @add_arg_scope
@@ -2095,7 +1996,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
         array_ops.strided_slice(array_ops.shape(inputs), [dim], [dim + 1]))
     if dim < (input_rank - 1):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
-    multiples = array_ops.concat(multiples, 0)
+    multiples = array_ops.concat_v2(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 
