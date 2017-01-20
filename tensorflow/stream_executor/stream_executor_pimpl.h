@@ -673,6 +673,10 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
 }
 
 template <typename ElemT>
+ScopedDeviceMemory<ElemT>::ScopedDeviceMemory()
+    : wrapped_(DeviceMemoryBase()), parent_(nullptr) {}
+
+template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor *parent,
                                               DeviceMemoryBase value)
     : wrapped_(value), parent_(parent) {}
@@ -692,18 +696,26 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
 
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::~ScopedDeviceMemory() {
+  if (wrapped_ == nullptr) return;
+  DCHECK(parent_ != nullptr);
   parent_->Deallocate(&wrapped_);
 }
 
 template <typename ElemT>
 void ScopedDeviceMemory<ElemT>::Reset(DeviceMemory<ElemT> updated) {
-  parent_->Deallocate(&wrapped_);
+  if (wrapped_ != nullptr) {
+    DCHECK(parent_ != nullptr);
+    parent_->Deallocate(&wrapped_);
+  }
   wrapped_ = updated;
 }
 
 template <typename ElemT>
 void ScopedDeviceMemory<ElemT>::Reset(std::nullptr_t) {
-  parent_->Deallocate(&wrapped_);
+  if (wrapped_ != nullptr) {
+    DCHECK(parent_ != nullptr);
+    parent_->Deallocate(&wrapped_);
+  }
   wrapped_ = DeviceMemory<ElemT>{};
 }
 
