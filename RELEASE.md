@@ -1,4 +1,4 @@
-# Release 1.0.0-alpha
+# Release 1.0.0
 
 ## Major Features and Improvements
 * TensorFlow Debugger (tfdbg): command-line interface and API.
@@ -84,6 +84,8 @@
 * Removes RegisterShape from public API. Use C++ shape function registration
   instead.
 * Deprecated `_ref` dtypes from the python API.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
 
 ## Bug Fixes and Other Changes
 * New op: `parallel_stack`.
@@ -139,6 +141,7 @@ Yuan (Terry) Tang, Yuxin Wu
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
+
 
 # Release 0.12.0
 
