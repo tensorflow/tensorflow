@@ -59,6 +59,8 @@
   behavior by specifying the attribute dct_method='INTEGER_ACCURATE'.
 * `tf.complex_abs` has been removed from the Python interface. `tf.abs`
   supports complex tensors and should be used instead.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
 
 # Release 0.12.0
 
