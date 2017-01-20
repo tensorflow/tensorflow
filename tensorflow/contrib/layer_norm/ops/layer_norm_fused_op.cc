@@ -16,7 +16,7 @@ REGISTER_OP("LayerNormCustom")
     })
     .Doc(R"doc(
         Custom efficient Layer Normalization GPU kernel.
-        Normalizes along last dimension.Uses two-pass algorithm to calculate variance.
+        Normalizes along last dimension. Uses two-pass algorithm to calculate variance.
 
         epsilon: tiny number added before taking rsqrt(variance) to prevent division of zero.
   )doc");
@@ -33,7 +33,7 @@ REGISTER_OP("LayerNormBackpropCustom")
     })
     .Doc(R"doc(
         Custom efficient Layer Normalization GPU kernel for back propagation.
-        Normalizes along last dimension.Uses two-pass algorithm to calculate variance. 
+        Normalizes along last dimension. Uses two-pass algorithm to calculate variance. 
 
         epsilon: tiny number added before taking rsqrt(variance) to prevent division of zero.
   )doc");
@@ -50,7 +50,7 @@ REGISTER_OP("LayerNormBiasAddCustom")
     })
     .Doc(R"doc(
         Custom efficient Layer Normalization fused with center(beta) op.
-        Normalizes along last dimension.Uses two-pass algorithm to calculate variance.
+        Normalizes along last dimension. Uses two-pass algorithm to calculate variance.
 
         With only CUDA kernel for GPU.
 
@@ -72,7 +72,7 @@ REGISTER_OP("LayerNormBiasAddBackpropCustom")
     })
     .Doc(R"doc(
         Custom efficient Layer Normalization backprop fused with center(beta) op.
-        Normalizes along last dimension.Uses two-pass algorithm to calculate variance. 
+        Normalizes along last dimension. Uses two-pass algorithm to calculate variance. 
 
         With only CUDA kernel for GPU.
 
@@ -95,7 +95,7 @@ REGISTER_OP("LayerNormFusedCustom")
     })
     .Doc(R"doc(
         Custom efficient Layer Normalization fused with scale(gamma) and center(beta) ops.
-        Normalizes along last dimension.Uses two-pass algorithm to calculate variance.
+        Normalizes along last dimension. Uses two-pass algorithm to calculate variance.
 
         With only CUDA kernel for GPU.
 
@@ -119,7 +119,7 @@ REGISTER_OP("LayerNormFusedBackpropCustom")
     })
     .Doc(R"doc(
         Custom efficient Layer Normalization backprop fused with scale(gamma) and center(beta) ops.
-        Normalizes along last dimension.Uses two-pass algorithm to calculate variance. 
+        Normalizes along last dimension. Uses two-pass algorithm to calculate variance. 
 
         With only CUDA kernel for GPU.
 

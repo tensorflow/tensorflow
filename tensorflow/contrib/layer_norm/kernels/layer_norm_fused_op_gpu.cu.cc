@@ -33,34 +33,33 @@ limitations under the License.
 __device__ double atomicAdd(double* a, double b) { return b; }
 #endif
 
-#define MAX_GRID_SIZE 480
+const static int MAX_GRID_SIZE = 480;
+const static int MAX_N_ILP = 5;
+const static int WARP_SIZE = 32;
+
 inline int get_num_blocks(const int n_slices, const int slice_per_block) {
-  const int _num_blocks = n_slices / slice_per_block;
-  if (_num_blocks * slice_per_block == n_slices)
-    return _num_blocks;
+  const int num_blocks = n_slices / slice_per_block;
+  if (num_blocks * slice_per_block == n_slices)
+    return num_blocks;
   else
-    return _num_blocks + 1;
+    return num_blocks + 1;
 }
 
-inline int get_block_size(const int slice_size, int& block_size, int& mult) {
-  const int _warp_size = 32;
-  int _block_size = _warp_size;
-  int _mult = slice_size / _block_size;
-  mult = _mult * _block_size >= slice_size ? _mult : _mult + 1;
-  while (mult > 5) {
-    _block_size += _warp_size;
-    _mult = slice_size / _block_size;
-    mult = _mult * _block_size >= slice_size ? _mult : _mult + 1;
+// Calculates optimal block_size and n_ILP(number of instruction level
+// parallelism)
+inline int get_block_size(const int slice_size, int& block_size, int& n_ILP) {
+  int tmp_block_size = WARP_SIZE;
+  int tmp_n_ILP = slice_size / tmp_block_size;
+  n_ILP =
+      (tmp_n_ILP * tmp_block_size) >= slice_size ? tmp_n_ILP : (tmp_n_ILP + 1);
+  while (n_ILP > MAX_N_ILP) {
+    tmp_block_size += WARP_SIZE;
+    tmp_n_ILP = slice_size / tmp_block_size;
+    n_ILP = (tmp_n_ILP * tmp_block_size) >= slice_size ? tmp_n_ILP
+                                                       : (tmp_n_ILP + 1);
   }
-  block_size = _block_size;
+  block_size = tmp_block_size;
   return 0;
-}
-
-template <typename T>
-__global__ void fillZeros(T* __restrict__ output, const int n_inputs) {
-  for (int thread_id = threadIdx.x + blockDim.x * blockIdx.x;
-       thread_id < n_inputs; thread_id += blockDim.x * gridDim.x)
-    output[thread_id] = static_cast<T>(0.0f);
 }
 
 template <typename T>
@@ -78,10 +77,10 @@ __device__ __inline__ void warpSum(T& val1, T& val2) {
 }
 
 template <typename T>
-__device__ __inline__ T get_value(const T* index, const int bound_check,
+__device__ __inline__ T get_value(const T* address, const int bound_check,
                                   const int up_bound) {
   if (bound_check < up_bound)
-    return __ldg(index);
+    return __ldg(address);
   else
     return static_cast<T>(0.0f);
 }
@@ -92,7 +91,7 @@ namespace {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename T, int mult>
+template <typename T, int n_ILP>
 __global__ void LayerNormGPUKernel(const LayerNormFusedArgs args,
                                    const T* __restrict__ input,
                                    T* __restrict__ output,
@@ -102,16 +101,16 @@ __global__ void LayerNormGPUKernel(const LayerNormFusedArgs args,
   const int n_inputs = args.n_inputs;
   const T epsilon = args.epsilon;
 
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
   const int thread_slice_id = threadIdx.x % slice_size;
 
   extern __shared__ __align__(sizeof(T)) unsigned char my_smem[];
   T* mean_cache = (T*)my_smem;
-  T* std_cache = (T*)&my_smem[sizeof(T)];
+  T* std_cache = mean_cache + 1;
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
-  T inp[mult];
-  int thread_id[mult];
+  T inp[n_ILP];
+  int thread_id[n_ILP];
 
   T sum;
   T sqSum;
@@ -123,48 +122,48 @@ __global__ void LayerNormGPUKernel(const LayerNormFusedArgs args,
     sqSum = static_cast<T>(0.0f);
 
     if (thread_slice_id == 0) {
-      mean_cache[0] = static_cast<T>(0.0f);
-      std_cache[0] = static_cast<T>(0.0f);
+      *mean_cache = static_cast<T>(0.0f);
+      *std_cache = static_cast<T>(0.0f);
     }
     __syncthreads();
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       thread_id[m] = bId * in_depth + m * blockDim.x + thread_slice_id;
     }
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       inp[m] = get_value<T>(input + thread_id[m],
                             thread_slice_id + m * blockDim.x, in_depth);
     }
 
-    UNROLL for (int m = 0; m < mult; m++) { sum += inp[m] * i_n; }
+    UNROLL for (int m = 0; m < n_ILP; m++) { sum += inp[m] * i_n; }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sum += __shfl_xor(sum, mask);
     }
-    if (thread_warp_id == 0) {
-      atomicAdd(&mean_cache[0], sum);
+    if (lane_id == 0) {
+      atomicAdd(mean_cache, sum);
     }
     __syncthreads();
 
-    mu = mean_cache[0];
-    UNROLL for (int m = 0; m < mult; m++) {
+    mu = *mean_cache;
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth)
         sqSum += (inp[m] - mu) * (inp[m] - mu);
     }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sqSum += __shfl_xor(sqSum, mask);
     }
-    if (thread_warp_id == 0) {
-      atomicAdd(&std_cache[0], sqSum);
+    if (lane_id == 0) {
+      atomicAdd(std_cache, sqSum);
     }
     __syncthreads();
     if (thread_slice_id == 0) {
-      std_cache[0] = rsqrt(std_cache[0] * i_n + epsilon);
+      *std_cache = rsqrt(*std_cache * i_n + epsilon);
     }
     __syncthreads();
-    rstd = std_cache[0];
+    rstd = *std_cache;
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth &&
           thread_id[m] < n_inputs) {
         output[thread_id[m]] = (inp[m] - mu) * rstd;
@@ -222,7 +221,7 @@ __global__ void LayerNormSmallGPUKernel(const LayerNormFusedArgs args,
   }
 }
 
-template <typename T, int mult>
+template <typename T, int n_ILP>
 __global__ void LayerNormBiasAddGPUKernel(const LayerNormFusedArgs args,
                                           const T* __restrict__ input,
                                           const T* __restrict__ beta,
@@ -233,7 +232,7 @@ __global__ void LayerNormBiasAddGPUKernel(const LayerNormFusedArgs args,
   const int n_inputs = args.n_inputs;
   const T epsilon = args.epsilon;
 
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const int thread_slice_id = threadIdx.x % slice_size;
 
@@ -242,18 +241,18 @@ __global__ void LayerNormBiasAddGPUKernel(const LayerNormFusedArgs args,
   T* std_cache = (T*)&my_smem[sizeof(T)];
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
-  T inp[mult];
-  T _beta[mult];
-  int thread_id[mult];
+  T inp[n_ILP];
+  T tmp_beta[n_ILP];
+  int thread_id[n_ILP];
 
   T sum;
   T sqSum;
   T mu;
   T rstd;
 
-  UNROLL for (int m = 0; m < mult; m++) {
-    _beta[m] = get_value<T>(beta + thread_slice_id + m * blockDim.x,
-                            thread_slice_id + m * blockDim.x, in_depth);
+  UNROLL for (int m = 0; m < n_ILP; m++) {
+    tmp_beta[m] = get_value<T>(beta + thread_slice_id + m * blockDim.x,
+                               thread_slice_id + m * blockDim.x, in_depth);
   }
 
   for (int bId = blockIdx.x; bId < num_blocks; bId += gridDim.x) {
@@ -261,51 +260,51 @@ __global__ void LayerNormBiasAddGPUKernel(const LayerNormFusedArgs args,
     sqSum = static_cast<T>(0.0f);
 
     if (thread_slice_id == 0) {
-      mean_cache[0] = static_cast<T>(0.0f);
-      std_cache[0] = static_cast<T>(0.0f);
+      *mean_cache = static_cast<T>(0.0f);
+      *std_cache = static_cast<T>(0.0f);
     }
     __syncthreads();
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       thread_id[m] = bId * in_depth + m * blockDim.x + thread_slice_id;
     }
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       inp[m] = get_value<T>(input + thread_id[m],
                             thread_slice_id + m * blockDim.x, in_depth);
     }
 
-    UNROLL for (int m = 0; m < mult; m++) { sum += inp[m] * i_n; }
+    UNROLL for (int m = 0; m < n_ILP; m++) { sum += inp[m] * i_n; }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sum += __shfl_xor(sum, mask);
     }
-    if (thread_warp_id == 0) {
-      atomicAdd(&mean_cache[0], sum);
+    if (lane_id == 0) {
+      atomicAdd(mean_cache, sum);
     }
     __syncthreads();
 
-    mu = mean_cache[0];
-    UNROLL for (int m = 0; m < mult; m++) {
+    mu = *mean_cache;
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth)
         sqSum += (inp[m] - mu) * (inp[m] - mu);
     }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sqSum += __shfl_xor(sqSum, mask);
     }
-    if (thread_warp_id == 0) {
-      atomicAdd(&std_cache[0], sqSum);
+    if (lane_id == 0) {
+      atomicAdd(std_cache, sqSum);
     }
     __syncthreads();
     if (thread_slice_id == 0) {
-      std_cache[0] = rsqrt(std_cache[0] * i_n + epsilon);
+      *std_cache = rsqrt(*std_cache * i_n + epsilon);
     }
     __syncthreads();
-    rstd = std_cache[0];
+    rstd = *std_cache;
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth &&
           thread_id[m] < n_inputs) {
-        output[thread_id[m]] = (inp[m] - mu) * rstd + _beta[m];
+        output[thread_id[m]] = (inp[m] - mu) * rstd + tmp_beta[m];
       }
     }
     __syncthreads();
@@ -330,7 +329,7 @@ __global__ void LayerNormBiasAddSmallGPUKernel(const LayerNormFusedArgs args,
   const int slice_id = threadIdx.x / slice_size;
   const int thread_slice_id = threadIdx.x % slice_size;
 
-  const T _beta =
+  const T tmp_beta =
       get_value<T>(beta + thread_slice_id, thread_slice_id, in_depth);
 
   T mu;
@@ -360,11 +359,11 @@ __global__ void LayerNormBiasAddSmallGPUKernel(const LayerNormFusedArgs args,
     rstd = rsqrt(rstd * i_n + epsilon);
 
     if (thread_slice_id < in_depth && thread_id < n_inputs)
-      output[thread_id] = (inp - mu) * rstd + _beta;
+      output[thread_id] = (inp - mu) * rstd + tmp_beta;
   }
 }
 
-template <typename T, int mult>
+template <typename T, int n_ILP>
 __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
                                         const T* __restrict__ input,
                                         const T* __restrict__ gamma,
@@ -376,7 +375,7 @@ __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
   const int n_inputs = args.n_inputs;
   const T epsilon = args.epsilon;
 
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const int thread_slice_id = threadIdx.x % slice_size;
 
@@ -385,21 +384,21 @@ __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
   T* std_cache = (T*)&my_smem[sizeof(T)];
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
-  T inp[mult];
-  T _gamma[mult];
-  T _beta[mult];
-  int thread_id[mult];
+  T inp[n_ILP];
+  T tmp_gamma[n_ILP];
+  T tmp_beta[n_ILP];
+  int thread_id[n_ILP];
 
   T sum;
   T sqSum;
   T mu;
   T rstd;
 
-  UNROLL for (int m = 0; m < mult; m++) {
-    _gamma[m] = get_value<T>(gamma + thread_slice_id + m * blockDim.x,
-                             thread_slice_id + m * blockDim.x, in_depth);
-    _beta[m] = get_value<T>(beta + thread_slice_id + m * blockDim.x,
-                            thread_slice_id + m * blockDim.x, in_depth);
+  UNROLL for (int m = 0; m < n_ILP; m++) {
+    tmp_gamma[m] = get_value<T>(gamma + thread_slice_id + m * blockDim.x,
+                                thread_slice_id + m * blockDim.x, in_depth);
+    tmp_beta[m] = get_value<T>(beta + thread_slice_id + m * blockDim.x,
+                               thread_slice_id + m * blockDim.x, in_depth);
   }
 
   for (int bId = blockIdx.x; bId < num_blocks; bId += gridDim.x) {
@@ -407,16 +406,16 @@ __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
     sqSum = static_cast<T>(0.0f);
 
     if (thread_slice_id == 0) {
-      mean_cache[0] = static_cast<T>(0.0f);
-      std_cache[0] = static_cast<T>(0.0f);
+      *mean_cache = static_cast<T>(0.0f);
+      *std_cache = static_cast<T>(0.0f);
     }
     __syncthreads();
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       thread_id[m] = bId * in_depth + m * blockDim.x + thread_slice_id;
     }
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       // inp[m] = __ldg(input+thread_id[m]);
       inp[m] = get_value<T>(input + thread_id[m],
                             thread_slice_id + m * blockDim.x, in_depth);
@@ -424,45 +423,46 @@ __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
       // printf("m:%d,bId:%d,tId:%d,inp:%f\n",m,bId,thread_id[m],inp[m]);
     }
 
-    UNROLL for (int m = 0; m < mult; m++) { sum += inp[m] * i_n; }
+    UNROLL for (int m = 0; m < n_ILP; m++) { sum += inp[m] * i_n; }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sum += __shfl_xor(sum, mask);
     }
-    // if(blockIdx.x==0&&thread_warp_id==0)printf("wi:%d,sum:%f,psmu:%f\n",threadIdx.x/warpSize,
+    // if(blockIdx.x==0&&lane_id==0)printf("wi:%d,sum:%f,psmu:%f\n",threadIdx.x/warpSize,
     // sum,mean_cache[slice_id]);
-    if (thread_warp_id == 0) {
-      atomicAdd(&mean_cache[0], sum);
+    if (lane_id == 0) {
+      atomicAdd(mean_cache, sum);
     }
-    // if(blockIdx.x==0&&thread_warp_id==0)printf("--wi:%d,sum:%f,psmu:%f\n",threadIdx.x/warpSize,
+    // if(blockIdx.x==0&&lane_id==0)printf("--wi:%d,sum:%f,psmu:%f\n",threadIdx.x/warpSize,
     // sum,mean_cache[slice_id]);
     __syncthreads();
 
-    mu = mean_cache[0];
+    mu = *mean_cache;
     // if(threadIdx.x==0&&blockIdx.x==0)printf("mu:%f\n", mu);
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth)
         sqSum += (inp[m] - mu) * (inp[m] - mu);
     }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sqSum += __shfl_xor(sqSum, mask);
     }
-    if (thread_warp_id == 0) {
-      atomicAdd(&std_cache[0], sqSum);
+    if (lane_id == 0) {
+      atomicAdd(std_cache, sqSum);
     }
     __syncthreads();
     if (thread_slice_id == 0) {
-      std_cache[0] = rsqrt(std_cache[0] * i_n + epsilon);
+      *std_cache = rsqrt(*std_cache * i_n + epsilon);
     }
     __syncthreads();
-    rstd = std_cache[0];
+    rstd = *std_cache;
     // if(threadIdx.x==0&&blockIdx.x==0)printf("rstd:%f\n", rstd);
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth &&
           thread_id[m] < n_inputs) {
         // const T tmp_out = (inp[m]-mu)*rstd;
         // if(threadIdx.x==0&&blockIdx.x==0)printf("m:%d,o:%f\n",m,tmp_out);
-        output[thread_id[m]] = (inp[m] - mu) * rstd * _gamma[m] + _beta[m];
+        output[thread_id[m]] =
+            (inp[m] - mu) * rstd * tmp_gamma[m] + tmp_beta[m];
         // output[thread_id[m]] = tmp_out;
       }
     }
@@ -486,9 +486,9 @@ __global__ void LayerNormFusedSmallGPUKernel(
   const int slice_id = threadIdx.x / slice_size;
   const int thread_slice_id = threadIdx.x % slice_size;
 
-  const T _gamma =
+  const T tmp_gamma =
       get_value<T>(gamma + thread_slice_id, thread_slice_id, in_depth);
-  const T _beta =
+  const T tmp_beta =
       get_value<T>(beta + thread_slice_id, thread_slice_id, in_depth);
 
   T mu;
@@ -519,12 +519,12 @@ __global__ void LayerNormFusedSmallGPUKernel(
     rstd = rsqrt(rstd * i_n + epsilon);
 
     if (thread_slice_id < in_depth && thread_id < n_inputs)
-      output[thread_id] = (inp - mu) * rstd * _gamma + _beta;
+      output[thread_id] = (inp - mu) * rstd * tmp_gamma + tmp_beta;
   }
 }
 }  // namespace
-#define LN_GPU_KERNEL(mult)                                       \
-  LayerNormGPUKernel<T, mult><<<grid_size, block_size, sbytes>>>( \
+#define LN_GPU_KERNEL(n_ILP)                                       \
+  LayerNormGPUKernel<T, n_ILP><<<grid_size, block_size, sbytes>>>( \
       args, input, output, num_blocks)
 // A simple launch pad to launch the Cuda kernel for Layer Normalization.
 template <typename T>
@@ -543,12 +543,12 @@ struct LayerNormGPULaunch {
       // limit the numebr of threads per block to reduce performance hit on
       // __syncthreads.
       int block_size;
-      int mult;
-      get_block_size(args.slice_size, block_size, mult);
+      int n_ILP;
+      get_block_size(args.slice_size, block_size, n_ILP);
       const int num_blocks = args.n_slices;
       const int sbytes = 2 * sizeof(T);
       const int grid_size = std::min(MAX_GRID_SIZE, num_blocks);
-      switch (mult) {
+      switch (n_ILP) {
         case 1:
           LN_GPU_KERNEL(1);
           break;
@@ -572,7 +572,7 @@ struct LayerNormGPULaunch {
 template struct LayerNormGPULaunch<float>;
 template struct LayerNormGPULaunch<double>;
 
-template <typename T, int mult>
+template <typename T, int n_ILP>
 __global__ void LayerNormBackpropGPUKernel(const LayerNormFusedArgs args,
                                            const T* __restrict__ input,
                                            const T* __restrict__ out_back,
@@ -584,20 +584,20 @@ __global__ void LayerNormBackpropGPUKernel(const LayerNormFusedArgs args,
   const T epsilon = args.epsilon;
 
   const int thread_slice_id = threadIdx.x % slice_size;
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
 
   extern __shared__ __align__(sizeof(T)) unsigned char my_smem[];
   T* mean_cache = (T*)my_smem;
-  T* std_cache = (T*)&my_smem[sizeof(T)];
-  T* dmu_cache = (T*)&my_smem[2 * sizeof(T)];
-  T* dstd_cache = (T*)&my_smem[3 * sizeof(T)];
+  T* std_cache = mean_cache + 1;
+  T* dmu_cache = mean_cache + 2;
+  T* dstd_cache = mean_cache + 3;
 
-  T inp[mult];
-  T dout[mult];
+  T inp[n_ILP];
+  T dout[n_ILP];
 
-  int thread_id[mult];
+  int thread_id[n_ILP];
 
   T mu;
   T rstd;
@@ -611,36 +611,36 @@ __global__ void LayerNormBackpropGPUKernel(const LayerNormFusedArgs args,
     dstd = static_cast<T>(0.0f);
 
     if (thread_slice_id == 0) {
-      mean_cache[0] = static_cast<T>(0.0f);
-      std_cache[0] = static_cast<T>(0.0f);
-      dmu_cache[0] = static_cast<T>(0.0f);
-      dstd_cache[0] = static_cast<T>(0.0f);
+      *mean_cache = static_cast<T>(0.0f);
+      *std_cache = static_cast<T>(0.0f);
+      *dmu_cache = static_cast<T>(0.0f);
+      *dstd_cache = static_cast<T>(0.0f);
     }
     __syncthreads();
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       thread_id[m] = bId * in_depth + m * blockDim.x + thread_slice_id;
     }
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       inp[m] = get_value<T>(input + thread_id[m],
                             thread_slice_id + m * blockDim.x, in_depth);
       dout[m] = get_value<T>(out_back + thread_id[m],
                              thread_slice_id + m * blockDim.x, in_depth);
     }
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       mu += inp[m] * i_n;
       dmu += dout[m] * i_n;
     }
 
     warpSum<T>(mu, dmu);
-    if (thread_warp_id == 0) {
-      atomicAdd(&mean_cache[0], mu);
-      atomicAdd(&dmu_cache[0], dmu);
+    if (lane_id == 0) {
+      atomicAdd(mean_cache, mu);
+      atomicAdd(dmu_cache, dmu);
     }
     __syncthreads();
 
-    mu = mean_cache[0];
-    UNROLL for (int m = 0; m < mult; m++) {
+    mu = *mean_cache;
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth) {
         rstd += (inp[m] - mu) * (inp[m] - mu);
         dstd += (inp[m] - mu) * dout[m];
@@ -649,23 +649,23 @@ __global__ void LayerNormBackpropGPUKernel(const LayerNormFusedArgs args,
 
     warpSum<T>(rstd, dstd);
 
-    if (thread_warp_id == 0) {
-      atomicAdd(&std_cache[0], rstd);
-      atomicAdd(&dstd_cache[0], dstd);
+    if (lane_id == 0) {
+      atomicAdd(std_cache, rstd);
+      atomicAdd(dstd_cache, dstd);
     }
     __syncthreads();
     if (thread_slice_id == 0) {
-      rstd = rsqrt(std_cache[0] * i_n + epsilon);
-      std_cache[0] = rstd;
-      dmu_cache[0] = dmu_cache[0] * rstd;
-      dstd_cache[0] = dstd_cache[0] * rstd * rstd * rstd * i_n;
+      rstd = rsqrt(*std_cache * i_n + epsilon);
+      *std_cache = rstd;
+      *dmu_cache = *dmu_cache * rstd;
+      *dstd_cache = *dstd_cache * rstd * rstd * rstd * i_n;
     }
     __syncthreads();
-    rstd = std_cache[0];
-    dstd = dstd_cache[0];
-    dmu = dmu_cache[0];
+    rstd = *std_cache;
+    dstd = *dstd_cache;
+    dmu = *dmu_cache;
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth &&
           thread_id[m] < n_inputs) {
         in_back[thread_id[m]] = dout[m] * rstd - (inp[m] - mu) * dstd - dmu;
@@ -738,8 +738,8 @@ __global__ void LayerNormSmallBackpropGPUKernel(const LayerNormFusedArgs args,
   }
 }
 
-#define LN_GPU_BACKPROP_KERNEL(mult)                                      \
-  LayerNormBackpropGPUKernel<T, mult><<<grid_size, block_size, sbytes>>>( \
+#define LN_GPU_BACKPROP_KERNEL(n_ILP)                                      \
+  LayerNormBackpropGPUKernel<T, n_ILP><<<grid_size, block_size, sbytes>>>( \
       args, input, out_back, in_back, num_blocks)
 template <typename T>
 struct LayerNormBackpropGPULaunch {
@@ -759,14 +759,14 @@ struct LayerNormBackpropGPULaunch {
       // limit the numebr of threads per block to reduce performance hit on
       // __syncthreads.
       int block_size;
-      int mult;
-      get_block_size(args.slice_size, block_size, mult);
+      int n_ILP;
+      get_block_size(args.slice_size, block_size, n_ILP);
       const int num_blocks = args.n_slices;
       const int sbytes = 4 * sizeof(T);
       const int max_grid =
           args.n_slices < 2 * MAX_GRID_SIZE ? 60 : MAX_GRID_SIZE;
       const int grid_size = std::min(max_grid, num_blocks);
-      switch (mult) {
+      switch (n_ILP) {
         case 1:
           LN_GPU_BACKPROP_KERNEL(1);
           break;
@@ -790,8 +790,8 @@ struct LayerNormBackpropGPULaunch {
 template struct LayerNormBackpropGPULaunch<float>;
 template struct LayerNormBackpropGPULaunch<double>;
 
-#define LN_GPU_BIASADD_KERNEL(mult)                                      \
-  LayerNormBiasAddGPUKernel<T, mult><<<grid_size, block_size, sbytes>>>( \
+#define LN_GPU_BIASADD_KERNEL(n_ILP)                                      \
+  LayerNormBiasAddGPUKernel<T, n_ILP><<<grid_size, block_size, sbytes>>>( \
       args, input, beta, output, num_blocks)
 // A simple launch pad to launch the Cuda kernel for Layer Normalization.
 template <typename T>
@@ -810,12 +810,12 @@ struct LayerNormBiasAddGPULaunch {
       // limit the numebr of threads per block to reduce performance hit on
       // __syncthreads.
       int block_size;
-      int mult;
-      get_block_size(args.slice_size, block_size, mult);
+      int n_ILP;
+      get_block_size(args.slice_size, block_size, n_ILP);
       const int num_blocks = args.n_slices;
       const int sbytes = 2 * sizeof(T);
       const int grid_size = std::min(MAX_GRID_SIZE, num_blocks);
-      switch (mult) {
+      switch (n_ILP) {
         case 1:
           LN_GPU_BIASADD_KERNEL(1);
           break;
@@ -839,7 +839,7 @@ struct LayerNormBiasAddGPULaunch {
 template struct LayerNormBiasAddGPULaunch<float>;
 template struct LayerNormBiasAddGPULaunch<double>;
 
-template <typename T, int mult>
+template <typename T, int n_ILP>
 __global__ void LayerNormBiasAddBackpropGPUKernel(
     const LayerNormFusedArgs args, const T* __restrict__ input,
     const T* __restrict__ out_back, T* __restrict__ in_back,
@@ -850,23 +850,25 @@ __global__ void LayerNormBiasAddBackpropGPUKernel(
   const T epsilon = args.epsilon;
 
   const int thread_slice_id = threadIdx.x % slice_size;
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
 
   extern __shared__ __align__(sizeof(T)) unsigned char my_smem[];
   T* mean_cache = (T*)my_smem;
-  T* std_cache = (T*)&my_smem[sizeof(T)];
-  T* dmu_cache = (T*)&my_smem[2 * sizeof(T)];
-  T* dstd_cache = (T*)&my_smem[3 * sizeof(T)];
+  T* std_cache = mean_cache + 1;
+  T* dmu_cache = mean_cache + 2;
+  T* dstd_cache = mean_cache + 3;
 
-  T inp[mult];
-  T dout[mult];
+  T inp[n_ILP];
+  T dout[n_ILP];
 
-  T _beta_bp[mult];
-  int thread_id[mult];
+  T tmp_beta_bp[n_ILP];
+  int thread_id[n_ILP];
 
-  UNROLL for (int m = 0; m < mult; m++) { _beta_bp[m] = static_cast<T>(0.0f); }
+  UNROLL for (int m = 0; m < n_ILP; m++) {
+    tmp_beta_bp[m] = static_cast<T>(0.0f);
+  }
 
   T mu;
   T rstd;
@@ -880,37 +882,37 @@ __global__ void LayerNormBiasAddBackpropGPUKernel(
     dstd = static_cast<T>(0.0f);
 
     if (thread_slice_id == 0) {
-      mean_cache[0] = static_cast<T>(0.0f);
-      std_cache[0] = static_cast<T>(0.0f);
-      dmu_cache[0] = static_cast<T>(0.0f);
-      dstd_cache[0] = static_cast<T>(0.0f);
+      *mean_cache = static_cast<T>(0.0f);
+      *std_cache = static_cast<T>(0.0f);
+      *dmu_cache = static_cast<T>(0.0f);
+      *dstd_cache = static_cast<T>(0.0f);
     }
     __syncthreads();
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       thread_id[m] = bId * in_depth + m * blockDim.x + thread_slice_id;
     }
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       inp[m] = get_value<T>(input + thread_id[m],
                             thread_slice_id + m * blockDim.x, in_depth);
       dout[m] = get_value<T>(out_back + thread_id[m],
                              thread_slice_id + m * blockDim.x, in_depth);
     }
 
-    UNROLL for (int m = 0; m < mult; m++) {
-      _beta_bp[m] += dout[m];
+    UNROLL for (int m = 0; m < n_ILP; m++) {
+      tmp_beta_bp[m] += dout[m];
       mu += inp[m] * i_n;
       dmu += dout[m] * i_n;
     }
 
     warpSum<T>(mu, dmu);
-    if (thread_warp_id == 0) {
-      atomicAdd(&mean_cache[0], mu);
-      atomicAdd(&dmu_cache[0], dmu);
+    if (lane_id == 0) {
+      atomicAdd(mean_cache, mu);
+      atomicAdd(dmu_cache, dmu);
     }
     __syncthreads();
 
-    mu = mean_cache[0];
-    UNROLL for (int m = 0; m < mult; m++) {
+    mu = *mean_cache;
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth) {
         rstd += (inp[m] - mu) * (inp[m] - mu);
         dstd += (inp[m] - mu) * dout[m];
@@ -919,23 +921,23 @@ __global__ void LayerNormBiasAddBackpropGPUKernel(
 
     warpSum<T>(rstd, dstd);
 
-    if (thread_warp_id == 0) {
-      atomicAdd(&std_cache[0], rstd);
-      atomicAdd(&dstd_cache[0], dstd);
+    if (lane_id == 0) {
+      atomicAdd(std_cache, rstd);
+      atomicAdd(dstd_cache, dstd);
     }
     __syncthreads();
     if (thread_slice_id == 0) {
-      rstd = rsqrt(std_cache[0] * i_n + epsilon);
-      std_cache[0] = rstd;
-      dmu_cache[0] = dmu_cache[0] * rstd;
-      dstd_cache[0] = dstd_cache[0] * rstd * rstd * rstd * i_n;
+      rstd = rsqrt(*std_cache * i_n + epsilon);
+      *std_cache = rstd;
+      *dmu_cache = *dmu_cache * rstd;
+      *dstd_cache = *dstd_cache * rstd * rstd * rstd * i_n;
     }
     __syncthreads();
-    rstd = std_cache[0];
-    dstd = dstd_cache[0];
-    dmu = dmu_cache[0];
+    rstd = *std_cache;
+    dstd = *dstd_cache;
+    dmu = *dmu_cache;
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth &&
           thread_id[m] < n_inputs) {
         in_back[thread_id[m]] = dout[m] * rstd - (inp[m] - mu) * dstd - dmu;
@@ -943,9 +945,9 @@ __global__ void LayerNormBiasAddBackpropGPUKernel(
     }
     __syncthreads();
   }
-  UNROLL for (int m = 0; m < mult; m++) {
+  UNROLL for (int m = 0; m < n_ILP; m++) {
     if (thread_slice_id + m * blockDim.x < in_depth) {
-      atomicAdd(beta_back + thread_slice_id + m * blockDim.x, _beta_bp[m]);
+      atomicAdd(beta_back + thread_slice_id + m * blockDim.x, tmp_beta_bp[m]);
     }
   }
 }
@@ -963,7 +965,7 @@ __global__ void LayerNormBiasAddSmallBackpropGPUKernel(
 
   const int slice_id = threadIdx.x / slice_size;
   const int thread_slice_id = threadIdx.x % slice_size;
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
 
@@ -979,7 +981,7 @@ __global__ void LayerNormBiasAddSmallBackpropGPUKernel(
   T dstd;
   T dmu;
 
-  T _beta_bp = static_cast<T>(0.0f);
+  T tmp_beta_bp = static_cast<T>(0.0f);
   // we need a thread block here to ensure initialization is complete
   __syncthreads();
   for (int bId = blockIdx.x; bId < num_blocks; bId += gridDim.x) {
@@ -994,7 +996,7 @@ __global__ void LayerNormBiasAddSmallBackpropGPUKernel(
     const T dout =
         get_value<T>(out_back + thread_id, thread_slice_id, in_depth);
 
-    _beta_bp += dout;
+    tmp_beta_bp += dout;
     mu += inp * i_n;
     dmu += dout * i_n;
 
@@ -1021,11 +1023,11 @@ __global__ void LayerNormBiasAddSmallBackpropGPUKernel(
       in_back[thread_id] = dout * rstd - (inp - mu) * dstd - dmu;
   }
   for (int mask = slice_size; mask < warpSize; mask *= 2) {
-    _beta_bp += __shfl_xor(_beta_bp, mask);
+    tmp_beta_bp += __shfl_xor(tmp_beta_bp, mask);
   }
   // accumulate *_bp into shared memory.
-  if (thread_warp_id < in_depth) {
-    atomicAdd(beta_cache + thread_slice_id, _beta_bp);
+  if (lane_id < in_depth) {
+    atomicAdd(beta_cache + thread_slice_id, tmp_beta_bp);
   }
   // add *_bp into global memory.
   __syncthreads();
@@ -1049,9 +1051,9 @@ void initialize_beta(const LayerNormFusedArgs args, T* beta_back) {
   initialize_beta_with_zeros<T><<<grid_size, block_size>>>(beta_back,
                                                            args.depth);
 }
-#define LN_GPU_BIASADD_BACKPROP_KERNEL(mult)                                  \
-  LayerNormBiasAddBackpropGPUKernel<T,                                        \
-                                    mult><<<grid_size, block_size, sbytes>>>( \
+#define LN_GPU_BIASADD_BACKPROP_KERNEL(n_ILP)                                  \
+  LayerNormBiasAddBackpropGPUKernel<T,                                         \
+                                    n_ILP><<<grid_size, block_size, sbytes>>>( \
       args, input, out_back, in_back, beta_back, num_blocks)
 template <typename T>
 struct LayerNormBiasAddBackpropGPULaunch {
@@ -1074,14 +1076,14 @@ struct LayerNormBiasAddBackpropGPULaunch {
       // limit the numebr of threads per block to reduce performance hit on
       // __syncthreads.
       int block_size;
-      int mult;
-      get_block_size(args.slice_size, block_size, mult);
+      int n_ILP;
+      get_block_size(args.slice_size, block_size, n_ILP);
       const int num_blocks = args.n_slices;
       const int sbytes = 4 * sizeof(T);
       const int max_grid =
           args.n_slices < 2 * MAX_GRID_SIZE ? 60 : MAX_GRID_SIZE;
       const int grid_size = std::min(max_grid, num_blocks);
-      switch (mult) {
+      switch (n_ILP) {
         case 1:
           LN_GPU_BIASADD_BACKPROP_KERNEL(1);
           break;
@@ -1105,8 +1107,8 @@ struct LayerNormBiasAddBackpropGPULaunch {
 template struct LayerNormBiasAddBackpropGPULaunch<float>;
 template struct LayerNormBiasAddBackpropGPULaunch<double>;
 
-#define LN_GPU_FUSED_KERNEL(mult)                                      \
-  LayerNormFusedGPUKernel<T, mult><<<grid_size, block_size, sbytes>>>( \
+#define LN_GPU_FUSED_KERNEL(n_ILP)                                      \
+  LayerNormFusedGPUKernel<T, n_ILP><<<grid_size, block_size, sbytes>>>( \
       args, input, gamma, beta, output, num_blocks)
 // A simple launch pad to launch the Cuda kernel for Layer Normalization.
 template <typename T>
@@ -1114,7 +1116,6 @@ struct LayerNormFusedGPULaunch {
   static void Run(const GPUDevice& d, const LayerNormFusedArgs args,
                   const T* input, const T* gamma, const T* beta, T* output) {
     const int warp_size = 32;
-    // fillZeros<T><<<60,256>>>(output,args.n_inputs);
 
     if (args.slice_size <= warp_size) {
       const int block_size = 256;
@@ -1128,13 +1129,13 @@ struct LayerNormFusedGPULaunch {
       // limit the numebr of threads per block to reduce performance hit on
       // __syncthreads.
       int block_size;
-      int mult;
-      get_block_size(args.slice_size, block_size, mult);
+      int n_ILP;
+      get_block_size(args.slice_size, block_size, n_ILP);
       const int num_blocks = args.n_slices;
       const int sbytes = 2 * sizeof(T);
-      // printf("mult:%d,bs:%d,nb:%d,spb:%d\n",mult,block_size,num_blocks,slice_per_block);
+      // printf("n_ILP:%d,bs:%d,nb:%d,spb:%d\n",n_ILP,block_size,num_blocks,slice_per_block);
       const int grid_size = std::min(MAX_GRID_SIZE, num_blocks);
-      switch (mult) {
+      switch (n_ILP) {
         case 1:
           LN_GPU_FUSED_KERNEL(1);
           break;
@@ -1158,7 +1159,7 @@ struct LayerNormFusedGPULaunch {
 template struct LayerNormFusedGPULaunch<float>;
 template struct LayerNormFusedGPULaunch<double>;
 
-template <typename T, int mult>
+template <typename T, int n_ILP>
 __global__ void LayerNormFusedBackpropGPUKernel(
     const LayerNormFusedArgs args, const T* __restrict__ input,
     const T* __restrict__ out_back, const T* __restrict__ gamma,
@@ -1168,29 +1169,29 @@ __global__ void LayerNormFusedBackpropGPUKernel(
   const int n_inputs = args.n_inputs;
   const T epsilon = args.epsilon;
 
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
 
   extern __shared__ __align__(sizeof(T)) unsigned char my_smem[];
   T* mean_cache = (T*)my_smem;
-  T* std_cache = (T*)&my_smem[sizeof(T)];
-  T* dmu_cache = (T*)&my_smem[2 * sizeof(T)];
-  T* dstd_cache = (T*)&my_smem[3 * sizeof(T)];
+  T* std_cache = mean_cache + 1;
+  T* dmu_cache = mean_cache + 2;
+  T* dstd_cache = mean_cache + 3;
 
-  T inp[mult];
-  T dout[mult];
+  T inp[n_ILP];
+  T dout[n_ILP];
 
-  T _gamma[mult];
-  T _gamma_bp[mult];
-  T _beta_bp[mult];
-  int thread_id[mult];
+  T tmp_gamma[n_ILP];
+  T tmp_gamma_bp[n_ILP];
+  T tmp_beta_bp[n_ILP];
+  int thread_id[n_ILP];
 
-  UNROLL for (int m = 0; m < mult; m++) {
-    _beta_bp[m] = static_cast<T>(0.0f);
-    _gamma_bp[m] = static_cast<T>(0.0f);
-    _gamma[m] = get_value<T>(gamma + threadIdx.x + m * blockDim.x,
-                             threadIdx.x + m * blockDim.x, in_depth);
+  UNROLL for (int m = 0; m < n_ILP; m++) {
+    tmp_beta_bp[m] = static_cast<T>(0.0f);
+    tmp_gamma_bp[m] = static_cast<T>(0.0f);
+    tmp_gamma[m] = get_value<T>(gamma + threadIdx.x + m * blockDim.x,
+                                threadIdx.x + m * blockDim.x, in_depth);
   }
 
   T mu;
@@ -1204,75 +1205,75 @@ __global__ void LayerNormFusedBackpropGPUKernel(
     dstd = static_cast<T>(0.0f);
 
     if (threadIdx.x == 0) {
-      mean_cache[0] = static_cast<T>(0.0f);
-      std_cache[0] = static_cast<T>(0.0f);
-      dmu_cache[0] = static_cast<T>(0.0f);
-      dstd_cache[0] = static_cast<T>(0.0f);
+      *mean_cache = static_cast<T>(0.0f);
+      *std_cache = static_cast<T>(0.0f);
+      *dmu_cache = static_cast<T>(0.0f);
+      *dstd_cache = static_cast<T>(0.0f);
     }
     __syncthreads();
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       thread_id[m] = bId * in_depth + m * blockDim.x + threadIdx.x;
     }
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       inp[m] = get_value<T>(input + thread_id[m], threadIdx.x + m * blockDim.x,
                             in_depth);
       dout[m] = get_value<T>(out_back + thread_id[m],
                              threadIdx.x + m * blockDim.x, in_depth);
     }
 
-    UNROLL for (int m = 0; m < mult; m++) {
-      _beta_bp[m] += dout[m];
+    UNROLL for (int m = 0; m < n_ILP; m++) {
+      tmp_beta_bp[m] += dout[m];
       mu += inp[m] * i_n;
-      dmu += dout[m] * _gamma[m] * i_n;
+      dmu += dout[m] * tmp_gamma[m] * i_n;
     }
 
     warpSum<T>(mu, dmu);
-    if (thread_warp_id == 0) {
-      atomicAdd(&mean_cache[0], mu);
-      atomicAdd(&dmu_cache[0], dmu);
+    if (lane_id == 0) {
+      atomicAdd(mean_cache, mu);
+      atomicAdd(dmu_cache, dmu);
     }
     __syncthreads();
 
-    mu = mean_cache[0];
-    UNROLL for (int m = 0; m < mult; m++) {
+    mu = *mean_cache;
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (threadIdx.x + m * blockDim.x < in_depth) {
         rstd += (inp[m] - mu) * (inp[m] - mu);
-        dstd += (inp[m] - mu) * dout[m] * _gamma[m];
+        dstd += (inp[m] - mu) * dout[m] * tmp_gamma[m];
       }
     }
 
     warpSum<T>(rstd, dstd);
 
-    if (thread_warp_id == 0) {
-      atomicAdd(&std_cache[0], rstd);
-      atomicAdd(&dstd_cache[0], dstd);
+    if (lane_id == 0) {
+      atomicAdd(std_cache, rstd);
+      atomicAdd(dstd_cache, dstd);
     }
     __syncthreads();
     if (threadIdx.x == 0) {
-      rstd = rsqrt(std_cache[0] * i_n + epsilon);
-      std_cache[0] = rstd;
-      dmu_cache[0] = dmu_cache[0] * rstd;
-      dstd_cache[0] = dstd_cache[0] * rstd * rstd * rstd * i_n;
+      rstd = rsqrt(*std_cache * i_n + epsilon);
+      *std_cache = rstd;
+      *dmu_cache = *dmu_cache * rstd;
+      *dstd_cache = *dstd_cache * rstd * rstd * rstd * i_n;
     }
     __syncthreads();
-    rstd = std_cache[0];
-    dstd = dstd_cache[0];
-    dmu = dmu_cache[0];
+    rstd = *std_cache;
+    dstd = *dstd_cache;
+    dmu = *dmu_cache;
 
-    UNROLL for (int m = 0; m < mult; m++) {
+    UNROLL for (int m = 0; m < n_ILP; m++) {
       if (threadIdx.x + m * blockDim.x < in_depth && thread_id[m] < n_inputs) {
-        _gamma_bp[m] += dout[m] * (inp[m] - mu) * rstd;
+        tmp_gamma_bp[m] += dout[m] * (inp[m] - mu) * rstd;
         in_back[thread_id[m]] =
-            dout[m] * _gamma[m] * rstd - (inp[m] - mu) * dstd - dmu;
+            dout[m] * tmp_gamma[m] * rstd - (inp[m] - mu) * dstd - dmu;
       }
     }
     __syncthreads();
   }
 
-  UNROLL for (int m = 0; m < mult; m++) {
+  UNROLL for (int m = 0; m < n_ILP; m++) {
     if (threadIdx.x + m * blockDim.x < in_depth) {
-      atomicAdd(gamma_back + threadIdx.x + m * blockDim.x, _gamma_bp[m]);
-      atomicAdd(beta_back + threadIdx.x + m * blockDim.x, _beta_bp[m]);
+      atomicAdd(gamma_back + threadIdx.x + m * blockDim.x, tmp_gamma_bp[m]);
+      atomicAdd(beta_back + threadIdx.x + m * blockDim.x, tmp_beta_bp[m]);
     }
   }
 }
@@ -1291,7 +1292,7 @@ __global__ void LayerNormFusedSmallBackpropGPUKernel(
 
   const int slice_id = threadIdx.x / slice_size;
   const int thread_slice_id = threadIdx.x % slice_size;
-  const int thread_warp_id = threadIdx.x % warpSize;
+  const int lane_id = threadIdx.x % warpSize;
 
   const T i_n = static_cast<T>(1.0f) / static_cast<T>(in_depth);
 
@@ -1304,15 +1305,15 @@ __global__ void LayerNormFusedSmallBackpropGPUKernel(
     beta_cache[threadIdx.x] = static_cast<T>(0.0f);
   }
 
-  const T _gamma =
+  const T tmp_gamma =
       get_value<T>(gamma + thread_slice_id, thread_slice_id, in_depth);
   T mu;
   T rstd;
   T dstd;
   T dmu;
 
-  T _gamma_bp = static_cast<T>(0.0f);
-  T _beta_bp = static_cast<T>(0.0f);
+  T tmp_gamma_bp = static_cast<T>(0.0f);
+  T tmp_beta_bp = static_cast<T>(0.0f);
   // we need a thread block here to ensure initialization is complete
   __syncthreads();
   for (int bId = blockIdx.x; bId < num_blocks; bId += gridDim.x) {
@@ -1327,10 +1328,10 @@ __global__ void LayerNormFusedSmallBackpropGPUKernel(
     const T dout =
         get_value<T>(out_back + thread_id, thread_slice_id, in_depth);
 
-    const T dout_g = dout * _gamma;
-    _beta_bp += dout;
+    const T dout_g = dout * tmp_gamma;
+    tmp_beta_bp += dout;
     mu += inp * i_n;
-    dmu += dout * _gamma * i_n;
+    dmu += dout * tmp_gamma * i_n;
 
     for (int mask = slice_size / 2; mask > 0; mask /= 2) {
       mu += __shfl_xor(mu, mask);
@@ -1352,18 +1353,18 @@ __global__ void LayerNormFusedSmallBackpropGPUKernel(
     dstd = dstd * rstd * rstd * rstd * i_n;
 
     if (thread_slice_id < in_depth && thread_id < n_inputs) {
-      _gamma_bp += dout * (inp - mu) * rstd;
+      tmp_gamma_bp += dout * (inp - mu) * rstd;
       in_back[thread_id] = dout_g * rstd - (inp - mu) * dstd - dmu;
     }
   }
   for (int mask = slice_size; mask < warpSize; mask *= 2) {
-    _gamma_bp += __shfl_xor(_gamma_bp, mask);
-    _beta_bp += __shfl_xor(_beta_bp, mask);
+    tmp_gamma_bp += __shfl_xor(tmp_gamma_bp, mask);
+    tmp_beta_bp += __shfl_xor(tmp_beta_bp, mask);
   }
   // accumulate *_bp into shared memory.
-  if (thread_warp_id < in_depth) {
-    atomicAdd(gamma_cache + thread_slice_id, _gamma_bp);
-    atomicAdd(beta_cache + thread_slice_id, _beta_bp);
+  if (lane_id < in_depth) {
+    atomicAdd(gamma_cache + thread_slice_id, tmp_gamma_bp);
+    atomicAdd(beta_cache + thread_slice_id, tmp_beta_bp);
   }
   // add *_bp into global memory.
   __syncthreads();
@@ -1393,9 +1394,10 @@ void initialize_outputs(const LayerNormFusedArgs args, T* gamma_back,
   initialize_with_zeros<T><<<grid_size, block_size>>>(gamma_back, beta_back,
                                                       args.depth);
 }
-#define LN_GPU_FUSED_BACKPROP_KERNEL(mult)                                     \
-  LayerNormFusedBackpropGPUKernel<T, mult><<<grid_size, block_size, sbytes>>>( \
-      args, input, out_back, gamma, in_back, gamma_back, beta_back,            \
+#define LN_GPU_FUSED_BACKPROP_KERNEL(n_ILP)                                  \
+  LayerNormFusedBackpropGPUKernel<T,                                         \
+                                  n_ILP><<<grid_size, block_size, sbytes>>>( \
+      args, input, out_back, gamma, in_back, gamma_back, beta_back,          \
       num_blocks)
 template <typename T>
 struct LayerNormFusedBackpropGPULaunch {
@@ -1421,14 +1423,14 @@ struct LayerNormFusedBackpropGPULaunch {
       // limit the numebr of threads per block to reduce performance hit on
       // __syncthreads.
       int block_size;
-      int mult;
-      get_block_size(args.slice_size, block_size, mult);
+      int n_ILP;
+      get_block_size(args.slice_size, block_size, n_ILP);
       const int num_blocks = args.n_slices;
       const int sbytes = 4 * sizeof(T);
       const int max_grid =
           args.n_slices < 2 * MAX_GRID_SIZE ? 60 : MAX_GRID_SIZE;
       const int grid_size = std::min(max_grid, num_blocks);
-      switch (mult) {
+      switch (n_ILP) {
         case 1:
           LN_GPU_FUSED_BACKPROP_KERNEL(1);
           break;

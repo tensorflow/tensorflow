@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "./layer_norm_fused_op.h"
+#include "tensorflow/contrib/layer_norm/kernels/layer_norm_fused_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 // temporarily hard coding WARP_SIZE for CUDA kernels.
@@ -95,10 +95,7 @@ class LayerNormOp : public OpKernel {
     const int32 last_dim = input.dims() - 1;
     const int32 depth = input.dim_size(last_dim);
 
-    int32 n_slices = 1;
-    for (int i = 0; i < last_dim; ++i) {
-      n_slices *= input.dim_size(i);
-    }
+    int32 n_slices = input.NumElements() / depth;
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

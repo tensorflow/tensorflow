@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "./layer_norm_fused_op.h"
+#include "tensorflow/contrib/layer_norm/kernels/layer_norm_fused_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 // temporarily hard coding warp_size for CUDA kernels.
@@ -102,10 +102,7 @@ class LayerNormBackpropOp : public OpKernel {
     const int32 last_dim = input.dims() - 1;
     const int32 depth = input.dim_size(last_dim);
 
-    int32 n_slices = 1;
-    for (int i = 0; i < last_dim; ++i) {
-      n_slices *= input.dim_size(i);
-    }
+    int32 n_slices = input.NumElements() / depth;
 
     Tensor* in_back = nullptr;
     OP_REQUIRES_OK(context,
@@ -122,14 +119,15 @@ class LayerNormBackpropOp : public OpKernel {
     args.epsilon = epsilon_;
 
     if (depth <= WARP_SIZE) {
-      int tmp_depth = depth;
       int slice_size = 1;
-      while (tmp_depth >>= 1) slice_size *= 2;
+      while (slice_size < depth) {
+        slice_size <<= 1;
+      }
       args.slice_size = slice_size >= depth ? slice_size : slice_size * 2;
     } else {
-      int slice_size = (depth / WARP_SIZE) * WARP_SIZE;
-      args.slice_size =
-          slice_size >= depth ? slice_size : slice_size + WARP_SIZE;
+      int slice_size = slice_size =
+          (depth + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
+      args.slice_size = slice_size;
     }
 
     auto input_ptr = input.template flat<T>().data();
