@@ -158,6 +158,14 @@ if(tensorflow_ENABLE_SSL_SUPPORT)
   list(APPEND tf_core_lib_srcs ${tf_core_platform_cloud_srcs})
 endif()
 
+if (tensorflow_ENABLE_HDFS_SUPPORT)
+  list(APPEND tf_core_platform_hdfs_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/hadoop/hadoop_file_system.cc"
+      "${tensorflow_source_dir}/tensorflow/core/platform/hadoop/hadoop_file_system.h"
+  )
+  list(APPEND tf_core_lib_srcs ${tf_core_platform_hdfs_srcs})
+endif()
+
 file(GLOB_RECURSE tf_core_lib_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/lib/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/lib/*test*.cc"

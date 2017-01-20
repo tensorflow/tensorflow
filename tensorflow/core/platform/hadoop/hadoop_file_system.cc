@@ -27,6 +27,12 @@ limitations under the License.
 #include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
+#if defined(PLATFORM_WINDOWS)
+#define LIBHDFS_DSO "hdfs.dll"
+#else
+#define LIBHDFS_DSO "libhdfs.so"
+#endif
+
 namespace tensorflow {
 
 template <typename R, typename... Args>
@@ -110,12 +116,12 @@ class LibHDFS {
           "Environment variable HADOOP_HDFS_HOME not set");
       return;
     }
-    string path = io::JoinPath(hdfs_home, "lib", "native", "libhdfs.so");
+    string path = io::JoinPath(hdfs_home, "lib", "native", LIBHDFS_DSO);
     status_ = TryLoadAndBind(path.c_str(), &handle_);
     if (!status_.ok()) {
       // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
       // is installed in non-standard location
-      status_ = TryLoadAndBind("libhdfs.so", &handle_);
+      status_ = TryLoadAndBind(LIBHDFS_DSO, &handle_);
     }
     return;
   }
