@@ -196,6 +196,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 @@segment_mean
 
 @@unsorted_segment_sum
+@@unsorted_segment_max
 
 @@sparse_segment_sum
 @@sparse_segment_mean
