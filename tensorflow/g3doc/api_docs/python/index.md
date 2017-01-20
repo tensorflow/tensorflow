@@ -1037,6 +1037,7 @@
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorScaledIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorScaledIdentity)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
+  * [`LinearOperatorUDVHUpdate`](../../api_docs/python/contrib.linalg.md#LinearOperatorUDVHUpdate)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)
