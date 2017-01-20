@@ -25,9 +25,7 @@ __all__ = ['ExportStrategy']
 
 
 class ExportStrategy(collections.namedtuple('ExportStrategy',
-                                            ['name',
-                                             'export_fn',
-                                             'end_fn'])):
+                                            ['name', 'export_fn'])):
   """A class representing a type of model export.
 
   Typically constructed by a utility function specific to the exporter, such as
@@ -37,26 +35,10 @@ class ExportStrategy(collections.namedtuple('ExportStrategy',
     name: The directory name under the export base directory where exports of
       this type will be written.
     export_fn: A function that writes an export, given an estimator and a
-      destination path.  This may be run repeatedly during continuous training.
-    end_fn: A function to be run at the end of training, taking a single
-      argument naming the ExportStrategy-specific export directory.  This is
-      typically used to take some action regarding the most recent export, such
-      as copying it to another location.
+      destination path.  This may be run repeatedly during continuous training,
+      or just once at the end of fixed-length training.
   """
-
-  def __new__(cls,
-              name,
-              export_fn,
-              end_fn=None):
-
-    return super(ExportStrategy, cls).__new__(cls,
-                                              name=name,
-                                              export_fn=export_fn,
-                                              end_fn=end_fn)
 
   def export(self, estimator, export_path):
     return self.export_fn(estimator, export_path)
-
-  def end(self, export_path):
-    return self.end_fn(export_path)
 

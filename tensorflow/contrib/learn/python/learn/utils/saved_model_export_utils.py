@@ -275,8 +275,7 @@ def make_export_strategy(serving_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
                          as_text=False,
-                         exports_to_keep=5,
-                         end_fn=None):
+                         exports_to_keep=5):
   """Create an ExportStrategy for use with Experiment.
 
   Args:
@@ -296,10 +295,6 @@ def make_export_strategy(serving_input_fn,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
-    end_fn: A function to be run at the end of training, taking a single
-      argument naming the ExportStrategy-specific export directory.  This is
-      typically used to take some action regarding the most recent export, such
-      as copying it to another location.
 
   Returns:
     an ExportStrategy that can be passed to the Experiment constructor.
@@ -326,4 +321,4 @@ def make_export_strategy(serving_input_fn,
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn, end_fn)
+  return export_strategy.ExportStrategy('Servo', export_fn)
