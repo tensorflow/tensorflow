@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+// Companion source file for libtensorflow_test.sh
 
-#include "tensorflow/core/framework/op_def.pb.h"
+#include <tensorflow/c/c_api.h>
 
-namespace tensorflow {
-
-/// Result is written to files dot_h and dot_cc.
-void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
-                const std::string& dot_cc_fname);
-
-}  // namespace tensorflow
-
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+int main() {
+  TF_Status* s = TF_NewStatus();
+  TF_SetStatus(s, TF_UNKNOWN, "Some error");
+  if (TF_GetCode(s) != TF_UNKNOWN) {
+    return 1;
+  }
+  TF_DeleteStatus(s);
+  return 0;
+}

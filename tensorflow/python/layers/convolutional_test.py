@@ -18,11 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional as conv_layers
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -191,21 +196,45 @@ class ConvTest(test.TestCase):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     conv_layers.conv2d(images, 32, [3, 3], name='conv1')
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv2d(images, 32, [3, 3], name='conv1', reuse=True)
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    self.assertEqual(len(variables.trainable_variables()), 2)
+
+  def testFunctionalConv2DReuseFromScope(self):
+    with variable_scope.variable_scope('scope'):
+      height, width = 7, 9
+      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      conv_layers.conv2d(images, 32, [3, 3], name='conv1')
+      self.assertEqual(len(variables.trainable_variables()), 2)
+    with variable_scope.variable_scope('scope', reuse=True):
+      conv_layers.conv2d(images, 32, [3, 3], name='conv1')
+      self.assertEqual(len(variables.trainable_variables()), 2)
+
+  def testFunctionalConv2DInitializerFromScope(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          'scope', initializer=init_ops.ones_initializer()):
+        height, width = 7, 9
+        images = random_ops.random_uniform((5, height, width, 3), seed=1)
+        conv_layers.conv2d(images, 32, [3, 3], name='conv1')
+        weights = variables.trainable_variables()
+        # Check the names of weights in order.
+        self.assertTrue('kernel' in weights[0].name)
+        self.assertTrue('bias' in weights[1].name)
+        sess.run(variables.global_variables_initializer())
+        weights = sess.run(weights)
+        # Check that the kernel weights got initialized to ones (from scope)
+        self.assertAllClose(weights[0], np.ones((3, 3, 3, 32)))
+        # Check that the bias still got initialized to zeros.
+        self.assertAllClose(weights[1], np.zeros((32)))
 
   def testFunctionalConv2DNoReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     conv_layers.conv2d(images, 32, [3, 3])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv2d(images, 32, [3, 3])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 4)
+    self.assertEqual(len(variables.trainable_variables()), 4)
 
 
 class SeparableConv2DTest(test.TestCase):
@@ -323,22 +352,48 @@ class SeparableConv2DTest(test.TestCase):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     conv_layers.separable_conv2d(images, 32, [3, 3], name='sepconv1')
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 3)
+    self.assertEqual(len(variables.trainable_variables()), 3)
     conv_layers.separable_conv2d(
         images, 32, [3, 3], name='sepconv1', reuse=True)
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 3)
+    self.assertEqual(len(variables.trainable_variables()), 3)
+
+  def testFunctionalConv2DReuseFromScope(self):
+    with variable_scope.variable_scope('scope'):
+      height, width = 7, 9
+      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      conv_layers.separable_conv2d(images, 32, [3, 3], name='sepconv1')
+      self.assertEqual(len(variables.trainable_variables()), 3)
+    with variable_scope.variable_scope('scope', reuse=True):
+      conv_layers.separable_conv2d(images, 32, [3, 3], name='sepconv1')
+      self.assertEqual(len(variables.trainable_variables()), 3)
+
+  def testFunctionalConv2DInitializerFromScope(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          'scope', initializer=init_ops.ones_initializer()):
+        height, width = 7, 9
+        images = random_ops.random_uniform((5, height, width, 3), seed=1)
+        conv_layers.separable_conv2d(images, 32, [3, 3], name='sepconv1')
+        weights = variables.trainable_variables()
+        # Check the names of weights in order.
+        self.assertTrue('depthwise_kernel' in weights[0].name)
+        self.assertTrue('pointwise_kernel' in weights[1].name)
+        self.assertTrue('bias' in weights[2].name)
+        sess.run(variables.global_variables_initializer())
+        weights = sess.run(weights)
+        # Check that the kernel weights got initialized to ones (from scope)
+        self.assertAllClose(weights[0], np.ones((3, 3, 3, 1)))
+        self.assertAllClose(weights[1], np.ones((1, 1, 3, 32)))
+        # Check that the bias still got initialized to zeros.
+        self.assertAllClose(weights[2], np.zeros((32)))
 
   def testFunctionalConv2DNoReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     conv_layers.separable_conv2d(images, 32, [3, 3])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 3)
+    self.assertEqual(len(variables.trainable_variables()), 3)
     conv_layers.separable_conv2d(images, 32, [3, 3])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 6)
+    self.assertEqual(len(variables.trainable_variables()), 6)
 
   def testSeparableConv2DDepthwiseRegularizer(self):
     height, width = 7, 9
@@ -511,21 +566,45 @@ class Conv2DTransposeTest(test.TestCase):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1')
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1', reuse=True)
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    self.assertEqual(len(variables.trainable_variables()), 2)
+
+  def testFunctionalConv2DTransposeReuseFromScope(self):
+    with variable_scope.variable_scope('scope'):
+      height, width = 7, 9
+      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1')
+      self.assertEqual(len(variables.trainable_variables()), 2)
+    with variable_scope.variable_scope('scope', reuse=True):
+      conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1')
+      self.assertEqual(len(variables.trainable_variables()), 2)
+
+  def testFunctionalConv2DTransposeInitializerFromScope(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          'scope', initializer=init_ops.ones_initializer()):
+        height, width = 7, 9
+        images = random_ops.random_uniform((5, height, width, 3), seed=1)
+        conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1')
+        weights = variables.trainable_variables()
+        # Check the names of weights in order.
+        self.assertTrue('kernel' in weights[0].name)
+        self.assertTrue('bias' in weights[1].name)
+        sess.run(variables.global_variables_initializer())
+        weights = sess.run(weights)
+        # Check that the kernel weights got initialized to ones (from scope)
+        self.assertAllClose(weights[0], np.ones((3, 3, 32, 3)))
+        # Check that the bias still got initialized to zeros.
+        self.assertAllClose(weights[1], np.zeros((32)))
 
   def testFunctionalConv2DTransposeNoReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     conv_layers.conv2d_transpose(images, 32, [3, 3])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv2d_transpose(images, 32, [3, 3])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 4)
+    self.assertEqual(len(variables.trainable_variables()), 4)
 
 
 if __name__ == '__main__':
