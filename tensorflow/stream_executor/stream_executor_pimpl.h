@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <memory>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -71,8 +72,10 @@ class StreamExecutor {
  public:
   explicit StreamExecutor(PlatformKind kind,
                           const PluginConfig &plugin_config = PluginConfig());
-  StreamExecutor(const Platform *platform,
-                 internal::StreamExecutorInterface *implementation);
+
+  StreamExecutor(
+      const Platform *platform,
+      std::unique_ptr<internal::StreamExecutorInterface> implementation);
 
   ~StreamExecutor();
 
