@@ -3123,7 +3123,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If `None`, cycles through the dataset forever.
     NOTE - If specified, creates a variable that must be initialized, so call
-    `tf.global_variables_initializer()` as shown in the tests.
+    `tf.global_variables_initializer()` and run the op in a session.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
 *  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
@@ -3172,7 +3172,7 @@ All ops are added to the default graph.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.local_variables_initializer() as shown in the tests.
+    tf.local_variables_initializer() and run the op in a session.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`feature_queue_capacity`</b>: Capacity of the parsed features queue. Set this
     value to a small number, for example 5 if the parsed features are large.
@@ -3211,7 +3211,7 @@ See more detailed description in `read_examples`.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.local_variables_initializer() as shown in the tests.
+    tf.local_variables_initializer() and run the op in a session.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`name`</b>: Name of resulting op.
