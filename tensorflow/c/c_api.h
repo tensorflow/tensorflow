@@ -801,7 +801,42 @@ extern void TF_DeleteImportGraphDefOptions(TF_ImportGraphDefOptions* opts);
 extern void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
                                               const char* prefix);
 
+// Set any imported nodes with input `src_name:src_index` to have that input
+// replaced with `dst`. `src_name` refers to a node in the graph to be imported,
+// `dst` references a node already existing in the graph being imported into.
+extern void TF_ImportGraphDefOptionsAddInputMapping(
+    TF_ImportGraphDefOptions* opts, const char* src_name, int src_index,
+    TF_Output dst);
+
+// Cause the imported graph to have a control dependency on `oper`. `oper`
+// should exist in the graph being imported into.
+extern void TF_ImportGraphDefOptionsAddControlDependency(
+    TF_ImportGraphDefOptions* opts, TF_Operation* oper);
+
+// Add an output in `graph_def` to be returned via the `return_outputs` output
+// parameter of TF_GraphImportGraphDef(). If the output is remapped via an input
+// mapping, the corresponding existing tensor in `graph` will be returned.
+extern void TF_ImportGraphDefOptionsAddReturnOutput(
+    TF_ImportGraphDefOptions* opts, const char* oper_name, int index);
+
+// Returns the number of return outputs added via
+// TF_ImportGraphDefOptionsAddReturnOutput().
+extern int TF_ImportGraphDefOptionsNumReturnOutputs(
+    const TF_ImportGraphDefOptions* opts);
+
 // Import the graph serialized in `graph_def` into `graph`.
+//
+// `num_return_outputs` must be the number of return outputs added (i.e. the
+// result of TF_ImportGraphDefOptionsNumReturnOutputs()).  If
+// `num_return_outputs` is non-zero, `return_outputs` must be of length
+// `num_return_outputs`. Otherwise it can be null.
+extern void TF_GraphImportGraphDefWithReturnOutputs(
+    TF_Graph* graph, const TF_Buffer* graph_def,
+    const TF_ImportGraphDefOptions* options, TF_Output* return_outputs,
+    int num_return_outputs, TF_Status* status);
+
+// Import the graph serialized in `graph_def` into `graph`.
+// Convenience function for when no return outputs have been added.
 extern void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
                                    const TF_ImportGraphDefOptions* options,
                                    TF_Status* status);
