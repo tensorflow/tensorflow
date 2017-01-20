@@ -51,6 +51,7 @@ class BasicTest(unittest.TestCase):
       self.driver.quit()
     finally:
       self.driver = None
+      self.wait = None
 
   def testToolbarTitleDisplays(self):
     self.wait.until(

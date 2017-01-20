@@ -7,13 +7,6 @@ config_setting(
 
 browser(
     name = "headless-chrome",
-    data = select({
-        "linux_x86_64": [
-            "//third_party/noto:hinted",
-            "//third_party/noto:mono",
-        ],
-        "//conditions:default": None,
-    }),
     disabled = select({
         ":linux_x86_64": None,
         "//conditions:default": "headless-chrome is only supported on Linux.",
