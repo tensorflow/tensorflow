@@ -142,7 +142,7 @@ class StudentT(distribution.Distribution):
     super(StudentT, self).__init__(
         dtype=self._sigma.dtype,
         is_continuous=True,
-        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
