@@ -60,25 +60,23 @@ class DNNClassifierBenchmark(test.Benchmark):
                           expected_classes=None):
     probabilities = classifier.predict_proba(
         input_fn=input_fn, as_iterable=False)
-    self.report_benchmark(
-        iters=iters,
-        extras={
-            'inference.example%d_class%d_prob' % (i, j): probabilities[i][j]
-            for j in range(n_classes) for i in range(n_examples)
-        })
     if expected_probabilities is not None:
       np.testing.assert_allclose(
           expected_probabilities, tuple(probabilities), atol=0.2)
 
     classes = classifier.predict(input_fn=input_fn, as_iterable=False)
+    if expected_classes is not None:
+      np.testing.assert_array_equal(expected_classes, classes)
+
     self.report_benchmark(
         iters=iters,
         extras={
+            'inference.example%d_class%d_prob' % (i, j): probabilities[i][j]
+            for j in range(n_classes) for i in range(n_examples)
+        }.update({
             'inference.example%d_class' % i: classes[i]
             for i in range(n_examples)
-        })
-    if expected_classes is not None:
-      np.testing.assert_array_equal(expected_classes, classes)
+        }))
 
   def benchmarkLogisticMatrixData(self):
     classifier = dnn.DNNClassifier(
@@ -176,8 +174,7 @@ class DNNClassifierBenchmark(test.Benchmark):
     self._report_metrics(metrics)
     self._report_predictions(
         classifier=classifier,
-        input_fn=functools.partial(
-            _input_fn, num_epochs=1),
+        input_fn=functools.partial(_input_fn, num_epochs=1),
         iters=metrics['global_step'],
         n_examples=3,
         n_classes=2,
@@ -222,8 +219,7 @@ class DNNClassifierBenchmark(test.Benchmark):
     self._report_metrics(metrics)
     self._report_predictions(
         classifier=classifier,
-        input_fn=functools.partial(
-            _input_fn, num_epochs=1),
+        input_fn=functools.partial(_input_fn, num_epochs=1),
         iters=metrics['global_step'],
         n_examples=3,
         n_classes=n_classes,
