@@ -177,7 +177,7 @@ def _fused_batch_norm(
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
       performance.
-    center: If True, add offset of `beta` to normalized tensor.  If False, 
+    center: If True, add offset of `beta` to normalized tensor.  If False,
       `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -1195,7 +1195,7 @@ def flatten(inputs,
   Returns:
     a flattened tensor with shape [batch_size, k].
   Raises:
-    ValueError: if inputs.dense_shape is wrong.
+    ValueError: if inputs rank is less than 2.
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
