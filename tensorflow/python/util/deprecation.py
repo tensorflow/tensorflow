@@ -63,8 +63,9 @@ def _call_location():
   if frame:
     # CPython internals are available, use them for performance.
     # walk back two frames to get to deprecated function caller.
-    frame = frame.f_back
-    frame = frame.f_back
+    first_frame = frame.f_back
+    second_frame = first_frame.f_back
+    frame = second_frame if second_frame else first_frame
     return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
   else:
     # Slow fallback path
