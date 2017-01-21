@@ -158,6 +158,8 @@ building the .so file.
 available on the TensorFlow website are built with gcc4 that uses the older ABI.
 If you compile your op library with gcc5, add `-D_GLIBCXX_USE_CXX11_ABI=0` to
 the command line to make the library compatible with the older abi.
+Furthermore if you are using TensorFlow package created from source remember to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
+as bazel command to compile the Python package.
 
 ### With TensorFlow source installation
 

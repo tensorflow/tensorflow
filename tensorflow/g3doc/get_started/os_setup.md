@@ -870,6 +870,10 @@ $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 $ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.12.1-py2-none-any.whl
 ```
 
+Note on gcc version 5: The binary pip packages
+available on the TensorFlow website are built with gcc4 that uses the older ABI.
+To make the library compatible with the older abi you have to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
+
 ## Optimizing CPU performance
 
 To be compatible with as wide a range of machines as possible, TensorFlow
