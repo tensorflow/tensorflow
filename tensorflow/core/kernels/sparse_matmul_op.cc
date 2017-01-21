@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #ifdef TENSORFLOW_USE_LIBXSMM
-#include "third_party/libxsmm/include/libxsmm_intrinsics_x86.h"
-#include "third_party/libxsmm/include/libxsmm_spmdm.h"
+#include "include/libxsmm_intrinsics_x86.h"
+#include "include/libxsmm_spmdm.h"
 #endif
 
 namespace tensorflow {
