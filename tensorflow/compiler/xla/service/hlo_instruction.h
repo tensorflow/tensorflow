@@ -134,13 +134,17 @@ class HloInstruction {
   // Infeed interface of the device.
   static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape);
 
-  // Creates a send instruction, which sends the operand data to a receive
-  // instruction in another computation.
-  static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand);
+  // Creates a send instruction with the given channel id, which sends the
+  // operand data to a unique receive instruction in another computation that
+  // has the same channel id.
+  static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
+                                                    int64 channel_id);
 
-  // Creates a receive instruction, which receives data of the given shape
-  // from a send instruction in another computation.
-  static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape);
+  // Creates a receive instruction with the given channel id, which receives
+  // data of the given shape from a unique send instruction in another
+  // computation that has the same channel id.
+  static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
+                                                    int64 channel_id);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -296,8 +300,8 @@ class HloInstruction {
   const std::set<HloInstruction*>& users() const { return users_; }
 
   // Returns the set of control predecessors of this instruction. Control
-  // predecessors are the instructions that must be scheduled before the
-  // current instruction.
+  // predecessors are the instructions that must be scheduled before the current
+  // instruction.
   const std::set<HloInstruction*>& control_predecessors() const {
     return control_predecessors_;
   }
@@ -305,6 +309,17 @@ class HloInstruction {
   // Adds the given instruction to the set of control predecessors.
   void AddControlPredecessor(HloInstruction* instruction);
 
+  // Returns the set of control successors of this instruction. Control
+  // successors are the instructions that must be scheduled after the current
+  // instruction.
+  const std::set<HloInstruction*>& control_successors() const {
+    return control_successors_;
+  }
+
+  // Adds the given instruction to the set of control successors.
+  void AddControlSuccessor(HloInstruction* instruction);
+
+  // Returns the set of control successors of this instruction.
   // Returns true if "other" performs the same computation as this instruction.
   // Layout of the instructions' output array is not considered.
   bool Identical(
@@ -323,15 +338,15 @@ class HloInstruction {
   // Replaces the use of this instruction in "user" with "new_producer". Note
   // that there might be multiple uses of this instruction in "user"; all will
   // be replaced.
-  void ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
+  Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand.
-  void ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
+  Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.
-  void ReplaceAllUsesWith(HloInstruction* new_producer);
+  Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
   // Detaches an instruction from its operands. That is, remove the instruction
   // from each operand's user set. This should only be called prior to
@@ -440,7 +455,6 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
-  void set_channel_id(int64 id) { channel_id_ = id; }
 
   // Returns a tag to be used in tracing.
   //
@@ -767,6 +781,9 @@ class HloInstruction {
 
   // The set of control predecessors of this instruction.
   std::set<HloInstruction*> control_predecessors_;
+
+  // The set of control successors of this instruction.
+  std::set<HloInstruction*> control_successors_;
 
   // A trace instruction that consumes this instruction.
   //

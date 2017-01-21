@@ -119,7 +119,7 @@ class Normal(distribution.Distribution):
     super(Normal, self).__init__(
         dtype=self._sigma.dtype,
         is_continuous=True,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -189,10 +189,7 @@ class Normal(distribution.Distribution):
   def _mean(self):
     return self.mu * array_ops.ones_like(self.sigma)
 
-  def _variance(self):
-    return math_ops.square(self.std())
-
-  def _std(self):
+  def _stddev(self):
     return self.sigma * array_ops.ones_like(self.mu)
 
   def _mode(self):

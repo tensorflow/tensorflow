@@ -1,5 +1,7 @@
 # A Guide to TF Layers: Building a Convolutional Neural Network
 
+Note: This tutorial requires TF v1.0 alpha; see the [Download and Setup page](https://www.tensorflow.org/versions/r1.0/get_started/os_setup) for installation instructions.
+
 The TensorFlow [`layers`
 module](https://www.tensorflow.org/code/tensorflow/python/layers/layers.py)
 provides a high-level API that makes it easy to construct a neural network. It
@@ -43,10 +45,6 @@ As you work through the tutorial, you'll add code to construct, train, and
 evaluate the convolutional neural network. The complete, final code can be
 [found
 here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/layers/cnn_mnist.py).
-
-<p class="note"><b>NOTE:</b> Before proceeding, make sure you've
-<a href="../../get_started/os_setup.md">installed the latest
-version of TensorFlow</a> on your machine.</p>
 
 ## Intro to Convolutional Neural Networks
 

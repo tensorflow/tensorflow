@@ -227,16 +227,19 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
-    HloInstruction* operand) {
+    HloInstruction* operand, int64 channel_id) {
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kSend, ShapeUtil::MakeNil()));
   instruction->AppendOperand(operand);
+  instruction->channel_id_ = channel_id;
   return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
-    const Shape& shape) {
-  return WrapUnique(new HloInstruction(HloOpcode::kRecv, shape));
+    const Shape& shape, int64 channel_id) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kRecv, shape));
+  instruction->channel_id_ = channel_id;
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(
@@ -433,15 +436,16 @@ void HloInstruction::MergeFusionInstruction(
   std::vector<HloInstruction*> unfused_instructions;
   for (auto& fused_instruction : clone->fused_instructions()) {
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
-      fused_instruction->ReplaceAllUsesWith(
-          clone->mutable_operand(fused_instruction->parameter_number()));
+      TF_CHECK_OK(fused_instruction->ReplaceAllUsesWith(
+          clone->mutable_operand(fused_instruction->parameter_number())));
     } else {
       unfused_instructions.push_back(fused_instruction.get());
     }
   }
   CHECK(unfused_instructions.front() == clone->fused_expression_root());
   // Replace instruction_to_merge use of 'this' with unfused_root.
-  instruction_to_merge->ReplaceUseWith(this, unfused_instructions.front());
+  TF_CHECK_OK(
+      instruction_to_merge->ReplaceUseWith(this, unfused_instructions.front()));
   // Fuse 'unfused_instructions' into 'this'.
   for (auto& instruction : unfused_instructions) {
     FuseInstruction(instruction);
@@ -486,7 +490,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       if (instruction_to_fuse == operands_[operand_num]) {
         // replace the fused parameter instruction's uses with the clone.
         HloInstruction* fused_parameter = fused_parameters_[operand_num];
-        fused_parameter->ReplaceAllUsesWith(clone);
+        TF_CHECK_OK(fused_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding fused parameter and operand from their
         // respective vectors.
@@ -546,7 +550,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
 
       fused_param = fused_instructions_.back().get();
     }
-    clone->ReplaceOperandWith(operand_num, fused_param);
+    TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
   }
 
   return clone;
@@ -789,7 +793,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                     operands[1], operands[2], scatter_);
     case HloOpcode::kRecv:
       CHECK_EQ(operands.size(), 0);
-      return CreateRecv(shape);
+      return CreateRecv(shape, channel_id_);
     case HloOpcode::kReverse:
       CHECK_EQ(operands.size(), 1);
       return CreateReverse(shape, operands[0], dimensions_);
@@ -800,7 +804,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateReshape(shape, operands[0]);
     case HloOpcode::kSend:
       CHECK_EQ(operands.size(), 1);
-      return CreateSend(operands[0]);
+      return CreateSend(operands[0], channel_id_);
     case HloOpcode::kSlice:
       CHECK_EQ(operands.size(), 1);
       return CreateSlice(shape, operands[0], slice_starts_, slice_limits_);
@@ -971,6 +975,10 @@ void HloInstruction::AddControlPredecessor(HloInstruction* instruction) {
   control_predecessors_.insert(instruction);
 }
 
+void HloInstruction::AddControlSuccessor(HloInstruction* instruction) {
+  control_successors_.insert(instruction);
+}
+
 bool HloInstruction::Identical(
     const HloInstruction& other,
     std::function<bool(const HloInstruction*, const HloInstruction*)>
@@ -1134,29 +1142,32 @@ void HloInstruction::RemoveUser(HloInstruction* user) {
   users_.erase(user_it);
 }
 
-void HloInstruction::ReplaceUseWith(HloInstruction* user,
-                                    HloInstruction* new_producer) {
-  CHECK(ShapeUtil::Compatible(shape(), new_producer->shape()))
+Status HloInstruction::ReplaceUseWith(HloInstruction* user,
+                                      HloInstruction* new_producer) {
+  TF_RET_CHECK(ShapeUtil::Compatible(shape(), new_producer->shape()))
       << "this shape: " << ShapeUtil::HumanString(shape())
       << ", replacement shape: "
       << ShapeUtil::HumanString(new_producer->shape());
   auto user_it = std::find(users_.begin(), users_.end(), user);
-  CHECK(user_it != users_.end()) << "Instruction " << user
-                                 << " not a use of instruction " << this;
+  TF_RET_CHECK(user_it != users_.end())
+      << "Instruction " << user << " not a use of instruction " << this;
   users_.erase(user_it);
 
-  CHECK_GT(std::count(user->operands_.begin(), user->operands_.end(), this), 0);
+  TF_RET_CHECK(
+      std::count(user->operands_.begin(), user->operands_.end(), this) >= 0);
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
   new_producer->AddUser(user);
+  return Status::OK();
 }
 
-void HloInstruction::ReplaceOperandWith(int64 operand_num,
-                                        HloInstruction* new_operand) {
-  CHECK_GE(operand_num, 0);
-  CHECK_LT(operand_num, operand_count());
+Status HloInstruction::ReplaceOperandWith(int64 operand_num,
+                                          HloInstruction* new_operand) {
+  TF_RET_CHECK(operand_num >= 0);
+  TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
-  CHECK(ShapeUtil::Compatible(old_operand->shape(), new_operand->shape()))
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(old_operand->shape(), new_operand->shape()))
       << old_operand->shape().ShortDebugString() << " is not compatible with "
       << new_operand->shape().ShortDebugString();
   operands_[operand_num] = new_operand;
@@ -1166,9 +1177,10 @@ void HloInstruction::ReplaceOperandWith(int64 operand_num,
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
+  return Status::OK();
 }
 
-void HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
+Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   // We can't use range-based loop because the iterator is invalidated by call
   // to ReplaceUseWith.
   for (auto user = users_.begin(); user != users_.end();) {
@@ -1179,9 +1191,10 @@ void HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
     // this case, don't do the replacement to avoid creating a cycle in the
     // graph.
     if (*this_user != new_producer) {
-      ReplaceUseWith(*this_user, new_producer);
+      TF_RETURN_IF_ERROR(ReplaceUseWith(*this_user, new_producer));
     }
   }
+  return Status::OK();
 }
 
 void HloInstruction::DetachFromOperands() {

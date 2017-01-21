@@ -139,23 +139,15 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
-    self._train_monitors = train_monitors or []
+    self._train_monitors = train_monitors[:] if train_monitors else []
+    self._eval_hooks = eval_hooks[:] if eval_hooks else []
     # Mutable fields, using the setters.
-    self.eval_hooks = eval_hooks
     self.export_strategies = export_strategies
     self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
 
   @property
   def estimator(self):
     return self._estimator
-
-  @property
-  def train_input_fn(self):
-    return self._train_input_fn
-
-  @property
-  def eval_input_fn(self):
-    return self._eval_input_fn
 
   @property
   def eval_metrics(self):
@@ -168,39 +160,6 @@ class Experiment(object):
   @property
   def eval_steps(self):
     return self._eval_steps
-
-  @property
-  def train_hooks(self):
-    """Returns a shallow copy of train hooks for inspecting."""
-    return [m for m in self._train_monitors]
-
-  @property
-  def eval_hooks(self):
-    return self._eval_hooks
-
-  @eval_hooks.setter
-  def eval_hooks(self, value):
-    self._eval_hooks = value or []
-
-  @property
-  def local_eval_frequency(self):
-    return self._local_eval_frequency
-
-  @property
-  def eval_delay_secs(self):
-    return self._eval_delay_secs
-
-  @property
-  def continuous_eval_throttle_secs(self):
-    return self._continuous_eval_throttle_secs
-
-  @property
-  def min_eval_frequency(self):
-    return self._min_eval_frequency
-
-  @property
-  def delay_workers_by_global_step(self):
-    return self._delay_workers_by_global_step
 
   @property
   def continuous_eval_predicate_fn(self):

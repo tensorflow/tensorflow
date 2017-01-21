@@ -87,7 +87,9 @@ Initializes a `DNNRegressor` instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
-*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.

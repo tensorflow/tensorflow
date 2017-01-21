@@ -298,7 +298,8 @@ class ScalarToMultiTest(test.TestCase):
   def testScalarBatchNonScalarEvent(self):
     self._testMVN(
         base_distribution_class=ds.MultivariateNormalDiag,
-        base_distribution_kwargs={"mu": [0., 0., 0.], "diag_stdev": [1., 1, 1]},
+        base_distribution_kwargs={"mu": [0., 0., 0.],
+                                  "diag_stddev": [1., 1, 1]},
         batch_shape=[2],
         not_implemented_message="not implemented$")
 
@@ -306,7 +307,7 @@ class ScalarToMultiTest(test.TestCase):
       # Can't override event_shape for scalar batch, non-scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         ds.TransformedDistribution(
-            distribution=ds.MultivariateNormalDiag(mu=[0.], diag_stdev=[1.]),
+            distribution=ds.MultivariateNormalDiag(mu=[0.], diag_stddev=[1.]),
             bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
             batch_shape=[2],
             event_shape=[3],
@@ -336,7 +337,7 @@ class ScalarToMultiTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         ds.TransformedDistribution(
             distribution=ds.MultivariateNormalDiag(mu=[[0.]],
-                                                   diag_stdev=[[1.]]),
+                                                   diag_stddev=[[1.]]),
             bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
             batch_shape=[2],
             event_shape=[3],

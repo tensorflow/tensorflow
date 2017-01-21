@@ -772,6 +772,7 @@
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
+  * [`ReparameterizationType`](../../api_docs/python/contrib.distributions.md#ReparameterizationType)
   * [`softplus_inverse`](../../api_docs/python/contrib.distributions.md#softplus_inverse)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`StudentTWithAbsDfSoftplusSigma`](../../api_docs/python/contrib.distributions.md#StudentTWithAbsDfSoftplusSigma)
@@ -1036,6 +1037,7 @@
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorScaledIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorScaledIdentity)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
+  * [`LinearOperatorUDVHUpdate`](../../api_docs/python/contrib.linalg.md#LinearOperatorUDVHUpdate)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)

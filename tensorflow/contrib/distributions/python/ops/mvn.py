@@ -146,7 +146,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
         self._mu = self._assert_valid_mu(self._mu)
         super(_MultivariateNormalOperatorPD, self).__init__(
             dtype=self._mu.dtype,
-            is_reparameterized=True,
+            reparameterization_type=distribution.FULLY_REPARAMETERIZED,
             is_continuous=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
@@ -311,7 +311,7 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
   """The multivariate normal distribution on `R^k`.
 
   This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
-  `diag_stdev`, representing the standard deviations.  This distribution
+  `diag_stddev`, representing the standard deviations.  This distribution
   assumes the random variables, `(X_1,...,X_k)` are independent, thus no
   non-diagonal terms of the covariance matrix are needed.
 
@@ -320,7 +320,7 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
   #### Mathematical details
 
   The PDF of this distribution is defined in terms of the diagonal covariance
-  determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
+  determined by `diag_stddev`: `C_{ii} = diag_stddev[i]**2`.
 
   ```
   f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
@@ -336,16 +336,16 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
   ```python
   # Initialize a single 3-variate Gaussian with diagonal standard deviation.
   mu = [1, 2, 3.]
-  diag_stdev = [4, 5, 6.]
-  dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+  diag_stddev = [4, 5, 6.]
+  dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
   # Evaluate this on an observation in R^3, returning a scalar.
   dist.pdf([-1, 0, 1])
 
   # Initialize a batch of two 3-variate Gaussians.
   mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
-  diag_stdev = ...  # shape 2 x 3, positive.
-  dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+  diag_stddev = ...  # shape 2 x 3, positive.
+  dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
   # Evaluate this on a two observations, each in R^3, returning a length two
   # tensor.
@@ -358,21 +358,22 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
   def __init__(
       self,
       mu,
-      diag_stdev,
+      diag_stddev,
       validate_args=False,
       allow_nan_stats=True,
       name="MultivariateNormalDiag"):
     """Multivariate Normal distributions on `R^k`.
 
-    User must provide means `mu` and standard deviations `diag_stdev`.
+    User must provide means `mu` and standard deviations `diag_stddev`.
     Each batch member represents a random vector `(X_1,...,X_k)` of independent
     random normals.
-    The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
+    The mean of `X_i` is `mu[i]`, and the standard deviation is
+    `diag_stddev[i]`.
 
     Args:
       mu:  Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
-      diag_stdev: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
+      diag_stddev: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
         representing the standard deviations.  Must be positive.
       validate_args: `Boolean`, default `False`.  Whether to validate
         input with asserts.  If `validate_args` is `False`,
@@ -384,12 +385,12 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
       name: The name to give Ops created by the initializer.
 
     Raises:
-      TypeError: If `mu` and `diag_stdev` are different dtypes.
+      TypeError: If `mu` and `diag_stddev` are different dtypes.
     """
     parameters = locals()
     parameters.pop("self")
-    with ops.name_scope(name, values=[diag_stdev]) as ns:
-      cov = operator_pd_diag.OperatorPDSqrtDiag(diag_stdev,
+    with ops.name_scope(name, values=[diag_stddev]) as ns:
+      cov = operator_pd_diag.OperatorPDSqrtDiag(diag_stddev,
                                                 verify_pd=validate_args)
     super(MultivariateNormalDiag, self).__init__(
         mu, cov,
@@ -404,16 +405,16 @@ class MultivariateNormalDiagWithSoftplusStDev(MultivariateNormalDiag):
 
   def __init__(self,
                mu,
-               diag_stdev,
+               diag_stddev,
                validate_args=False,
                allow_nan_stats=True,
                name="MultivariateNormalDiagWithSoftplusStdDev"):
     parameters = locals()
     parameters.pop("self")
-    with ops.name_scope(name, values=[diag_stdev]) as ns:
+    with ops.name_scope(name, values=[diag_stddev]) as ns:
       super(MultivariateNormalDiagWithSoftplusStDev, self).__init__(
           mu=mu,
-          diag_stdev=nn.softplus(diag_stdev),
+          diag_stddev=nn.softplus(diag_stddev),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

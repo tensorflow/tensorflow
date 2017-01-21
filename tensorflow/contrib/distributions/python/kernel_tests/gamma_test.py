@@ -170,9 +170,9 @@ class GammaTest(test.TestCase):
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
-      expected_std = stats.gamma.std(alpha_v, scale=1 / beta_v)
-      self.assertEqual(gamma.std().get_shape(), (3,))
-      self.assertAllClose(gamma.std().eval(), expected_std)
+      expected_stddev = stats.gamma.std(alpha_v, scale=1. / beta_v)
+      self.assertEqual(gamma.stddev().get_shape(), (3,))
+      self.assertAllClose(gamma.stddev().eval(), expected_stddev)
 
   def testGammaEntropy(self):
     with self.test_session():

@@ -66,7 +66,16 @@ plugin is requred to implement two functions:
         _attached: {
           type: Boolean,
           value: false
-        }
+        },
+
+        // Storing the update ID of the previous request for data enables us to determine if a
+        // data response is outdated. We rely on an increasing ID instead of timestamp because
+        // successive updates often fire within the same millisecond.
+        _dataUpdateIdOfLastRequest: Number,
+        _nextAvailableDataUpdateId: {
+          type: Number,
+          value: 1,
+        },
       },
       observers: [
         "reload(tag, dataProvider)",
@@ -93,8 +102,23 @@ plugin is requred to implement two functions:
           throw new Error('tf-chart-scaffold requires a tag.');
         }
 
+        // TODO(chizeng): At this point, notify effective children that the previous data has been
+        // invalidated. For instance, the image dashboard may want to clear its images. Today, the
+        // chart scaffold only informs children when the new image URLs response finishes loading.
+
+        const dataUpdateId = this._nextAvailableDataUpdateId++;
+        this._dataUpdateIdOfLastRequest = dataUpdateId;
+
         this.visibleSeries.forEach(function(name) {
           this.dataProvider(this.tag, name).then(function(data) {
+            if (dataUpdateId != this._dataUpdateIdOfLastRequest) {
+              // This response is outdated. Ignore it.
+              // TODO(chizeng): Explore canceling an outdated request before we even receive its
+              // response. This involves creating hooks into the request manager and might introduce
+              // some complexity that may not be worth it; Tensorboard frankly does not seem
+              // bottlenecked by the network (It is often run in fast corp networks or locally.).
+              return;
+            }
             this.chart().setSeriesData(name, data);
           }.bind(this));
         }.bind(this));
