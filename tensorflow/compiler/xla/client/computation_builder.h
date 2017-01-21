@@ -345,7 +345,7 @@ class ComputationBuilder {
 
   // Enqueues an infeed instruction onto the computation, which reads data of
   // the given shape from the infeed buffer of the device.
-  ComputationDataHandle Infeed(const Shape& shape);
+  ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
 
   // Enqueues a call instruction onto the computation.
   ComputationDataHandle Call(
