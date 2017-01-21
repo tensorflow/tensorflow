@@ -264,7 +264,7 @@ py_test(
 
 py_test(
     name = "feature_column_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/layers/feature_column_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
