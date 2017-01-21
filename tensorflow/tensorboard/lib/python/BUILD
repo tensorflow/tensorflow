@@ -15,6 +15,7 @@ py_library(
     deps = [
         ":json_util",
         "//tensorflow/python:util",
+        "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],
 )
@@ -27,6 +28,7 @@ py_test(
     deps = [
         ":http",
         "//tensorflow/python:client_testlib",
+        "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],
 )
