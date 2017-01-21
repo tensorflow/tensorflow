@@ -1802,8 +1802,10 @@ HloInstruction* ComputationLowerer::Visit(
     }
 
     case OpRequest::kInfeedRequest: {
-      hlo_instruction = hlo_builder_.AddInstruction(
-          HloInstruction::CreateInfeed(request.output_shape()));
+      const InfeedRequest& infeed_request = request.request().infeed_request();
+      hlo_instruction =
+          hlo_builder_.AddInstruction(HloInstruction::CreateInfeed(
+              request.output_shape(), infeed_request.config()));
       break;
     }
 
