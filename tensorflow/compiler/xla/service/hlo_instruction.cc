@@ -222,8 +222,10 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
-    const Shape& shape) {
-  return WrapUnique(new HloInstruction(HloOpcode::kInfeed, shape));
+    const Shape& shape, const string& config) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kInfeed, shape));
+  instruction->set_infeed_config(config);
+  return instruction;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(

@@ -132,7 +132,8 @@ class HloInstruction {
 
   // Creates an infeed instruction, which reads data of the given shape from the
   // Infeed interface of the device.
-  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape);
+  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape,
+                                                      const string& config);
 
   // Creates a send instruction with the given channel id, which sends the
   // operand data to a unique receive instruction in another computation that
@@ -455,6 +456,12 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
+
+  // Returns the infeed configuration string. The infeed configuration includes
+  // any metadata needed for the backend compiler (e.g., infeed buffer address)
+  // and is target-dependent.
+  string infeed_config() const { return infeed_config_; }
+  void set_infeed_config(const string& config) { infeed_config_ = config; }
 
   // Returns a tag to be used in tracing.
   //
@@ -798,6 +805,9 @@ class HloInstruction {
   // Represents a unique identifier for each Send/Recv instruction pair.
   // Only present for kSend or kRecv.
   int64 channel_id_ = -1;
+
+  // The string representation of the infeed configuration.
+  string infeed_config_;
 
   // String identifier for instruction.
   string name_;
