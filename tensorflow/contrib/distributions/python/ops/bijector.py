@@ -53,10 +53,12 @@ import contextlib
 import itertools
 import math
 import re
+
 import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
@@ -75,6 +77,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 
+
 __all__ = [
     "Affine",
     "AffineLinearOperator",
@@ -90,16 +93,6 @@ __all__ = [
     "SoftmaxCentered",
     "Softplus",
 ]
-
-
-# TODO(jvdillon): deprecate this function once tf.expm1 exists.
-def _expm1(x):
-  """Approximate exp{y}-1~=y  for small |y|, and exp{y}-1 elsewhere."""
-  # Recall, eps is smallest positive number such that 1 + eps != 1.
-  eps = np.finfo(x.dtype.base_dtype.as_numpy_dtype).eps
-  # Note we are careful to never send an NaN through ANY branch of where.
-  return array_ops.where(math_ops.less(math_ops.abs(x), eps),
-                         x, math_ops.exp(x) - 1.)
 
 
 def _as_tensor(x, name):
@@ -1271,7 +1264,7 @@ class PowerTransform(Bijector):
       return x, ildj
     # TODO(jvdillon): If large y accuracy is an issue, consider using
     # (y**self.power - 1.) / self.power when y >> 1.
-    x = _expm1(math_ops.log(y) * self.power) / self.power
+    x = math_ops.expm1(math_ops.log(y) * self.power) / self.power
     ildj = (self.power - 1.) * math_ops.reduce_sum(
         math_ops.log(y),
         reduction_indices=event_dims)
@@ -1590,6 +1583,7 @@ class Affine(Bijector):
         `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
         lower triangular matrix.
         When `None` no `scale_tril` term is added to `scale`.
+        The upper triangular elements above the diagonal are ignored.
       scale_perturb_factor: Numeric `Tensor` representing factor matrix with
         last two dimensions of shape `(k, r)`.
         When `None`, no rank-r update is added to `scale`.
@@ -1983,7 +1977,7 @@ class AffineLinearOperator(Bijector):
         if scale.tensor_rank is not None:
           batch_ndims = scale.tensor_rank - 2
         else:
-          batch_ndims = scale.tensor_rank_dynamic() - 2
+          batch_ndims = scale.tensor_rank_tensor() - 2
           graph_parents += [batch_ndims]
       else:
         batch_ndims = 0  # We won't need shape inference when scale is None.
@@ -2086,31 +2080,21 @@ class Softplus(Bijector):
     return nn_ops.softplus(x)
 
   def _inverse_and_inverse_log_det_jacobian(self, y):
-    # The most stable inverse of softplus is not the most obvious one.
-    # y = softplus(x) = Log[1 + exp{x}], (which means y > 0).
-    # ==> exp{y} = 1 + exp{x}                                (1)
-    # ==> x = Log[exp{y} - 1]                                (2)
-    #       = Log[(exp{y} - 1) / exp{y}] + Log[exp{y}]
-    #       = Log[(1 - exp{-y}) / 1] + Log[exp{y}]
-    #       = Log[1 - exp{-y}] + y                           (3)
-    # (2) is the "obvious" inverse, but (3) is more stable than (2) for large y.
-    # For small y (e.g. y = 1e-10), (3) will become -inf since 1 - exp{-y} will
-    # be zero.  To fix this, we use 1 - exp{-y} approx y for small y > 0.
-    #
-    # Stable inverse log det jacobian.
+    if self.shaper is None:
+      raise ValueError("Jacobian cannot be computed with unknown event_ndims")
+    _, _, event_dims = self.shaper.get_dims(y)
+    # Could also do:
+    #   ildj = math_ops.reduce_sum(y - distribution_util.softplus_inverse(y),
+    #                              reduction_indices=event_dims)
+    # but the following is more numerically stable. Ie,
     # Y = Log[1 + exp{X}] ==> X = Log[exp{Y} - 1]
     # ==> dX/dY = exp{Y} / (exp{Y} - 1)
     #           = 1 / (1 - exp{-Y}),
     # which is the most stable for large Y > 0.  For small Y, we use
     # 1 - exp{-Y} approx Y.
-    if self.shaper is None:
-      raise ValueError("Jacobian cannot be computed with unknown event_ndims")
-    _, _, event_dims = self.shaper.get_dims(y)
-    log_one_minus_exp_neg = math_ops.log(-_expm1(-y))
-    x = y + log_one_minus_exp_neg
-    ildj = -math_ops.reduce_sum(
-        log_one_minus_exp_neg, reduction_indices=event_dims)
-    return x, ildj
+    ildj = -math_ops.reduce_sum(math_ops.log(-math_ops.expm1(-y)),
+                                reduction_indices=event_dims)
+    return distribution_util.softplus_inverse(y), ildj
 
   def _forward_log_det_jacobian(self, x):  # pylint: disable=unused-argument
     if self.shaper is None:

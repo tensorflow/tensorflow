@@ -184,6 +184,23 @@ py_library(
 )
 
 py_library(
+    name = "dumping_wrapper",
+    srcs = ["wrappers/dumping_wrapper.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":framework",
+    ],
+)
+
+py_library(
+    name = "grpc_wrapper",
+    srcs = ["wrappers/grpc_wrapper.py"],
+    srcs_version = "PY2AND3",
+    deps = [":framework"],
+)
+
+py_library(
     name = "local_cli_wrapper",
     srcs = ["wrappers/local_cli_wrapper.py"],
     srcs_version = "PY2AND3",
@@ -204,6 +221,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
+        ":dumping_wrapper",
         ":framework",
         ":local_cli_wrapper",
         ":stepper",
@@ -531,6 +549,29 @@ cuda_py_test(
 )
 
 py_test(
+    name = "dumping_wrapper_test",
+    size = "small",
+    srcs = [
+        "wrappers/dumping_wrapper_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dumping_wrapper",
+        ":hooks",
+        ":stepper",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
     name = "local_cli_wrapper_test",
     size = "small",
     srcs = [
@@ -548,6 +589,18 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+    ],
+)
+
+sh_test(
+    name = "examples_test",
+    size = "small",
+    srcs = ["examples/examples_test.sh"],
+    data = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/host_buffer.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -85,6 +86,8 @@ string ToVlogString(const void *ptr) {
   return out.str();
 }
 
+string ToVlogString(const HostBuffer &buffer) { return buffer.AsString(); }
+
 template <class T>
 string ToVlogString(const std::complex<T> &c) {
   // StrCat does not convert std::complex to text.
@@ -147,6 +150,13 @@ string ToVlogString(port::ArraySlice<T> elements) {
 template <class T>
 string ToVlogString(port::MutableArraySlice<T> elements) {
   return ToVlogString(port::ArraySlice<T>(elements));
+}
+
+string ToVlogString(dnn::DepthToSpaceLayout depth_to_space_layout) {
+  switch (depth_to_space_layout) {
+    case dnn::DepthToSpaceLayout::DepthHeightWidth:
+      return "DepthToSpaceLayout::DepthHeightWidth";
+  }
 }
 
 // Used together with PARAM to VLOG calls made to the stream. Intended
@@ -299,10 +309,7 @@ Stream &Stream::ThenBatchNormalizationForward(
           saved_inv_var, is_training, std::move(var_to_inv_var),
           std::move(inv_var_to_var)));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -324,10 +331,7 @@ Stream &Stream::ThenBatchNormalizationBackward(
           this, y_backprop, x, scale, mean, variance, x_desc, scale_offset_desc,
           epsilon, x_backprop, scale_backprop, offset_backprop));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -355,10 +359,7 @@ Stream &Stream::ThenConvolveWithScratch(
           /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -385,10 +386,7 @@ Stream &Stream::ThenConvolveWithScratch(
           /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -419,10 +417,7 @@ Stream &Stream::ThenConvolveWithAlgorithm(
         SetError();
       }
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -453,10 +448,7 @@ Stream &Stream::ThenConvolveWithAlgorithm(
         SetError();
       }
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -497,10 +489,7 @@ Stream &Stream::ThenSeparableConvolve(
           depth_multiplier, first_weights, second_weights,
           convolution_descriptor, output_descriptor, output));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -528,10 +517,7 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
           backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -564,10 +550,7 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
         SetError();
       }
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -600,10 +583,7 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
         SetError();
       }
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -631,10 +611,7 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
           backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -676,10 +653,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
           backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -712,10 +686,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
         SetError();
       }
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -743,10 +714,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
           backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -779,10 +747,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
         SetError();
       }
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -817,10 +782,7 @@ Stream &Stream::ThenConvolveBackwardBiasImpl(
                                              bias_descriptor,
                                              backward_bias_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -866,10 +828,7 @@ Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
       CheckError(dnn->DoMatMul(this, input_data, weights, input_dimensions,
                                output_dimensions, output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -891,10 +850,7 @@ Stream &Stream::ThenMatMulQuantized(
                                         weight_scales, input_dimensions,
                                         output_dimensions, output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -916,10 +872,7 @@ Stream &Stream::ThenMatMulQuantized(
                                         weight_scales, input_dimensions,
                                         output_dimensions, output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -937,10 +890,7 @@ Stream &Stream::ThenBiasAdd(const DeviceMemory<float> &input_data,
       CheckError(
           dnn->DoBiasAdd(this, input_data, biases, dimensions, output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -961,10 +911,7 @@ Stream &Stream::ThenPoolForward(
                                     input_data, output_dimensions,
                                     output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -985,10 +932,7 @@ Stream &Stream::ThenPoolForward(
                                     input_data, output_dimensions,
                                     output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1012,10 +956,7 @@ Stream &Stream::ThenPoolBackward(
                                      input_data, output_dimensions, output_data,
                                      input_diff_data, output_diff_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1039,10 +980,7 @@ Stream &Stream::ThenPoolBackward(
                                      input_data, output_dimensions, output_data,
                                      input_diff_data, output_diff_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1058,10 +996,7 @@ Stream &Stream::ThenNormalize(
       CheckError(dnn->DoNormalize(this, normalize_descriptor, input_data,
                                   output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1079,10 +1014,7 @@ Stream &Stream::ThenNormalizeWithDimensions(
       CheckError(dnn->DoNormalizeWithDimensions(
           this, normalize_descriptor, dimensions, input_data, output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1104,10 +1036,7 @@ Stream &Stream::ThenNormalizeBackwardWithDimensions(
           this, normalize_descriptor, dimensions, raw_data, normalized_data,
           normalized_variable_gradient, raw_variable_gradient));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1125,10 +1054,7 @@ Stream &Stream::ThenActivate(dnn::ActivationMode activation_mode,
       CheckError(dnn->DoActivate(this, activation_mode, dimensions, input_data,
                                  output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1158,10 +1084,114 @@ Stream &Stream::ThenDepthConcatenate(
       CheckError(dnn->DoDepthConcatenate(this, input_dimensions, input_data,
                                          output_data));
     } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenSpaceConcatenate(
+    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
+    port::ArraySlice<const DeviceMemory<float> *> input_data,
+    DeviceMemory<float> *output_data,
+    dnn::SpaceConcatenateMode concat_direction) {
+  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data), PARAM(output_data));
+
+  // Check that the input dimensions of all the other batches match those of the
+  // first batch.
+  for (size_t i = 1; i < input_dimensions.size(); ++i) {
+    if ((concat_direction == dnn::SpaceConcatenateMode::XDirection) &&
+        (input_dimensions[i].count() != input_dimensions[0].count() ||
+         input_dimensions[i].height() != input_dimensions[0].height() ||
+         input_dimensions[i].feature_map_count() !=
+             input_dimensions[0].feature_map_count())) {
       SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      LOG(ERROR) << "Incompatible dimensions for X concatenation.\n"
+                 << "input_dimensions[0]: " << input_dimensions[0].ToString()
+                 << "input_dimensions[" << i
+                 << "]: " << input_dimensions[i].ToString();
+      return *this;
+    }
+
+    if ((concat_direction == dnn::SpaceConcatenateMode::YDirection) &&
+        (input_dimensions[i].count() != input_dimensions[0].count() ||
+         input_dimensions[i].width() != input_dimensions[0].width() ||
+         input_dimensions[i].feature_map_count() !=
+             input_dimensions[0].feature_map_count())) {
+      SetError();
+      LOG(ERROR) << "Incompatible dimensions for Y concatenation.\n"
+                 << "input_dimensions[0]: " << input_dimensions[0].ToString()
+                 << "input_dimensions[" << i
+                 << "]: " << input_dimensions[i].ToString();
+      return *this;
+    }
+  }
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoSpaceConcatenate(this, input_dimensions, input_data,
+                                         output_data, concat_direction));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenReshape(const dnn::BatchDescriptor &input_dimensions,
+                            const DeviceMemory<float> &input_data,
+                            const dnn::BatchDescriptor &output_dimensions,
+                            DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
+            PARAM(output_dimensions), PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoReshape(this, input_dimensions, input_data,
+                                output_dimensions, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenDepthToSpace(
+    const dnn::BatchDescriptor &input_dimensions,
+    const DeviceMemory<float> &input_data,
+    const dnn::DepthToSpaceLayout &depth_to_space_layout,
+    const int sqrt_depth_reduction, DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
+            PARAM(depth_to_space_layout), PARAM(sqrt_depth_reduction),
+            PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoDepthToSpace(this, input_dimensions, input_data,
+                                     depth_to_space_layout,
+                                     sqrt_depth_reduction, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenSpaceToDepth(
+    const dnn::BatchDescriptor &input_dimensions,
+    const DeviceMemory<float> &input_data,
+    const dnn::DepthToSpaceLayout &space_to_depth_layout,
+    const int sqrt_depth_increase, DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
+            PARAM(space_to_depth_layout), PARAM(sqrt_depth_increase),
+            PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoSpaceToDepth(this, input_dimensions, input_data,
+                                     space_to_depth_layout, sqrt_depth_increase,
+                                     output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1182,10 +1212,30 @@ Stream &Stream::ThenElementwiseOperate(
                                            input_data, output_dimensions,
                                            output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenElementwiseOperateScaledQuantized(
+    dnn::ElementwiseOperation operation,
+    port::ArraySlice<int> input_multiplicands, int output_divisor,
+    port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
+    port::ArraySlice<const DeviceMemory<float> *> input_data,
+    const dnn::BatchDescriptor &output_dimensions,
+    DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(operation), PARAM(input_multiplicands), PARAM(output_divisor),
+            PARAM(input_dimensions), PARAM(input_data),
+            PARAM(output_dimensions), PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoElementwiseOperateScaledQuantized(
+          this, operation, input_multiplicands, output_divisor,
+          input_dimensions, input_data, output_dimensions, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1204,10 +1254,7 @@ Stream &Stream::ThenXYPad(const dnn::BatchDescriptor &dimensions,
       CheckError(dnn->DoXYPad(this, dimensions, input_data, left_pad, right_pad,
                               top_pad, bottom_pad, output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1228,10 +1275,25 @@ Stream &Stream::ThenXYSlice(const dnn::BatchDescriptor &dimensions,
                                 right_trim, top_trim, bottom_trim,
                                 output_data));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
+                                const DeviceMemory<float> &input_data,
+                                int64 replicate_x, int64 replicate_y,
+                                DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(replicate_x),
+            PARAM(replicate_y), PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoXYBroadcast(this, dimensions, input_data, replicate_x,
+                                    replicate_y, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1248,10 +1310,7 @@ Stream &Stream::ThenMemcpyD2HQuantized(
       CheckError(dnn->DoMemcpyD2HQuantized(this, gpu_unquantized_src, mode,
                                            host_dst, size));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;
@@ -1268,10 +1327,37 @@ Stream &Stream::ThenMemcpyH2DQuantized(
       CheckError(dnn->DoMemcpyH2DQuantized(this, host_src, size, mode,
                                            gpu_unquantized_dst));
     } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenCopyHostBuffer2Device(
+    HostBuffer *buffer_src, DeviceMemory<float> *gpu_unquantized_dst) {
+  VLOG_CALL(PARAM(*buffer_src), PARAM(gpu_unquantized_dst));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(
+          dnn->DoCopyHostBuffer2Device(this, buffer_src, gpu_unquantized_dst));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenCopyDevice2HostBuffer(
+    const DeviceMemory<float> &gpu_unquantized_src, HostBuffer *buffer_dst) {
+  VLOG_CALL(PARAM(gpu_unquantized_src), PARAM(*buffer_dst));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(
+          dnn->DoCopyDevice2HostBuffer(this, gpu_unquantized_src, buffer_dst));
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;

@@ -22,11 +22,14 @@ import sys
 import tempfile
 import time
 
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
+# pylint: disable=g-import-not-at-top
+
+# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
 if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
+from tensorflow.contrib.learn.python.learn import export_strategy as export_strategy_lib
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
@@ -87,9 +90,9 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertEqual(input_alternatives[
         saved_model_export_utils.DEFAULT_INPUT_ALTERNATIVE_KEY],
                      "bogus default input dict")
-    self.assertEqual(input_alternatives[
-        saved_model_export_utils.FEATURES_INPUT_ALTERNATIVE_KEY],
-                     "bogus features dict")
+    # self.assertEqual(input_alternatives[
+    #     saved_model_export_utils.FEATURES_INPUT_ALTERNATIVE_KEY],
+    #                  "bogus features dict")
 
   def test_get_output_alternatives_explicit(self):
     provided_output_alternatives = {
@@ -119,6 +122,21 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertEqual({
         "default_output_alternative": (constants.ProblemType.UNSPECIFIED, {
             "some_output": prediction_tensor
+        })
+    }, output_alternatives)
+
+  def test_get_output_alternatives_implicit_single(self):
+    prediction_tensor = constant_op.constant(["bogus"])
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions=prediction_tensor,
+        output_alternatives=None)
+
+    output_alternatives, _ = saved_model_export_utils.get_output_alternatives(
+        model_fn_ops)
+    self.assertEqual({
+        "default_output_alternative": (constants.ProblemType.UNSPECIFIED, {
+            "output": prediction_tensor
         })
     }, output_alternatives)
 
@@ -168,39 +186,75 @@ class SavedModelExportUtilsTest(test.TestCase):
             signature_def_utils.predict_signature_def({
                 "input": input_example
             }, {"output": output_3}),
-        "features_input_alternative:head-1":
-            signature_def_utils.regression_signature_def(input_features,
-                                                         output_1),
-        "features_input_alternative:head-2":
-            signature_def_utils.classification_signature_def(input_features,
-                                                             output_2, None),
-        "features_input_alternative:head-3":
-            signature_def_utils.predict_signature_def({
-                "input": input_features
-            }, {"output": output_3}),
+        # "features_input_alternative:head-1":
+        #     signature_def_utils.regression_signature_def(input_features,
+        #                                                  output_1),
+        # "features_input_alternative:head-2":
+        #     signature_def_utils.classification_signature_def(input_features,
+        #                                                      output_2, None),
+        # "features_input_alternative:head-3":
+        #     signature_def_utils.predict_signature_def({
+        #         "input": input_features
+        #     }, {"output": output_3}),
     }
 
     self.assertDictEqual(expected_signature_defs, signature_defs)
+
+  def test_build_all_signature_defs_legacy_input_fn_not_supported(self):
+    """Tests that legacy input_fn returning (features, labels) raises error.
+
+    serving_input_fn must return InputFnOps including a default input
+    alternative.
+    """
+    input_features = constant_op.constant(["10"])
+    input_ops = ({"features": input_features}, None)
+    input_alternatives, _ = (
+        saved_model_export_utils.get_input_alternatives(input_ops))
+    output_1 = constant_op.constant(["1"])
+    output_2 = constant_op.constant(["2"])
+    output_3 = constant_op.constant(["3"])
+    provided_output_alternatives = {
+        "head-1": (constants.ProblemType.LINEAR_REGRESSION, {
+            "some_output_1": output_1
+        }),
+        "head-2": (constants.ProblemType.CLASSIFICATION, {
+            "some_output_2": output_2
+        }),
+        "head-3": (constants.ProblemType.UNSPECIFIED, {
+            "some_output_3": output_3
+        }),
+    }
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions={"some_output": constant_op.constant(["4"])},
+        output_alternatives=provided_output_alternatives)
+    output_alternatives, _ = (saved_model_export_utils.get_output_alternatives(
+        model_fn_ops, "head-1"))
+
+    with self.assertRaisesRegexp(
+        ValueError, "A default input_alternative must be provided"):
+      saved_model_export_utils.build_all_signature_defs(
+          input_alternatives, output_alternatives, "head-1")
 
   def test_get_timestamped_export_dir(self):
     export_dir_base = tempfile.mkdtemp() + "export/"
     export_dir_1 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(0.001)
+    time.sleep(1)
     export_dir_2 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(0.001)
+    time.sleep(1)
     export_dir_3 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
 
-    # Export directories should be named using a timestamp that is milliseconds
-    # since epoch.  Such a timestamp is 13 digits long.
+    # Export directories should be named using a timestamp that is seconds
+    # since epoch.  Such a timestamp is 10 digits long.
     time_1 = os.path.basename(export_dir_1)
-    self.assertEqual(13, len(time_1))
+    self.assertEqual(10, len(time_1))
     time_2 = os.path.basename(export_dir_2)
-    self.assertEqual(13, len(time_2))
+    self.assertEqual(10, len(time_2))
     time_3 = os.path.basename(export_dir_3)
-    self.assertEqual(13, len(time_3))
+    self.assertEqual(10, len(time_3))
 
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
@@ -227,12 +281,25 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertTrue(gfile.Exists(export_dir_3))
     self.assertTrue(gfile.Exists(export_dir_4))
 
+  def test_make_export_strategy(self):
+    """Only tests that an ExportStrategy instance is created."""
+    def _serving_input_fn():
+      return array_ops.constant([1]), None
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        serving_input_fn=_serving_input_fn,
+        default_output_alternative_key="default",
+        assets_extra={"from/path": "to/path"},
+        as_text=False,
+        exports_to_keep=5)
+    self.assertTrue(
+        isinstance(export_strategy, export_strategy_lib.ExportStrategy))
+
 
 def _create_test_export_dir(export_dir_base):
   export_dir = saved_model_export_utils.get_timestamped_export_dir(
       export_dir_base)
   gfile.MkDir(export_dir)
-  time.sleep(0.001)
+  time.sleep(1)
   return export_dir
 
 

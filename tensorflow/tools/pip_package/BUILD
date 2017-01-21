@@ -87,6 +87,7 @@ filegroup(
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
+        "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
@@ -94,6 +95,7 @@ filegroup(
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
+        "@werkzeug//:LICENSE",
         "@zlib_archive//:zlib.h",
     ] + tf_additional_license_deps(),
 )

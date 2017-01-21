@@ -2,11 +2,13 @@
 
 load("@protobuf//:protobuf.bzl", "cc_proto_library")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
+load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 
-# configure may change the following lines to True
+# configure may change the following lines
 WITH_GCP_SUPPORT = False
 WITH_HDFS_SUPPORT = False
 WITH_XLA_SUPPORT = False
+WITH_JEMALLOC = True
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -176,12 +178,52 @@ def tf_additional_test_srcs():
 def tf_kernel_tests_linkstatic():
   return 0
 
+# jemalloc only enabled on Linux for now.
+# TODO(jhseu): Enable on other platforms.
+def tf_additional_lib_defines():
+  defines = []
+  if WITH_JEMALLOC:
+    defines += select({
+        "//tensorflow:linux_x86_64": [
+            "TENSORFLOW_USE_JEMALLOC"
+        ],
+        "//conditions:default": [],
+    })
+  return defines
+
 def tf_additional_lib_deps():
+  deps = []
+  if WITH_JEMALLOC:
+    deps += select({
+        "//tensorflow:linux_x86_64": ["@jemalloc"],
+        "//conditions:default": [],
+    })
+  return deps
+
+def tf_additional_core_deps():
   deps = []
   if WITH_GCP_SUPPORT:
     deps.append("//tensorflow/core/platform/cloud:gcs_file_system")
   if WITH_HDFS_SUPPORT:
     deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
+  return deps
+
+# TODO(jart, jhseu): Delete when GCP is default on.
+def tf_additional_cloud_op_deps():
+  deps = []
+  # TODO(hormati): Remove the comments below to enable BigQuery op. The op is
+  # not linked for now because it is under perf testing.
+  #if WITH_GCP_SUPPORT:
+  #  deps = if_not_mobile(["//tensorflow/core/kernels/cloud:bigquery_reader_ops"])
+  return deps
+
+# TODO(jart, jhseu): Delete when GCP is default on.
+def tf_additional_cloud_kernel_deps():
+  deps = []
+  # TODO(hormati): Remove the comments below to enable BigQuery op. The op is
+  # not linked for now because it is under perf testing.
+  #if WITH_GCP_SUPPORT:
+  #  deps = if_not_mobile(["//tensorflow/core:cloud_ops_op_lib"])
   return deps
 
 def tf_additional_plugin_deps():

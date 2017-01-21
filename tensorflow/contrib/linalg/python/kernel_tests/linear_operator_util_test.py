@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import ops
@@ -26,6 +28,7 @@ from tensorflow.python.platform import test
 
 linalg = linalg_lib
 random_seed.set_random_seed(23)
+rng = np.random.RandomState(0)
 
 
 class AssertZeroImagPartTest(test.TestCase):
@@ -86,6 +89,34 @@ class AssertNoEntriesWithModulusZeroTest(test.TestCase):
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_no_entries_with_modulus_zero(
             z, message="ABC123").run()
+
+
+class DomainDimensionStubOperator(object):
+
+  def __init__(self, domain_dimension):
+    self._domain_dimension = ops.convert_to_tensor(domain_dimension)
+
+  def domain_dimension_tensor(self):
+    return self._domain_dimension
+
+
+class AssertCompatibleMatrixDimensionsTest(test.TestCase):
+
+  def test_compatible_dimensions_do_not_raise(self):
+    with self.test_session():
+      x = ops.convert_to_tensor(rng.rand(2, 3, 4))
+      operator = DomainDimensionStubOperator(3)
+      # Should not raise
+      linear_operator_util.assert_compatible_matrix_dimensions(
+          operator, x).run()
+
+  def test_incompatible_dimensions_raise(self):
+    with self.test_session():
+      x = ops.convert_to_tensor(rng.rand(2, 4, 4))
+      operator = DomainDimensionStubOperator(3)
+      with self.assertRaisesOpError("Incompatible matrix dimensions"):
+        linear_operator_util.assert_compatible_matrix_dimensions(
+            operator, x).run()
 
 
 if __name__ == "__main__":

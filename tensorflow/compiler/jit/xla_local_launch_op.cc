@@ -45,6 +45,9 @@ REGISTER_OP("_XlaLaunch")
     .Output("results: Tresults")
     .Attr("Tresults: list(type) >= 0")
     .Attr("function: func")
+    // XLA random-number generation ops are stateful.
+    // TODO(phawkins): create stateful and non-stateful variants of _XlaLaunch.
+    .SetIsStateful()
     .Doc("XLA Launch Op. For use by the XLA JIT only.");
 
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
@@ -313,9 +316,10 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
       }
       Tensor output_tensor;
       // Looks up the owning Tensor by buffer address.
-      OP_REQUIRES_OK(ctx, xla_allocator.MakeTensorFromBuffer(
-                              buffer, ctx->expected_output_dtype(i), shape,
-                              &output_tensor));
+      OP_REQUIRES_OK(
+          ctx,
+          xla_allocator.MakeTensorFromBuffer(
+              buffer, ctx->expected_output_dtype(i), shape, &output_tensor));
       ctx->set_output(i, output_tensor);
       ++output_num;
     }

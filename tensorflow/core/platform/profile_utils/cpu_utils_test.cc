@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/profile_utils/clock_cycle_profiler.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -65,6 +66,19 @@ TEST_F(CpuUtilsTest, CheckMicroSecPerClock) {
   CHECK_GT(micro_sec_per_clock, 0.0);
   if (DBG) {
     LOG(INFO) << "Micro sec per clock = " << micro_sec_per_clock;
+  }
+}
+
+TEST_F(CpuUtilsTest, SimpleUsageOfClockCycleProfiler) {
+  static constexpr int LOOP_COUNT = 10;
+  ClockCycleProfiler prof;
+  for (int i = 0; i < LOOP_COUNT; ++i) {
+    prof.Start();
+    prof.Stop();
+  }
+  EXPECT_EQ(LOOP_COUNT, static_cast<int>(prof.GetCount() + 0.5));
+  if (DBG) {
+    prof.DumpStatistics("CpuUtilsTest");
   }
 }
 

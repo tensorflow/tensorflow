@@ -395,7 +395,7 @@ func goType(tfType string) (string, error) {
 	case "type":
 		gotype = "tf.DataType"
 	case "shape":
-		gotype = "[]int64"
+		gotype = "tf.Shape"
 	case "tensor":
 		gotype = "tf.Tensor"
 	case "string":

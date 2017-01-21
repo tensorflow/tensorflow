@@ -183,8 +183,11 @@ std::vector<int64> InversePermutation(
 std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
                                        tensorflow::gtl::ArraySlice<int64> p2);
 
-int64 PositionInContainer(tensorflow::gtl::ArraySlice<int64> container,
-                          int64 value);
+template <typename Container>
+int64 PositionInContainer(const Container& container, int64 value) {
+  return std::distance(container.begin(),
+                       std::find(container.begin(), container.end(), value));
+}
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);

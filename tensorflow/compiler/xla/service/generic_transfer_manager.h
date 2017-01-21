@@ -55,7 +55,9 @@ class GenericTransferManager : public TransferManager {
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
 
-  Status ResetDevice(perftools::gputools::StreamExecutor* executor) override;
+  Status ResetDevices(
+      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+          executors) override;
 
   StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
   ShallowCopyTupleFromDevice(

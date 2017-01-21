@@ -112,7 +112,7 @@ class ExportTest(test.TestCase):
   def testExportMonitorInputFeatureKeyMissing(self):
     random.seed(42)
 
-    def _export_input_fn():
+    def _serving_input_fn():
       return {
           _X_KEY:
               random_ops.random_uniform(
@@ -123,7 +123,7 @@ class ExportTest(test.TestCase):
     monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,
         export_dir=tempfile.mkdtemp() + 'export/',
-        input_fn=_export_input_fn,
+        input_fn=_serving_input_fn,
         input_feature_key=input_feature_key,
         exports_to_keep=2,
         signature_fn=export.generic_signature_fn)
@@ -135,13 +135,13 @@ class ExportTest(test.TestCase):
     random.seed(42)
     input_feature_key = 'my_example_key'
 
-    def _export_input_fn():
+    def _serving_input_fn():
       return {input_feature_key: None}, None
 
     monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,
         export_dir=tempfile.mkdtemp() + 'export/',
-        input_fn=_export_input_fn,
+        input_fn=_serving_input_fn,
         input_feature_key=input_feature_key,
         exports_to_keep=2,
         signature_fn=export.generic_signature_fn)
@@ -154,7 +154,7 @@ class ExportTest(test.TestCase):
     random.seed(42)
     input_feature_key = 'my_example_key'
 
-    def _export_input_fn():
+    def _serving_input_fn():
       return {
           input_feature_key:
               None,
@@ -166,7 +166,7 @@ class ExportTest(test.TestCase):
     monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,
         export_dir=tempfile.mkdtemp() + 'export/',
-        input_fn=_export_input_fn,
+        input_fn=_serving_input_fn,
         input_feature_key=input_feature_key,
         exports_to_keep=2,
         signature_fn=export.generic_signature_fn)
@@ -178,7 +178,7 @@ class ExportTest(test.TestCase):
     random.seed(42)
     input_feature_key = 'my_example_key'
 
-    def _export_input_fn():
+    def _serving_input_fn():
       return {
           input_feature_key:
               array_ops.placeholder(
@@ -188,7 +188,7 @@ class ExportTest(test.TestCase):
     monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,
         export_dir=tempfile.mkdtemp() + 'export/',
-        input_fn=_export_input_fn,
+        input_fn=_serving_input_fn,
         input_feature_key=input_feature_key,
         exports_to_keep=2,
         signature_fn=export.generic_signature_fn)
@@ -200,7 +200,7 @@ class ExportTest(test.TestCase):
     random.seed(42)
     input_feature_key = 'my_example_key'
 
-    def _export_input_fn():
+    def _serving_input_fn():
       return {
           input_feature_key:
               array_ops.placeholder(
@@ -214,7 +214,7 @@ class ExportTest(test.TestCase):
     monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,
         export_dir=export_dir,
-        input_fn=_export_input_fn,
+        input_fn=_serving_input_fn,
         input_feature_key=input_feature_key,
         exports_to_keep=2,
         signature_fn=export.generic_signature_fn)

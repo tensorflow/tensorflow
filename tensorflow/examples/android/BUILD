@@ -39,7 +39,6 @@ cc_binary(
         "notap",
     ],
     deps = [
-        ":demo_proto_lib_cc",
         "//tensorflow/contrib/android:android_tensorflow_inference_jni",
         "//tensorflow/core:android_tensorflow_lib",
         LINKER_SCRIPT,
@@ -66,6 +65,7 @@ android_binary(
         "//tensorflow/examples/android/assets:asset_files",
         "@inception5h//:model_files",
         "@mobile_multibox//:model_files",
+        "@stylize//:model_files",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.demo",
@@ -117,20 +117,3 @@ filegroup(
 )
 
 exports_files(["AndroidManifest.xml"])
-
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library",
-)
-
-tf_proto_library(
-    name = "demo_proto_lib",
-    srcs = glob(
-        ["**/*.proto"],
-    ),
-    cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets go here (must be at the end).

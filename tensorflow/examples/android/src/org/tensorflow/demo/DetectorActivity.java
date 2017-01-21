@@ -60,7 +60,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final String MB_OUTPUT_NAMES = "output_locations/Reshape,output_scores/Reshape";
   private static final String MB_MODEL_FILE = "file:///android_asset/multibox_model.pb";
   private static final String MB_LOCATION_FILE =
-      "file:///android_asset/multibox_location_priors.pb";
+      "file:///android_asset/multibox_location_priors.txt";
 
   // Configuration values for tiny-yolo-voc. Note that the graph is not included with TensorFlow and
   // must be manually placed in the assets/ directory by the user.
@@ -124,30 +124,19 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
 
-    if (USE_YOLO) {
-      final TensorFlowYoloDetector yoloDetector = new TensorFlowYoloDetector();
-      try {
-        final int initStatus =
-            yoloDetector.initializeTensorFlow(
+    try {
+      if (USE_YOLO) {
+        detector =
+            TensorFlowYoloDetector.create(
                 getAssets(),
                 YOLO_MODEL_FILE,
                 YOLO_INPUT_SIZE,
                 YOLO_INPUT_NAME,
                 YOLO_OUTPUT_NAMES,
                 YOLO_BLOCK_SIZE);
-        if (initStatus != 0) {
-          LOGGER.e("TF init status != 0: %d", initStatus);
-          throw new RuntimeException();
-        }
-      } catch (final Exception e) {
-        throw new RuntimeException("Error initializing TensorFlow!", e);
-      }
-      detector = yoloDetector;
-    } else {
-      final TensorFlowMultiBoxDetector multiBoxDetector = new TensorFlowMultiBoxDetector();
-      try {
-        final int initStatus =
-            multiBoxDetector.initializeTensorFlow(
+      } else {
+        detector =
+            TensorFlowMultiBoxDetector.create(
                 getAssets(),
                 MB_MODEL_FILE,
                 MB_LOCATION_FILE,
@@ -157,14 +146,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                 MB_IMAGE_STD,
                 MB_INPUT_NAME,
                 MB_OUTPUT_NAMES);
-        if (initStatus != 0) {
-          LOGGER.e("TF init status != 0: %d", initStatus);
-          throw new RuntimeException();
-        }
-      } catch (final Exception e) {
-        throw new RuntimeException("Error initializing TensorFlow!", e);
       }
-      detector = multiBoxDetector;
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
     }
 
     previewWidth = size.getWidth();
@@ -249,6 +233,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   }
 
   OverlayView trackingOverlay;
+
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;

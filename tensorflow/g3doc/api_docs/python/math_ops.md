@@ -1749,7 +1749,7 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 *  <b>`ValueError`</b>: If `ord` or `axis` is invalid.
 
 @compatibility(numpy)
-Mostly equivalent to np.linalg.norm.
+Mostly equivalent to numpy.linalg.norm.
 Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
 
 ##### Other differences:
@@ -2140,6 +2140,12 @@ s = svd(a, compute_uv=False)
 *  <b>`v`</b>: Left singular vectors. If `full_matrices` is `False` (default) then
     shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
     `[..., N, N]`. Not returned if `compute_uv` is `False`.
+
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.svd, except that the order of output
+arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
+`u`, `s`, `v` for numpy.linalg.svd.
+@end_compatibility
 
 
 
@@ -3712,73 +3718,5 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`. 1-D.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.mul(x, y, name=None)` {#mul}
-
-Returns x * y element-wise.
-
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
-
-
-- - -
-
-### `tf.neg(*args, **kwargs)` {#neg}
-
-Computes numerical negative value element-wise. (deprecated)
-
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
-Instructions for updating:
-`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`
-
-I.e., \(y = -x\).
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-
-- - -
-
-### `tf.sub(x, y, name=None)` {#sub}
-
-Returns x - y element-wise.
-
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
 
 

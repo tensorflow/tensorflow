@@ -144,6 +144,11 @@ class LayoutUtil {
   // except that the element type is ignored.
   static bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether the given dimensions are consecutive in the given layout,
+  // not necessarily in the order given.
+  static bool AreDimensionsConsecutive(const Layout& layout,
+                                       tensorflow::gtl::ArraySlice<int64> dims);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };

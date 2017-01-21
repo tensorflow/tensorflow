@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -138,37 +139,50 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     TF_RETURN_IF_ERROR(AddControlEdges(popts, &partitions));
   }
 
+  std::unordered_map<string, std::unique_ptr<Graph>> partition_graphs;
+  for (const auto& partition : partitions) {
+    std::unique_ptr<Graph> device_graph(new Graph(item->lib_def));
+    GraphConstructorOptions device_opts;
+    // There are internal operations (e.g., send/recv) that we now allow.
+    device_opts.allow_internal_ops = true;
+    device_opts.expect_device_spec = true;
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
+                                              device_graph.get()));
+    partition_graphs.emplace(partition.first, std::move(device_graph));
+  }
+
+  GraphOptimizationPassOptions optimization_options;
+  optimization_options.flib_def = item->lib_def;
+  optimization_options.partition_graphs = &partition_graphs;
+  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+      OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
+
   LocalExecutorParams params;
 
-  Status s;
   item->units.reserve(partitions.size());
   item->graph_mgr = this;
   const auto& optimizer_opts = graph_options.optimizer_options();
   GraphOptimizer optimizer(optimizer_opts);
-  for (auto&& p : partitions) {
+  for (auto& p : partition_graphs) {
     const string& device_name = p.first;
-    GraphDef* def = &p.second;
+    std::unique_ptr<Graph>& subgraph = p.second;
     item->units.resize(item->units.size() + 1);
     ExecutionUnit* unit = &(item->units.back());
 
     // Find the device.
-    s = worker_env_->device_mgr->LookupDevice(device_name, &unit->device);
+    Status s =
+        worker_env_->device_mgr->LookupDevice(device_name, &unit->device);
     if (!s.ok()) {
       // Remove the empty unit from the item as the item destructor wants all
       // units to have valid devices.
       item->units.pop_back();
-      break;
+      return s;
     }
 
-    // Construct the subgraph.
-    Graph* subgraph = new Graph(item->lib_def);
     // Give the device an opportunity to rewrite its subgraph.
-    unit->device->MaybeRewriteGraph(gdef.library(), def);
-    s = ConvertGraphDefToGraph(opts, *def, subgraph);
-    if (!s.ok()) {
-      delete subgraph;
-      break;
-    }
+    TF_RETURN_IF_ERROR(
+        unit->device->MaybeRewriteGraph(gdef.library(), &subgraph));
+
     // Top-level nodes in the graph uses the op segment to cache
     // kernels. Therefore, as long as the executor is alive, we need
     // to ensure the kernels cached for the session are alive.
@@ -178,7 +192,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     // Function library runtime.
     unit->lib = NewFunctionLibraryRuntime(
         worker_env_->device_mgr, worker_env_->env, unit->device,
-        def->versions().producer(), item->lib_def,
+        subgraph->versions().producer(), item->lib_def,
         graph_options.optimizer_options());
 
     // Construct the root executor for the subgraph.
@@ -207,23 +221,18 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
-    s = EnsureMemoryTypes(DeviceType(unit->device->device_type()),
-                          unit->device->name(), subgraph);
-    if (!s.ok()) {
-      delete subgraph;
-      break;
-    }
-    s = NewLocalExecutor(params, subgraph, &unit->root);
-    if (!s.ok()) {
-      break;
-    }
-    unit->graph = subgraph;
+    TF_RETURN_IF_ERROR(
+        EnsureMemoryTypes(DeviceType(unit->device->device_type()),
+                          unit->device->name(), subgraph.get()));
+    unit->graph = subgraph.get();
     unit->build_cost_model = graph_options.build_cost_model();
     if (unit->build_cost_model > 0) {
       skip_cost_models_ = false;
     }
+    TF_RETURN_IF_ERROR(
+        NewLocalExecutor(params, subgraph.release(), &unit->root));
   }
-  return s;
+  return Status::OK();
 }
 
 Status GraphMgr::Register(const string& session, const GraphDef& gdef,

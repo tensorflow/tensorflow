@@ -79,11 +79,6 @@ class HloInstruction {
       const Shape& shape, RandomDistribution distribution,
       tensorflow::gtl::ArraySlice<HloInstruction*> parameters);
 
-  // Creates an n-ary elementwise operation.
-  static std::unique_ptr<HloInstruction> CreateNary(
-      const Shape& shape, HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
-
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
   static std::unique_ptr<HloInstruction> CreateUnary(const Shape& shape,
@@ -492,6 +487,13 @@ class HloInstruction {
     return fusion_kind_;
   }
 
+  // Merges the fused instructions from 'instruction_to_merge' into the
+  // fused instruction set of 'this', updating operands as necessary.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  // Predondition: 'instruction_to_merge' must be an operand of 'this'.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion
   // instruction. instruction_to_fuse is unchanged. Instruction is cloned rather
@@ -635,6 +637,11 @@ class HloInstruction {
 
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+
+  // Creates an n-ary elementwise operation.
+  static std::unique_ptr<HloInstruction> CreateNary(
+      const Shape& shape, HloOpcode opcode,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.

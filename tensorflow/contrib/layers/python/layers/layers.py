@@ -173,11 +173,12 @@ def _fused_batch_norm(
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
     decay: decay for the moving average. Reasonable values for `decay` are close
-      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc. Lower
-      `decay` value (recommend trying `decay`=0.9) if model experiences reasonably
-      good training performance but poor validation and/or test performance.
-    center: If True, add offset of `beta` to normalized tensor. If False, `beta`
-      is ignored.
+      to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
+      Lower `decay` value (recommend trying `decay`=0.9) if model experiences
+      reasonably good training performance but poor validation and/or test
+      performance.
+    center: If True, add offset of `beta` to normalized tensor.  If False, 
+      `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
@@ -632,16 +633,12 @@ def batch_norm(
     if need_moments:
       # Calculate the moments based on the individual batch.
       if batch_weights is None:
-        # Use a copy of moving_mean as a shift to compute more reliable moments.
-        shift = math_ops.add(moving_mean, 0)
         if data_format == DATA_FORMAT_NCHW:
-          shift = array_ops.reshape(shift, params_shape_broadcast)
-          mean, variance = nn.moments(inputs, moments_axes, shift=shift,
-                                      keep_dims=True)
+          mean, variance = nn.moments(inputs, moments_axes, keep_dims=True)
           mean = array_ops.reshape(mean, [-1])
           variance = array_ops.reshape(variance, [-1])
         else:
-          mean, variance = nn.moments(inputs, moments_axes, shift=shift)
+          mean, variance = nn.moments(inputs, moments_axes)
       else:
         if data_format == DATA_FORMAT_NCHW:
           mean, variance = nn.weighted_moments(inputs, moments_axes,
@@ -1385,10 +1382,11 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not (isinstance(num_outputs, six.integer_types)):
+  if not isinstance(num_outputs, six.integer_types):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
 
-  layer_variable_getter = _build_variable_getter({'bias': 'biases'})
+  layer_variable_getter = _build_variable_getter({'bias': 'biases',
+                                                  'kernel': 'weights'})
 
   with variable_scope.variable_scope(
       scope, 'fully_connected', [inputs],
@@ -1398,9 +1396,9 @@ def fully_connected(inputs,
         units=num_outputs,
         activation=None,
         use_bias=not normalizer_fn and biases_initializer,
-        weights_initializer=weights_initializer,
+        kernel_initializer=weights_initializer,
         bias_initializer=biases_initializer,
-        weights_regularizer=weights_regularizer,
+        kernel_regularizer=weights_regularizer,
         bias_regularizer=biases_regularizer,
         activity_regularizer=None,
         trainable=trainable,
@@ -1411,7 +1409,7 @@ def fully_connected(inputs,
     outputs = layer.apply(inputs)
 
     # Add variables to collections.
-    _add_variable_to_collections(layer.w, variables_collections, 'weights')
+    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
     if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 

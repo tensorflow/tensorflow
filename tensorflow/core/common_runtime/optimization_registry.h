@@ -39,8 +39,17 @@ struct GraphOptimizationPassOptions {
   const CostModel* cost_model = nullptr;
 
   FunctionLibraryDefinition* flib_def = nullptr;  // Not owned.
+
+  // The graph to optimize, for optimization passes that run before
+  // partitioning. Null for post-partitioning passes.
   // An optimization pass may replace *graph with a new graph object.
-  std::unique_ptr<Graph>* graph;
+  std::unique_ptr<Graph>* graph = nullptr;
+
+  // Graphs for each partition, if running post-partitioning. Optimization
+  // passes may alter the graphs, but must not add or remove partitions.
+  // Null for pre-partitioning passes.
+  std::unordered_map<string, std::unique_ptr<Graph>>* partition_graphs =
+      nullptr;
 };
 
 // Optimization passes are implemented by inheriting from
@@ -64,6 +73,7 @@ class OptimizationPassRegistry {
     PRE_PLACEMENT,          // after cost model assignment, before placement.
     POST_PLACEMENT,         // after placement.
     POST_REWRITE_FOR_EXEC,  // after re-write using feed/fetch endpoints.
+    POST_PARTITIONING,      // after partitioning
   };
 
   // Add an optimization pass to the registry.

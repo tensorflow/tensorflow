@@ -25,6 +25,7 @@ import six
 from tensorflow.contrib.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -139,10 +140,11 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_to_dense(self):
     self._maybe_skip("to_dense")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_dense = operator.to_dense()
@@ -153,14 +155,15 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_det(self):
     self._maybe_skip("det")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
-            if dtype.is_complex:
-              self.skipTest(
-                  "tf.matrix_determinant does not work with complex, so this "
-                  "test is being skipped.")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          if dtype.is_complex:
+            self.skipTest(
+                "tf.matrix_determinant does not work with complex, so this "
+                "test is being skipped.")
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_det = operator.determinant()
@@ -171,13 +174,37 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 feed_dict=feed_dict)
             self.assertAC(op_det_v, mat_det_v)
 
+  def test_log_abs_det(self):
+    self._maybe_skip("log_abs_det")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          if dtype.is_complex:
+            self.skipTest(
+                "tf.matrix_determinant does not work with complex, so this "
+                "test is being skipped.")
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_log_abs_det = operator.log_abs_determinant()
+            mat_log_abs_det = math_ops.log(
+                math_ops.abs(linalg_ops.matrix_determinant(mat)))
+            if not use_placeholder:
+              self.assertAllEqual(shape[:-2], op_log_abs_det.get_shape())
+            op_log_abs_det_v, mat_log_abs_det_v = sess.run(
+                [op_log_abs_det, mat_log_abs_det],
+                feed_dict=feed_dict)
+            self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
+
   def test_apply(self):
     self._maybe_skip("apply")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
-            for adjoint in False, True:
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          for adjoint in False, True:
+            with self.test_session(graph=ops.Graph()) as sess:
+              sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
               operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                   shape, dtype, use_placeholder=use_placeholder)
               x = self._make_x(operator, adjoint=adjoint)
@@ -191,11 +218,12 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_solve(self):
     self._maybe_skip("solve")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
-            for adjoint in False, True:
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          for adjoint in False, True:
+            with self.test_session(graph=ops.Graph()) as sess:
+              sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
               operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                   shape, dtype, use_placeholder=use_placeholder)
               rhs = self._make_rhs(operator, adjoint=adjoint)
@@ -209,10 +237,11 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   def test_add_to_tensor(self):
     self._maybe_skip("add_to_tensor")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_plus_2mat = operator.add_to_tensor(2 * mat)
@@ -256,8 +285,8 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
       n = operator.domain_dimension.value
       x_shape = batch_shape + [n, r]
     else:
-      batch_shape = operator.batch_shape_dynamic()
-      n = operator.domain_dimension_dynamic()
+      batch_shape = operator.batch_shape_tensor()
+      n = operator.domain_dimension_tensor()
       x_shape = array_ops.concat((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
@@ -285,7 +314,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   @property
   def _tests_to_skip(self):
     """List of test names to skip."""
-    return ["solve", "det"]
+    return ["solve", "det", "log_abs_det"]
 
   @property
   def _shapes_to_test(self):
@@ -310,11 +339,11 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         n = operator.domain_dimension.value
       x_shape = batch_shape + [n, r]
     else:
-      batch_shape = operator.batch_shape_dynamic()
+      batch_shape = operator.batch_shape_tensor()
       if adjoint:
-        n = operator.range_dimension_dynamic()
+        n = operator.range_dimension_tensor()
       else:
-        n = operator.domain_dimension_dynamic()
+        n = operator.domain_dimension_tensor()
       x_shape = array_ops.concat((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)

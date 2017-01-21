@@ -260,6 +260,8 @@ def argmax(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name)
 
 
@@ -273,6 +275,8 @@ def argmin(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name)
 
 
@@ -362,10 +366,10 @@ multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 @deprecated(
     "2016-12-30",
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
-def mul(x, y, name=None):
+def _mul(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
-mul.__doc__ = (gen_math_ops._mul.__doc__
-               + ("" if mul.__doc__ is None else mul.__doc__))
+_mul.__doc__ = (gen_math_ops._mul.__doc__
+                + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
 def subtract(x, y, name=None):
@@ -377,10 +381,10 @@ subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
 @deprecated(
     "2016-12-30",
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
-def sub(x, y, name=None):
+def _sub(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
-sub.__doc__ = (gen_math_ops._sub.__doc__
-               + ("" if sub.__doc__ is None else sub.__doc__))
+_sub.__doc__ = (gen_math_ops._sub.__doc__
+                + ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
 # pylint: disable=g-docstring-has-escape
@@ -399,11 +403,11 @@ def negative(x, name=None):
   """
   with ops.name_scope(name, "Neg", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
-      x_neg = gen_math_ops.neg(x.values, name=name)
+      x_neg = gen_math_ops._neg(x.values, name=name)
       return sparse_tensor.SparseTensor(
           indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
-      return gen_math_ops.neg(x, name=name)
+      return gen_math_ops._neg(x, name=name)
 # pylint: enable=g-docstring-has-escape
 
 
@@ -411,7 +415,7 @@ def negative(x, name=None):
 @deprecated(
     "2016-12-30",
     "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
-def neg(x, name=None):
+def _neg(x, name=None):
   """Computes numerical negative value element-wise.
 
   I.e., \\(y = -x\\).
@@ -857,7 +861,7 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
+ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
 ops.Tensor._override_operator("__abs__", abs)
 # __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
 # ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean

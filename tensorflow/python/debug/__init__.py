@@ -50,11 +50,13 @@ runs. See `DebugDumpDir.find()` for more details.
 
 These classes allow you to
 
-* wrap aroundTensorFlow `Session` objects to debug  plain TensorFlow models
-  (see `LocalCLIDebugWrapperSession`), or
+* wrap aroundTensorFlow `Session` objects to debug plain TensorFlow models
+  (see `DumpingDebugWrapperSession` and `LocalCLIDebugWrapperSession`), or
 * generate `SessionRunHook` objects to debug `tf.contrib.learn` models (see
-  `LocalCLIDebugHook`).
+  `DumpingDebugHook` and `LocalCLIDebugHook`).
 
+@@DumpingDebugHook
+@@DumpingDebugWrapperSession
 @@LocalCLIDebugHook
 @@LocalCLIDebugWrapperSession
 
@@ -74,5 +76,7 @@ from tensorflow.python.debug.debug_utils import add_debug_tensor_watch
 from tensorflow.python.debug.debug_utils import watch_graph
 from tensorflow.python.debug.debug_utils import watch_graph_with_blacklists
 
+from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapperSession
+from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook
 from tensorflow.python.debug.wrappers.hooks import LocalCLIDebugHook
 from tensorflow.python.debug.wrappers.local_cli_wrapper import LocalCLIDebugWrapperSession
