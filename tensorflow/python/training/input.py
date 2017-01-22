@@ -487,7 +487,13 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
       out_tensor.set_shape([None])  # necessary when t.ndims is unknown
       return out_tensor
-    store_f = _maybe_store_many_sparse if enqueue_many else _maybe_store_sparse
+    if keep_input.get_shape().ndims == 1:
+      t = sparse_ops.sparse_retain(t, keep_input)
+      store_f = lambda t, name, _: _store_many_sparse(t, shared_name=name)
+    elif enqueue_many:
+      store_f = _maybe_store_many_sparse
+    else:
+      store_f = _maybe_store_sparse
     return store_f(t, map_op_name, keep_input)
 
   stored_list = [
@@ -563,10 +569,18 @@ def _validate_join(tensor_list_list):
   return tensor_list_list
 
 
-def _validate_tensor_or_none(tensor_or_none):
-  if tensor_or_none is not None:
-    return ops.convert_to_tensor(tensor_or_none)
-  return tensor_or_none
+def _validate_keep_input(keep_input, enqueue_many):
+  """Validate `keep_input` argument to conditional batching functions."""
+  keep_input = ops.convert_to_tensor(keep_input)
+  if keep_input.get_shape().ndims is None:
+    raise ValueError(
+        "`keep_input` dimensions must be known at graph construction.")
+  if not enqueue_many and keep_input.get_shape().ndims == 1:
+    raise ValueError(
+        "`keep_input` cannot be a vector when `enqueue_many=False`.")
+  if keep_input.get_shape().ndims > 1:
+    raise ValueError("`keep_input` must be 0 or 1 dimensions.")
+  return keep_input
 
 
 def _dtypes(tensor_list_list):
@@ -622,6 +636,15 @@ def _shapes(tensor_list_list, shapes, enqueue_many):
   return shapes
 
 
+def _select_which_to_enqueue(tensor_list, keep_input):
+  """Select which examples to enqueue based on vector `keep_input`."""
+  select_i = math_ops.cast(keep_input, dtypes.int32)
+  tensor_list = [
+      data_flow_ops.dynamic_partition(x, select_i, num_partitions=2)[1]
+      for x in tensor_list]
+  return tensor_list
+
+
 def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
   """Enqueue `tensor_list_list` in `queue`."""
   if enqueue_many:
@@ -632,7 +655,10 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
   # interaction between `control_flow_ops.no_op` and `queue_runner_impl.py`.
   # Either generalize `_smart_cond` or fix `queue_runner_impl.py`.
   keep_input_static = tensor_util.constant_value(keep_input)
-  if keep_input_static is not None:
+  if keep_input.get_shape().ndims == 1:
+    enqueue_ops = [enqueue_fn(_select_which_to_enqueue(x, keep_input))
+                   for x in tensor_list_list]
+  elif keep_input_static is not None:
     if keep_input_static:
       enqueue_ops = [enqueue_fn(tl) for tl in tensor_list_list]
     else:
@@ -651,10 +677,14 @@ def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
     enqueue_fn = queue.enqueue_many
   else:
     enqueue_fn = queue.enqueue
-  enqueue_ops = [_smart_cond(
-      keep_input,
-      lambda: enqueue_fn(tensor_list),
-      control_flow_ops.no_op)] * threads
+  if keep_input.get_shape().ndims == 1:
+    enqueue_ops = [
+        enqueue_fn(_select_which_to_enqueue(tensor_list, keep_input))] * threads
+  else:
+    enqueue_ops = [_smart_cond(
+        keep_input,
+        lambda: enqueue_fn(tensor_list),
+        control_flow_ops.no_op)] * threads
   queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, enqueue_ops))
 
 
@@ -671,7 +701,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "batch", list(tensor_list) + [keep_input]) as name:
     tensor_list = _validate(tensor_list)
-    keep_input = _validate_tensor_or_none(keep_input)
+    keep_input = _validate_keep_input(keep_input, enqueue_many)
     (tensor_list, sparse_info) = _store_sparse_tensors(
         tensor_list, enqueue_many, keep_input)
     types = _dtypes([tensor_list])
@@ -706,7 +736,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
   with ops.name_scope(name, "batch_join",
                       _flatten(tensor_list_list) + [keep_input]) as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    keep_input = _validate_tensor_or_none(keep_input)
+    keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list_list, sparse_info = _store_sparse_tensors_join(
         tensor_list_list, enqueue_many, keep_input)
     types = _dtypes(tensor_list_list)
@@ -737,7 +767,7 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
     tensor_list = _validate(tensor_list)
-    keep_input = _validate_tensor_or_none(keep_input)
+    keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list, sparse_info = _store_sparse_tensors(
         tensor_list, enqueue_many, keep_input)
     types = _dtypes([tensor_list])
@@ -774,7 +804,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
   with ops.name_scope(name, "shuffle_batch_join",
                       _flatten(tensor_list_list) + [keep_input]) as name:
     tensor_list_list = _validate_join(tensor_list_list)
-    keep_input = _validate_tensor_or_none(keep_input)
+    keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list_list, sparse_info = _store_sparse_tensors_join(
         tensor_list_list, enqueue_many, keep_input)
     types = _dtypes(tensor_list_list)
@@ -904,10 +934,12 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.
-    keep_input: A `bool` scalar Tensor.  This tensor controls whether the input
-      is added to the queue or not.  If it evaluates `True`, then `tensors` are
-      added to the queue; otherwise they are dropped.  This tensor essentially
-      acts as a filtering mechanism.
+    keep_input: A `bool` Tensor.  This tensor controls whether the input is
+      added to the queue or not.  If it is a scalar and evaluates `True`, then
+      `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+      is `True`, then each example is added to the queue only if the
+      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      as a filtering mechanism.
     batch_size: The new batch size pulled from the queue.
     num_threads: The number of threads enqueuing `tensors`.
     capacity: An integer. The maximum number of elements in the queue.
@@ -1051,10 +1083,12 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
 
   Args:
     tensors_list: A list of tuples or dictionaries of tensors to enqueue.
-    keep_input: A `bool` scalar Tensor.  This tensor controls whether the input
-      is added to the queue or not.  If it evaluates `True`, then `tensors` are
-      added to the queue; otherwise they are dropped.  This tensor essentially
-      acts as a filtering mechanism.
+    keep_input: A `bool` Tensor.  This tensor controls whether the input is
+      added to the queue or not.  If it is a scalar and evaluates `True`, then
+      `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+      is `True`, then each example is added to the queue only if the
+      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      as a filtering mechanism.
     batch_size: An integer. The new batch size pulled from the queue.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single
@@ -1203,10 +1237,12 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     capacity: An integer. The maximum number of elements in the queue.
     min_after_dequeue: Minimum number elements in the queue after a
       dequeue, used to ensure a level of mixing of elements.
-    keep_input: A `bool` scalar Tensor.  This tensor controls whether the input
-      is added to the queue or not.  If it evaluates `True`, then `tensors` are
-      added to the queue; otherwise they are dropped.  This tensor essentially
-      acts as a filtering mechanism.
+    keep_input: A `bool` Tensor.  This tensor controls whether the input is
+      added to the queue or not.  If it is a scalar and evaluates `True`, then
+      `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+      is `True`, then each example is added to the queue only if the
+      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      as a filtering mechanism.
     num_threads: The number of threads enqueuing `tensor_list`.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list` is a single example.
@@ -1343,10 +1379,12 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
     capacity: An integer. The maximum number of elements in the queue.
     min_after_dequeue: Minimum number elements in the queue after a
       dequeue, used to ensure a level of mixing of elements.
-    keep_input: A `bool` scalar Tensor.  If provided, this tensor controls
-      whether the input is added to the queue or not.  If it evaluates `True`,
-      then `tensors_list` are added to the queue; otherwise they are dropped.
-      This tensor essentially acts as a filtering mechanism.
+    keep_input: A `bool` Tensor.  This tensor controls whether the input is
+      added to the queue or not.  If it is a scalar and evaluates `True`, then
+      `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+      is `True`, then each example is added to the queue only if the
+      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      as a filtering mechanism.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single
       example.
