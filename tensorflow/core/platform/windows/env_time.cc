@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 
 #include <time.h>
+#include <windows.h>
+#include <chrono>
 
 namespace tensorflow {
 
@@ -65,7 +67,7 @@ class WindowsEnvTime : public EnvTime {
         .count();
   }
 
-  void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
+  void SleepForMicroseconds(int64 micros) { Sleep(micros / 1000); }
 
  private:
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
