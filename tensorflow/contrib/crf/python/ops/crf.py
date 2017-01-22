@@ -102,7 +102,7 @@ def crf_log_norm(inputs, transition_params, sequence_lengths):
   """
   shape = array_ops.shape(inputs)
   batch_size, seq_len, num_tags = shape[0], shape[1], shape[2]
-  inputs = array_ops.unpack(inputs, axis=1)
+  inputs = array_ops.unstack(inputs, axis=1)
   # extract ROI of transition_params, and expand dims, resulting in shape
   # [num_tags, num_tags, 1]
   expand_transition_params = array_ops.expand_dims(transition_params[1:, :-1],
@@ -121,7 +121,7 @@ def crf_log_norm(inputs, transition_params, sequence_lengths):
   if sequence_lengths is None:
     prev = prevs[-1]
   else:
-    alphas = array_ops.pack(prevs, axis=1)
+    alphas = array_ops.stack(prevs, axis=1)
     # retrieve the last alpha according to sequence_lengths
     # prev = tf.gather_nd(alphas,
     #                     tf.pack([tf.range(batch_size), sequence_lengths],
