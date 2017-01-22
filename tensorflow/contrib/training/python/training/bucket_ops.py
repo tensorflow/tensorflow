@@ -45,6 +45,7 @@ _as_tensor_list = input_py._as_tensor_list
 _restore_sparse_tensors = input_py._restore_sparse_tensors
 _dtypes = input_py._dtypes
 _store_sparse_tensors = input_py._store_sparse_tensors
+_validate_keep_input = input_py._validate_keep_input
 _shapes = input_py._shapes
 _smart_cond = input_py._smart_cond
 _which_queue = input_py._which_queue
@@ -161,6 +162,7 @@ def bucket(tensors,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "bucket", tensor_list) as name:
     tensor_list = _validate_bucket(tensor_list)
+    keep_input = _validate_keep_input(keep_input, enqueue_many=False)
     (tensor_list, sparse_info) = _store_sparse_tensors(
         tensor_list, enqueue_many=False, keep_input=keep_input)
 
