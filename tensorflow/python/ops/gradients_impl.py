@@ -227,8 +227,8 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
             array_ops.shape(y), constant_op.constant(
                 1, dtype=y.dtype))
       continue
-    if y.dtype.is_real or y.dtype.is_integer:
-      if not grad_y.dtype.is_real and not grad_y.dtype.is_integer:
+    if y.dtype.is_floating or y.dtype.is_integer:
+      if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
         raise TypeError("Gradient type %s generated for real or "
                          "integer-valued tensor %s with type %s must be "
                          "real or integer" %
@@ -272,8 +272,8 @@ def _VerifyGeneratedGradients(grads, op):
       inp = op.inputs[i]
       if grad is None:
         continue
-      if grad.dtype.is_real:
-        if not inp.dtype.is_real:
+      if grad.dtype.is_floating:
+        if not inp.dtype.is_floating:
           raise TypeError("Gradient type %s generated for real-valued op %s "
                            "with type %s must be real" %
                            (dtypes.as_dtype(grad.dtype).name, op.node_def,
