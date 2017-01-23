@@ -160,6 +160,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/training/supervisor_test.py"  # Flaky I/O error on rename.
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
+      # Broken TensorBoard tests due to different paths in windows
+      "${tensorflow_source_dir}/tensorflow/tensorboard/backend/application_test.py"
+      "${tensorflow_source_dir}/tensorflow/tensorboard/lib/python/http_test.py"
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
