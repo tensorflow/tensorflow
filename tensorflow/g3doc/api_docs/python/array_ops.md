@@ -3135,6 +3135,8 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 ## Other Functions and Classes
 - - -
 
+### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
+
 
 
 
