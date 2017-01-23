@@ -23,6 +23,8 @@ import functools
 import six
 
 from tensorflow.contrib import framework as framework_lib
+from tensorflow.contrib import layers as layers_lib
+# TODO(ptucker): Use tf.losses and tf.metrics.
 from tensorflow.contrib import losses as losses_lib
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -60,7 +62,7 @@ def _regression_head(label_name=None,
     weight_column_name: A string defining feature column name representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
-    label_dimension: Number of regression targets per example. This is the size
+    label_dimension: Number of regression labels per example. This is the size
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     enable_centered_bias: A bool. If True, estimator will learn a centered
@@ -343,6 +345,44 @@ def _mean_squared_loss(logits, labels):
     return math_ops.square(logits - math_ops.to_float(labels), name=name)
 
 
+def _logits(logits_input, logits, logits_dimension):
+  """Validate logits args, and create `logits` if necessary.
+
+  Exactly one of `logits_input` and `logits` must be provided.
+
+  Args:
+    logits_input: `Tensor` input to `logits`.
+    logits: `Tensor` output.
+    logits_dimension: Integer, last dimension of `logits`. This is used to
+      create `logits` from `logits_input` if `logits` is `None`; otherwise, it's
+      used to validate `logits`.
+
+  Returns:
+    `logits` `Tensor`.
+
+  Raises:
+    ValueError: if neither or both of `logits` and `logits_input` are supplied.
+  """
+  if (logits_dimension is None) or (logits_dimension < 1):
+    raise ValueError("Invalid logits_dimension %s." % logits_dimension)
+
+  # If not provided, create logits.
+  if logits is None:
+    if logits_input is None:
+      raise ValueError("Neither logits nor logits_input supplied.")
+    return layers_lib.linear(logits_input, logits_dimension, scope="logits")
+
+  if logits_input is not None:
+    raise ValueError("Both logits and logits_input supplied.")
+
+  logits = ops.convert_to_tensor(logits, name="logits")
+  logits_dims = logits.get_shape().dims
+  if logits_dims is not None:
+    logits_dims[-1].assert_is_compatible_with(logits_dimension)
+
+  return logits
+
+
 class _RegressionHead(_Head):
   """_Head for regression."""
 
@@ -361,7 +401,7 @@ class _RegressionHead(_Head):
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
-      label_dimension: Number of regression targets per example. This is the
+      label_dimension: Number of regression labels per example. This is the
         size of the last dimension of the labels `Tensor` (typically, this has
         shape `[batch_size, label_dimension]`).
       enable_centered_bias: A bool. If True, estimator will learn a centered
@@ -394,8 +434,7 @@ class _RegressionHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
-    logits = ops.convert_to_tensor(logits)
-    _check_logits_input_not_supported(logits, logits_input)
+    logits = _logits(logits_input, logits, self._logits_dimension)
 
     centered_bias = None
     if self._enable_centered_bias:
@@ -522,8 +561,7 @@ class _BinaryLogisticHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
-    logits = ops.convert_to_tensor(logits)
-    _check_logits_input_not_supported(logits, logits_input)
+    logits = _logits(logits_input, logits, self.logits_dimension)
 
     centered_bias = None
     if self._enable_centered_bias:
@@ -716,8 +754,7 @@ class _MultiClassHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
-    logits = ops.convert_to_tensor(logits)
-    _check_logits_input_not_supported(logits, logits_input)
+    logits = _logits(logits_input, logits, self._logits_dimension)
 
     centered_bias = None
     if self._enable_centered_bias:
@@ -1117,23 +1154,22 @@ class _MultiHead(_Head):
       ValueError: if mode is not recognized or both logits and logits_input is
           provided.
     """
-    if logits is not None and logits_input is not None:
-      raise ValueError("only one of logits and logits_input must be provided.")
-
+    _check_mode_valid(mode)
     all_model_fn_ops = []
-    if logits is not None:
-      all_logits = self._split_logits(logits)
-      for head, logits in zip(self._heads, all_logits):
-        all_model_fn_ops.append(
-            head.create_model_fn_ops(
-                features, labels, mode, _noop, logits=logits, scope=scope))
-    else:
-      # Uses logits_input
+    if logits is None:
+      # Use logits_input.
       for head in self._heads:
+        # TODO(ptucker): Do we need to let each head create its own logits?
         all_model_fn_ops.append(
             head.create_model_fn_ops(
                 features, labels, mode, _noop, logits_input=logits_input,
                 scope=scope))
+    else:
+      for head, logits in zip(self._heads, self._split_logits(logits)):
+        all_model_fn_ops.append(
+            head.create_model_fn_ops(
+                features, labels, mode, _noop, logits_input=logits_input,
+                logits=logits, scope=scope))
 
     if mode == model_fn.ModeKeys.TRAIN:
       return self._combine_train(all_model_fn_ops, train_op_fn)
@@ -1272,12 +1308,6 @@ def _loss(loss_unweighted, weight, name):
         name="weighted_average_loss")
     loss = math_ops.reduce_mean(loss_weighted, name=name_scope)
     return loss, weighted_average_loss
-
-
-def _check_logits_input_not_supported(logits, logits_input):
-  if logits_input is not None or logits is None:
-    raise NotImplementedError("logits_input is not supported yet, "
-                              "must pass logits")
 
 
 def _check_mode_valid(mode):

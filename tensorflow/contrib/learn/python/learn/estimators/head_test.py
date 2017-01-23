@@ -103,7 +103,7 @@ def _sigmoid(x):
 class RegressionModelHeadTest(test.TestCase):
 
   # TODO(zakaria): test multilabel regression.
-  def testRegression(self):
+  def testRegressionWithLogits(self):
     head = head_lib._regression_head()
     with ops.Graph().as_default(), session.Session():
       model_fn_ops = head.create_model_fn_ops(
@@ -115,6 +115,46 @@ class RegressionModelHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+
+  def testRegressionWithInvalidLogits(self):
+    head = head_lib._regression_head()
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+        head.create_model_fn_ops(
+            {},
+            labels=((0.,), (1.,), (1.,)),
+            mode=model_fn.ModeKeys.TRAIN,
+            train_op_fn=_noop_train_op,
+            logits=((1., 1.), (1., 1.), (3., 1.)))
+
+  def testRegressionWithLogitsInput(self):
+    head = head_lib._regression_head()
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          labels=((0.,), (1.,), (1.,)),
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=_noop_train_op,
+          logits_input=((0., 0.), (0., 0.), (0., 0.)))
+      w = ("logits/weights:0", "logits/biases:0")
+      _assert_variables(
+          self, expected_global=w, expected_model=w, expected_trainable=w)
+      variables.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss"])
+      _assert_metrics(self, 2. / 3, {"loss": 2. / 3}, model_fn_ops)
+
+  def testRegressionWithLogitsAndLogitsInput(self):
+    head = head_lib._regression_head()
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "Both logits and logits_input supplied"):
+        head.create_model_fn_ops(
+            {},
+            labels=((0.,), (1.,), (1.,)),
+            mode=model_fn.ModeKeys.TRAIN,
+            train_op_fn=_noop_train_op,
+            logits_input=((0., 0.), (0., 0.), (0., 0.)),
+            logits=((1.,), (1.,), (3.,)))
 
   def testRegressionEvalMode(self):
     head = head_lib._regression_head()
@@ -223,7 +263,7 @@ class MultiLabelModelHeadTest(test.TestCase):
         "labels/probability_mean/class2": _sigmoid(self._logits[0][2]),
     }
 
-  def testMultiLabel(self):
+  def testMultiLabelWithLogits(self):
     n_classes = 3
     head = head_lib._multi_label_head(
         n_classes=n_classes, metric_class_ids=range(n_classes))
@@ -237,17 +277,68 @@ class MultiLabelModelHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
+  def testMultiLabelWithInvalidLogits(self):
+    head = head_lib._multi_label_head(n_classes=len(self._labels[0]) + 1)
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits=self._logits)
+
+  def testMultiLabelWithLogitsInput(self):
+    n_classes = 3
+    head = head_lib._multi_label_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+          logits_input=((0., 0.),))
+      w = ("logits/weights:0", "logits/biases:0")
+      _assert_variables(
+          self, expected_global=w, expected_model=w, expected_trainable=w)
+      variables.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = .69314718
+      _assert_metrics(self, expected_loss, {
+          "accuracy": 2. / 3,
+          "auc": 2. / 4,
+          "loss": expected_loss,
+          "auc/class0": 1.,
+          "auc/class1": 1.,
+          "auc/class2": 0.,
+          "labels/actual_label_mean/class0": self._labels[0][0],
+          "labels/actual_label_mean/class1": self._labels[0][1],
+          "labels/actual_label_mean/class2": self._labels[0][2],
+          "labels/logits_mean/class0": 0.,
+          "labels/logits_mean/class1": 0.,
+          "labels/logits_mean/class2": 0.,
+          "labels/prediction_mean/class0": 0.,
+          "labels/prediction_mean/class1": 0.,
+          "labels/prediction_mean/class2": 0.,
+          "labels/probability_mean/class0": .5,
+          "labels/probability_mean/class1": .5,
+          "labels/probability_mean/class2": .5,
+      }, model_fn_ops)
+
+  def testMultiLabelWithLogitsAndLogitsInput(self):
+    n_classes = 3
+    head = head_lib._multi_label_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "Both logits and logits_input supplied"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits_input=((0., 0.),), logits=self._logits)
+
   def testMultiLabelEvalMode(self):
     n_classes = 3
     head = head_lib._multi_label_head(
         n_classes=n_classes, metric_class_ids=range(n_classes))
     with ops.Graph().as_default(), session.Session():
       model_fn_ops = head.create_model_fn_ops(
-          {},
-          labels=((0, 0, 1),),
-          mode=model_fn.ModeKeys.EVAL,
-          train_op_fn=_noop_train_op,
-          logits=((1., 0., 0.),))
+          {}, self._labels, model_fn.ModeKeys.EVAL, _noop_train_op,
+          logits=self._logits)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
@@ -264,11 +355,8 @@ class MultiLabelModelHeadTest(test.TestCase):
         metric_class_ids=range(n_classes))
     with ops.Graph().as_default(), session.Session():
       model_fn_ops = head.create_model_fn_ops(
-          {},
-          labels={label_name: ((0, 0, 1),)},
-          mode=model_fn.ModeKeys.TRAIN,
-          train_op_fn=_noop_train_op,
-          logits=((1., 0., 0.),))
+          {}, {label_name: self._labels}, model_fn.ModeKeys.TRAIN,
+          _noop_train_op, logits=self._logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
       expected_loss = .89985204
@@ -284,10 +372,10 @@ class MultiLabelModelHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       model_fn_ops = head.create_model_fn_ops(
           features={"label_weight": .1},
-          labels=((0, 0, 1),),
+          labels=self._labels,
           mode=model_fn.ModeKeys.TRAIN,
           train_op_fn=_noop_train_op,
-          logits=((1., 0., 0.),))
+          logits=self._logits)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
       _assert_metrics(self, .089985214,
@@ -301,11 +389,8 @@ class MultiLabelModelHeadTest(test.TestCase):
         metric_class_ids=range(n_classes))
     with ops.Graph().as_default(), session.Session():
       model_fn_ops = head.create_model_fn_ops(
-          {},
-          labels=((0, 0, 1),),
-          mode=model_fn.ModeKeys.TRAIN,
-          train_op_fn=_noop_train_op,
-          logits=((1., 0., 0.),))
+          {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+          logits=self._logits)
       _assert_variables(
           self,
           expected_global=(
@@ -329,19 +414,20 @@ class BinaryClassificationModelHeadTest(test.TestCase):
     self._labels = ((1.,), (0.,))
 
   def _expected_eval_metrics(self, expected_loss):
+    label_mean = np.mean(self._labels)
     return {
         "accuracy": 1. / 2,
-        "accuracy/baseline_label_mean": np.mean(self._labels),
+        "accuracy/baseline_label_mean": label_mean,
         "accuracy/threshold_0.500000_mean": 1. / 2,
         "auc": 1. / 2,
-        "labels/actual_label_mean": np.mean(self._labels),
+        "labels/actual_label_mean": label_mean,
         "labels/prediction_mean": .731059,  # softmax
         "loss": expected_loss,
         "precision/positive_threshold_0.500000_mean": 1. / 2,
         "recall/positive_threshold_0.500000_mean": 1. / 1,
     }
 
-  def testBinaryClassification(self):
+  def testBinaryClassificationWithLogits(self):
     n_classes = 2
     head = head_lib._multi_class_head(n_classes=n_classes)
     with ops.Graph().as_default(), session.Session():
@@ -355,6 +441,51 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testBinaryClassificationWithInvalidLogits(self):
+    head = head_lib._multi_class_head(n_classes=len(self._labels) + 1)
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits=self._logits)
+
+  def testBinaryClassificationWithLogitsInput(self):
+    n_classes = 2
+    head = head_lib._multi_class_head(n_classes=n_classes)
+    with ops.Graph().as_default(), session.Session():
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+          logits_input=((0., 0.), (0., 0.)))
+      w = ("logits/weights:0", "logits/biases:0")
+      _assert_variables(
+          self, expected_global=w, expected_model=w, expected_trainable=w)
+      variables.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = .69314718
+      label_mean = np.mean(self._labels)
+      _assert_metrics(self, expected_loss, {
+          "accuracy": 1. / 2,
+          "accuracy/baseline_label_mean": label_mean,
+          "accuracy/threshold_0.500000_mean": 1. / 2,
+          "auc": 1. / 2,
+          "labels/actual_label_mean": label_mean,
+          "labels/prediction_mean": .5,  # softmax
+          "loss": expected_loss,
+          "precision/positive_threshold_0.500000_mean": 0. / 2,
+          "recall/positive_threshold_0.500000_mean": 0. / 1,
+      }, model_fn_ops)
+
+  def testBinaryClassificationWithLogitsAndLogitsInput(self):
+    head = head_lib._multi_class_head(n_classes=2)
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "Both logits and logits_input supplied"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits_input=((0., 0.), (0., 0.)), logits=self._logits)
 
   def testBinaryClassificationEvalMode(self):
     n_classes = 2
@@ -505,7 +636,7 @@ class MultiClassModelHeadTest(test.TestCase):
         "labels/probability_mean/class2": 0.211942,  # softmax
     }
 
-  def testMultiClass(self):
+  def testMultiClassWithLogits(self):
     n_classes = 3
     head = head_lib._multi_class_head(
         n_classes=n_classes, metric_class_ids=range(n_classes))
@@ -520,6 +651,62 @@ class MultiClassModelHeadTest(test.TestCase):
       expected_loss = 1.5514446
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testMultiClassWithInvalidLogits(self):
+    head = head_lib._multi_class_head(n_classes=len(self._logits[0]) + 1)
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits=self._logits)
+
+  def testMultiClassWithLogitsInput(self):
+    n_classes = 3
+    head = head_lib._multi_class_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+          logits_input=((0., 0.),))
+      w = ("logits/weights:0", "logits/biases:0")
+      _assert_variables(
+          self, expected_global=w, expected_model=w, expected_trainable=w)
+      variables.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.0986123
+      _assert_metrics(self, expected_loss, {
+          "accuracy": 0.,
+          "auc": 2. / 4,
+          "loss": expected_loss,
+          "auc/class0": 1.,
+          "auc/class1": 1.,
+          "auc/class2": 0.,
+          "labels/actual_label_mean/class0": 0. / 1,
+          "labels/actual_label_mean/class1": 0. / 1,
+          "labels/actual_label_mean/class2": 1. / 1,
+          "labels/logits_mean/class0": 0.,
+          "labels/logits_mean/class1": 0.,
+          "labels/logits_mean/class2": 0.,
+          "labels/prediction_mean/class0": 1.,
+          "labels/prediction_mean/class1": 0.,
+          "labels/prediction_mean/class2": 0.,
+          "labels/probability_mean/class0": 0.333333,  # softmax
+          "labels/probability_mean/class1": 0.333333,  # softmax
+          "labels/probability_mean/class2": 0.333333,  # softmax
+      }, model_fn_ops)
+
+  def testMultiClassWithLogitsAndLogitsInput(self):
+    n_classes = 3
+    head = head_lib._multi_class_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "Both logits and logits_input supplied"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits_input=((0., 0.),), logits=self._logits)
 
   def testMultiClassEvalMode(self):
     n_classes = 3
@@ -577,7 +764,7 @@ class BinarySvmModelHeadTest(test.TestCase):
     self._labels = (0, 1)
     self._expected_losses = (.5, 0.)
 
-  def testBinarySVMDefaultWeights(self):
+  def testBinarySVMWithLogits(self):
     head = head_lib._binary_svm_head()
     with ops.Graph().as_default(), session.Session():
       model_fn_ops = head.create_model_fn_ops(
@@ -593,6 +780,47 @@ class BinarySvmModelHeadTest(test.TestCase):
           "accuracy": 1.,
           "loss": expected_loss,
       }, model_fn_ops)
+
+  def testBinarySVMWithInvalidLogits(self):
+    head = head_lib._binary_svm_head()
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
+        head.create_model_fn_ops(
+            {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
+            logits=np.ones((2, 2)))
+
+  def testBinarySVMWithLogitsInput(self):
+    head = head_lib._binary_svm_head()
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          self._labels,
+          model_fn.ModeKeys.TRAIN,
+          _noop_train_op,
+          logits_input=((0., 0.), (0., 0.)))
+      w = ("logits/weights:0", "logits/biases:0")
+      _assert_variables(
+          self, expected_global=w, expected_model=w, expected_trainable=w)
+      variables.global_variables_initializer().run()
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.
+      _assert_metrics(self, expected_loss, {
+          "accuracy": .5,
+          "loss": expected_loss,
+      }, model_fn_ops)
+
+  def testBinarySVMWithLogitsAndLogitsInput(self):
+    head = head_lib._binary_svm_head()
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "Both logits and logits_input supplied"):
+        head.create_model_fn_ops(
+            {},
+            self._labels,
+            model_fn.ModeKeys.TRAIN,
+            _noop_train_op,
+            logits_input=((0., 0.), (0., 0.)),
+            logits=self._predictions)
 
   def testBinarySVMEvalMode(self):
     head = head_lib._binary_svm_head()
