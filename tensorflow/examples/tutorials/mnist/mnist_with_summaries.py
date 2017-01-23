@@ -25,6 +25,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
 import tensorflow as tf
 
@@ -118,7 +119,7 @@ def train():
     # So here we use tf.nn.softmax_cross_entropy_with_logits on the
     # raw outputs of the nn_layer above, and then average across
     # the batch.
-    diff = tf.nn.softmax_cross_entropy_with_logits(y, y_)
+    diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y)
     with tf.name_scope('total'):
       cross_entropy = tf.reduce_mean(diff)
   tf.summary.scalar('cross_entropy', cross_entropy)
@@ -136,10 +137,9 @@ def train():
 
   # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
   merged = tf.summary.merge_all()
-  train_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train',
-                                        sess.graph)
-  test_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/test')
-  tf.initialize_all_variables().run()
+  train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
+  test_writer = tf.summary.FileWriter(FLAGS.log_dir + '/test')
+  tf.global_variables_initializer().run()
 
   # Train the model, and also write summaries.
   # Every 10th step, measure test-set accuracy, and write test summaries
@@ -179,9 +179,9 @@ def train():
 
 
 def main(_):
-  if tf.gfile.Exists(FLAGS.summaries_dir):
-    tf.gfile.DeleteRecursively(FLAGS.summaries_dir)
-  tf.gfile.MakeDirs(FLAGS.summaries_dir)
+  if tf.gfile.Exists(FLAGS.log_dir):
+    tf.gfile.DeleteRecursively(FLAGS.log_dir)
+  tf.gfile.MakeDirs(FLAGS.log_dir)
   train()
 
 
@@ -196,9 +196,9 @@ if __name__ == '__main__':
                       help='Initial learning rate')
   parser.add_argument('--dropout', type=float, default=0.9,
                       help='Keep probability for training dropout.')
-  parser.add_argument('--data_dir', type=str, default='/tmp/data',
-                      help='Directory for storing data')
-  parser.add_argument('--summaries_dir', type=str, default='/tmp/mnist_logs',
-                      help='Summaries directory')
-  FLAGS = parser.parse_args()
-  tf.app.run()
+  parser.add_argument('--data_dir', type=str, default='/tmp/tensorflow/mnist/input_data',
+                      help='Directory for storing input data')
+  parser.add_argument('--log_dir', type=str, default='/tmp/tensorflow/mnist/logs/mnist_with_summaries',
+                      help='Summaries log directory')
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

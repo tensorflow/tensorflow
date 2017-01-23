@@ -1,4 +1,4 @@
-### `tf.nn.depthwise_conv2d(input, filter, strides, padding, name=None)` {#depthwise_conv2d}
+### `tf.nn.depthwise_conv2d(input, filter, strides, padding, rate=None, name=None)` {#depthwise_conv2d}
 
 Depthwise 2-D convolution.
 
@@ -12,12 +12,15 @@ together.  The output has `in_channels * channel_multiplier` channels.
 
 In detail,
 
-    output[b, i, j, k * channel_multiplier + q] =
-        sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
-                     filter[di, dj, k, q]
+    output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
+         filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
+                                         strides[2] * j + rate[1] * dj, k]
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the
 same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+If any value in `rate` is greater than 1, we perform atrous depthwise
+convolution, in which case all values in the `strides` tensor must be equal
+to 1.
 
 ##### Args:
 
@@ -30,6 +33,9 @@ same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
     See the [comment
       here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`rate`</b>: 1-D of size 2. The dilation rate in which we sample input values
+    across the `height` and `width` dimensions in atrous convolution. If it is
+    greater than 1, then all values of strides must be 1.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:

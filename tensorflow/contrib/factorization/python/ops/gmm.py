@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Implementation of Gaussian mixture model (GMM) clustering.
 
 This goes on top of skflow API.
@@ -22,19 +21,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 import numpy as np
 
-import tensorflow as tf
-
+from tensorflow.contrib import framework
 from tensorflow.contrib.factorization.python.ops import gmm_ops
-from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.framework.python.framework import checkpoint_utils
+from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.contrib.learn.python.learn import graph_actions
+from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
+from tensorflow.contrib.learn.python.learn.estimators import estimator as estimator_lib
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed as random_seed_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.control_flow_ops import with_dependencies
+from tensorflow.python.platform import tf_logging as logging
 
 
-class GMM(estimator.Estimator, TransformerMixin):
+def _streaming_sum(scalar_tensor):
+  """Create a sum metric and update op."""
+  sum_metric = framework.local_variable(constant_op.constant(0.0))
+  sum_update = sum_metric.assign_add(scalar_tensor)
+  return sum_metric, sum_update
+
+
+class GMM(estimator_lib.Estimator, TransformerMixin):
   """GMM clustering."""
   SCORES = 'scores'
   ASSIGNMENTS = 'assignments'
@@ -70,9 +88,7 @@ class GMM(estimator.Estimator, TransformerMixin):
       config: See Estimator
       verbose: See Estimator
     """
-    super(GMM, self).__init__(
-        model_dir=model_dir,
-        config=config)
+    super(GMM, self).__init__(model_dir=model_dir, config=config)
     self.batch_size = batch_size
     self.steps = steps
     self.continue_training = continue_training
@@ -105,13 +121,16 @@ class GMM(estimator.Estimator, TransformerMixin):
     """
     if logdir is not None:
       self._model_dir = logdir
-    self._data_feeder = data_feeder.setup_train_data_feeder(
-        x, None, self._num_clusters, self.batch_size)
-    self._train_model(input_fn=self._data_feeder.input_builder,
-                      feed_fn=self._data_feeder.get_feed_dict_fn(),
-                      steps=steps or self.steps,
-                      monitors=monitors,
-                      init_feed_fn=self._data_feeder.get_feed_dict_fn())
+    self._data_feeder = data_feeder.setup_train_data_feeder(x, None,
+                                                            self._num_clusters,
+                                                            self.batch_size)
+    _legacy_train_model(  # pylint: disable=protected-access
+        self,
+        input_fn=self._data_feeder.input_builder,
+        feed_fn=self._data_feeder.get_feed_dict_fn(),
+        steps=steps or self.steps,
+        monitors=monitors,
+        init_feed_fn=self._data_feeder.get_feed_dict_fn())
     return self
 
   def predict(self, x, batch_size=None):
@@ -125,8 +144,10 @@ class GMM(estimator.Estimator, TransformerMixin):
       Array with same number of rows as x, containing cluster ids.
     """
     return np.array([
-        prediction[GMM.ASSIGNMENTS] for prediction in
-        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
+        prediction[GMM.ASSIGNMENTS]
+        for prediction in super(GMM, self).predict(
+            x=x, batch_size=batch_size, as_iterable=True)
+    ])
 
   def score(self, x, batch_size=None):
     """Predict total sum of distances to nearest clusters.
@@ -152,53 +173,42 @@ class GMM(estimator.Estimator, TransformerMixin):
       distances to the cluster centers.
     """
     return np.array([
-        prediction[GMM.ALL_SCORES] for prediction in
-        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
+        prediction[GMM.ALL_SCORES]
+        for prediction in super(GMM, self).predict(
+            x=x, batch_size=batch_size, as_iterable=True)
+    ])
 
   def clusters(self):
     """Returns cluster centers."""
-    clusters = tf.contrib.framework.load_variable(
+    clusters = checkpoint_utils.load_variable(
         self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
     return np.squeeze(clusters, 1)
 
   def covariances(self):
     """Returns the covariances."""
-    return tf.contrib.framework.load_variable(
-        self.model_dir,
-        gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
+    return checkpoint_utils.load_variable(
+        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
 
   def _parse_tensor_or_dict(self, features):
     if isinstance(features, dict):
-      return array_ops.concat(1, [features[k] for k in sorted(features.keys())])
+      return array_ops.concat([features[k] for k in sorted(features.keys())], 1)
     return features
 
   def _get_train_ops(self, features, _):
-    (_,
-     _,
-     losses,
-     training_op) = gmm_ops.gmm(
-         self._parse_tensor_or_dict(features),
-         self._training_initial_clusters,
-         self._num_clusters,
-         self._random_seed,
-         self._covariance_type,
-         self._params)
-    incr_step = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-    loss = tf.reduce_sum(losses)
+    (_, _, losses, training_op) = gmm_ops.gmm(
+        self._parse_tensor_or_dict(features), self._training_initial_clusters,
+        self._num_clusters, self._random_seed, self._covariance_type,
+        self._params)
+    incr_step = state_ops.assign_add(variables.get_global_step(), 1)
+    loss = math_ops.reduce_sum(losses)
     training_op = with_dependencies([training_op, incr_step], loss)
     return training_op, loss
 
   def _get_predict_ops(self, features):
-    (all_scores,
-     model_predictions,
-     _,
-     _) = gmm_ops.gmm(
-         self._parse_tensor_or_dict(features),
-         self._training_initial_clusters,
-         self._num_clusters,
-         self._random_seed,
-         self._covariance_type,
-         self._params)
+    (all_scores, model_predictions, _, _) = gmm_ops.gmm(
+        self._parse_tensor_or_dict(features), self._training_initial_clusters,
+        self._num_clusters, self._random_seed, self._covariance_type,
+        self._params)
     return {
         GMM.ALL_SCORES: all_scores[0],
         GMM.ASSIGNMENTS: model_predictions[0][0],
@@ -215,6 +225,91 @@ class GMM(estimator.Estimator, TransformerMixin):
          self._random_seed,
          self._covariance_type,
          self._params)
-    return {
-        GMM.SCORES: tf.reduce_sum(losses),
-    }
+    return {GMM.SCORES: _streaming_sum(math_ops.reduce_sum(losses))}
+
+
+# TODO(xavigonzalvo): delete this after implementing model-fn based Estimator.
+def _legacy_train_model(estimator,
+                        input_fn,
+                        steps,
+                        feed_fn=None,
+                        init_op=None,
+                        init_feed_fn=None,
+                        init_fn=None,
+                        device_fn=None,
+                        monitors=None,
+                        log_every_steps=100,
+                        fail_on_nan_loss=True,
+                        max_steps=None):
+  """Legacy train function of Estimator."""
+  if hasattr(estimator.config, 'execution_mode'):
+    if estimator.config.execution_mode not in ('all', 'train'):
+      return
+
+    # Stagger startup of worker sessions based on task id.
+    sleep_secs = min(
+        estimator.config.training_worker_max_startup_secs,
+        estimator.config.task_id *
+        estimator.config.training_worker_session_startup_stagger_secs)
+    if sleep_secs:
+      logging.info('Waiting %d secs before starting task %d.', sleep_secs,
+                   estimator.config.task_id)
+      time.sleep(sleep_secs)
+
+  # Device allocation
+  device_fn = device_fn or estimator._device_fn  # pylint: disable=protected-access
+
+  with ops.Graph().as_default() as g, g.device(device_fn):
+    random_seed_lib.set_random_seed(estimator.config.tf_random_seed)
+    global_step = framework.create_global_step(g)
+    features, labels = input_fn()
+    estimator._check_inputs(features, labels)  # pylint: disable=protected-access
+
+    # The default return type of _get_train_ops is ModelFnOps. But there are
+    # some subclasses of tf.contrib.learn.Estimator which override this
+    # method and use the legacy signature, namely _get_train_ops returns a
+    # (train_op, loss) tuple. The following else-statement code covers these
+    # cases, but will soon be deleted after the subclasses are updated.
+    # TODO(b/32664904): Update subclasses and delete the else-statement.
+    train_ops = estimator._get_train_ops(features, labels)  # pylint: disable=protected-access
+    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
+      train_op = train_ops.train_op
+      loss_op = train_ops.loss
+      if estimator.config.is_chief:
+        hooks = train_ops.training_chief_hooks + train_ops.training_hooks
+      else:
+        hooks = train_ops.training_hooks
+    else:  # Legacy signature
+      if len(train_ops) != 2:
+        raise ValueError('Expected a tuple of train_op and loss, got {}'.format(
+            train_ops))
+      train_op = train_ops[0]
+      loss_op = train_ops[1]
+      hooks = []
+
+    hooks += monitor_lib.replace_monitors_with_hooks(monitors, estimator)
+
+    ops.add_to_collection(ops.GraphKeys.LOSSES, loss_op)
+    return graph_actions._monitored_train(  # pylint: disable=protected-access
+        graph=g,
+        output_dir=estimator.model_dir,
+        train_op=train_op,
+        loss_op=loss_op,
+        global_step_tensor=global_step,
+        init_op=init_op,
+        init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
+        init_fn=init_fn,
+        log_every_steps=log_every_steps,
+        supervisor_is_chief=estimator.config.is_chief,
+        supervisor_master=estimator.config.master,
+        supervisor_save_model_secs=estimator.config.save_checkpoints_secs,
+        supervisor_save_model_steps=estimator.config.save_checkpoints_steps,
+        supervisor_save_summaries_steps=estimator.config.save_summary_steps,
+        keep_checkpoint_max=estimator.config.keep_checkpoint_max,
+        keep_checkpoint_every_n_hours=(
+            estimator.config.keep_checkpoint_every_n_hours),
+        feed_fn=feed_fn,
+        steps=steps,
+        fail_on_nan_loss=fail_on_nan_loss,
+        hooks=hooks,
+        max_steps=max_steps)

@@ -18,11 +18,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
 
-st = tf.contrib.bayesflow.stochastic_tensor
-vi = tf.contrib.bayesflow.variational_inference
-distributions = tf.contrib.distributions
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
+from tensorflow.contrib import distributions as distributions_lib
+from tensorflow.contrib import layers
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
+from tensorflow.contrib.bayesflow.python.ops import variational_inference
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
+from tensorflow.contrib.distributions.python.ops import normal
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+
+st = stochastic_tensor
+vi = variational_inference
+distributions = distributions_lib
 
 
 class NormalNoEntropy(distributions.Normal):
@@ -33,45 +50,46 @@ class NormalNoEntropy(distributions.Normal):
 
 # For mini-VAE
 def inference_net(x, latent_size):
-  return tf.contrib.layers.linear(x, latent_size)
+  return layers.linear(x, latent_size)
 
 
 def generative_net(z, data_size):
-  return tf.contrib.layers.linear(z, data_size)
+  return layers.linear(z, data_size)
 
 
 def mini_vae():
   x = [[-6., 3., 6.], [-8., 4., 8.]]
   prior = distributions.Normal(mu=0., sigma=1.)
   variational = st.StochasticTensor(
-      distributions.Normal, mu=inference_net(x, 1), sigma=1.)
+      distributions.Normal(
+          mu=inference_net(x, 1), sigma=1.))
   vi.register_prior(variational, prior)
   px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
-  log_likelihood = tf.reduce_sum(px.log_prob(x), 1)
-  log_likelihood = tf.expand_dims(log_likelihood, -1)
+  log_likelihood = math_ops.reduce_sum(px.log_prob(x), 1)
+  log_likelihood = array_ops.expand_dims(log_likelihood, -1)
   return x, prior, variational, px, log_likelihood
 
 
-class VariationalInferenceTest(tf.test.TestCase):
+class VariationalInferenceTest(test.TestCase):
 
   def testDefaultVariationalAndPrior(self):
     _, prior, variational, _, log_likelihood = mini_vae()
     elbo = vi.elbo(log_likelihood)
-    expected_elbo = log_likelihood - tf.contrib.distributions.kl(
+    expected_elbo = log_likelihood - kullback_leibler.kl(
         variational.distribution, prior)
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual(*sess.run([expected_elbo, elbo]))
 
   def testExplicitVariationalAndPrior(self):
     with self.test_session() as sess:
       _, _, variational, _, log_likelihood = mini_vae()
-      prior = tf.contrib.distributions.Normal(mu=3., sigma=2.)
+      prior = normal.Normal(mu=3., sigma=2.)
       elbo = vi.elbo(
           log_likelihood, variational_with_prior={variational: prior})
-      expected_elbo = log_likelihood - tf.contrib.distributions.kl(
+      expected_elbo = log_likelihood - kullback_leibler.kl(
           variational.distribution, prior)
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual(*sess.run([expected_elbo, elbo]))
 
   def testExplicitForms(self):
@@ -79,8 +97,9 @@ class VariationalInferenceTest(tf.test.TestCase):
 
     elbos = []
     forms = vi.ELBOForms
-    for form in [forms.default, forms.analytic_kl, forms.sample,
-                 forms.analytic_entropy]:
+    for form in [
+        forms.default, forms.analytic_kl, forms.sample, forms.analytic_entropy
+    ]:
       elbo = vi.elbo(
           log_likelihood=log_likelihood,
           variational_with_prior={variational: prior},
@@ -88,23 +107,24 @@ class VariationalInferenceTest(tf.test.TestCase):
       elbos.append(elbo)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
-      log_likelihood_shape = tf.shape(log_likelihood).eval()
+      sess.run(variables.global_variables_initializer())
+      log_likelihood_shape = array_ops.shape(log_likelihood).eval()
       for elbo in elbos:
         elbo.eval()
-        elbo_shape = tf.shape(elbo).eval()
+        elbo_shape = array_ops.shape(elbo).eval()
         self.assertAllEqual(log_likelihood_shape, elbo_shape)
         self.assertEqual(elbo.dtype, log_likelihood.dtype)
 
   def testDefaultsSampleKLWithoutAnalyticKLOrEntropy(self):
-    x = tf.constant([[-6., 3., 6.]])
+    x = constant_op.constant([[-6., 3., 6.]])
 
     prior = distributions.Bernoulli(0.5)
     variational = st.StochasticTensor(
-        NormalNoEntropy, mu=inference_net(x, 1), sigma=1.)
+        NormalNoEntropy(
+            mu=inference_net(x, 1), sigma=1.))
     vi.register_prior(variational, prior)
     px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
-    log_likelihood = tf.reduce_sum(px.log_prob(x), 1)
+    log_likelihood = math_ops.reduce_sum(px.log_prob(x), 1)
 
     # No analytic KL available between prior and variational distributions.
     with self.assertRaisesRegexp(NotImplementedError, "No KL"):
@@ -117,7 +137,7 @@ class VariationalInferenceTest(tf.test.TestCase):
         variational) - variational.distribution.log_prob(variational)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual(*sess.run([expected_elbo, elbo]))
 
   def testElboWithLogJoint(self):
@@ -125,9 +145,9 @@ class VariationalInferenceTest(tf.test.TestCase):
       _, prior, variational, _, log_likelihood = mini_vae()
       log_joint = log_likelihood + prior.log_prob(variational)
       elbo = vi.elbo_with_log_joint(log_joint)
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       elbo.eval()
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

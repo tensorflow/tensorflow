@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for factorization_ops."""
 
 from __future__ import absolute_import
@@ -20,11 +19,21 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.contrib.factorization.python.ops import factorization_ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 INPUT_MATRIX = np.array(
     [[0.1, 0.0, 0.2, 0.0, 0.4, 0.5, 0.0],
@@ -34,8 +43,10 @@ INPUT_MATRIX = np.array(
      [0.0, 4.1, 0.0, 0.0, 4.4, 0.0, 4.6]]).astype(np.float32)
 
 
-def np_matrix_to_tf_sparse(np_matrix, row_slices=None,
-                           col_slices=None, transpose=False,
+def np_matrix_to_tf_sparse(np_matrix,
+                           row_slices=None,
+                           col_slices=None,
+                           transpose=False,
                            shuffle=False):
   """Simple util to slice non-zero np matrix elements as tf.SparseTensor."""
   indices = np.nonzero(np_matrix)
@@ -58,24 +69,23 @@ def np_matrix_to_tf_sparse(np_matrix, row_slices=None,
     random.shuffle(shuffled_ind)
     indices = (indices[0][shuffled_ind], indices[1][shuffled_ind])
 
-  ind = (np.concatenate(
-      (np.expand_dims(indices[1], 1),
-       np.expand_dims(indices[0], 1)), 1).astype(np.int64) if transpose else
-         np.concatenate((np.expand_dims(indices[0], 1),
-                         np.expand_dims(indices[1], 1)), 1).astype(np.int64))
+  ind = (np.concatenate((np.expand_dims(indices[1], 1),
+                         np.expand_dims(indices[0], 1)), 1).astype(np.int64) if
+         transpose else np.concatenate((np.expand_dims(indices[0], 1),
+                                        np.expand_dims(indices[1], 1)),
+                                       1).astype(np.int64))
   val = np_matrix[indices].astype(np.float32)
-  shape = (np.array(
-      [max(indices[1]) + 1, max(indices[0]) + 1]).astype(np.int64) if transpose
-           else np.array(
+  shape = (np.array([max(indices[1]) + 1, max(indices[0]) + 1]).astype(np.int64)
+           if transpose else np.array(
                [max(indices[0]) + 1, max(indices[1]) + 1]).astype(np.int64))
-  return tf.SparseTensor(ind, val, shape)
+  return sparse_tensor.SparseTensor(ind, val, shape)
 
 
 def sparse_input():
   return np_matrix_to_tf_sparse(INPUT_MATRIX)
 
 
-class WalsModelTest(tf.test.TestCase):
+class WalsModelTest(test.TestCase):
 
   def setUp(self):
     self.col_init = [
@@ -92,9 +102,7 @@ class WalsModelTest(tf.test.TestCase):
     ]
 
     self.row_wts = [[0.1, 0.2, 0.3], [0.4, 0.5]]
-    self.col_wts = [[0.1, 0.2, 0.3],
-                    [0.4, 0.5],
-                    [0.6, 0.7]]
+    self.col_wts = [[0.1, 0.2, 0.3], [0.4, 0.5], [0.6, 0.7]]
     self._wals_inputs = sparse_input()
 
     # Values of factor shards after running one iteration of row and column
@@ -114,9 +122,11 @@ class WalsModelTest(tf.test.TestCase):
 
   def _run_test_process_input(self, use_factors_weights_cache):
     with self.test_session():
-      sp_feeder = tf.sparse_placeholder(tf.float32)
-      wals_model = tf.contrib.factorization.WALSModel(
-          5, 7, 3,
+      sp_feeder = array_ops.sparse_placeholder(dtypes.float32)
+      wals_model = factorization_ops.WALSModel(
+          5,
+          7,
+          3,
           num_row_shards=2,
           num_col_shards=3,
           regularization=0.01,
@@ -142,8 +152,8 @@ class WalsModelTest(tf.test.TestCase):
       # Here we feed in scattered rows of the input.
       wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
-      process_input_op = wals_model.update_row_factors(sp_input=sp_feeder,
-                                                       transpose_input=False)[1]
+      process_input_op = wals_model.update_row_factors(
+          sp_input=sp_feeder, transpose_input=False)[1]
       for inp in input_scattered_rows:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -152,16 +162,43 @@ class WalsModelTest(tf.test.TestCase):
       self.assertAllClose(row_factors[0], self._row_factors_0, atol=1e-3)
       self.assertAllClose(row_factors[1], self._row_factors_1, atol=1e-3)
 
+      # Test row projection.
+      # Using the specified projection weights for the 2 row feature vectors.
+      # This is expected to reprodue the same row factors in the model as the
+      # weights and feature vectors are identical to that used in model
+      # training.
+      projected_rows = wals_model.project_row_factors(
+          sp_input=sp_feeder,
+          transpose_input=False,
+          projection_weights=[0.2, 0.5])
+      # Don't specify the projection weight, so 1.0 will be used. The feature
+      # weights will be those specified in model.
+      projected_rows_no_weights = wals_model.project_row_factors(
+          sp_input=sp_feeder, transpose_input=False)
+      feed_dict = {
+          sp_feeder:
+              np_matrix_to_tf_sparse(
+                  INPUT_MATRIX, [1, 4], shuffle=False).eval()
+      }
+      self.assertAllClose(
+          projected_rows.eval(feed_dict=feed_dict),
+          [self._row_factors_0[1], self._row_factors_1[1]],
+          atol=1e-3)
+      self.assertAllClose(
+          projected_rows_no_weights.eval(feed_dict=feed_dict),
+          [[0.569082, 0.715088, 0.31777], [1.915879, 1.992677, 1.109057]],
+          atol=1e-3)
+
       # Split input into multiple sparse tensors with scattered columns. Note
       # that here the elements in the sparse tensors are not ordered and also
       # do not need to consist of consecutive columns. However, each column
       # needs to include all non-zero elements in that column.
       sp_c0 = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[2, 0]).eval()
-      sp_c1 = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[5, 3, 1],
-                                     shuffle=True).eval()
+      sp_c1 = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[5, 3, 1], shuffle=True).eval()
       sp_c2 = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[4, 6]).eval()
-      sp_c3 = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[3, 6],
-                                     shuffle=True).eval()
+      sp_c3 = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[3, 6], shuffle=True).eval()
 
       input_scattered_cols = [sp_c0, sp_c1, sp_c2, sp_c3]
 
@@ -169,8 +206,8 @@ class WalsModelTest(tf.test.TestCase):
       # Here we feed in scattered columns of the input.
       wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
-      process_input_op = wals_model.update_col_factors(sp_input=sp_feeder,
-                                                       transpose_input=False)[1]
+      process_input_op = wals_model.update_col_factors(
+          sp_input=sp_feeder, transpose_input=False)[1]
       for inp in input_scattered_cols:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -180,11 +217,44 @@ class WalsModelTest(tf.test.TestCase):
       self.assertAllClose(col_factors[1], self._col_factors_1, atol=1e-3)
       self.assertAllClose(col_factors[2], self._col_factors_2, atol=1e-3)
 
+      # Test column projection.
+      # Using the specified projection weights for the 3 column feature vectors.
+      # This is expected to reprodue the same column factors in the model as the
+      # weights and feature vectors are identical to that used in model
+      # training.
+      projected_cols = wals_model.project_col_factors(
+          sp_input=sp_feeder,
+          transpose_input=False,
+          projection_weights=[0.6, 0.4, 0.2])
+      # Don't specify the projection weight, so 1.0 will be used. The feature
+      # weights will be those specified in model.
+      projected_cols_no_weights = wals_model.project_col_factors(
+          sp_input=sp_feeder, transpose_input=False)
+      feed_dict = {
+          sp_feeder:
+              np_matrix_to_tf_sparse(
+                  INPUT_MATRIX, col_slices=[5, 3, 1], shuffle=False).eval()
+      }
+      self.assertAllClose(
+          projected_cols.eval(feed_dict=feed_dict), [
+              self._col_factors_2[0], self._col_factors_1[0],
+              self._col_factors_0[1]
+          ],
+          atol=1e-3)
+      self.assertAllClose(
+          projected_cols_no_weights.eval(feed_dict=feed_dict),
+          [[3.471045, -1.250835, -3.598917],
+           [3.585139, -0.487476, -3.852232],
+           [0.346433, 1.360644, 1.677121]],
+          atol=1e-3)
+
   def _run_test_process_input_transposed(self, use_factors_weights_cache):
     with self.test_session():
-      sp_feeder = tf.sparse_placeholder(tf.float32)
-      wals_model = tf.contrib.factorization.WALSModel(
-          5, 7, 3,
+      sp_feeder = array_ops.sparse_placeholder(dtypes.float32)
+      wals_model = factorization_ops.WALSModel(
+          5,
+          7,
+          3,
           num_row_shards=2,
           num_col_shards=3,
           regularization=0.01,
@@ -201,10 +271,10 @@ class WalsModelTest(tf.test.TestCase):
       # Here the inputs are transposed. But the same constraints as described in
       # the previous non-transposed test case apply to these inputs (before they
       # are transposed).
-      sp_r0_t = np_matrix_to_tf_sparse(INPUT_MATRIX, [0, 3],
-                                       transpose=True).eval()
-      sp_r1_t = np_matrix_to_tf_sparse(INPUT_MATRIX, [4, 1],
-                                       shuffle=True, transpose=True).eval()
+      sp_r0_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, [0, 3], transpose=True).eval()
+      sp_r1_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, [4, 1], shuffle=True, transpose=True).eval()
       sp_r2_t = np_matrix_to_tf_sparse(INPUT_MATRIX, [2], transpose=True).eval()
       sp_r3_t = sp_r1_t
       input_scattered_rows = [sp_r0_t, sp_r1_t, sp_r2_t, sp_r3_t]
@@ -216,8 +286,8 @@ class WalsModelTest(tf.test.TestCase):
       # they appear.
       wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
-      process_input_op = wals_model.update_row_factors(sp_input=sp_feeder,
-                                                       transpose_input=True)[1]
+      process_input_op = wals_model.update_row_factors(
+          sp_input=sp_feeder, transpose_input=True)[1]
       for inp in input_scattered_rows:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -226,29 +296,55 @@ class WalsModelTest(tf.test.TestCase):
       self.assertAllClose(row_factors[0], self._row_factors_0, atol=1e-3)
       self.assertAllClose(row_factors[1], self._row_factors_1, atol=1e-3)
 
+      # Test row projection.
+      # Using the specified projection weights for the 2 row feature vectors.
+      # This is expected to reprodue the same row factors in the model as the
+      # weights and feature vectors are identical to that used in model
+      # training.
+      projected_rows = wals_model.project_row_factors(
+          sp_input=sp_feeder,
+          transpose_input=True,
+          projection_weights=[0.5, 0.2])
+      # Don't specify the projection weight, so 1.0 will be used. The feature
+      # weights will be those specified in model.
+      projected_rows_no_weights = wals_model.project_row_factors(
+          sp_input=sp_feeder, transpose_input=True)
+      feed_dict = {
+          sp_feeder:
+              np_matrix_to_tf_sparse(
+                  INPUT_MATRIX, [4, 1], shuffle=False, transpose=True).eval()
+      }
+      self.assertAllClose(
+          projected_rows.eval(feed_dict=feed_dict),
+          [self._row_factors_1[1], self._row_factors_0[1]],
+          atol=1e-3)
+      self.assertAllClose(
+          projected_rows_no_weights.eval(feed_dict=feed_dict),
+          [[1.915879, 1.992677, 1.109057], [0.569082, 0.715088, 0.31777]],
+          atol=1e-3)
+
       # Split input into multiple SparseTensors with scattered columns.
       # Here the inputs are transposed. But the same constraints as described in
       # the previous non-transposed test case apply to these inputs (before they
       # are transposed).
-      sp_c0_t = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[0, 1],
-                                       transpose=True).eval()
-      sp_c1_t = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[4, 2],
-                                       transpose=True).eval()
-      sp_c2_t = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[5],
-                                       transpose=True, shuffle=True).eval()
-      sp_c3_t = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[3, 6],
-                                       transpose=True).eval()
+      sp_c0_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[0, 1], transpose=True).eval()
+      sp_c1_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[4, 2], transpose=True).eval()
+      sp_c2_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[5], transpose=True, shuffle=True).eval()
+      sp_c3_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[3, 6], transpose=True).eval()
 
       sp_c4_t = sp_c2_t
-      input_scattered_cols = [sp_c0_t, sp_c1_t, sp_c2_t, sp_c3_t,
-                              sp_c4_t]
+      input_scattered_cols = [sp_c0_t, sp_c1_t, sp_c2_t, sp_c3_t, sp_c4_t]
 
       # Test updating column factors.
       # Here we feed in scattered columns of the input.
       wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
-      process_input_op = wals_model.update_col_factors(sp_input=sp_feeder,
-                                                       transpose_input=True)[1]
+      process_input_op = wals_model.update_col_factors(
+          sp_input=sp_feeder, transpose_input=True)[1]
       for inp in input_scattered_cols:
         feed_dict = {sp_feeder: inp}
         process_input_op.run(feed_dict=feed_dict)
@@ -257,6 +353,30 @@ class WalsModelTest(tf.test.TestCase):
       self.assertAllClose(col_factors[0], self._col_factors_0, atol=1e-3)
       self.assertAllClose(col_factors[1], self._col_factors_1, atol=1e-3)
       self.assertAllClose(col_factors[2], self._col_factors_2, atol=1e-3)
+
+      # Test column projection.
+      # Using the specified projection weights for the 2 column feature vectors.
+      # This is expected to reprodue the same column factors in the model as the
+      # weights and feature vectors are identical to that used in model
+      # training.
+      projected_cols = wals_model.project_col_factors(
+          sp_input=sp_feeder,
+          transpose_input=True,
+          projection_weights=[0.4, 0.7])
+      # Don't specify the projection weight, so 1.0 will be used. The feature
+      # weights will be those specified in model.
+      projected_cols_no_weights = wals_model.project_col_factors(
+          sp_input=sp_feeder, transpose_input=True)
+      feed_dict = {sp_feeder: sp_c3_t}
+      self.assertAllClose(
+          projected_cols.eval(feed_dict=feed_dict),
+          [self._col_factors_1[0], self._col_factors_2[1]],
+          atol=1e-3)
+      self.assertAllClose(
+          projected_cols_no_weights.eval(feed_dict=feed_dict),
+          [[3.585139, -0.487476, -3.852232],
+           [0.557937, 1.813907, 1.331171]],
+          atol=1e-3)
 
   # Note that when row_weights and col_weights are 0, WALS gives dentical
   # results as ALS (Alternating Least Squares). However our implementation does
@@ -267,8 +387,10 @@ class WalsModelTest(tf.test.TestCase):
   def _run_test_als(self, use_factors_weights_cache):
     with self.test_session():
       col_init = np.random.rand(7, 3)
-      als_model = tf.contrib.factorization.WALSModel(
-          5, 7, 3,
+      als_model = factorization_ops.WALSModel(
+          5,
+          7,
+          3,
           col_init=col_init,
           row_weights=None,
           col_weights=None,
@@ -281,9 +403,15 @@ class WalsModelTest(tf.test.TestCase):
       process_input_op = als_model.update_row_factors(self._wals_inputs)[1]
       process_input_op.run()
       row_factors1 = [x.eval() for x in als_model.row_factors]
+      # Testing row projection. Projection weight doesn't matter in this case
+      # since the model is ALS special case.
+      als_projected_row_factors1 = als_model.project_row_factors(
+          self._wals_inputs).eval()
 
-      wals_model = tf.contrib.factorization.WALSModel(
-          5, 7, 3,
+      wals_model = factorization_ops.WALSModel(
+          5,
+          7,
+          3,
           col_init=col_init,
           row_weights=0,
           col_weights=0,
@@ -298,18 +426,27 @@ class WalsModelTest(tf.test.TestCase):
 
       for r1, r2 in zip(row_factors1, row_factors2):
         self.assertAllClose(r1, r2, atol=1e-3)
+      self.assertAllClose(
+          als_projected_row_factors1,
+          [row for shard in row_factors2 for row in shard],
+          atol=1e-3)
 
       # Here we test partial column updates.
-      sp_c = np_matrix_to_tf_sparse(INPUT_MATRIX, col_slices=[2, 0],
-                                    shuffle=True).eval()
+      sp_c = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, col_slices=[2, 0], shuffle=True).eval()
 
-      sp_feeder = tf.sparse_placeholder(tf.float32)
+      sp_feeder = array_ops.sparse_placeholder(dtypes.float32)
       feed_dict = {sp_feeder: sp_c}
       als_model.col_update_prep_gramian_op.run()
       als_model.initialize_col_update_op.run()
       process_input_op = als_model.update_col_factors(sp_input=sp_feeder)[1]
       process_input_op.run(feed_dict=feed_dict)
       col_factors1 = [x.eval() for x in als_model.col_factors]
+      # Testing column projection. Projection weight doesn't matter in this case
+      # since the model is ALS special case.
+      als_projected_col_factors1 = als_model.project_col_factors(
+          np_matrix_to_tf_sparse(
+              INPUT_MATRIX, col_slices=[2, 0], shuffle=False)).eval()
 
       feed_dict = {sp_feeder: sp_c}
       wals_model.col_update_prep_gramian_op.run()
@@ -320,12 +457,18 @@ class WalsModelTest(tf.test.TestCase):
 
       for c1, c2 in zip(col_factors1, col_factors2):
         self.assertAllClose(c1, c2, rtol=5e-3, atol=1e-2)
+      self.assertAllClose(
+          als_projected_col_factors1,
+          [col_factors2[0][2], col_factors2[0][0]],
+          atol=1e-2)
 
   def _run_test_als_transposed(self, use_factors_weights_cache):
     with self.test_session():
       col_init = np.random.rand(7, 3)
-      als_model = tf.contrib.factorization.WALSModel(
-          5, 7, 3,
+      als_model = factorization_ops.WALSModel(
+          5,
+          7,
+          3,
           col_init=col_init,
           row_weights=None,
           col_weights=None,
@@ -334,31 +477,40 @@ class WalsModelTest(tf.test.TestCase):
       als_model.initialize_op.run()
       als_model.worker_init.run()
 
-      wals_model = tf.contrib.factorization.WALSModel(
-          5, 7, 3,
+      wals_model = factorization_ops.WALSModel(
+          5,
+          7,
+          3,
           col_init=col_init,
           row_weights=[0] * 5,
           col_weights=[0] * 7,
           use_factors_weights_cache=use_factors_weights_cache)
       wals_model.initialize_op.run()
       wals_model.worker_init.run()
-      sp_feeder = tf.sparse_placeholder(tf.float32)
+      sp_feeder = array_ops.sparse_placeholder(dtypes.float32)
       # Here test partial row update with identical inputs but with transposed
       # input for als.
-      sp_r_t = np_matrix_to_tf_sparse(INPUT_MATRIX, [3, 1],
-                                      transpose=True).eval()
+      sp_r_t = np_matrix_to_tf_sparse(
+          INPUT_MATRIX, [3, 1], transpose=True).eval()
       sp_r = np_matrix_to_tf_sparse(INPUT_MATRIX, [3, 1]).eval()
 
       feed_dict = {sp_feeder: sp_r_t}
       als_model.row_update_prep_gramian_op.run()
       als_model.initialize_row_update_op.run()
-      process_input_op = als_model.update_row_factors(sp_input=sp_feeder,
-                                                      transpose_input=True)[1]
+      process_input_op = als_model.update_row_factors(
+          sp_input=sp_feeder, transpose_input=True)[1]
       process_input_op.run(feed_dict=feed_dict)
       # Only updated row 1 and row 3, so only compare these rows since others
       # have randomly initialized values.
-      row_factors1 = [als_model.row_factors[0].eval()[1],
-                      als_model.row_factors[0].eval()[3]]
+      row_factors1 = [
+          als_model.row_factors[0].eval()[1], als_model.row_factors[0].eval()[3]
+      ]
+      # Testing row projection. Projection weight doesn't matter in this case
+      # since the model is ALS special case. Note that the ordering of the
+      # returned results will be preserved as the input feature vectors
+      # ordering.
+      als_projected_row_factors1 = als_model.project_row_factors(
+          sp_input=sp_feeder, transpose_input=True).eval(feed_dict=feed_dict)
 
       feed_dict = {sp_feeder: sp_r}
       wals_model.row_update_prep_gramian_op.run()
@@ -367,15 +519,19 @@ class WalsModelTest(tf.test.TestCase):
       process_input_op.run(feed_dict=feed_dict)
       # Only updated row 1 and row 3, so only compare these rows since others
       # have randomly initialized values.
-      row_factors2 = [wals_model.row_factors[0].eval()[1],
-                      wals_model.row_factors[0].eval()[3]]
+      row_factors2 = [
+          wals_model.row_factors[0].eval()[1],
+          wals_model.row_factors[0].eval()[3]
+      ]
       for r1, r2 in zip(row_factors1, row_factors2):
         self.assertAllClose(r1, r2, atol=1e-3)
+      # Note that the ordering of the returned projection results is preserved
+      # as the input feature vectors ordering.
+      self.assertAllClose(
+          als_projected_row_factors1, [row_factors2[1], row_factors2[0]],
+          atol=1e-3)
 
-  def simple_train(self,
-                   model,
-                   inp,
-                   num_iterations):
+  def simple_train(self, model, inp, num_iterations):
     """Helper function to train model on inp for num_iterations."""
     row_update_op = model.update_row_factors(sp_input=inp)[1]
     col_update_op = model.update_col_factors(sp_input=inp)[1]
@@ -401,9 +557,11 @@ class WalsModelTest(tf.test.TestCase):
                     np.random.rand(3, cols)).astype(np.float32) / 3.0
       indices = [[i, j] for i in xrange(rows) for j in xrange(cols)]
       values = data.reshape(-1)
-      inp = tf.SparseTensor(indices, values, [rows, cols])
-      model = tf.contrib.factorization.WALSModel(
-          rows, cols, dims,
+      inp = sparse_tensor.SparseTensor(indices, values, [rows, cols])
+      model = factorization_ops.WALSModel(
+          rows,
+          cols,
+          dims,
           regularization=1e-5,
           row_weights=None,
           col_weights=None,
@@ -411,9 +569,11 @@ class WalsModelTest(tf.test.TestCase):
       self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
-      self.assertAllClose(data,
-                          np.dot(row_factor, np.transpose(col_factor)),
-                          rtol=0.01, atol=0.01)
+      self.assertAllClose(
+          data,
+          np.dot(row_factor, np.transpose(col_factor)),
+          rtol=0.01,
+          atol=0.01)
 
   # Trains a WALS model for a low-rank matrix and make sure the product of
   # factors is close to the original input.
@@ -427,9 +587,11 @@ class WalsModelTest(tf.test.TestCase):
                     np.random.rand(3, cols)).astype(np.float32) / 3.0
       indices = [[i, j] for i in xrange(rows) for j in xrange(cols)]
       values = data.reshape(-1)
-      inp = tf.SparseTensor(indices, values, [rows, cols])
-      model = tf.contrib.factorization.WALSModel(
-          rows, cols, dims,
+      inp = sparse_tensor.SparseTensor(indices, values, [rows, cols])
+      model = factorization_ops.WALSModel(
+          rows,
+          cols,
+          dims,
           regularization=1e-5,
           row_weights=0,
           col_weights=[0] * cols,
@@ -437,9 +599,11 @@ class WalsModelTest(tf.test.TestCase):
       self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
-      self.assertAllClose(data,
-                          np.dot(row_factor, np.transpose(col_factor)),
-                          rtol=0.01, atol=0.01)
+      self.assertAllClose(
+          data,
+          np.dot(row_factor, np.transpose(col_factor)),
+          rtol=0.01,
+          atol=0.01)
 
   # Trains a WALS model for a partially observed low-rank matrix and makes
   # sure the product of factors is reasonably close to the original input.
@@ -447,6 +611,7 @@ class WalsModelTest(tf.test.TestCase):
     rows = 11
     cols = 9
     dims = 4
+
     def keep_index(x):
       return not (x[0] + x[1]) % 4
 
@@ -456,12 +621,15 @@ class WalsModelTest(tf.test.TestCase):
       data = np.dot(np.random.rand(rows, 3),
                     np.random.rand(3, cols)).astype(np.float32) / 3.0
       indices = np.array(
-          list(filter(keep_index,
-                      [[i, j] for i in xrange(rows) for j in xrange(cols)])))
+          list(
+              filter(keep_index,
+                     [[i, j] for i in xrange(rows) for j in xrange(cols)])))
       values = data[indices[:, 0], indices[:, 1]]
-      inp = tf.SparseTensor(indices, values, [rows, cols])
-      model = tf.contrib.factorization.WALSModel(
-          rows, cols, dims,
+      inp = sparse_tensor.SparseTensor(indices, values, [rows, cols])
+      model = factorization_ops.WALSModel(
+          rows,
+          cols,
+          dims,
           unobserved_weight=0.01,
           regularization=0.001,
           row_weights=row_wts,
@@ -474,8 +642,8 @@ class WalsModelTest(tf.test.TestCase):
       for i in xrange(rows):
         for j in xrange(cols):
           if keep_index([i, j]):
-            self.assertNear(data[i][j], out[i][j],
-                            err=0.4, msg="%d, %d" % (i, j))
+            self.assertNear(
+                data[i][j], out[i][j], err=0.4, msg="%d, %d" % (i, j))
           else:
             self.assertNear(0, out[i][j], err=0.5, msg="%d, %d" % (i, j))
 
@@ -517,4 +685,4 @@ class WalsModelTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

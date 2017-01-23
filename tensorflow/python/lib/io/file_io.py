@@ -191,8 +191,17 @@ def file_exists(filename):
 
   Returns:
     True if the path exists, whether its a file or a directory.
+    False if the path does not exist and there are no filesystem errors.
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.
   """
-  return pywrap_tensorflow.FileExists(compat.as_bytes(filename))
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.FileExists(compat.as_bytes(filename), status)
+  except errors.NotFoundError:
+    return False
+  return True
 
 
 def delete_file(filename):
@@ -278,7 +287,9 @@ def create_dir(dirname):
 
 
 def recursive_create_dir(dirname):
-  """Create a directory and all parent/intermediate directories.
+  """Creates a directory and all parent/intermediate directories.
+
+  It succeeds if dirname already exists and is writable.
 
   Args:
     dirname: string, name of the directory to be created
@@ -388,11 +399,14 @@ def list_directory(dirname):
   """
   if not is_directory(dirname):
     raise errors.NotFoundError(None, None, "Could not find directory")
-  file_list = get_matching_files(os.path.join(compat.as_str_any(dirname), "*"))
-  return [
-      compat.as_str_any(pywrap_tensorflow.Basename(compat.as_bytes(filename)))
-      for filename in file_list
-  ]
+  with errors.raise_exception_on_not_ok_status() as status:
+    # Convert each element to string, since the return values of the
+    # vector of string should be interpreted as strings, not bytes.
+    return [
+        compat.as_str_any(filename)
+        for filename in pywrap_tensorflow.GetChildren(
+            compat.as_bytes(dirname), status)
+    ]
 
 
 def walk(top, in_order=True):

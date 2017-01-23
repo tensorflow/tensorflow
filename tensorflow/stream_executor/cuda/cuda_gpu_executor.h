@@ -76,7 +76,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
-              const std::vector<KernelArg> &args) override;
+              const KernelArgsArrayBase &args) override;
 
   void *Allocate(uint64 size) override;
 
@@ -108,15 +108,16 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                          uint64 size) override;
 
-  bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                         uint64 size) override;
+  port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                 const void *host_src, uint64 size) override;
 
-  bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                         uint64 size) override;
+  port::Status SynchronousMemcpy(void *host_dst,
+                                 const DeviceMemoryBase &gpu_src,
+                                 uint64 size) override;
 
-  bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                       const DeviceMemoryBase &gpu_src,
-                                       uint64 size) override;
+  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
+                                               const DeviceMemoryBase &gpu_src,
+                                               uint64 size) override;
 
   bool MemZero(Stream *stream, DeviceMemoryBase *location,
                uint64 size) override;
@@ -185,9 +186,6 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // error occurs at any point while asking the driver for block dim limits, it
   // will be only partially populated as a result, and an error will be logged.
   bool FillBlockDimLimit(BlockDim *block_dim_limit) const;
-
-  KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const override;
 
   bool SupportsBlas() const override;
 

@@ -31,7 +31,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import io_wrapper
+from tensorflow.python.summary.impl import event_file_loader
 from tensorflow.python.summary.impl import reservoir
 from tensorflow.python.util import compat
 
@@ -175,7 +175,7 @@ class EventAccumulator(object):
     self._tagged_metadata = {}
     self._histograms = reservoir.Reservoir(size=sizes[HISTOGRAMS])
     self._compressed_histograms = reservoir.Reservoir(
-        size=sizes[COMPRESSED_HISTOGRAMS])
+        size=sizes[COMPRESSED_HISTOGRAMS], always_keep_last=False)
     self._images = reservoir.Reservoir(size=sizes[IMAGES])
     self._audio = reservoir.Reservoir(size=sizes[AUDIO])
 
@@ -569,11 +569,10 @@ class EventAccumulator(object):
   def _ProcessHistogram(self, tag, wall_time, step, histo):
     """Processes a proto histogram by adding it to accumulated state."""
     histo = self._ConvertHistogramProtoToTuple(histo)
-    self._histograms.AddItem(tag, HistogramEvent(wall_time, step, histo))
+    histo_ev = HistogramEvent(wall_time, step, histo)
+    self._histograms.AddItem(tag, histo_ev)
     self._compressed_histograms.AddItem(
-        tag,
-        CompressedHistogramEvent(
-            wall_time, step, _CompressHistogram(histo, self._compression_bps)))
+        tag, histo_ev, lambda x: _CompressHistogram(x, self._compression_bps))
 
   def _ProcessImage(self, tag, wall_time, step, image):
     """Processes an image by adding it to accumulated state."""
@@ -664,10 +663,10 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
   if IsTensorFlowEventsFile(path):
-    return io_wrapper.CreateFileLoader(path)
+    return event_file_loader.EventFileLoader(path)
   else:
-    return directory_watcher.DirectoryWatcher(path, io_wrapper.CreateFileLoader,
-                                              IsTensorFlowEventsFile)
+    return directory_watcher.DirectoryWatcher(
+        path, event_file_loader.EventFileLoader, IsTensorFlowEventsFile)
 
 
 def _ParseFileVersion(file_version):
@@ -690,7 +689,7 @@ def _ParseFileVersion(file_version):
     return -1
 
 
-def _CompressHistogram(histo, bps):
+def _CompressHistogram(histo_ev, bps):
   """Creates fixed size histogram by adding compression to accumulated state.
 
   This routine transforms a histogram at a particular step by linearly
@@ -701,15 +700,19 @@ def _CompressHistogram(histo, bps):
   coordinate.
 
   Args:
-    histo: A HistogramValue namedtuple.
+    histo_ev: A HistogramEvent namedtuple.
     bps: Compression points represented in basis points, 1/100ths of a percent.
 
   Returns:
-    List of CompressedHistogramValue namedtuples.
+    CompressedHistogramEvent namedtuple.
   """
   # See also: Histogram::Percentile() in core/lib/histogram/histogram.cc
+  histo = histo_ev.histogram_value
   if not histo.num:
-    return [CompressedHistogramValue(b, 0.0) for b in bps]
+    return CompressedHistogramEvent(
+        histo_ev.wall_time,
+        histo_ev.step,
+        [CompressedHistogramValue(b, 0.0) for b in bps])
   bucket = np.array(histo.bucket)
   weights = (bucket * bps[-1] / (bucket.sum() or 1.0)).cumsum()
   values = []
@@ -736,7 +739,7 @@ def _CompressHistogram(histo, bps):
   while j < len(bps):
     values.append(CompressedHistogramValue(bps[j], histo.max))
     j += 1
-  return values
+  return CompressedHistogramEvent(histo_ev.wall_time, histo_ev.step, values)
 
 
 def _Remap(x, x0, x1, y0, y1):

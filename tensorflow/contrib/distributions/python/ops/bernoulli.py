@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -117,7 +118,7 @@ class Bernoulli(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    new_shape = array_ops.concat(0, ([n], self.batch_shape()))
+    new_shape = array_ops.concat(([n], self.batch_shape()), 0)
     uniform = random_ops.random_uniform(
         new_shape, seed=seed, dtype=self.p.dtype)
     sample = math_ops.less(uniform, self.p)
@@ -131,14 +132,22 @@ class Bernoulli(distribution.Distribution):
     logits = self.logits
     # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
     # so we do this here.
-    # TODO(b/30637701): Check dynamic shape, and don't broadcast if the
-    # dynamic shapes are the same.
-    if (not event.get_shape().is_fully_defined() or
-        not logits.get_shape().is_fully_defined() or
-        event.get_shape() != logits.get_shape()):
-      logits = array_ops.ones_like(event) * logits
-      event = array_ops.ones_like(logits) * event
-    return -nn.sigmoid_cross_entropy_with_logits(logits, event)
+
+    broadcast = lambda logits, event: (
+        array_ops.ones_like(event) * logits,
+        array_ops.ones_like(logits) * event)
+
+    # First check static shape.
+    if (event.get_shape().is_fully_defined() and
+        logits.get_shape().is_fully_defined()):
+      if event.get_shape() != logits.get_shape():
+        logits, event = broadcast(logits, event)
+    else:
+      logits, event = control_flow_ops.cond(
+          distribution_util.same_dynamic_shape(logits, event),
+          lambda: (logits, event),
+          lambda: broadcast(logits, event))
+    return -nn.sigmoid_cross_entropy_with_logits(labels=event, logits=logits)
 
   def _prob(self, event):
     return math_ops.exp(self._log_prob(event))
@@ -174,7 +183,7 @@ class BernoulliWithSigmoidP(Bernoulli):
     parameters.pop("self")
     with ops.name_scope(name) as ns:
       super(BernoulliWithSigmoidP, self).__init__(
-          p=nn.sigmoid(p),
+          p=nn.sigmoid(p, name="sigmoid_p"),
           dtype=dtype,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,

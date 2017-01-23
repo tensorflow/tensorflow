@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Ops for building neural network seq2seq layers and losses."""
+"""Ops for building neural network seq2seq decoders and losses."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +21,11 @@ from __future__ import print_function
 
 import sys
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
-from tensorflow.contrib.seq2seq.python.ops import layers
-from tensorflow.contrib.seq2seq.python.ops import loss
+# pylint: disable=unused-import,line-too-long
+from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn import attention_decoder_fn_inference
+from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn import attention_decoder_fn_train
+from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn import prepare_attention
+from tensorflow.contrib.seq2seq.python.ops.decoder_fn import *
+from tensorflow.contrib.seq2seq.python.ops.loss import *
+from tensorflow.contrib.seq2seq.python.ops.seq2seq import *
+# pylint: enable=unused-import,line-too-long

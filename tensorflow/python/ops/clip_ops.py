@@ -26,8 +26,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 
 
 def clip_by_value(t, clip_value_min, clip_value_max,
@@ -140,9 +140,9 @@ def global_norm(t_list, name=None):
     for v in values:
       if v is not None:
         with ops.colocate_with(v):
-          half_squared_norms.append(nn_ops.l2_loss(v))
+          half_squared_norms.append(gen_nn_ops.l2_loss(v))
 
-    half_squared_norm = math_ops.reduce_sum(array_ops.pack(half_squared_norms))
+    half_squared_norm = math_ops.reduce_sum(array_ops.stack(half_squared_norms))
 
     norm = math_ops.sqrt(
         half_squared_norm *

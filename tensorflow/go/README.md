@@ -11,7 +11,7 @@ Construct and execute TensorFlow graphs in Go.
 ## Requirements
 
 -   Go version 1.7+
--   [bazel](https://www.bazel.io/versions/master/docs/install.html)
+-   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
     ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
     or [Mac OS
@@ -76,5 +76,4 @@ go test -v github.com/tensorflow/tensorflow/tensorflow/go
 This API has been built on top of the [C
 API](https://www.tensorflow.org/code/tensorflow/c/c_api.h),
 which is intended for building language bindings for TensorFlow functionality.
-However, this is far from complete. Contributions are welcome. To monitor
-progress follow [issue 10](https://github.com/tensorflow/tensorflow/issues/10).
+However, this is far from complete. Contributions are welcome.

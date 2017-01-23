@@ -18,13 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
 import numpy as np
 import pandas
 from sklearn import metrics
 import tensorflow as tf
 
-from tensorflow.contrib import learn
+learn = tf.contrib.learn
 
 FLAGS = None
 
@@ -39,43 +40,51 @@ POOLING_STRIDE = 2
 n_words = 0
 
 
-def cnn_model(x, y):
-  """2 layer Convolutional network to predict from sequence of words
-  to a class."""
+def cnn_model(features, target):
+  """2 layer ConvNet to predict from sequence of words to a class."""
   # Convert indexes of words into embeddings.
   # This creates embeddings matrix of [n_words, EMBEDDING_SIZE] and then
   # maps word indexes of the sequence into [batch_size, sequence_length,
   # EMBEDDING_SIZE].
-  y = tf.one_hot(y, 15, 1, 0)
-  word_vectors = learn.ops.categorical_variable(x, n_classes=n_words,
-      embedding_size=EMBEDDING_SIZE, name='words')
+  target = tf.one_hot(target, 15, 1, 0)
+  word_vectors = tf.contrib.layers.embed_sequence(
+      features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE, scope='words')
   word_vectors = tf.expand_dims(word_vectors, 3)
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
-    conv1 = tf.contrib.layers.convolution2d(word_vectors, N_FILTERS,
-                                            FILTER_SHAPE1, padding='VALID')
+    conv1 = tf.contrib.layers.convolution2d(
+        word_vectors, N_FILTERS, FILTER_SHAPE1, padding='VALID')
     # Add a RELU for non linearity.
     conv1 = tf.nn.relu(conv1)
     # Max pooling across output of Convolution+Relu.
-    pool1 = tf.nn.max_pool(conv1, ksize=[1, POOLING_WINDOW, 1, 1],
-        strides=[1, POOLING_STRIDE, 1, 1], padding='SAME')
+    pool1 = tf.nn.max_pool(
+        conv1,
+        ksize=[1, POOLING_WINDOW, 1, 1],
+        strides=[1, POOLING_STRIDE, 1, 1],
+        padding='SAME')
     # Transpose matrix so that n_filters from convolution becomes width.
     pool1 = tf.transpose(pool1, [0, 1, 3, 2])
   with tf.variable_scope('CNN_Layer2'):
     # Second level of convolution filtering.
-    conv2 = tf.contrib.layers.convolution2d(pool1, N_FILTERS,
-                                            FILTER_SHAPE2, padding='VALID')
+    conv2 = tf.contrib.layers.convolution2d(
+        pool1, N_FILTERS, FILTER_SHAPE2, padding='VALID')
     # Max across each filter to get useful features for classification.
     pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
 
   # Apply regular WX + B and classification.
-  prediction, loss = learn.models.logistic_regression(pool2, y)
+  logits = tf.contrib.layers.fully_connected(pool2, 15, activation_fn=None)
+  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
 
   train_op = tf.contrib.layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(),
-      optimizer='Adam', learning_rate=0.01)
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='Adam',
+      learning_rate=0.01)
 
-  return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
+  return ({
+      'class': tf.argmax(logits, 1),
+      'prob': tf.nn.softmax(logits)
+  }, loss, train_op)
 
 
 def main(unused_argv):
@@ -101,7 +110,9 @@ def main(unused_argv):
   # Train and predict
   classifier.fit(x_train, y_train, steps=100)
   y_predicted = [
-      p['class'] for p in classifier.predict(x_test, as_iterable=True)]
+      p['class'] for p in classifier.predict(
+          x_test, as_iterable=True)
+  ]
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 
@@ -112,8 +123,6 @@ if __name__ == '__main__':
       '--test_with_fake_data',
       default=False,
       help='Test the example code with fake data.',
-      action='store_true'
-  )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+      action='store_true')
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

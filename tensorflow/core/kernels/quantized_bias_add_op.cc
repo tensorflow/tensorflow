@@ -15,11 +15,14 @@ limitations under the License.
 
 // Implements a quantized eight-bit version of the bias addition operation.
 
-#include "tensorflow/core/kernels/quantization_utils.h"
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -60,9 +63,23 @@ class QuantizedBiasAddOp : public OpKernel {
 
     float total_min;
     float total_max;
-    QuantizedAddUsingEigen<T1, T2, T3>(
-        context->template eigen_device<CPUDevice>(), input, input_min,
-        input_max, bias, bias_min, bias_max, output, &total_min, &total_max);
+
+    if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
+        std::is_same<T2, quint8>() && std::is_same<T3, qint32>()) {
+      auto input_ui8_array = input.flat<quint8>();
+      auto bias_ui8_array = bias.flat<quint8>();
+      GetOutputMinAndMaxForQuantizedAdd(input_min, input_max, bias_min,
+                                        bias_max, &total_min, &total_max);
+      meta::QuantizedBiasAdd(context, input_ui8_array.data(),
+                             input_ui8_array.size(), bias_ui8_array.data(),
+                             bias_ui8_array.size(), input_min, input_max,
+                             bias_min, bias_max, total_min, total_max,
+                             output->flat<qint32>().data());
+    } else {
+      QuantizedAddUsingEigen<T1, T2, T3>(
+          context->template eigen_device<CPUDevice>(), input, input_min,
+          input_max, bias, bias_min, bias_max, output, &total_min, &total_max);
+    }
 
     Tensor* output_min = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));

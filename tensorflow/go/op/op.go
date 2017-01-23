@@ -28,24 +28,22 @@ import (
 )
 
 // Const adds an operation to graph that produces value as output.
-func Const(scope *Scope, value interface{}) (tf.Output, error) {
-	if t, ok := value.(*tf.Tensor); ok {
-		return makeConst(scope, t)
+func Const(scope *Scope, value interface{}) (output tf.Output) {
+	if scope.Err() != nil {
+		return
 	}
-	t, err := tf.NewTensor(value)
-	if err != nil {
-		return tf.Output{}, err
+	t, ok := value.(*tf.Tensor)
+	if !ok {
+		var err error
+		if t, err = tf.NewTensor(value); err != nil {
+			scope.UpdateErr("Const", err)
+			return
+		}
 	}
-	return makeConst(scope, t)
-}
-
-func makeConst(scope *Scope, t *tf.Tensor) (tf.Output, error) {
-	op, err := scope.Graph().AddOperation(tf.OpSpec{
-		Name: scope.opName("Const"),
+	return scope.AddOperation(tf.OpSpec{
 		Type: "Const",
 		Attrs: map[string]interface{}{
 			"dtype": t.DataType(),
 			"value": t,
-		}})
-	return op.Output(0), err
+		}}).Output(0)
 }

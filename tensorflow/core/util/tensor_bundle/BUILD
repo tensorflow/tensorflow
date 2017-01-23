@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # To be exported to tensorflow/core:android_srcs.

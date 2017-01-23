@@ -38,25 +38,51 @@ class MetricSpec(object):
 
   Example:
 
-    Assuming an model has an input function which returns inputs containing
-    (among other things) a tensor with key "income", and a labels dictionary
-    containing "has_clicked". Let's assume that the `model_fn` for this model
-    returns a prediction with key "clicked".
+  Assuming a model has an input function which returns inputs containing
+  (among other things) a tensor with key "input_key", and a labels dictionary
+  containing "label_key". Let's assume that the `model_fn` for this model
+  returns a prediction with key "prediction_key".
 
-    In order to compute the accuracy of the "clicked" prediction, we would add
-    ```
-    "click accuracy": MetricSpec(metric_fn=streaming_accuracy,
-                                 prediction_key="clicked",
-                                 label_key="has_clicked")
-    ```
-    to the metrics argument to `evaluate`. If we would like the accuracy to be
-    weighted by "income", we can add that as the `weight_key` argument.
-    ```
-    "click accuracy": MetricSpec(metric_fn=streaming_accuracy,
-                                 prediction_key="clicked",
-                                 label_key="has_clicked",
-                                 weight_key="income")
-    ```
+  In order to compute the accuracy of the "prediction_key" prediction, we
+  would add
+
+  ```
+  "prediction accuracy": MetricSpec(metric_fn=prediction_accuracy_fn,
+                                    prediction_key="prediction_key",
+                                    label_key="label_key")
+  ```
+
+  to the metrics argument to `evaluate`. `prediction_accuracy_fn` can be either
+  a predefined function in metric_ops (e.g., `streaming_accuracy`) or a custom
+  function you define.
+
+  If we would like the accuracy to be weighted by "input_key", we can add that
+  as the `weight_key` argument.
+
+  ```
+  "prediction accuracy": MetricSpec(metric_fn=prediction_accuracy_fn,
+                                    prediction_key="prediction_key",
+                                    label_key="label_key",
+                                    weight_key="input_key")
+  ```
+
+  An end-to-end example is as follows:
+
+  ```
+  estimator = tf.contrib.learn.Estimator(...)
+  estimator.fit(...)
+  _ = estimator.evaluate(
+      input_fn=input_fn,
+      steps=1,
+      metrics={
+          'prediction accuracy':
+              metric_spec.MetricSpec(
+                  metric_fn=prediction_accuracy_fn,
+                  prediction_key="prediction_key",
+                  label_key="label_key")
+      })
+  ```
+
   """
 
   def __init__(self,
@@ -109,7 +135,15 @@ class MetricSpec(object):
     return self._metric_fn
 
   def __str__(self):
-    return ('MetricSpec(metric_fn=%s, ' % self.metric_fn.__name__ +
+    if hasattr(self.metric_fn, '__name__'):
+      fn_name = self.metric_fn.__name__
+    elif (hasattr(self.metric_fn, 'func') and
+          hasattr(self.metric_fn.func, '__name__')):
+      fn_name = self.metric_fn.func.__name__  # If it's a functools.partial.
+    else:
+      fn_name = '%s' % self.metric_fn
+
+    return ('MetricSpec(metric_fn=%s, ' % fn_name +
             'prediction_key=%s, ' % self.prediction_key +
             'label_key=%s, ' % self.label_key +
             'weight_key=%s)' % self.weight_key
@@ -119,11 +153,13 @@ class MetricSpec(object):
     """Connect our `metric_fn` to the specified members of the given dicts.
 
     This function will call the `metric_fn` given in our constructor as follows:
+
     ```
       metric_fn(predictions[self.prediction_key],
                 labels[self.label_key],
                 weights=weights[self.weight_key])
     ```
+
     And returns the result. The `weights` argument is only passed if
     `self.weight_key` is not `None`.
 
@@ -158,6 +194,9 @@ class MetricSpec(object):
           raise ValueError('MetricSpec with ' + name + '_key specified'
                            ' requires ' +
                            name + 's dict, got %s' % dict_or_tensor)
+        if key not in dict_or_tensor:
+          raise KeyError(
+              'Key \'%s\' missing from %s.' % (key, dict_or_tensor.keys()))
         return dict_or_tensor[key]
       else:
         if isinstance(dict_or_tensor, dict):

@@ -6,13 +6,13 @@ learning models via its high-level
 offers classes you can instantiate to quickly configure common model types such
 as regressors and classifiers:
 
-*   [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier).
+*   [`LinearClassifier`](../../api_docs/python/contrib.learn.md#LinearClassifier):
     Constructs a linear classification model.
-*   [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor).
+*   [`LinearRegressor`](../../api_docs/python/contrib.learn.md#LinearRegressor):
     Constructs a linear regression model.
-*   [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier).
+*   [`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier):
     Construct a neural network classification model.
-*   [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor).
+*   [`DNNRegressor`](../../api_docs/python/contrib.learn.md#DNNRegressor):
     Construct a neural network regressions model.
 
 But what if none of `tf.contrib.learn`'s predefined model types meets your
@@ -88,7 +88,7 @@ contains 7 examples on which to make predictions.
 
 The following sections walk through writing the `Estimator` code step by step;
 the [full, final code is available
-here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/abalone.py)
+here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/abalone.py).
 
 ## Loading Abalone CSV Data into TensorFlow Datasets
 
@@ -101,37 +101,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import tempfile
 import urllib
 
 import numpy as np
 import tensorflow as tf
 
-tf.logging.set_verbosity(tf.logging.INFO)
+FLAGS = None
 ```
 
-Then define flags to allow users to optionally specify CSV files for training,
-test, and prediction datasets via the command line (by default, files will be
-downloaded from [tensorflow.org](https://www.tensorflow.org/)), and enable
-logging:
+Enable logging:
 
 ```python
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string(
-    "train_data",
-    "",
-    "Path to the training data.")
-flags.DEFINE_string(
-    "test_data",
-    "",
-    "Path to the test data.")
-flags.DEFINE_string(
-    "predict_data",
-    "",
-    "Path to the prediction data.")
-
 tf.logging.set_verbosity(tf.logging.INFO)
 ```
 
@@ -140,10 +123,10 @@ command-line options, or downloaded from
 [tensorflow.org](https://www.tensorflow.org/)):
 
 ```python
-def maybe_download():
+def maybe_download(train_data, test_data, predict_data):
   """Maybe downloads training data and returns train and test file names."""
-  if FLAGS.train_data:
-    train_file_name = FLAGS.train_data
+  if train_data:
+    train_file_name = train_data
   else:
     train_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.urlretrieve("http://download.tensorflow.org/data/abalone_train.csv", train_file.name)
@@ -151,15 +134,17 @@ def maybe_download():
     train_file.close()
     print("Training data is downloaded to %s" % train_file_name)
 
-  if FLAGS.test_data:
+  if test_data:
+    test_file_name = test_data
+  else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.urlretrieve("http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
     test_file_name = test_file.name
     test_file.close()
     print("Test data is downloaded to %s" % test_file_name)
 
-  if FLAGS.predict_data:
-    predict_file_name = FLAGS.predict_data
+  if predict_data:
+    predict_file_name = predict_data
   else:
     predict_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.urlretrieve("http://download.tensorflow.org/data/abalone_predict.csv", predict_file.name)
@@ -170,12 +155,16 @@ def maybe_download():
   return train_file_name, test_file_name, predict_file_name
 ```
 
-Finally, create `main()` and load the abalone CSVs into `Datasets`:
+Finally, create `main()` and load the abalone CSVs into `Datasets`,
+defining flags to allow users to optionally specify CSV files for training,
+test, and prediction datasets via the command line (by default, files will be
+downloaded from [tensorflow.org](https://www.tensorflow.org/)):
 
 ```python
 def main(unused_argv):
   # Load datasets
-  abalone_train, abalone_test, abalone_predict = maybe_download()
+  abalone_train, abalone_test, abalone_predict = maybe_download(
+    FLAGS.train_data, FLAGS.test_data, FLAGS.predict_data)
 
   # Training examples
   training_set = tf.contrib.learn.datasets.base.load_csv_without_header(
@@ -196,7 +185,28 @@ def main(unused_argv):
       features_dtype=np.float64)
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--train_data",
+      type=str,
+      default="",
+      help="Path to the training data."
+  )
+  parser.add_argument(
+      "--test_data",
+      type=str,
+      default="",
+      help="Path to the test data."
+  )
+  parser.add_argument(
+      "--predict_data",
+      type=str,
+      default="",
+      help="Path to the prediction data."
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 ```
 
 ## Instantiating an Estimator
@@ -227,13 +237,13 @@ nn = tf.contrib.learn.Estimator(
     model_fn=model_fn, params=model_params)
 ```
 
-*   `model_fn`. A function object that contains all the aforementioned logic to
+*   `model_fn`: A function object that contains all the aforementioned logic to
     support training, evaluation, and prediction. You are responsible for
     implementing that functionality. The next section, [Constructing the
     `model_fn`](#constructing-modelfn) covers creating a model function in
     detail.
 
-*   `params`. An optional dict of hyperparameters (e.g., learning rate, dropout)
+*   `params`: An optional dict of hyperparameters (e.g., learning rate, dropout)
     that will be passed into the `model_fn`.
 
 NOTE: Just like `tf.contrib.learn`'s predefined regressors and classifiers, the
@@ -280,12 +290,12 @@ def model_fn(features, targets, mode, params):
 
 The `model_fn` must accept three arguments:
 
-*   `features`. A dict containing the features passed to the model via `fit()`,
+*   `features`: A dict containing the features passed to the model via `fit()`,
     `evaluate()`, or `predict()`.
-*   `targets`. A `Tensor` containing the labels passed to the model via `fit()`,
+*   `targets`: A `Tensor` containing the labels passed to the model via `fit()`,
     `evaluate()`, or `predict()`. Will be empty for `predict()` calls, as these
     are the values the model will infer.
-*   `mode`. One of the following
+*   `mode`: One of the following
     [`ModeKeys`](../../api_docs/python/contrib.learn.md#ModeKeys) string values
     indicating the context in which the model_fn was invoked:
     *   `tf.contrib.learn.ModeKeys.TRAIN` The `model_fn` was invoked in training
@@ -379,7 +389,7 @@ tf.contrib.layers provides the following convenience functions for constructing
 fully connected layers:
 
 *   `relu(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `inputs` with a [ReLu activation
+    connected to the previous layer `inputs` with a [ReLU activation
     function](https://en.wikipedia.org/wiki/Rectifier_\(neural_networks\))
     ([tf.nn.relu](../../api_docs/python/nn.md#relu)):
 
@@ -388,8 +398,8 @@ fully connected layers:
     ```
 
 *   `relu6(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `hidden_layer` with a ReLu 6 activation
-    function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6))
+    connected to the previous layer `hidden_layer` with a ReLU 6 activation
+    function ([tf.nn.relu6](../../api_docs/python/nn.md#relu6)):
 
     ```python
     second_hidden_layer = tf.contrib.layers.relu6(inputs=hidden_layer, num_outputs=20)
@@ -448,7 +458,7 @@ def model_fn(features, targets, mode, params):
 Here, because you'll be passing the abalone `Datasets` directly to `fit()`,
 `evaluate()`, and `predict()` via `x` and `y` arguments, the input layer is the
 `features` `Tensor` passed to the `model_fn`. The network contains two hidden
-layers, each with 10 nodes and a ReLu activation function. The output layer
+layers, each with 10 nodes and a ReLU activation function. The output layer
 contains no activation function, and is
 [reshaped](../../api_docs/python/array_ops.md#reshape) to a one-dimensional
 tensor to capture the model's predictions, which are stored in

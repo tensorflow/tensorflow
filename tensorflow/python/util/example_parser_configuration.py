@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Extract parse_example op configuration to a proto."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -93,12 +94,12 @@ def extract_example_parser_configuration(parse_example_op, sess):
     # into a TensorProto.
     fixed_config = feature_config.fixed_len_feature
 
-    fixed_config.default_value.CopyFrom(tensor_util.make_tensor_proto(fetched[
-        dense_def_start + i]))
+    fixed_config.default_value.CopyFrom(
+        tensor_util.make_tensor_proto(fetched[dense_def_start + i]))
     # Convert the shape from the attributes
     # into a TensorShapeProto.
-    fixed_config.shape.CopyFrom(tensor_shape.TensorShape(dense_shapes[
-        i]).as_proto())
+    fixed_config.shape.CopyFrom(
+        tensor_shape.TensorShape(dense_shapes[i]).as_proto())
 
     fixed_config.dtype = dense_types[i]
     # Get the output tensor name.

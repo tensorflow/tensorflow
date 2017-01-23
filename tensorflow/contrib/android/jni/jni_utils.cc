@@ -38,7 +38,12 @@ namespace {
 class IfstreamInputStream : public ::google::protobuf::io::CopyingInputStream {
  public:
   explicit IfstreamInputStream(const std::string& file_name)
-      : ifs_(file_name.c_str(), std::ios::in | std::ios::binary) {}
+      : ifs_(file_name.c_str(), std::ios::in | std::ios::binary) {
+    CHECK(ifs_.good()) << "Failed to open file \"" << file_name
+                       << "\" or file is 0 length! Use prefix \""
+                       << ASSET_PREFIX
+                       << "\" if attempting to load proto from assets.";
+  }
   ~IfstreamInputStream() { ifs_.close(); }
 
   int Read(void* buffer, int size) {
@@ -59,6 +64,7 @@ bool PortableReadFileToProto(const std::string& file_name,
                              ::google::protobuf::MessageLite* proto) {
   ::google::protobuf::io::CopyingInputStreamAdaptor stream(
       new IfstreamInputStream(file_name));
+
   stream.SetOwnsCopyingStream(true);
   // TODO(jiayq): the following coded stream is for debugging purposes to allow
   // one to parse arbitrarily large messages for MessageLite. One most likely
@@ -119,6 +125,13 @@ void ReadFileToProtoOrDie(AAssetManager* const asset_manager,
     // it to memory first.
     VLOG(0) << "Opening asset " << asset_filename << " from disk with copy.";
     const off_t data_size = AAsset_getLength(asset);
+
+    // TODO(andrewharp): Add codepath for loading compressed protos as well.
+    if (data_size > 64 * 1024 * 1024) {
+      LOG(WARNING) << "Compressed proto is larger than 64mb; if problems occur "
+                   << " turn off compression for protocol buffer files in APK.";
+    }
+
     const void* const memory = AAsset_getBuffer(asset);
     CHECK(message->ParseFromArray(memory, data_size));
   }

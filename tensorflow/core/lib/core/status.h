@@ -110,7 +110,7 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 // DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
 // mode.
-#ifdef NDEBUG
+#ifndef NDEBUG
 #define TF_DCHECK_OK(val) TF_CHECK_OK(val)
 #else
 #define TF_DCHECK_OK(val) \

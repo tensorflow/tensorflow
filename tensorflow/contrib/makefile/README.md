@@ -1,7 +1,8 @@
 ### TensorFlow Makefile
 
 The recommended way to build TensorFlow from source is using the Bazel
-open-source build system. Sometimes this isn't possible.
+open-source build system. Sometimes this isn't possible. For example,
+if you are building for iOS, you currently need to use the Makefile.
 
  - The build system may not have the RAM or processing power to support Bazel.
  - Bazel or its dependencies may not be available.
@@ -116,7 +117,7 @@ attached Android device:
 adb push ~/graphs/inception/tensorflow_inception_graph.pb /data/local/tmp/
 adb push tensorflow/contrib/makefile/gen/bin/benchmark /data/local/tmp/
 adb shell '/data/local/tmp/benchmark \
- --graph=/data/local/tmp/classify_image_graph_def.pb \
+ --graph=/data/local/tmp/tensorflow_inception_graph.pb \
  --input_layer="input:0" \
  --input_layer_shape="1,224,224,3" \
  --input_layer_type="float" \
@@ -141,10 +142,11 @@ xcode-select --install
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
 
-Then install [automake](https://en.wikipedia.org/wiki/Automake):
+Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
 
 ```bash
 brew install automake
+brew install libtool
 ```
 
 Also, download the graph if you haven't already:
@@ -189,7 +191,7 @@ tensorflow/contrib/makefile/download_dependencies.sh
 Next, you will need to compile protobufs for iOS:
 
 ```bash
-compile_ios_protobuf.sh 
+tensorflow/contrib/makefile/compile_ios_protobuf.sh 
 ```
 
 Then, you can run the makefile specifying iOS as the target, along with the

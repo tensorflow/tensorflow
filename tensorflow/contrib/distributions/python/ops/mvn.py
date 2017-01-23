@@ -222,14 +222,14 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     return self._cov.get_batch_shape()
 
   def _event_shape(self):
-    return array_ops.pack([self._cov.vector_space_dimension()])
+    return array_ops.stack([self._cov.vector_space_dimension()])
 
   def _get_event_shape(self):
     return self._cov.get_shape()[-1:]
 
   def _sample_n(self, n, seed=None):
     # Recall _assert_valid_mu ensures mu and self._cov have same batch shape.
-    shape = array_ops.concat(0, [self._cov.vector_shape(), [n]])
+    shape = array_ops.concat([self._cov.vector_shape(), [n]], 0)
     white_samples = random_ops.random_normal(shape=shape,
                                              mean=0.,
                                              stddev=1.,
@@ -239,9 +239,9 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     correlated_samples = self._cov.sqrt_matmul(white_samples)
 
     # Move the last dimension to the front
-    perm = array_ops.concat(0, (
-        array_ops.pack([array_ops.rank(correlated_samples) - 1]),
-        math_ops.range(0, array_ops.rank(correlated_samples) - 1)))
+    perm = array_ops.concat(
+        (array_ops.stack([array_ops.rank(correlated_samples) - 1]),
+         math_ops.range(0, array_ops.rank(correlated_samples) - 1)), 0)
 
     # TODO(ebrevdo): Once we get a proper tensor contraction op,
     # perform the inner product using that instead of batch_matmul
@@ -722,6 +722,8 @@ class MultivariateNormalFull(_MultivariateNormalOperatorPD):
     self._parameters = parameters
 
 
+@kullback_leibler.RegisterKL(
+    _MultivariateNormalOperatorPD, _MultivariateNormalOperatorPD)
 def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
   """Batched KL divergence `KL(mvn_a || mvn_b)` for multivariate normals.
 
@@ -771,21 +773,3 @@ def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
     k = math_ops.cast(cov_a.vector_space_dimension(), mvn_a.dtype)
     one_half_l = cov_b.sqrt_log_det() - cov_a.sqrt_log_det()
     return 0.5 * (t + q - k) + one_half_l
-
-
-# Register KL divergences.
-kl_classes = [
-    MultivariateNormalFull,
-    MultivariateNormalCholesky,
-    MultivariateNormalDiag,
-    MultivariateNormalDiagPlusVDVT,
-]
-
-
-for mvn_aa in kl_classes:
-  # Register when they are the same here, and do not register when they are the
-  # same below because that would result in a repeated registration.
-  kullback_leibler.RegisterKL(mvn_aa, mvn_aa)(_kl_mvn_mvn_brute_force)
-  for mvn_bb in kl_classes:
-    if mvn_bb != mvn_aa:
-      kullback_leibler.RegisterKL(mvn_aa, mvn_bb)(_kl_mvn_mvn_brute_force)

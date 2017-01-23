@@ -17,8 +17,8 @@ using the same framework as other streaming metrics.
 ##### Args:
 
 
-*  <b>`values`</b>: tensor to concatenate. Rank and the shape along all axes other than
-    the axis to concatenate along must be statically known.
+*  <b>`values`</b>: `Tensor` to concatenate. Rank and the shape along all axes other
+    than the axis to concatenate along must be statically known.
 *  <b>`axis`</b>: optional integer axis to concatenate along.
 *  <b>`max_size`</b>: optional integer maximum size of `value` along the given axis.
     Once the maximum size is reached, further updates are no-ops. By default,
@@ -32,7 +32,7 @@ using the same framework as other streaming metrics.
 ##### Returns:
 
 
-*  <b>`value`</b>: A tensor representing the concatenated values.
+*  <b>`value`</b>: A `Tensor` representing the concatenated values.
 *  <b>`update_op`</b>: An operation that concatenates the next values.
 
 ##### Raises:

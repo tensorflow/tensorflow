@@ -31,22 +31,29 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
-def _node_def(from_node_def, export_scope, unbound_inputs):
+# Prefix to be added to unbound input names so they are easily identifiable.
+_UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
+
+
+def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
   """Create a `NodeDef` proto with export_scope stripped.
 
   Args:
     from_node_def: A `node_def_pb2.NodeDef` protocol buffer.
     export_scope: A `string` representing the name scope to remove.
     unbound_inputs: An array of unbound input names if they exist.
+    clear_devices: Boolean which controls whether to clear device information
+      from node_def. Default false.
 
   Returns:
     A `node_def_pb2.NodeDef` protocol buffer.
@@ -57,7 +64,8 @@ def _node_def(from_node_def, export_scope, unbound_inputs):
         not node_def.input[i].lstrip("^").startswith(export_scope)):
       # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
       # identifiable.
-      node_def.input[i] = re.sub(r"([\^]|^)(.*)", r"\1$unbound_inputs_\2",
+      node_def.input[i] = re.sub(r"([\^]|^)(.*)",
+                                 r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
                                  compat.as_str(v))
       unbound_inputs.append(node_def.input[i])
     else:
@@ -74,6 +82,9 @@ def _node_def(from_node_def, export_scope, unbound_inputs):
           list=attr_value_pb2.AttrValue.ListValue(s=new_s)))
     else:
       node_def.attr[k].CopyFrom(v)
+
+  if clear_devices:
+    node_def.device = ""
 
   return node_def
 
@@ -140,12 +151,8 @@ def ops_used_by_graph_def(graph_def):
     mark_op_as_used(node.op)
   while functions_to_process:
     fun = functions_to_process.pop()
-    if fun.node_def:
-      for node in fun.node_def:
-        mark_op_as_used(node.op)
-    else:  # TODO(josh11b): Eventually remove this case.
-      for node in fun.node:
-        mark_op_as_used(node.op)
+    for node in fun.node_def:
+      mark_op_as_used(node.op)
 
   return [op for op in used_ops if op not in name_to_function]
 
@@ -210,6 +217,31 @@ def _get_kind_name(item):
   return kind
 
 
+def _should_include_node(node_or_node_name, export_scope):
+  """Returns `True` if a node should be included.
+
+  Args:
+    node_or_node_name: A node or `string` node name.
+    export_scope: `string`. Name scope under which to extract the subgraph. The
+      scope name will be striped from the node definitions for easy import later
+      into new name scopes.
+
+  Returns:
+    `True` if the node should be included.
+  """
+  if not isinstance(node_or_node_name, six.string_types):
+    try:
+      node_name = node_or_node_name.name
+    except AttributeError:
+      # Keep the object that we don't know how to process.
+      return True
+  else:
+    node_name = node_or_node_name
+
+  return (node_name.startswith(_UNBOUND_INPUT_PREFIX) or
+          (not export_scope or node_name.startswith(export_scope)))
+
+
 def add_collection_def(meta_graph_def, key, graph=None,
                        export_scope=None):
   """Adds a collection to MetaGraphDef protocol buffer.
@@ -232,6 +264,9 @@ def add_collection_def(meta_graph_def, key, graph=None,
   graph = graph or ops.get_default_graph()
 
   collection_list = graph.get_collection(key)
+  # Remove nodes that should not be exported from the collection list.
+  collection_list = [x for x in collection_list if
+                     _should_include_node(x, export_scope)]
   if not collection_list:
     return
 
@@ -313,8 +348,13 @@ def create_meta_graph_def(meta_info_def=None,
   # Creates a MetaGraphDef proto.
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   # Adds meta_info_def.
-  if meta_info_def:
-    meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
+  if not meta_info_def:
+    meta_info_def = meta_graph_pb2.MetaGraphDef.MetaInfoDef()
+
+  # Set the tf version strings to the current tf build.
+  meta_info_def.tensorflow_version = versions.__version__
+  meta_info_def.tensorflow_git_version = versions.__git_version__
+  meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
 
   # Adds graph_def or the default.
   if not graph_def:
@@ -436,7 +476,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
                            "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value]))
+                           ",".join([compat.as_str(v) for v in field.value
+                                     if not input_map or v not in input_map]))
         break
 
   # Sets graph to default graph if it's not passed in.
@@ -496,7 +537,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
                 key, ops.prepend_name_scope(value, import_scope))
 
     var_list = {}
-    variables = graph.get_collection(ops.GraphKeys.VARIABLES,
+    variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                      scope=import_scope)
     for v in variables:
       var_list[ops.strip_name_scope(v.name, import_scope)] = v
@@ -510,6 +551,7 @@ def export_scoped_meta_graph(filename=None,
                              export_scope=None,
                              as_text=False,
                              unbound_inputs_col_name="unbound_inputs",
+                             clear_devices=False,
                              **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -532,6 +574,8 @@ def export_scoped_meta_graph(filename=None,
       with the given name will be added to the returned `MetaGraphDef`,
       containing the names of tensors that must be remapped when importing the
       `MetaGraphDef`.
+    clear_devices: Boolean which controls whether to clear device information
+      before exporting the graph.
     **kwargs: Optional keyed arguments, including meta_info_def,
       saver_def, collection_list.
 
@@ -543,43 +587,52 @@ def export_scoped_meta_graph(filename=None,
     ValueError: When the `GraphDef` is larger than 2GB.
   """
   graph = graph or ops.get_default_graph()
-  if graph_def and export_scope:
-    raise ValueError("graph_def and export_scope cannot both "
-                     "be specified.")
-
-  if graph_def is None and export_scope:
-    unbound_inputs = []
-    # Only do this complicated work if we want to remove a name scope.
-    graph_def = graph_pb2.GraphDef()
-    # pylint: disable=protected-access
-    graph_def.versions.CopyFrom(graph._graph_def_versions)
-    bytesize = 0
-    for key in sorted(graph._nodes_by_name):
-      if key.startswith(export_scope):
-        value = graph._nodes_by_name[key]
-    # pylint: enable=protected-access
-        graph_def.node.extend([_node_def(value.node_def, export_scope,
-                                         unbound_inputs)])
-        if value.outputs:
-          assert "_output_shapes" not in graph_def.node[-1].attr
-          graph_def.node[-1].attr["_output_shapes"].list.shape.extend([
-              output.get_shape().as_proto() for output in value.outputs])
-        bytesize += value.node_def.ByteSize()
-        if bytesize >= (1 << 31) or bytesize < 0:
-          raise ValueError("GraphDef cannot be larger than 2GB.")
-
+  unbound_inputs = []
+  if export_scope or clear_devices:
+    if graph_def:
+      new_graph_def = graph_pb2.GraphDef()
+      new_graph_def.versions.CopyFrom(graph_def.versions)
+      for node_def in graph_def.node:
+        if _should_include_node(node_def.name, export_scope):
+          new_node_def = _node_def(node_def, export_scope, unbound_inputs,
+                                   clear_devices=clear_devices)
+          new_graph_def.node.extend([new_node_def])
+      graph_def = new_graph_def
+    else:
+      # Only do this complicated work if we want to remove a name scope.
+      graph_def = graph_pb2.GraphDef()
+      # pylint: disable=protected-access
+      graph_def.versions.CopyFrom(graph.graph_def_versions)
+      bytesize = 0
+      for key in sorted(graph._nodes_by_id):
+        if _should_include_node(graph._nodes_by_id[key].name, export_scope):
+          value = graph._nodes_by_id[key]
+      # pylint: enable=protected-access
+          node_def = _node_def(value.node_def, export_scope, unbound_inputs,
+                               clear_devices=clear_devices)
+          graph_def.node.extend([node_def])
+          if value.outputs:
+            assert "_output_shapes" not in graph_def.node[-1].attr
+            graph_def.node[-1].attr["_output_shapes"].list.shape.extend([
+                output.get_shape().as_proto() for output in value.outputs])
+          bytesize += value.node_def.ByteSize()
+          if bytesize >= (1 << 31) or bytesize < 0:
+            raise ValueError("GraphDef cannot be larger than 2GB.")
     # It's possible that not all the inputs are in the export_scope.
     # If we would like such information included in the exported meta_graph,
     # add them to a special unbound_inputs collection.
     if unbound_inputs_col_name:
+      # Clears the unbound_inputs collections.
+      graph.clear_collection(unbound_inputs_col_name)
       for k in unbound_inputs:
         graph.add_to_collection(unbound_inputs_col_name, k)
 
   var_list = {}
-  variables = graph.get_collection(ops.GraphKeys.VARIABLES,
+  variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                    scope=export_scope)
   for v in variables:
-    var_list[ops.strip_name_scope(v.name, export_scope)] = v
+    if _should_include_node(v, export_scope):
+      var_list[ops.strip_name_scope(v.name, export_scope)] = v
 
   scoped_meta_graph_def = create_meta_graph_def(
       graph_def=graph_def,
@@ -588,7 +641,7 @@ def export_scoped_meta_graph(filename=None,
       **kwargs)
 
   if filename:
-    training_util.write_graph(
+    graph_io.write_graph(
         scoped_meta_graph_def,
         os.path.dirname(filename),
         os.path.basename(filename),

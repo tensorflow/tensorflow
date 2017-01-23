@@ -76,6 +76,35 @@ def create_dir_test():
   elapsed = int(round(time.time() * 1000)) - starttime
   print("Deleted directory %s in %s milliseconds" % (dir_name, elapsed))
 
+def create_object_test():
+  """Verifies file_io's object manipulation methods ."""
+  starttime = int(round(time.time() * 1000))
+  dir_name = "%s/tf_gcs_test_%s" % (FLAGS.gcs_bucket_url, starttime)
+  print("Creating dir %s." % dir_name)
+  file_io.create_dir(dir_name)
+
+  # Create a file in this directory.
+  file_name = "%s/test_file.txt" % dir_name
+  print("Creating file %s." % file_name)
+  file_io.write_string_to_file(file_name, "test file creation.")
+
+  list_files_pattern = "%s/test_file*.txt" % dir_name
+  print("Getting files matching pattern %s." % list_files_pattern)
+  files_list = file_io.get_matching_files(list_files_pattern)
+  print(files_list)
+
+  assert len(files_list) == 1
+  assert files_list[0] == file_name
+
+  # Cleanup test files.
+  print("Deleting file %s." % file_name)
+  file_io.delete_file(file_name)
+
+  # Delete directory.
+  print("Deleting directory %s." % dir_name)
+  file_io.delete_recursively(dir_name)
+
+
 if __name__ == "__main__":
   # Sanity check on the GCS bucket URL.
   if not FLAGS.gcs_bucket_url or not FLAGS.gcs_bucket_url.startswith("gs://"):
@@ -119,8 +148,8 @@ if __name__ == "__main__":
     _, serialized_example = reader.read(filename_queue)
 
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
-      sess.run(tf.initialize_local_variables())
+      sess.run(tf.global_variables_initializer())
+      sess.run(tf.local_variables_initializer())
       tf.train.start_queue_runners()
       index = 0
       for _ in range(FLAGS.num_examples):
@@ -138,4 +167,5 @@ if __name__ == "__main__":
         print("Successfully caught the expected OutOfRangeError while "
               "reading one more record than is available")
 
-    create_dir_test()
+  create_dir_test()
+  create_object_test()

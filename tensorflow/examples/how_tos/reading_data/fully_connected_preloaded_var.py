@@ -30,6 +30,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 import time
 
 import tensorflow as tf
@@ -87,7 +88,7 @@ def run_training():
     saver = tf.train.Saver()
 
     # Create the op for initializing variables.
-    init_op = tf.initialize_all_variables()
+    init_op = tf.global_variables_initializer()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
@@ -100,7 +101,7 @@ def run_training():
              feed_dict={labels_initializer: data_sets.train.labels})
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
     # Start input enqueue threads.
     coord = tf.train.Coordinator()
@@ -194,6 +195,5 @@ if __name__ == '__main__':
       help='If true, uses fake data for unit testing.',
       action='store_true'
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

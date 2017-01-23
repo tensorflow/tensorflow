@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -73,17 +74,54 @@ struct ImportGraphDefOptions {
   // named "animals/bunny" in *g.
   string prefix;
 
-  // TODO(ashankar): Enable node rebinding (in Python's import_graph_def
-  // this is achieved by providing an input_map).
+  // Maps tensors in `gdef` to existing tensors in `g`. Inputs in `gdef`
+  // corresponding to `input_map` keys will be remapped to the nodes in `g`
+  // corresponding to the values.
   //
+  // Keys should not include `prefix`, i.e., a key TensorId's name should be the
+  // name as it originally appears in `gdef`.
+  //
+  // If this is non-empty, ImportGraphDef must be called with the shape refiner
+  // used to create the existing nodes referenced in `input_map`.
+  // TODO(skyewm): can we remove this requirement? How do we access the original
+  // shape refiner?
+  //
+  // TODO(skyewm): add functionality to retrieve unused `input_map` keys
+  std::map<TensorId, TensorId> input_map;
+
+  // The names of existing nodes in `g` that the imported graph should have
+  // control dependencies on.
+  //
+  // Note that to avoid creating many redundant control edges, ImportGraphDef()
+  // won't add control edges to nodes that will inherit the dependencies from
+  // other nodes in `gdef`.
+  std::vector<string> control_dependencies;
+
+  // Tensors in `gdef` that will be returned via the `return_tensors` output
+  // parameter of `ImportGraphDef()`. If this list is non-empty, the caller must
+  // pass an empty vector to `ImportGraphDef()`. The vector will be populated
+  // with the imported nodes in `g`.
+  //
+  // Entries should not include `prefix`, i.e., each TensorId's name should be
+  // the name as it originally appears in `gdef`.
+  //
+  // If this contains a tensor that's also being remapped via `input_map`, the
+  // corresponding existing tensor in `g` will be returned.
+  std::vector<TensorId> return_tensors;
+
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
 };
-extern Status ImportGraphDef(const ImportGraphDefOptions& opts,
-                             const GraphDef& gdef, Graph* g,
-                             ShapeRefiner* refiner);
+
+// Each `return_tensors` entry is the requested node and output index. The index
+// is included in case the returned tensor has been remapped according to
+// `input_map`.
+extern Status ImportGraphDef(
+    const ImportGraphDefOptions& opts, const GraphDef& gdef, Graph* g,
+    ShapeRefiner* refiner,
+    std::vector<std::pair<Node*, int>>* return_tensors = nullptr);
 
 // Make a copy of "src" into "*dest".
 //

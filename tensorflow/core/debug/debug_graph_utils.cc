@@ -16,13 +16,64 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
+
+DebuggerState::DebuggerState(const DebugOptions& debug_options)
+    : watches(debug_options.debug_tensor_watch_opts()), debug_urls_() {
+  for (const DebugTensorWatch& watch : watches) {
+    for (const string& url : watch.debug_urls()) {
+      debug_urls_.insert(url);
+    }
+  }
+}
+
+DebuggerState::~DebuggerState() {
+  for (const string& debug_url : debug_urls_) {
+    DebugIO::CloseDebugURL(debug_url);
+  }
+}
+
+const string DebuggerState::SummarizeDebugTensorWatches() {
+  std::ostringstream oss;
+
+  for (const DebugTensorWatch& watch : watches) {
+    string tensor_name =
+        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+    oss << tensor_name << "|";
+
+    for (const string& debug_op : watch.debug_ops()) {
+      oss << debug_op << ",";
+    }
+
+    oss << "@";
+    for (const string& debug_url : watch.debug_urls()) {
+      oss << debug_url << ",";
+    }
+
+    oss << ";";
+  }
+
+  return oss.str();
+}
+
+Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
+  Status status;
+
+  status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
+  if (status.ok()) {
+    status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
+  }
+
+  return status;
+}
 
 // static
 Status DebugNodeInserter::InsertNodes(

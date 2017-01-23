@@ -373,7 +373,7 @@ A `Graph` instance supports an arbitrary number of "collections"
 that are identified by name. For convenience when building a large
 graph, collections can store groups of related objects: for
 example, the `tf.Variable` uses a collection (named
-[`tf.GraphKeys.VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+[`tf.GraphKeys.GLOBAL_VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
 all variables that are created during the construction of a graph. The caller
 may define additional collections by specifying a new name.
 
@@ -741,6 +741,19 @@ Returns True iff this graph represents a function.
 
 - - -
 
+#### `tf.Graph.clear_collection(name)` {#Graph.clear_collection}
+
+Clears all values in a collection.
+
+##### Args:
+
+
+*  <b>`name`</b>: The key for the collection. The `GraphKeys` class contains many
+    standard names for collections.
+
+
+- - -
+
 #### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}
 
 Returns a context manager that specifies an op to colocate with.
@@ -759,18 +772,23 @@ with g.colocate_with(a):
 `b` and `c` will always be colocated with `a`, no matter where `a`
 is eventually placed.
 
+**NOTE** Using a colocation scope resets any existing device constraints.
+
+If `op` is `None` then `ignore_existing` must be `True` and the new
+scope resets all colocation and device constraints.
+
 ##### Args:
 
 
-*  <b>`op`</b>: The op to colocate all created ops with.
+*  <b>`op`</b>: The op to colocate all created ops with, or `None`.
 *  <b>`ignore_existing`</b>: If true, only applies colocation of this op within
     the context, rather than applying all colocation properties
-    on the stack.
+    on the stack.  If `op` is `None`, this value must be `True`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if op is None.
+*  <b>`ValueError`</b>: if op is None but ignore_existing is False.
 
 ##### Yields:
 

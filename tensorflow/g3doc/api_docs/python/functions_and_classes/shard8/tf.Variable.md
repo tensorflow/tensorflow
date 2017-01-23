@@ -51,16 +51,16 @@ with tf.Session() as sess:
 ```
 
 The most common initialization pattern is to use the convenience function
-`initialize_all_variables()` to add an Op to the graph that initializes
+`global_variables_initializer()` to add an Op to the graph that initializes
 all the variables. You then run that Op after launching the graph.
 
 ```python
-# Add an Op to initialize all variables.
-init_op = tf.initialize_all_variables()
+# Add an Op to initialize global variables.
+init_op = tf.global_variables_initializer()
 
 # Launch the graph in a session.
 with tf.Session() as sess:
-    # Run the Op that initializes all variables.
+    # Run the Op that initializes global variables.
     sess.run(init_op)
     # ...you can now run any Op that uses variable values...
 ```
@@ -71,8 +71,8 @@ variables are initialized in the right order.
 
 All variables are automatically collected in the graph where they are
 created. By default, the constructor adds the new variable to the graph
-collection `GraphKeys.VARIABLES`. The convenience function
-`all_variables()` returns the contents of that collection.
+collection `GraphKeys.GLOBAL_VARIABLES`. The convenience function
+`global_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
 between variables holding the trainable model parameters and other variables
@@ -94,7 +94,7 @@ Creating a variable.
 Creates a new variable with value `initial_value`.
 
 The new variable is added to the graph collections listed in `collections`,
-which defaults to `[GraphKeys.VARIABLES]`.
+which defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 
 If `trainable` is `True` the variable is also added to the graph collection
 `GraphKeys.TRAINABLE_VARIABLES`.
@@ -115,7 +115,7 @@ variable to its initial value.
     collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
     the default list of variables to use by the `Optimizer` classes.
 *  <b>`collections`</b>: List of graph collections keys. The new variable is added to
-    these collections. Defaults to `[GraphKeys.VARIABLES]`.
+    these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
 *  <b>`validate_shape`</b>: If `False`, allows the variable to be initialized with a
     value of unknown shape. If `True`, the default, the shape of
     `initial_value` must be known.
@@ -153,6 +153,10 @@ Returns the value of the initialized variable.
 
 You should use this instead of the variable itself to initialize another
 variable with a value that depends on the value of this variable.
+
+Beware of using initialized_value except during initialization:
+initialized_value causes the Variable's initializer op to be run, so running
+this op resets the variable to the initial value.
 
 ```python
 # Initialize 'v' with a random tensor.
@@ -301,7 +305,7 @@ more information on launching a graph and on sessions.
 
 ```python
 v = tf.Variable([1, 2])
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -392,9 +396,6 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a complex
-number.
-
 ##### Args:
 
 
@@ -454,28 +455,25 @@ Returns the truth value of x AND y element-wise.
 
 #### `tf.Variable.__div__(a, *args)` {#Variable.__div__}
 
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+Divide two values using Python 2 semantics. Used for Tensor.__div__.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `x / y` returns the quotient of x and y.
 
 
 - - -
 
 #### `tf.Variable.__floordiv__(a, *args)` {#Variable.__floordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -549,7 +547,7 @@ For example,
 import tensorflow as tf
 A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
 with tf.Session() as sess:
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
   print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
 
   op = A[:2,:2].assign(22. * tf.ones((2, 2)))
@@ -678,9 +676,12 @@ Returns the truth value of (x < y) element-wise.
 
 #### `tf.Variable.__mod__(a, *args)` {#Variable.__mod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -817,28 +818,25 @@ Returns the truth value of x AND y element-wise.
 
 #### `tf.Variable.__rdiv__(a, *args)` {#Variable.__rdiv__}
 
-Returns x / y element-wise.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+Divide two values using Python 2 semantics. Used for Tensor.__div__.
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
+*  <b>`x`</b>: `Tensor` numerator of real numeric type.
+*  <b>`y`</b>: `Tensor` denominator of real numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  `x / y` returns the quotient of x and y.
 
 
 - - -
 
 #### `tf.Variable.__rfloordiv__(a, *args)` {#Variable.__rfloordiv__}
 
-Divides `x / y` elementwise, rounding down for floating point.
+Divides `x / y` elementwise, rounding toward the most negative integer.
 
 The same as `tf.div(x,y)` for integers, but uses `tf.floor(tf.div(x,y))` for
 floating point arguments so that the result is always an integer (though
@@ -873,9 +871,12 @@ as well.
 
 #### `tf.Variable.__rmod__(a, *args)` {#Variable.__rmod__}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -972,34 +973,7 @@ Returns x - y element-wise.
 
 #### `tf.Variable.__rtruediv__(a, *args)` {#Variable.__rtruediv__}
 
-Divides x / y elementwise, always producing floating point results.
 
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` numerator of numeric type.
-*  <b>`y`</b>: `Tensor` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
 
 
 - - -
@@ -1007,6 +981,13 @@ and `int64` (matching the behavior of Numpy).
 #### `tf.Variable.__rxor__(a, *args)` {#Variable.__rxor__}
 
 x ^ y = (x | y) & ~(x & y).
+
+
+- - -
+
+#### `tf.Variable.__str__()` {#Variable.__str__}
+
+
 
 
 - - -
@@ -1034,34 +1015,7 @@ Returns x - y element-wise.
 
 #### `tf.Variable.__truediv__(a, *args)` {#Variable.__truediv__}
 
-Divides x / y elementwise, always producing floating point results.
 
-The same as `tf.div` for floating point arguments, but casts integer arguments
-to floating point before dividing so that the result is always floating point.
-This op is generated by normal `x / y` division in Python 3 and in Python 2.7
-with `from __future__ import division`.  If you want integer division that
-rounds down, use `x // y` or `tf.floordiv`.
-
-`x` and `y` must have the same numeric type.  If the inputs are floating
-point, the output will have the same type.  If the inputs are integral, the
-inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
-and `int64` (matching the behavior of Numpy).
-
-##### Args:
-
-
-*  <b>`x`</b>: `Tensor` numerator of numeric type.
-*  <b>`y`</b>: `Tensor` denominator of numeric type.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  `x / y` evaluated in floating point.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `x` and `y` have different dtypes.
 
 
 - - -
@@ -1096,21 +1050,69 @@ the variable.
 
 - - -
 
-#### `tf.Variable.ref()` {#Variable.ref}
+#### `tf.Variable.load(value, session=None)` {#Variable.load}
 
-Returns a reference to this variable.
+Load new value into this variable
 
-You usually do not need to call this method as all ops that need a reference
-to the variable call it automatically.
+Writes new value to variable's memory. Doesn't add ops to the graph.
 
-Returns is a `Tensor` which holds a reference to the variable.  You can
-assign a new value to the variable by passing the tensor to an assign op.
-See [`value()`](#Variable.value) if you want to get the value of the
-variable.
+This convenience method requires a session where the graph containing this
+variable has been launched. If no session is passed, the default session is
+used.  See the [Session class](../../api_docs/python/client.md#Session) for
+more information on launching a graph and on sessions.
+
+```python
+v = tf.Variable([1, 2])
+init = tf.global_variables_initializer()
+
+with tf.Session() as sess:
+    sess.run(init)
+    # Usage passing the session explicitly.
+    v.load([2, 3], sess)
+    print(v.eval(sess)) # prints [2 3]
+    # Usage with the default session.  The 'with' block
+    # above makes 'sess' the default session.
+    v.load([3, 4], sess)
+    print(v.eval()) # prints [3 4]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: New variable value
+*  <b>`session`</b>: The session to use to evaluate this variable. If
+      none, the default session is used.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Session is not passed and no default session
+
+
+- - -
+
+#### `tf.Variable.read_value()` {#Variable.read_value}
+
+Returns the value of this variable, read in the current context.
+
+Can be different from value() if it's on another device, with control
+dependencies, etc.
 
 ##### Returns:
 
-  A `Tensor` that is a reference to the variable.
+  A `Tensor` containing the value of the variable.
+
+
+- - -
+
+#### `tf.Variable.set_shape(shape)` {#Variable.set_shape}
+
+Overrides the shape for this variable.
+
+##### Args:
+
+
+*  <b>`shape`</b>: the `TensorShape` representing the overridden shape.
 
 
 - - -
@@ -1141,8 +1143,6 @@ of the variable call it automatically through a `convert_to_tensor()` call.
 
 Returns a `Tensor` which holds the value of the variable.  You can not
 assign a new value to this tensor as it is not a reference to the variable.
-See [`ref()`](#Variable.ref) if you want to get a reference to the
-variable.
 
 To avoid copies, if the consumer of the returned value is on the same device
 as the variable, this actually returns the live value of the variable, not

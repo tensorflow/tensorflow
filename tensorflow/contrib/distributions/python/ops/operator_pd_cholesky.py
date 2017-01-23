@@ -104,7 +104,8 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     # and would give a bad result for a batch matrix, so aways use
     # matrix_diag_part.
     diag = array_ops.matrix_diag_part(self._chol)
-    det = 2.0 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+    det = 2.0 * math_ops.reduce_sum(math_ops.log(math_ops.abs(diag)),
+                                    reduction_indices=[-1])
     det.set_shape(self.get_shape()[:-2])
     return det
 
@@ -127,21 +128,21 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     return math_ops.matmul(chol, chol_times_x)
 
   def _batch_matmul(self, x, transpose_x=False):
-    # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
+    # tf.matmul is defined x * y, so "y" is on the right, not "x".
     chol = array_ops.matrix_band_part(self._chol, -1, 0)
-    chol_times_x = math_ops.batch_matmul(
-        chol, x, adj_x=True, adj_y=transpose_x)
-    return math_ops.batch_matmul(chol, chol_times_x)
+    chol_times_x = math_ops.matmul(
+        chol, x, adjoint_a=True, adjoint_b=transpose_x)
+    return math_ops.matmul(chol, chol_times_x)
 
   def _sqrt_matmul(self, x, transpose_x=False):
     chol = array_ops.matrix_band_part(self._chol, -1, 0)
     # tf.matmul is defined a * b
-    return math_ops.matmul(chol, x, transpose_b=transpose_x)
+    return math_ops.matmul(chol, x, adjoint_b=transpose_x)
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
     chol = array_ops.matrix_band_part(self._chol, -1, 0)
     # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
-    return math_ops.batch_matmul(chol, x, adj_y=transpose_x)
+    return math_ops.matmul(chol, x, adjoint_b=transpose_x)
 
   def _batch_solve(self, rhs):
     return linalg_ops.cholesky_solve(self._chol, rhs)
@@ -181,4 +182,4 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
 
   def _to_dense(self):
     chol = array_ops.matrix_band_part(self._chol, -1, 0)
-    return math_ops.batch_matmul(chol, chol, adj_y=True)
+    return math_ops.matmul(chol, chol, adjoint_b=True)

@@ -11,6 +11,7 @@ tensorflow/core/platform/posix/env.cc
 tensorflow/core/platform/posix/load_library.cc
 tensorflow/core/platform/file_system.cc
 tensorflow/core/platform/env.cc
+tensorflow/core/platform/setround.cc
 tensorflow/core/platform/denormal.cc
 tensorflow/core/platform/default/tracing.cc
 tensorflow/core/platform/default/logging.cc
@@ -39,6 +40,7 @@ tensorflow/core/lib/io/iterator.cc
 tensorflow/core/lib/io/inputstream_interface.cc
 tensorflow/core/lib/io/inputbuffer.cc
 tensorflow/core/lib/io/format.cc
+tensorflow/core/lib/io/compression.cc
 tensorflow/core/lib/io/buffered_inputstream.cc
 tensorflow/core/lib/io/block_builder.cc
 tensorflow/core/lib/io/block.cc

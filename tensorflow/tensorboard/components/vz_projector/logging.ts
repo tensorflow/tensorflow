@@ -14,13 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 /** Duration in ms for showing warning messages to the user */
-const WARNING_DURATION_MS = 5000;
-
-/**
- * Animation duration for the user message which should be +20ms more than the
- * `transition` css property in `.notify-msg` in `vz-projector.html`.
- */
-const MSG_ANIMATION_DURATION_MSEC = 300 + 20;
+const WARNING_DURATION_MS = 10000;
 
 let dom: HTMLElement = null;
 let msgId = 0;
@@ -36,9 +30,13 @@ export function setDomContainer(domElement: HTMLElement) {
  * @param msg The message shown to the user. If null, the message is removed.
  * @param id The id of an existing message. If no id is provided, a unique id
  *     is assigned.
+ * @param title The title of the notification.
+ * @param isErrorMsg If true, the message is error and the dialog will have a
+ *                   close button.
  * @return The id of the message.
  */
-export function setModalMessage(msg: string, id: string = null): string {
+export function setModalMessage(
+    msg: string, id: string = null, title = null, isErrorMsg = false): string {
   if (dom == null) {
     console.warn('Can\'t show modal message before the dom is initialized');
     return;
@@ -46,25 +44,40 @@ export function setModalMessage(msg: string, id: string = null): string {
   if (id == null) {
     id = (msgId++).toString();
   }
-  let dialog = dom.querySelector('#wrapper-notify-msg') as any;
-  let msgsContainer = dom.querySelector('#notify-msgs') as HTMLElement;
+  let dialog = dom.querySelector('#notification-dialog') as any;
+  dialog.querySelector('.close-button').style.display =
+      isErrorMsg ? null : 'none';
+  let spinner = dialog.querySelector('.progress');
+  spinner.style.display = isErrorMsg ? 'none' : null;
+  spinner.active = isErrorMsg ? null : true;
+  dialog.querySelector('#notification-title').innerHTML = title;
+  let msgsContainer = dialog.querySelector('#notify-msgs') as HTMLElement;
+  if (isErrorMsg) {
+    d3.select(msgsContainer).html('');
+  } else {
+    d3.select(msgsContainer).selectAll('.error').remove();
+  }
   let divId = `notify-msg-${id}`;
-  let msgDiv = d3.select(dom.querySelector('#' + divId));
+  let msgDiv = d3.select(dialog.querySelector('#' + divId));
   let exists = msgDiv.size() > 0;
   if (!exists) {
-    msgDiv = d3.select(msgsContainer).insert('div', ':first-child')
-      .attr('class', 'notify-msg')
-      .attr('id', divId);
-    numActiveMessages++;
+    msgDiv = d3.select(msgsContainer)
+                 .insert('div', ':first-child')
+                 .attr('class', 'notify-msg')
+                 .classed('error', isErrorMsg)
+                 .attr('id', divId);
+    if (!isErrorMsg) {
+      numActiveMessages++;
+    } else {
+      numActiveMessages = 0;
+    }
   }
   if (msg == null) {
     numActiveMessages--;
     if (numActiveMessages === 0) {
       dialog.close();
     }
-    msgDiv.style('opacity', 0);
-    msgDiv.style('height', 0);
-    setTimeout(() => msgDiv.remove(), MSG_ANIMATION_DURATION_MSEC);
+    msgDiv.remove();
   } else {
     msgDiv.text(msg);
     dialog.open();
@@ -72,16 +85,16 @@ export function setModalMessage(msg: string, id: string = null): string {
   return id;
 }
 
+export function setErrorMessage(errMsg: string, task?: string) {
+  setModalMessage(errMsg, null, 'Error ' + (task != null ? task : ''), true);
+}
+
 /**
  * Shows a warning message to the user for a certain amount of time.
  */
 export function setWarningMessage(msg: string): void {
-  let warningMsg = dom.querySelector('#warning-msg') as HTMLElement;
-  let warningDiv = d3.select(warningMsg);
-  warningDiv.style('display', 'block').text('Warning: ' + msg);
-
-  // Hide the warning message after a certain timeout.
-  setTimeout(() => {
-    warningDiv.style('display', 'none');
-  }, WARNING_DURATION_MS);
+  let toast = dom.querySelector('#toast') as any;
+  toast.text = msg;
+  toast.duration = WARNING_DURATION_MS;
+  toast.open();
 }

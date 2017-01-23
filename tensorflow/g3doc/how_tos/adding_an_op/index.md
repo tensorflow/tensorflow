@@ -37,12 +37,14 @@ any [attrs](#attrs) the Op might require.
 
 To see how this works, suppose you'd like to create an Op that takes a tensor of
 `int32`s and outputs a copy of the tensor, with all but the first element set to
-zero. Create file [`tensorflow/core/user_ops`][user_ops]`/zero_out.cc` and
+zero. Create file `tensorflow/core/user_ops/zero_out.cc` and
 add a call to the `REGISTER_OP` macro that defines the interface for such an Op:
 
 ```c++
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+
+using namespace tensorflow;
 
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
@@ -236,12 +238,26 @@ class ZeroOutTest(tf.test.TestCase):
     with self.test_session():
       result = zero_out_module.zero_out([5, 4, 3, 2, 1])
       self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+
+if __name__ == "__main__":
+  tf.test.main()
+```
+
+Add a 'zero_out_op_test' target to `tensorflow/python/kernel_tests/BUILD` among the other CPU-only test targets:
+
+```
+tf_py_test(
+    name = "zero_out_op_test",
+    size = "small",
+    srcs = ["zero_out_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
 ```
 
 Then run your test:
 
 ```sh
-$ bazel test tensorflow/python:zero_out_op_test
+$ bazel test //tensorflow/python/kernel_tests:zero_out_op_test
 ```
 
 ## Validation
@@ -305,11 +321,10 @@ using the `Attr` method, which expects a spec of the form:
 
 where `<name>` begins with a letter and can be composed of alphanumeric
 characters and underscores, and `<attr-type-expr>` is a type expression of the
-form [described below](#attr-types)
+form [described below](#attr-types).
 
 For example, if you'd like the `ZeroOut` Op to preserve a user-specified index,
 instead of only the 0th element, you can register the Op like so:
-
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("preserve\_index: int")</b>
@@ -319,7 +334,6 @@ REGISTER\_OP("ZeroOut")
 
 Your kernel can then access this attr in its constructor via the `context`
 parameter:
-
 <code class="lang-c++"><pre>
 class ZeroOutOp : public OpKernel {
  public:
@@ -341,7 +355,6 @@ class ZeroOutOp : public OpKernel {
 </pre></code>
 
 which can then be used in the `Compute` method:
-
 <code class="lang-c++"><pre>
   void Compute(OpKernelContext\* context) override {
     // ...
@@ -491,12 +504,11 @@ for the types](../../resources/dims_types.md#data-types).
 
 For ops that can take different types as input or produce different output
 types, you can specify [an attr](#attrs) in
-[an input or output type](#inputs-outputs) in the Op registration.  Typically
+[an input or output type](#inputs-and-outputs) in the Op registration.  Typically
 you would then register an `OpKernel` for each supported type.
 
 For instance, if you'd like the `ZeroOut` Op to work on `float`s
 in addition to `int32`s, your Op registration might look like:
-
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, int32}")</b>
@@ -616,7 +628,6 @@ REGISTER\_KERNEL\_BUILDER(
 > </pre></code>
 
 Lets say you wanted to add more types, say `double`:
-
 <code class="lang-c++"><pre>
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, <b>double,</b> int32}")</b>
@@ -627,7 +638,6 @@ REGISTER\_OP("ZeroOut")
 Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
 registration (`REGISTER_KERNEL_BUILDER` call) per overload.
-
 <code class="lang-c++"><pre>
 <b>template &lt;typename T&gt;</b>
 class ZeroOutOp : public OpKernel {
@@ -895,7 +905,7 @@ For more details, see
 
 In general, changes to specifications must be backwards-compatible: changing the
 specification of an Op must not break prior serialized `GraphDef` protocol
-buffers constructed from older specfications.  The details of `GraphDef`
+buffers constructed from older specifications.  The details of `GraphDef`
 compatibility are [described here](../../resources/versions.md#graphs).
 
 There are several ways to preserve backwards-compatibility.
@@ -1055,7 +1065,7 @@ def _zero_out_grad(op, grad):
   shape = array_ops.shape(to_zero)
   index = array_ops.zeros_like(shape)
   first_grad = array_ops.reshape(grad, [-1])[0]
-  to_zero_grad = sparse_ops.sparse_to_dense(index, shape, first_grad, 0)
+  to_zero_grad = sparse_ops.sparse_to_dense([index], shape, first_grad, 0)
   return [to_zero_grad]  # List of one Tensor, since we have one input
 ```
 
@@ -1117,7 +1127,7 @@ found in [common_shape_fns.h](https://www.tensorflow.org/code/tensorflow/core/fr
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
     .Output("zeroed: int32")
-    .SetShapeFn([](::tensorflow::shape_inference::UnchangedShape);
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
 ```
 
 A shape function can also constrain the shape of an input. For the version of
@@ -1181,22 +1191,6 @@ compact in representing input and output shape specifications in tests.  For
 now, see the surrounding comments in those tests to get a sense of the shape
 string specification).
 
-### Shape functions in Python
-To register a shape function in Python, apply the
-[`tf.RegisterShape` decorator](../../api_docs/python/framework.md#RegisterShape)
-to a shape function. For example, the
-[`ZeroOut` op defined above](#define-the-ops-interface) would have a shape function like
-the following:
-
-```python
-@tf.RegisterShape("ZeroOut")(common_shapes.call_cpp_shape_fn)
-```
-
-This specifies that the shape function should use the C++-implemented
-shape specfication defined in your `REGISTER_OP` declaration above.  Note
-that TensorFlow will soon make this the default, so you only need
-to define the shape function once in C++ to get shape inference for
-free in Python.
 
 [core-array_ops]:https://www.tensorflow.org/code/tensorflow/core/ops/array_ops.cc
 [python-user_ops]:https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py

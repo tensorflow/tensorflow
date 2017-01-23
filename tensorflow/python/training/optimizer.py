@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -27,6 +29,93 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+
+
+class _OptimizableVariable(object):
+  """Interface for abstracting over variables in the optimizers."""
+
+  @abc.abstractmethod
+  def target(self):
+    """Returns the optimization target for this variable."""
+    raise NotImplementedError("Calling an abstract method.")
+
+  @abc.abstractmethod
+  def update_op(self, optimizer, g):
+    """Returns the update ops for updating the variable."""
+    raise NotImplementedError("Calling an abstract method.")
+
+
+class _RefVariableProcessor(_OptimizableVariable):
+  """Processor for Variable."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v._ref()  # pylint: disable=protected-access
+
+  def update_op(self, optimizer, g):
+    if isinstance(g, ops.Tensor):
+      return optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
+    else:
+      assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
+                                                "tensor nor IndexedSlices.")
+      return optimizer._apply_sparse(g, self._v)  # pylint: disable=protected-access
+
+
+class _DenseReadResourceVariableProcessor(_OptimizableVariable):
+  """Processor for dense ResourceVariables."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    # pylint: disable=protected-access
+    return optimizer._resource_apply_dense(g, self._v.op.inputs[0])
+
+
+class _DenseResourceVariableProcessor(_OptimizableVariable):
+  """Processor for dense ResourceVariables."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    # pylint: disable=protected-access
+    return optimizer._resource_apply_dense(g, self._v.handle)
+
+
+class _SparseResourceVariableProcessor(_OptimizableVariable):
+  """Processor for sparse ResourceVariables."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    # pylint: disable=protected-access
+    return optimizer._resource_apply_sparse(
+        g, self._v.op.inputs[0], self._v.op.inputs[1])
+
+
+def _get_processor(v):
+  if isinstance(v, variables.Variable):
+    return _RefVariableProcessor(v)
+  if v.op.type == "ReadVariableOp":
+    return _DenseReadResourceVariableProcessor(v)
+  if v.op.type == "VarHandleOp":
+    return _DenseResourceVariableProcessor(v)
+  if v.op.type == "ResourceGather":
+    return _SparseResourceVariableProcessor(v)
+  raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
 class Optimizer(object):
@@ -194,6 +283,14 @@ class Optimizer(object):
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops,
         grad_loss=grad_loss)
+
+    vars_with_grad = [v for g, v in grads_and_vars if g is not None]
+    if not vars_with_grad:
+      raise ValueError(
+          "No gradients provided for any variable, check your graph for ops"
+          " that do not support gradients, between variables %s and loss %s." %
+          ([str(v) for _, v in grads_and_vars], loss))
+
     return self.apply_gradients(grads_and_vars, global_step=global_step,
                                 name=name)
 
@@ -224,7 +321,8 @@ class Optimizer(object):
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
 
     Returns:
-      A list of (gradient, variable) pairs.
+      A list of (gradient, variable) pairs. Variable is always present, but
+      gradient can be `None`.
 
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
@@ -239,13 +337,13 @@ class Optimizer(object):
     if grad_loss is not None:
       self._assert_valid_dtypes([grad_loss])
     if var_list is None:
-      var_list = variables.trainable_variables()
-    for var in var_list:
-      if not isinstance(var, variables.Variable):
-        raise TypeError("Argument is not a tf.Variable: %s" % var)
+      var_list = (
+          variables.trainable_variables() +
+          ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+    processors = [_get_processor(v) for v in var_list]
     if not var_list:
-      raise ValueError("No variables to optimize")
-    var_refs = [v.ref() for v in var_list]
+      raise ValueError("No variables to optimize.")
+    var_refs = [p.target() for p in processors]
     grads = gradients.gradients(
         loss, var_refs, grad_ys=grad_loss,
         gate_gradients=(gate_gradients == Optimizer.GATE_OP),
@@ -283,51 +381,54 @@ class Optimizer(object):
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
-    grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works
+    grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
+    if not grads_and_vars:
+      raise ValueError("No variables provided.")
     converted_grads_and_vars = []
     for g, v in grads_and_vars:
       if g is not None:
         try:
-          # Convert the grad to Tensor or IndexedSlices if necessary
+          # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
         except TypeError:
           raise TypeError(
-              "Gradient must be convertible to a Tensor or IndexedSlices, or None: %s" %g)
-      if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
-        raise TypeError(
-            "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
-      if not isinstance(v, variables.Variable):
-        raise TypeError(
-            "Variable must be a tf.Variable: %s" % v)
-
-      converted_grads_and_vars.append((g,v))
+              "Gradient must be convertible to a Tensor"
+              " or IndexedSlices, or None: %s" % g)
+        if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
+          raise TypeError(
+              "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
+      p = _get_processor(v)
+      converted_grads_and_vars.append((g, v, p))
 
     converted_grads_and_vars = tuple(converted_grads_and_vars)
-    var_list = [v for g, v in converted_grads_and_vars if g is not None]
+    var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
     if not var_list:
-      raise ValueError("No gradients provided for any variable: %s" %
-                       (converted_grads_and_vars,))
+      raise ValueError("No gradients provided for any variable: %s." %
+                       ([str(v) for _, _, v in converted_grads_and_vars],))
     with ops.control_dependencies(None):
       self._create_slots(var_list)
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()
-      for grad, var in converted_grads_and_vars:
+      for grad, var, processor in converted_grads_and_vars:
         if grad is None:
           continue
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
-          if isinstance(grad, ops.Tensor):
-            update_ops.append(self._apply_dense(grad, var))
-          else:
-            update_ops.append(self._apply_sparse(grad, var))
+          update_ops.append(processor.update_op(self, grad))
       if global_step is None:
-        return self._finish(update_ops, name)
+        apply_updates = self._finish(update_ops, name)
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            return state_ops.assign_add(global_step, 1, name=name).op
+            apply_updates = state_ops.assign_add(global_step, 1, name=name).op
+
+      train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+      if apply_updates not in train_op:
+        train_op.append(apply_updates)
+
+      return apply_updates
 
   def get_slot(self, var, name):
     """Return a slot named `name` created for `var` by the Optimizer.
@@ -419,6 +520,9 @@ class Optimizer(object):
     Return:
       An `Operation`.
     """
+    raise NotImplementedError()
+
+  def _resource_apply_dense(self, grad, handle):
     raise NotImplementedError()
 
   def _apply_sparse(self, grad, var):

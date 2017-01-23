@@ -216,9 +216,11 @@ class Dirichlet(distribution.Distribution):
   def _variance(self):
     scale = self.alpha_sum * math_ops.sqrt(1. + self.alpha_sum)
     alpha = self.alpha / scale
-    outer_prod = -math_ops.batch_matmul(
-        array_ops.expand_dims(alpha, dim=-1),  # column
-        array_ops.expand_dims(alpha, dim=-2))  # row
+    outer_prod = -math_ops.matmul(
+        array_ops.expand_dims(
+            alpha, dim=-1),  # column
+        array_ops.expand_dims(
+            alpha, dim=-2))  # row
     return array_ops.matrix_set_diag(outer_prod,
                                      alpha * (self.alpha_sum / scale - alpha))
 
@@ -236,8 +238,8 @@ class Dirichlet(distribution.Distribution):
              math_ops.cast(self.event_shape()[0], self.dtype)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      shape = array_ops.concat(0, (self.batch_shape(), self.event_shape()))
-      return math_ops.select(
+      shape = array_ops.concat((self.batch_shape(), self.event_shape()), 0)
+      return array_ops.where(
           math_ops.greater(self.alpha, 1.),
           mode,
           array_ops.fill(shape, nan, name="nan"))

@@ -65,8 +65,7 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
         self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortJPGInput:0'))
         self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortResult:0'))
 
-  @tf.test.mock.patch('tensorflow.examples.'
-                      'image_retraining.retrain.FLAGS', learning_rate=0.01)
+  @tf.test.mock.patch.object(retrain, 'FLAGS', learning_rate=0.01)
   def testAddFinalTrainingOps(self, flags_mock):
     with tf.Graph().as_default():
       with tf.Session() as sess:

@@ -61,7 +61,7 @@ class FileSystem {
   virtual Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
-  virtual bool FileExists(const string& fname) = 0;
+  virtual Status FileExists(const string& fname) = 0;
 
   /// \brief Returns the immediate children in the given directory.
   ///
@@ -178,7 +178,9 @@ class NullFileSystem : public FileSystem {
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
 
-  bool FileExists(const string& fname) override { return false; }
+  Status FileExists(const string& fname) override {
+    return errors::Unimplemented("FileExists unimplemented");
+  }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return errors::Unimplemented("GetChildren unimplemented");
@@ -286,19 +288,6 @@ class FileSystemRegistry {
   virtual Status GetRegisteredFileSystemSchemes(
       std::vector<string>* schemes) = 0;
 };
-
-// Populates the scheme, host, and path from a URI.
-//
-// Corner cases:
-// - If the URI is invalid, scheme and host are set to empty strings and the
-//   passed string is assumed to be a path
-// - If the URI omits the path (e.g. file://host), then the path is left empty.
-void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
-              StringPiece* path);
-
-// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
-// return the path.
-string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
 
 }  // namespace tensorflow
 

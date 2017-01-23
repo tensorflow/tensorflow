@@ -5,9 +5,13 @@ Monitors can either be run on all workers or, more commonly, restricted
 to run exclusively on the elected chief worker.
 - - -
 
-#### `tf.contrib.learn.monitors.BaseMonitor.__init__()` {#BaseMonitor.__init__}
+#### `tf.contrib.learn.monitors.BaseMonitor.__init__(*args, **kwargs)` {#BaseMonitor.__init__}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-05.
+Instructions for updating:
+Monitors are deprecated. Please use tf.train.SessionRunHook.
 
 
 - - -

@@ -13,183 +13,135 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {DataSet} from './data';
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {SelectionContext} from './selectionContext';
+import * as util from './util';
 
-const TRACE_START_HUE = 60;
-const TRACE_END_HUE = 360;
-const TRACE_SATURATION = 1;
-const TRACE_LIGHTNESS = .3;
-const TRACE_DEFAULT_OPACITY = .2;
-const TRACE_DEFAULT_LINEWIDTH = 2;
-const TRACE_SELECTED_OPACITY = .9;
-const TRACE_SELECTED_LINEWIDTH = 3;
-const TRACE_DESELECTED_OPACITY = .05;
-
-const RGB_NUM_BYTES = 3;
-const XYZ_NUM_BYTES = 3;
+const RGB_NUM_ELEMENTS = 3;
+const XYZ_NUM_ELEMENTS = 3;
 
 /**
  * Renders 'traces' (polylines) that connect multiple points in the dataset
  */
 export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
   private dataSet: DataSet;
+  private scene: THREE.Scene;
   private traces: THREE.Line[];
   private tracePositionBuffer: {[trace: number]: THREE.BufferAttribute} = {};
+  private traceColorBuffer: {[trace: number]: THREE.BufferAttribute} = {};
 
-  constructor(selectionContext: SelectionContext) {
-    selectionContext.registerSelectionChangedListener(
-        (s: number[]) => this.onSelectionChanged(s));
+  private updateTraceIndicesInDataSet(ds: DataSet) {
+    for (let i = 0; i < ds.traces.length; i++) {
+      const trace = ds.traces[i];
+      for (let j = 0; j < trace.pointIndices.length - 1; j++) {
+        ds.points[trace.pointIndices[j]].traceIndex = i;
+        ds.points[trace.pointIndices[j + 1]].traceIndex = i;
+      }
+    }
   }
 
-  /**
-   * Create line traces between connected points and instantiate the geometry.
-   */
-  private addTraces(scene: THREE.Scene) {
+  private createTraces(scene: THREE.Scene) {
     if (!this.dataSet || !this.dataSet.traces) {
       return;
     }
 
+    this.updateTraceIndicesInDataSet(this.dataSet);
     this.traces = [];
 
     for (let i = 0; i < this.dataSet.traces.length; i++) {
-      let dataTrace = this.dataSet.traces[i];
-
-      let geometry = new THREE.BufferGeometry();
-      let colors: number[] = [];
-
-      for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-        this.dataSet.points[dataTrace.pointIndices[j]].traceIndex = i;
-        this.dataSet.points[dataTrace.pointIndices[j + 1]].traceIndex = i;
-
-        let color1 =
-            this.getPointInTraceColor(j, dataTrace.pointIndices.length);
-        let color2 =
-            this.getPointInTraceColor(j + 1, dataTrace.pointIndices.length);
-
-        colors.push(
-            color1.r / 255, color1.g / 255, color1.b / 255, color2.r / 255,
-            color2.g / 255, color2.b / 255);
-      }
-
+      const geometry = new THREE.BufferGeometry();
       geometry.addAttribute('position', this.tracePositionBuffer[i]);
-      this.tracePositionBuffer[i].needsUpdate = true;
+      geometry.addAttribute('color', this.traceColorBuffer[i]);
 
-      geometry.addAttribute(
-          'color',
-          new THREE.BufferAttribute(new Float32Array(colors), RGB_NUM_BYTES));
-
-      // We use the same material for every line.
-      let material = new THREE.LineBasicMaterial({
-        linewidth: TRACE_DEFAULT_LINEWIDTH,
-        opacity: TRACE_DEFAULT_OPACITY,
+      const material = new THREE.LineBasicMaterial({
+        linewidth: 1,  // unused default, overwritten by width array.
+        opacity: 1.0,  // unused default, overwritten by opacity array.
         transparent: true,
         vertexColors: THREE.VertexColors
       });
 
-      let trace = new THREE.LineSegments(geometry, material);
+      const trace = new THREE.LineSegments(geometry, material);
+      trace.frustumCulled = false;
       this.traces.push(trace);
       scene.add(trace);
     }
   }
 
-  private getPointInTraceColor(index: number, totalPoints: number) {
-    let hue = TRACE_START_HUE +
-        (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
-
-    return d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
-  }
-
-  private resetTraces() {
-    if (!this.traces) {
+  dispose() {
+    if (this.traces == null) {
       return;
     }
     for (let i = 0; i < this.traces.length; i++) {
-      this.traces[i].material.opacity = TRACE_DEFAULT_OPACITY;
-      (this.traces[i].material as THREE.LineBasicMaterial).linewidth =
-          TRACE_DEFAULT_LINEWIDTH;
-      this.traces[i].material.needsUpdate = true;
+      this.scene.remove(this.traces[i]);
+      this.traces[i].geometry.dispose();
     }
+    this.traces = null;
+    this.tracePositionBuffer = {};
+    this.traceColorBuffer = {};
   }
 
-  removeAllFromScene(scene: THREE.Scene) {
-    if (!this.traces) {
-      return;
-    }
-    for (let i = 0; i < this.traces.length; i++) {
-      scene.remove(this.traces[i]);
-    }
-    this.traces = [];
+  setScene(scene: THREE.Scene) {
+    this.scene = scene;
   }
 
-  onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
+  setDataSet(dataSet: DataSet) {
     this.dataSet = dataSet;
-    if (dataSet) {
-      // Set up the position buffer arrays for each trace.
-      for (let i = 0; i < this.dataSet.traces.length; i++) {
-        let dataTrace = this.dataSet.traces[i];
-        let traces = new Float32Array(
-            2 * (dataTrace.pointIndices.length - 1) * XYZ_NUM_BYTES);
-        this.tracePositionBuffer[i] =
-            new THREE.BufferAttribute(traces, XYZ_NUM_BYTES);
-      }
+  }
+
+  onPointPositionsChanged(newPositions: Float32Array) {
+    if ((newPositions == null) || (this.traces != null)) {
+      this.dispose();
     }
-  }
-
-  onSelectionChanged(selection: number[]) {
-    this.resetTraces();
-    if (selection.length > 0) {
-      let selectedIndex = selection[0];
-      let traceIndex = this.dataSet.points[selectedIndex].traceIndex;
-      if (traceIndex) {
-        for (let i = 0; i < this.traces.length; i++) {
-          this.traces[i].material.opacity = TRACE_DESELECTED_OPACITY;
-          this.traces[i].material.needsUpdate = true;
-        }
-        this.traces[traceIndex].material.opacity = TRACE_SELECTED_OPACITY;
-        (this.traces[traceIndex].material as THREE.LineBasicMaterial)
-            .linewidth = TRACE_SELECTED_LINEWIDTH;
-        this.traces[traceIndex].material.needsUpdate = true;
-      }
-    }
-  }
-
-  onRecreateScene(
-      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
-    this.addTraces(scene);
-  }
-
-  onUpdate() {
-    if (!this.dataSet) {
+    if ((newPositions == null) || (this.dataSet == null)) {
       return;
     }
+    // Set up the position buffer arrays for each trace.
     for (let i = 0; i < this.dataSet.traces.length; i++) {
       let dataTrace = this.dataSet.traces[i];
+      const vertexCount = 2 * (dataTrace.pointIndices.length - 1);
 
-      let vertexCount = 0;
+      let traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
+      this.tracePositionBuffer[i] =
+          new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
+
+      let colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
+      this.traceColorBuffer[i] =
+          new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
+    }
+    for (let i = 0; i < this.dataSet.traces.length; i++) {
+      const dataTrace = this.dataSet.traces[i];
+      let src = 0;
       for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-        let point1 = this.dataSet.points[dataTrace.pointIndices[j]];
-        let point2 = this.dataSet.points[dataTrace.pointIndices[j + 1]];
-
-        this.tracePositionBuffer[i].setXYZ(
-            vertexCount, point1.projectedPoint[0], point1.projectedPoint[1],
-            point1.projectedPoint[2]);
-        this.tracePositionBuffer[i].setXYZ(
-            vertexCount + 1, point2.projectedPoint[0], point2.projectedPoint[1],
-            point2.projectedPoint[2]);
-        vertexCount += 2;
+        const p1Index = dataTrace.pointIndices[j];
+        const p2Index = dataTrace.pointIndices[j + 1];
+        const p1 = util.vector3FromPackedArray(newPositions, p1Index);
+        const p2 = util.vector3FromPackedArray(newPositions, p2Index);
+        this.tracePositionBuffer[i].setXYZ(src, p1.x, p1.y, p1.z);
+        this.tracePositionBuffer[i].setXYZ(src + 1, p2.x, p2.y, p2.z);
+        src += 2;
       }
+      this.tracePositionBuffer[i].needsUpdate = true;
     }
 
-    for (let i = 0; i < this.dataSet.traces.length; i++) {
-      this.tracePositionBuffer[i].needsUpdate = true;
+    if (this.traces == null) {
+      this.createTraces(this.scene);
+    }
+  }
+
+  onRender(renderContext: RenderContext) {
+    if (this.traces == null) {
+      return;
+    }
+    for (let i = 0; i < this.traces.length; i++) {
+      this.traces[i].material.opacity = renderContext.traceOpacities[i];
+      (this.traces[i].material as THREE.LineBasicMaterial).linewidth =
+          renderContext.traceWidths[i];
+      this.traceColorBuffer[i].array = renderContext.traceColors[i];
+      this.traceColorBuffer[i].needsUpdate = true;
     }
   }
 
   onPickingRender(renderContext: RenderContext) {}
-  onRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
-  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

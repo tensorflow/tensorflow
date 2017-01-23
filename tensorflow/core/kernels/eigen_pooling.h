@@ -325,11 +325,15 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
     eigen_assert(scalarCount_ > 0);
-    return accum / scalarCount_;
+    return accum / T(scalarCount_);
   }
 
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
-#ifdef EIGEN_VECTORIZE_AVX
+#ifdef EIGEN_VECTORIZE_AVX512
+#define pequal(a, b) \
+  _mm512_maskz_set1_epi32(_mm512_cmp_ps_mask(a, b, _CMP_EQ_UQ), -1)
+#define psel(a, b, false_mask) _mm512_ternarylogic_epi64(false_mask, a, b, 0xca)
+#elif defined EIGEN_VECTORIZE_AVX
 #define pequal(a, b) _mm256_cmp_ps(a, b, _CMP_EQ_UQ)
 #define psel(a, b, false_mask) _mm256_blendv_ps(a, b, false_mask)
 #else

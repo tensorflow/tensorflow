@@ -56,6 +56,10 @@
 # In addition, this script obeys the following environment variables:
 # TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
 
+die() {
+  echo $@
+  exit 1
+}
 
 # Configurations
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-local-cluster"

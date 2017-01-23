@@ -1,6 +1,6 @@
 <!-- This file is machine generated: DO NOT EDIT! -->
 
-# Statistical distributions (contrib)
+# Statistical Distributions (contrib)
 [TOC]
 
 Classes representing statistical distributions and ops for working with them.
@@ -233,6 +233,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Distribution.copy(**override_parameters_kwargs)` {#Distribution.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Distribution.dtype` {#Distribution.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -302,6 +325,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Distribution.is_reparameterized` {#Distribution.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.is_scalar_batch(name='is_scalar_batch')` {#Distribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.is_scalar_event(name='is_scalar_event')` {#Distribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -599,32 +656,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Distribution.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Distribution.std(name='std')` {#Distribution.std}
 
 Standard deviation.
@@ -842,6 +873,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Binomial.copy(**override_parameters_kwargs)` {#Binomial.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Binomial.dtype` {#Binomial.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -911,6 +965,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Binomial.is_reparameterized` {#Binomial.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_scalar_batch(name='is_scalar_batch')` {#Binomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_scalar_event(name='is_scalar_event')` {#Binomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -1261,32 +1349,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Binomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Binomial.std(name='std')` {#Binomial.std}
 
 Standard deviation.
@@ -1444,6 +1506,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.copy(**override_parameters_kwargs)` {#Bernoulli.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.dtype` {#Bernoulli.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -1513,6 +1598,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Bernoulli.is_reparameterized` {#Bernoulli.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.is_scalar_batch(name='is_scalar_batch')` {#Bernoulli.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.is_scalar_event(name='is_scalar_event')` {#Bernoulli.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -1835,32 +1954,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Bernoulli.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Bernoulli.std(name='std')` {#Bernoulli.std}
 
 Standard deviation.
@@ -1989,6 +2082,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.copy(**override_parameters_kwargs)` {#BernoulliWithSigmoidP.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.dtype` {#BernoulliWithSigmoidP.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -2058,6 +2174,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.is_reparameterized` {#BernoulliWithSigmoidP.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch(name='is_scalar_batch')` {#BernoulliWithSigmoidP.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event(name='is_scalar_event')` {#BernoulliWithSigmoidP.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -2380,32 +2530,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#BernoulliWithSigmoidP.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.std(name='std')` {#BernoulliWithSigmoidP.std}
 
 Standard deviation.
@@ -2644,6 +2768,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Beta.copy(**override_parameters_kwargs)` {#Beta.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Beta.dtype` {#Beta.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -2713,6 +2860,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Beta.is_reparameterized` {#Beta.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_scalar_batch(name='is_scalar_batch')` {#Beta.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_scalar_event(name='is_scalar_event')` {#Beta.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -3033,32 +3214,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Beta.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Beta.std(name='std')` {#Beta.std}
 
 Standard deviation.
@@ -3208,6 +3363,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.BetaWithSoftplusAB.copy(**override_parameters_kwargs)` {#BetaWithSoftplusAB.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.BetaWithSoftplusAB.dtype` {#BetaWithSoftplusAB.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -3277,6 +3455,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.BetaWithSoftplusAB.is_reparameterized` {#BetaWithSoftplusAB.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusAB.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusAB.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -3597,32 +3809,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#BetaWithSoftplusAB.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.BetaWithSoftplusAB.std(name='std')` {#BetaWithSoftplusAB.std}
 
 Standard deviation.
@@ -3811,6 +3997,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.copy(**override_parameters_kwargs)` {#Categorical.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.dtype` {#Categorical.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -3880,6 +4089,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Categorical.is_reparameterized` {#Categorical.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_scalar_batch(name='is_scalar_batch')` {#Categorical.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_scalar_event(name='is_scalar_event')` {#Categorical.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -4200,32 +4443,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Categorical.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Categorical.std(name='std')` {#Categorical.std}
 
 Standard deviation.
@@ -4390,6 +4607,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.copy(**override_parameters_kwargs)` {#Chi2.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.df` {#Chi2.df}
 
 
@@ -4477,6 +4717,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Chi2.is_reparameterized` {#Chi2.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.is_scalar_batch(name='is_scalar_batch')` {#Chi2.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.is_scalar_event(name='is_scalar_event')` {#Chi2.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -4780,37 +5054,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Chi2.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
 
 Standard deviation.
@@ -4953,6 +5196,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Chi2WithAbsDf.copy(**override_parameters_kwargs)` {#Chi2WithAbsDf.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2WithAbsDf.df` {#Chi2WithAbsDf.df}
 
 
@@ -5040,6 +5306,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Chi2WithAbsDf.is_reparameterized` {#Chi2WithAbsDf.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_batch(name='is_scalar_batch')` {#Chi2WithAbsDf.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_event(name='is_scalar_event')` {#Chi2WithAbsDf.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -5343,37 +5643,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Chi2WithAbsDf.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2WithAbsDf.std(name='std')` {#Chi2WithAbsDf.std}
 
 Standard deviation.
@@ -5538,6 +5807,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.copy(**override_parameters_kwargs)` {#Exponential.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.dtype` {#Exponential.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -5618,6 +5910,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.is_scalar_batch(name='is_scalar_batch')` {#Exponential.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.is_scalar_event(name='is_scalar_event')` {#Exponential.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -5928,37 +6254,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Exponential.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Exponential.std(name='std')` {#Exponential.std}
 
 Standard deviation.
@@ -6101,6 +6396,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.copy(**override_parameters_kwargs)` {#ExponentialWithSoftplusLam.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.dtype` {#ExponentialWithSoftplusLam.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -6181,6 +6499,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_reparameterized` {#ExponentialWithSoftplusLam.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusLam.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusLam.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -6491,37 +6843,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#ExponentialWithSoftplusLam.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.std(name='std')` {#ExponentialWithSoftplusLam.std}
 
 Standard deviation.
@@ -6713,6 +7034,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.copy(**override_parameters_kwargs)` {#Gamma.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.dtype` {#Gamma.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -6793,6 +7137,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.is_scalar_batch(name='is_scalar_batch')` {#Gamma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.is_scalar_event(name='is_scalar_event')` {#Gamma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -7096,37 +7474,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Gamma.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Gamma.std(name='std')` {#Gamma.std}
 
 Standard deviation.
@@ -7269,6 +7616,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.copy(**override_parameters_kwargs)` {#GammaWithSoftplusAlphaBeta.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.dtype` {#GammaWithSoftplusAlphaBeta.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -7349,6 +7719,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_reparameterized` {#GammaWithSoftplusAlphaBeta.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#GammaWithSoftplusAlphaBeta.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#GammaWithSoftplusAlphaBeta.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -7652,37 +8056,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#GammaWithSoftplusAlphaBeta.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.std(name='std')` {#GammaWithSoftplusAlphaBeta.std}
 
 Standard deviation.
@@ -7870,6 +8243,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.InverseGamma.copy(**override_parameters_kwargs)` {#InverseGamma.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.InverseGamma.dtype` {#InverseGamma.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -7950,6 +8346,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.InverseGamma.is_reparameterized` {#InverseGamma.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.is_scalar_batch(name='is_scalar_batch')` {#InverseGamma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.is_scalar_event(name='is_scalar_event')` {#InverseGamma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -8257,37 +8687,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#InverseGamma.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `InverseGamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.InverseGamma.std(name='std')` {#InverseGamma.std}
 
 Standard deviation.
@@ -8436,6 +8835,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.copy(**override_parameters_kwargs)` {#InverseGammaWithSoftplusAlphaBeta.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.dtype` {#InverseGammaWithSoftplusAlphaBeta.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -8516,6 +8938,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_reparameterized` {#InverseGammaWithSoftplusAlphaBeta.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -8823,37 +9279,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#InverseGammaWithSoftplusAlphaBeta.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `InverseGamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.std(name='std')` {#InverseGammaWithSoftplusAlphaBeta.std}
 
 Standard deviation.
@@ -9021,6 +9446,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Laplace.copy(**override_parameters_kwargs)` {#Laplace.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Laplace.dtype` {#Laplace.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -9090,6 +9538,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Laplace.is_reparameterized` {#Laplace.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.is_scalar_batch(name='is_scalar_batch')` {#Laplace.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.is_scalar_event(name='is_scalar_event')` {#Laplace.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -9394,32 +9876,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Laplace.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Laplace.scale` {#Laplace.scale}
 
 Distribution parameter for scale.
@@ -9555,6 +10011,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.copy(**override_parameters_kwargs)` {#LaplaceWithSoftplusScale.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.dtype` {#LaplaceWithSoftplusScale.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -9624,6 +10103,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_reparameterized` {#LaplaceWithSoftplusScale.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#LaplaceWithSoftplusScale.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_event(name='is_scalar_event')` {#LaplaceWithSoftplusScale.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -9928,32 +10441,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#LaplaceWithSoftplusScale.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.scale` {#LaplaceWithSoftplusScale.scale}
 
 Distribution parameter for scale.
@@ -10153,6 +10640,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Normal.copy(**override_parameters_kwargs)` {#Normal.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.dtype` {#Normal.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -10222,6 +10732,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Normal.is_reparameterized` {#Normal.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.is_scalar_batch(name='is_scalar_batch')` {#Normal.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.is_scalar_event(name='is_scalar_event')` {#Normal.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -10526,32 +11070,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Normal.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
 
 Distribution parameter for standard deviation.
@@ -10687,6 +11205,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.copy(**override_parameters_kwargs)` {#NormalWithSoftplusSigma.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.dtype` {#NormalWithSoftplusSigma.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -10756,6 +11297,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.is_reparameterized` {#NormalWithSoftplusSigma.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#NormalWithSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#NormalWithSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -11060,32 +11635,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#NormalWithSoftplusSigma.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.sigma` {#NormalWithSoftplusSigma.sigma}
 
 Distribution parameter for standard deviation.
@@ -11245,6 +11794,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Poisson.copy(**override_parameters_kwargs)` {#Poisson.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Poisson.dtype` {#Poisson.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -11314,6 +11886,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Poisson.is_reparameterized` {#Poisson.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_batch(name='is_scalar_batch')` {#Poisson.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_event(name='is_scalar_event')` {#Poisson.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -11638,32 +12244,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Poisson.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Poisson.std(name='std')` {#Poisson.std}
 
 Standard deviation.
@@ -11719,9 +12299,19 @@ Student's t distribution with degree-of-freedom parameter df.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+Write `sigma` for the scale and `mu` for the mean (both are scalars). The PDF
+of this distribution is:
 
-`f(t) = gamma((df+1)/2)/sqrt(df*pi)/gamma(df/2)*(1+t^2/df)^(-(df+1)/2)`
+```none
+f(x) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
+where,
+y(x) = (x - mu) / sigma
+Z    = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
+```
+
+Notice that `sigma` has semantics more similar to standard deviation than
+variance.  (Recall that the variance of the Student's t-distribution is
+`sigma**2 df / (df - 2)` when `df > 2`.)
 
 #### Examples
 
@@ -11774,12 +12364,13 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 ##### Args:
 
 
-*  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
-    distribution(s). `df` must contain only positive values.
-*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
-    distribution(s). `sigma` must contain only positive values.
-    Note that `sigma` is not the standard deviation of this distribution.
+*  <b>`df`</b>: Numeric `Tensor`. The degrees of freedom of the distribution(s).
+    `df` must contain only positive values.
+*  <b>`mu`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
+*  <b>`sigma`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
+    Note that `sigma` is not technically the standard deviation of this
+    distribution but has semantics more similar to std. deviation than
+    variance.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
     `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
     invalid, correct behavior is not guaranteed.
@@ -11864,6 +12455,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.copy(**override_parameters_kwargs)` {#StudentT.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.df` {#StudentT.df}
 
 Degrees of freedom in these Student's t distribution(s).
@@ -11940,6 +12554,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.is_scalar_batch(name='is_scalar_batch')` {#StudentT.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.is_scalar_event(name='is_scalar_event')` {#StudentT.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -12250,32 +12898,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#StudentT.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.StudentT.sigma` {#StudentT.sigma}
 
 Scaling factors of these Student's t distribution(s).
@@ -12421,6 +13043,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.copy(**override_parameters_kwargs)` {#StudentTWithAbsDfSoftplusSigma.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.df` {#StudentTWithAbsDfSoftplusSigma.df}
 
 Degrees of freedom in these Student's t distribution(s).
@@ -12497,6 +13142,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_reparameterized` {#StudentTWithAbsDfSoftplusSigma.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -12807,32 +13486,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#StudentTWithAbsDfSoftplusSigma.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sigma` {#StudentTWithAbsDfSoftplusSigma.sigma}
 
 Scaling factors of these Student's t distribution(s).
@@ -13034,6 +13687,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.copy(**override_parameters_kwargs)` {#Uniform.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.dtype` {#Uniform.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -13103,6 +13779,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.is_scalar_batch(name='is_scalar_batch')` {#Uniform.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.is_scalar_event(name='is_scalar_event')` {#Uniform.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -13407,32 +14117,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Uniform.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Uniform.std(name='std')` {#Uniform.std}
 
 Standard deviation.
@@ -13635,6 +14319,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiag.copy(**override_parameters_kwargs)` {#MultivariateNormalDiag.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiag.dtype` {#MultivariateNormalDiag.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -13704,6 +14411,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalDiag.is_reparameterized` {#MultivariateNormalDiag.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiag.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiag.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -14047,32 +14788,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiag.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiag.sigma` {#MultivariateNormalDiag.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -14276,6 +14991,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalFull.copy(**override_parameters_kwargs)` {#MultivariateNormalFull.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalFull.dtype` {#MultivariateNormalFull.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -14345,6 +15083,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalFull.is_reparameterized` {#MultivariateNormalFull.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalFull.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalFull.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -14688,32 +15460,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalFull.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalFull.sigma` {#MultivariateNormalFull.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -14926,6 +15672,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalCholesky.copy(**override_parameters_kwargs)` {#MultivariateNormalCholesky.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalCholesky.dtype` {#MultivariateNormalCholesky.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -14995,6 +15764,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalCholesky.is_reparameterized` {#MultivariateNormalCholesky.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalCholesky.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalCholesky.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -15338,32 +16141,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalCholesky.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalCholesky.sigma` {#MultivariateNormalCholesky.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -15602,6 +16379,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.copy(**override_parameters_kwargs)` {#MultivariateNormalDiagPlusVDVT.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.dtype` {#MultivariateNormalDiagPlusVDVT.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -15671,6 +16471,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_reparameterized` {#MultivariateNormalDiagPlusVDVT.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -16014,32 +16848,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sigma` {#MultivariateNormalDiagPlusVDVT.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -16182,6 +16990,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.copy(**override_parameters_kwargs)` {#MultivariateNormalDiagWithSoftplusStDev.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.dtype` {#MultivariateNormalDiagWithSoftplusStDev.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -16251,6 +17082,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_reparameterized` {#MultivariateNormalDiagWithSoftplusStDev.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -16594,32 +17459,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiagWithSoftplusStDev.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sigma` {#MultivariateNormalDiagWithSoftplusStDev.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -16679,62 +17518,6 @@ Python boolean indicated possibly expensive checks are enabled.
 
 Variance.
 
-
-
-- - -
-
-### `tf.contrib.distributions.matrix_diag_transform(matrix, transform=None, name=None)` {#matrix_diag_transform}
-
-Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
-
-Create a trainable covariance defined by a Cholesky factor:
-
-```python
-# Transform network layer into 2 x 2 array.
-matrix_values = tf.contrib.layers.fully_connected(activations, 4)
-matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-
-# Make the diagonal positive.  If the upper triangle was zero, this would be a
-# valid Cholesky factor.
-chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
-
-# OperatorPDCholesky ignores the upper triangle.
-operator = OperatorPDCholesky(chol)
-```
-
-Example of heteroskedastic 2-D linear regression.
-
-```python
-# Get a trainable Cholesky factor.
-matrix_values = tf.contrib.layers.fully_connected(activations, 4)
-matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
-
-# Get a trainable mean.
-mu = tf.contrib.layers.fully_connected(activations, 2)
-
-# This is a fully trainable multivariate normal!
-dist = tf.contrib.distributions.MVNCholesky(mu, chol)
-
-# Standard log loss.  Minimizing this will "train" mu and chol, and then dist
-# will be a distribution predicting labels as multivariate Gaussians.
-loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
-```
-
-##### Args:
-
-
-*  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
-    equal.
-*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
-    be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
-    unchanged.  Defaults to `None`.
-*  <b>`name`</b>: A name to give created ops.
-    Defaults to "matrix_diag_transform".
-
-##### Returns:
-
-  A `Tensor` with same shape and `dtype` as `matrix`.
 
 
 
@@ -16922,6 +17705,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Dirichlet.copy(**override_parameters_kwargs)` {#Dirichlet.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Dirichlet.dtype` {#Dirichlet.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -16991,6 +17797,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Dirichlet.is_reparameterized` {#Dirichlet.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_scalar_batch(name='is_scalar_batch')` {#Dirichlet.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_scalar_event(name='is_scalar_event')` {#Dirichlet.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -17311,32 +18151,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Dirichlet.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Dirichlet.std(name='std')` {#Dirichlet.std}
 
 Standard deviation.
@@ -17578,6 +18392,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.copy(**override_parameters_kwargs)` {#DirichletMultinomial.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.dtype` {#DirichletMultinomial.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -17647,6 +18484,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.DirichletMultinomial.is_reparameterized` {#DirichletMultinomial.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch(name='is_scalar_batch')` {#DirichletMultinomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_event(name='is_scalar_event')` {#DirichletMultinomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -17981,32 +18852,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#DirichletMultinomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.DirichletMultinomial.std(name='std')` {#DirichletMultinomial.std}
 
 Standard deviation.
@@ -18249,6 +19094,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Multinomial.copy(**override_parameters_kwargs)` {#Multinomial.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Multinomial.dtype` {#Multinomial.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -18318,6 +19186,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Multinomial.is_reparameterized` {#Multinomial.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_scalar_batch(name='is_scalar_batch')` {#Multinomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_scalar_event(name='is_scalar_event')` {#Multinomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -18668,32 +19570,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Multinomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Multinomial.std(name='std')` {#Multinomial.std}
 
 Standard deviation.
@@ -18908,6 +19784,29 @@ Boolean indicating if `Tensor` input/outputs are Cholesky factorized.
 
 - - -
 
+#### `tf.contrib.distributions.WishartCholesky.copy(**override_parameters_kwargs)` {#WishartCholesky.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartCholesky.df` {#WishartCholesky.df}
 
 Wishart distribution degree(s) of freedom.
@@ -18991,6 +19890,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.WishartCholesky.is_reparameterized` {#WishartCholesky.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch(name='is_scalar_batch')` {#WishartCholesky.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event(name='is_scalar_event')` {#WishartCholesky.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -19302,32 +20235,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#WishartCholesky.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartCholesky.scale()` {#WishartCholesky.scale}
 
 Wishart distribution scale matrix.
@@ -19552,6 +20459,29 @@ Boolean indicating if `Tensor` input/outputs are Cholesky factorized.
 
 - - -
 
+#### `tf.contrib.distributions.WishartFull.copy(**override_parameters_kwargs)` {#WishartFull.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartFull.df` {#WishartFull.df}
 
 Wishart distribution degree(s) of freedom.
@@ -19635,6 +20565,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.WishartFull.is_reparameterized` {#WishartFull.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.is_scalar_batch(name='is_scalar_batch')` {#WishartFull.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.is_scalar_event(name='is_scalar_event')` {#WishartFull.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -19946,32 +20910,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#WishartFull.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartFull.scale()` {#WishartFull.scale}
 
 Wishart distribution scale matrix.
@@ -20034,6 +20972,65 @@ Variance.
 
 
 
+### Multivariate Utilities
+
+- - -
+
+### `tf.contrib.distributions.matrix_diag_transform(matrix, transform=None, name=None)` {#matrix_diag_transform}
+
+Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
+
+Create a trainable covariance defined by a Cholesky factor:
+
+```python
+# Transform network layer into 2 x 2 array.
+matrix_values = tf.contrib.layers.fully_connected(activations, 4)
+matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
+
+# Make the diagonal positive.  If the upper triangle was zero, this would be a
+# valid Cholesky factor.
+chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
+
+# OperatorPDCholesky ignores the upper triangle.
+operator = OperatorPDCholesky(chol)
+```
+
+Example of heteroskedastic 2-D linear regression.
+
+```python
+# Get a trainable Cholesky factor.
+matrix_values = tf.contrib.layers.fully_connected(activations, 4)
+matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
+chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
+
+# Get a trainable mean.
+mu = tf.contrib.layers.fully_connected(activations, 2)
+
+# This is a fully trainable multivariate normal!
+dist = tf.contrib.distributions.MVNCholesky(mu, chol)
+
+# Standard log loss.  Minimizing this will "train" mu and chol, and then dist
+# will be a distribution predicting labels as multivariate Gaussians.
+loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+```
+
+##### Args:
+
+
+*  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
+    equal.
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
+    be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
+    unchanged.  Defaults to `None`.
+*  <b>`name`</b>: A name to give created ops.
+    Defaults to "matrix_diag_transform".
+
+##### Returns:
+
+  A `Tensor` with same shape and `dtype` as `matrix`.
+
+
+
 ## Transformed distributions
 
 - - -
@@ -20053,14 +21050,18 @@ A `Bijector` is expected to implement the following functions:
 - `inverse_log_det_jacobian`.
 The semantics of these functions are outlined in the `Bijector` documentation.
 
-Shapes, type, and reparameterization are taken from the base distribution.
+We now describe how a `TransformedDistribution` alters the input/outputs of a
+`Distribution` associated with a random variable (rv) `X`.
 
-Write `P(Y=y)` for cumulative density function of random variable (rv) `Y` and
-`p` for its derivative wrt to `Y`.  Assume that `Y=g(X)` where `g` is
-continuous and `X=g^{-1}(Y)`. Write `J` for the Jacobian (of some function).
+Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
+of random variable `Y`; write the probability density function `pdf(Y=y) :=
+d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
+`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+i.e., a non-random, continuous, differentiable, and invertible function.
+Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
+of `g` evaluated at `x`.
 
-A `TransformedDistribution` alters the input/outputs of a `Distribution`
-associated with rv `X` in the following ways:
+A `TransformedDistribution` implements the following operations:
 
   * `sample`:
 
@@ -20081,14 +21082,15 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
+    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
+                         (log o abs o det o J o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return (bijector.inverse_log_det_jacobian(x) +
-            distribution.log_prob(bijector.inverse(x))
+    return (distribution.log_prob(bijector.inverse(x)) +
+            bijector.inverse_log_det_jacobian(x))
     ```
 
   * `log_cdf`:
@@ -20096,13 +21098,13 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o P o g^{-1})(y)
+    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return distribution.log_prob(bijector.inverse(x))
+    return distribution.log_cdf(bijector.inverse(x))
     ```
 
   * and similarly for: `cdf`, `prob`, `log_survival_function`,
@@ -20129,7 +21131,7 @@ log_normal = ds.TransformedDistribution(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(x), reduction_indices=-1)),
+      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
   name="LogNormalTransformedDistribution")
 ```
 
@@ -20142,20 +21144,51 @@ normal = ds.TransformedDistribution(
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
+
+A `TransformedDistribution`'s batch- and event-shape are implied by the base
+distribution unless explicitly overridden by `batch_shape` or `event_shape`
+arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+permitted only if the base distribution has scalar batch-shape (event-shape).
+The bijector is applied to the distribution as if the distribution possessed
+the overridden shape(s). The following example demonstrates how to construct a
+multivariate Normal as a `TransformedDistribution`.
+
+```python
+bs = tf.contrib.distributions.bijector
+ds = tf.contrib.distributions
+# We will create two MVNs with batch_shape = event_shape = 2.
+mean = [[-1., 0],      # batch:0
+        [0., 1]]       # batch:1
+chol_cov = [[[1., 0],
+             [0, 1]],  # batch:0
+            [[1, 0],
+             [2, 2]]]  # batch:1
+mvn1 = ds.TransformedDistribution(
+    distribution=ds.Normal(mu=0., sigma=1.),
+    bijector=bs.Affine(shift=mean, tril=chol_cov),
+    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
+    event_shape=[2])  # Valid because base_distribution.event_shape == [].
+mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+# mvn1.log_prob(x) == mvn2.log_prob(x)
+```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution class to transform. Typically an
+*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
     instance of `Distribution`.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    Typically an instance of `Bijector`. `None` means `Identity()`.
+*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
+*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `event_shape`; valid only if `distribution.is_scalar_event()`.
+*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`name`</b>: The name for the distribution. Default:
@@ -20225,10 +21258,10 @@ cdf(x) := P[X <= x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -20242,6 +21275,29 @@ Additional documentation from `TransformedDistribution`:
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.copy(**override_parameters_kwargs)` {#TransformedDistribution.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
 
 
 - - -
@@ -20326,6 +21382,40 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
 #### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf', **condition_kwargs)` {#TransformedDistribution.log_cdf}
 
 Log cumulative distribution function.
@@ -20343,10 +21433,10 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -20421,16 +21511,16 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -20466,10 +21556,10 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -20619,10 +21709,10 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -20663,43 +21753,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#TransformedDistribution.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `TransformedDistribution`:
-
-Samples from the base distribution and then passes through
-      the bijector's forward transform.
-
-##### <b>`condition_kwargs`</b>:
-
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.TransformedDistribution.std(name='std')` {#TransformedDistribution.std}
 
 Standard deviation.
@@ -20722,10 +21775,10 @@ survival_function(x) = P[X > x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -20933,6 +21986,29 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 - - -
 
+#### `tf.contrib.distributions.QuantizedDistribution.copy(**override_parameters_kwargs)` {#QuantizedDistribution.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.QuantizedDistribution.distribution` {#QuantizedDistribution.distribution}
 
 Base distribution, p(x).
@@ -21009,6 +22085,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.QuantizedDistribution.is_reparameterized` {#QuantizedDistribution.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_batch(name='is_scalar_batch')` {#QuantizedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_event(name='is_scalar_event')` {#QuantizedDistribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -21378,32 +22488,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#QuantizedDistribution.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.QuantizedDistribution.std(name='std')` {#QuantizedDistribution.std}
 
 Standard deviation.
@@ -21614,6 +22698,29 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Mixture.copy(**override_parameters_kwargs)` {#Mixture.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Mixture.dtype` {#Mixture.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -21729,6 +22836,40 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Mixture.is_reparameterized` {#Mixture.is_reparameterized}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.is_scalar_batch(name='is_scalar_batch')` {#Mixture.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.is_scalar_event(name='is_scalar_event')` {#Mixture.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -22033,32 +23174,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Mixture.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Mixture.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Mixture.std(name='std')` {#Mixture.std}
 
 Standard deviation.
@@ -22224,13 +23339,26 @@ will broadcast in the case of multidimensional sets of parameters.
 
 
 
-## Kullback Leibler Divergence
+## Kullback-Leibler Divergence
 
 - - -
 
 ### `tf.contrib.distributions.kl(dist_a, dist_b, allow_nan=False, name=None)` {#kl}
 
 Get the KL-divergence KL(dist_a || dist_b).
+
+If there is no KL method registered specifically for `type(dist_a)` and
+`type(dist_b)`, then the class hierarchies of these types are searched.
+
+If one KL method is registered between any pairs of classes in these two
+parent hierarchies, it is used.
+
+If more than one such registered method exists, the method whose registered
+classes have the shortest sum MRO paths to the input types is used.
+
+If more than one such shortest path exists, the first method
+identified in the search is used (favoring a shorter MRO distance to
+`type(dist_a)`).
 
 ##### Args:
 
@@ -22302,1132 +23430,28 @@ Initialize the KL registrar.
 
 
 
-## Other Functions and Classes
-- - -
-
-### `class tf.contrib.distributions.beta_aa` {#beta_aa}
-
-Beta with softplus transform on `a` and `b`.
-- - -
-
-#### `tf.contrib.distributions.beta_aa.__init__(a, b, validate_args=False, allow_nan_stats=True, name='BetaWithSoftplusAB')` {#beta_aa.__init__}
-
-
-
+## Utilities
 
 - - -
 
-#### `tf.contrib.distributions.beta_aa.a` {#beta_aa.a}
+### `tf.contrib.distributions.softplus_inverse(x, name=None)` {#softplus_inverse}
 
-Shape parameter.
+Computes the inverse softplus, i.e., x = softplus_inverse(softplus(x)).
 
+Mathematically this op is equivalent to:
 
-- - -
-
-#### `tf.contrib.distributions.beta_aa.a_b_sum` {#beta_aa.a_b_sum}
-
-Sum of parameters.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.allow_nan_stats` {#beta_aa.allow_nan_stats}
-
-Python boolean describing behavior when a stat is undefined.
-
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
-
-##### Returns:
-
-
-*  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.b` {#beta_aa.b}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.batch_shape(name='batch_shape')` {#beta_aa.batch_shape}
-
-Shape of a single sample from a single event index as a 1-D `Tensor`.
-
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
-
-##### Args:
-
-
-*  <b>`name`</b>: name to give to the op
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.cdf(value, name='cdf', **condition_kwargs)` {#beta_aa.cdf}
-
-Cumulative distribution function.
-
-Given random variable `X`, the cumulative distribution function `cdf` is:
-
-```
-cdf(x) := P[X <= x]
+```none
+softplus_inverse = log(exp(x) - 1.)
 ```
 
 ##### Args:
 
 
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
+*  <b>`x`</b>: `Tensor`. Non-negative (not enforced), floating-point.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-
-*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.dtype` {#beta_aa.dtype}
-
-The `DType` of `Tensor`s handled by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.entropy(name='entropy')` {#beta_aa.entropy}
-
-Shannon entropy in nats.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.event_shape(name='event_shape')` {#beta_aa.event_shape}
-
-Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
-
-##### Args:
-
-
-*  <b>`name`</b>: name to give to the op
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.get_batch_shape()` {#beta_aa.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.get_event_shape()` {#beta_aa.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.is_continuous` {#beta_aa.is_continuous}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.is_reparameterized` {#beta_aa.is_reparameterized}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.log_cdf(value, name='log_cdf', **condition_kwargs)` {#beta_aa.log_cdf}
-
-Log cumulative distribution function.
-
-Given random variable `X`, the cumulative distribution function `cdf` is:
-
-```
-log_cdf(x) := Log[ P[X <= x] ]
-```
-
-Often, a numerical approximation can be used for `log_cdf(x)` that yields
-a more accurate answer than simply taking the logarithm of the `cdf` when
-`x << -1`.
-
-
-Additional documentation from `Beta`:
-
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.log_pdf(value, name='log_pdf', **condition_kwargs)` {#beta_aa.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.log_pmf(value, name='log_pmf', **condition_kwargs)` {#beta_aa.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.log_prob(value, name='log_prob', **condition_kwargs)` {#beta_aa.log_prob}
-
-Log probability density/mass function (depending on `is_continuous`).
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#beta_aa.log_survival_function}
-
-Log survival function.
-
-Given random variable `X`, the survival function is defined:
-
-```
-log_survival_function(x) = Log[ P[X > x] ]
-                         = Log[ 1 - P[X <= x] ]
-                         = Log[ 1 - cdf(x) ]
-```
-
-Typically, different numerical approximations can be used for the log
-survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
-    `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.mean(name='mean')` {#beta_aa.mean}
-
-Mean.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.mode(name='mode')` {#beta_aa.mode}
-
-Mode.
-
-Additional documentation from `Beta`:
-
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.name` {#beta_aa.name}
-
-Name prepended to all ops created by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#beta_aa.param_shapes}
-
-Shapes of parameters given the desired shape of a call to `sample()`.
-
-Subclasses should override static method `_param_shapes`.
-
-##### Args:
-
-
-*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
-    `sample()`.
-*  <b>`name`</b>: name to prepend ops with.
-
-##### Returns:
-
-  `dict` of parameter name to `Tensor` shapes.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.param_static_shapes(cls, sample_shape)` {#beta_aa.param_static_shapes}
-
-param_shapes with static (i.e. TensorShape) shapes.
-
-##### Args:
-
-
-*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
-    to `sample()`.
-
-##### Returns:
-
-  `dict` of parameter name to `TensorShape`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.parameters` {#beta_aa.parameters}
-
-Dictionary of parameters used to instantiate this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.pdf(value, name='pdf', **condition_kwargs)` {#beta_aa.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.pmf(value, name='pmf', **condition_kwargs)` {#beta_aa.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.prob(value, name='prob', **condition_kwargs)` {#beta_aa.prob}
-
-Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `Beta`:
-
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#beta_aa.sample}
-
-Generate samples of the specified shape.
-
-Note that a call to `sample()` without arguments will generate a single
-sample.
-
-##### Args:
-
-
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#beta_aa.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.std(name='std')` {#beta_aa.std}
-
-Standard deviation.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.survival_function(value, name='survival_function', **condition_kwargs)` {#beta_aa.survival_function}
-
-Survival function.
-
-Given random variable `X`, the survival function is defined:
-
-```
-survival_function(x) = P[X > x]
-                     = 1 - P[X <= x]
-                     = 1 - cdf(x).
-```
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
-    `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.validate_args` {#beta_aa.validate_args}
-
-Python boolean indicated possibly expensive checks are enabled.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_aa.variance(name='variance')` {#beta_aa.variance}
-
-Variance.
-
-
-
-- - -
-
-### `class tf.contrib.distributions.beta_bb` {#beta_bb}
-
-Beta with softplus transform on `a` and `b`.
-- - -
-
-#### `tf.contrib.distributions.beta_bb.__init__(a, b, validate_args=False, allow_nan_stats=True, name='BetaWithSoftplusAB')` {#beta_bb.__init__}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.a` {#beta_bb.a}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.a_b_sum` {#beta_bb.a_b_sum}
-
-Sum of parameters.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.allow_nan_stats` {#beta_bb.allow_nan_stats}
-
-Python boolean describing behavior when a stat is undefined.
-
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
-
-##### Returns:
-
-
-*  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.b` {#beta_bb.b}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.batch_shape(name='batch_shape')` {#beta_bb.batch_shape}
-
-Shape of a single sample from a single event index as a 1-D `Tensor`.
-
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
-
-##### Args:
-
-
-*  <b>`name`</b>: name to give to the op
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.cdf(value, name='cdf', **condition_kwargs)` {#beta_bb.cdf}
-
-Cumulative distribution function.
-
-Given random variable `X`, the cumulative distribution function `cdf` is:
-
-```
-cdf(x) := P[X <= x]
-```
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.dtype` {#beta_bb.dtype}
-
-The `DType` of `Tensor`s handled by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.entropy(name='entropy')` {#beta_bb.entropy}
-
-Shannon entropy in nats.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.event_shape(name='event_shape')` {#beta_bb.event_shape}
-
-Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
-
-##### Args:
-
-
-*  <b>`name`</b>: name to give to the op
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.get_batch_shape()` {#beta_bb.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.get_event_shape()` {#beta_bb.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.is_continuous` {#beta_bb.is_continuous}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.is_reparameterized` {#beta_bb.is_reparameterized}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.log_cdf(value, name='log_cdf', **condition_kwargs)` {#beta_bb.log_cdf}
-
-Log cumulative distribution function.
-
-Given random variable `X`, the cumulative distribution function `cdf` is:
-
-```
-log_cdf(x) := Log[ P[X <= x] ]
-```
-
-Often, a numerical approximation can be used for `log_cdf(x)` that yields
-a more accurate answer than simply taking the logarithm of the `cdf` when
-`x << -1`.
-
-
-Additional documentation from `Beta`:
-
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.log_pdf(value, name='log_pdf', **condition_kwargs)` {#beta_bb.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.log_pmf(value, name='log_pmf', **condition_kwargs)` {#beta_bb.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.log_prob(value, name='log_prob', **condition_kwargs)` {#beta_bb.log_prob}
-
-Log probability density/mass function (depending on `is_continuous`).
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#beta_bb.log_survival_function}
-
-Log survival function.
-
-Given random variable `X`, the survival function is defined:
-
-```
-log_survival_function(x) = Log[ P[X > x] ]
-                         = Log[ 1 - P[X <= x] ]
-                         = Log[ 1 - cdf(x) ]
-```
-
-Typically, different numerical approximations can be used for the log
-survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
-    `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.mean(name='mean')` {#beta_bb.mean}
-
-Mean.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.mode(name='mode')` {#beta_bb.mode}
-
-Mode.
-
-Additional documentation from `Beta`:
-
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.name` {#beta_bb.name}
-
-Name prepended to all ops created by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#beta_bb.param_shapes}
-
-Shapes of parameters given the desired shape of a call to `sample()`.
-
-Subclasses should override static method `_param_shapes`.
-
-##### Args:
-
-
-*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
-    `sample()`.
-*  <b>`name`</b>: name to prepend ops with.
-
-##### Returns:
-
-  `dict` of parameter name to `Tensor` shapes.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.param_static_shapes(cls, sample_shape)` {#beta_bb.param_static_shapes}
-
-param_shapes with static (i.e. TensorShape) shapes.
-
-##### Args:
-
-
-*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
-    to `sample()`.
-
-##### Returns:
-
-  `dict` of parameter name to `TensorShape`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.parameters` {#beta_bb.parameters}
-
-Dictionary of parameters used to instantiate this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.pdf(value, name='pdf', **condition_kwargs)` {#beta_bb.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.pmf(value, name='pmf', **condition_kwargs)` {#beta_bb.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.prob(value, name='prob', **condition_kwargs)` {#beta_bb.prob}
-
-Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `Beta`:
-
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#beta_bb.sample}
-
-Generate samples of the specified shape.
-
-Note that a call to `sample()` without arguments will generate a single
-sample.
-
-##### Args:
-
-
-*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#beta_bb.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.std(name='std')` {#beta_bb.std}
-
-Standard deviation.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.survival_function(value, name='survival_function', **condition_kwargs)` {#beta_bb.survival_function}
-
-Survival function.
-
-Given random variable `X`, the survival function is defined:
-
-```
-survival_function(x) = P[X > x]
-                     = 1 - P[X <= x]
-                     = 1 - cdf(x).
-```
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
-    `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.validate_args` {#beta_bb.validate_args}
-
-Python boolean indicated possibly expensive checks are enabled.
-
-
-- - -
-
-#### `tf.contrib.distributions.beta_bb.variance(name='variance')` {#beta_bb.variance}
-
-Variance.
-
+  `Tensor`. Has the same type/shape as input `x`.
 
 

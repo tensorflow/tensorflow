@@ -19,15 +19,21 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
-import tensorflow as tf
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
+from tensorflow.python.platform import test
 
 
-class MultiOutputTest(tf.test.TestCase):
+class MultiOutputTest(test.TestCase):
   """Multi-output tests."""
 
   def testMultiRegression(self):
@@ -37,11 +43,11 @@ class MultiOutputTest(tf.test.TestCase):
     y = np.array([np.pi * np.sin(x).ravel(), np.pi * np.cos(x).ravel()]).T
     regressor = learn.LinearRegressor(
         feature_columns=learn.infer_real_valued_columns_from_input(x),
-        target_dimension=2)
+        label_dimension=2)
     regressor.fit(x, y, steps=100)
-    score = mean_squared_error(np.array(list(regressor.predict(x))), y)
+    score = mean_squared_error(np.array(list(regressor.predict_scores(x))), y)
     self.assertLess(score, 10, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

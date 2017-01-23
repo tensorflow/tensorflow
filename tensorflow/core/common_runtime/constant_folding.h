@@ -29,7 +29,16 @@ namespace tensorflow {
 // and replaces those nodes with the result of the evaluation.
 // "partition_device", if non-null, is the device where all the graph nodes are
 // assumed to execute.
-// Returns true if and only if "graph" has been mutated.
+// Sets `was_mutated` to true if and only if "graph" has been mutated.
+// The status is only set to a non-OK state if an unexpected error is hit
+// running the graph.
+Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
+                                   FunctionLibraryRuntime* function_library,
+                                   Env* env, Device* partition_device,
+                                   Graph* graph, bool* was_mutated);
+
+// Version of the function that doesn't return a Status, for backwards
+// compatibility.
 bool DoConstantFolding(const ConstantFoldingOptions& opts,
                        FunctionLibraryRuntime* function_library, Env* env,
                        Device* partition_device, Graph* graph);

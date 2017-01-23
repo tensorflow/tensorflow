@@ -74,6 +74,21 @@ StringPiece Extension(StringPiece path);
 // string manipulation, completely independent of process state.
 string CleanPath(StringPiece path);
 
+// Populates the scheme, host, and path from a URI. scheme, host, and path are
+// guaranteed by this function to point into the contents of uri, even if
+// empty.
+//
+// Corner cases:
+// - If the URI is invalid, scheme and host are set to empty strings and the
+//   passed string is assumed to be a path
+// - If the URI omits the path (e.g. file://host), then the path is left empty.
+void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
+              StringPiece* path);
+
+// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
+// return the path.
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
+
 }  // namespace io
 }  // namespace tensorflow
 

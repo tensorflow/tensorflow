@@ -25,7 +25,7 @@ limitations under the License.
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../paper-header-panel/paper-header-panel.html">
 <link rel="import" href="../tf-globals/tf-globals.html">
-<link rel="import" href="../tf-event-dashboard/tf-event-dashboard.html">
+<link rel="import" href="../tf-scalar-dashboard/tf-scalar-dashboard.html">
 <link rel="import" href="../tf-distribution-dashboard/tf-distribution-dashboard.html">
 <link rel="import" href="../tf-histogram-dashboard/tf-histogram-dashboard.html">
 <link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
@@ -57,7 +57,9 @@ allows the user to toggle between various dashboards.
           <div class="toolbar-title">TensorBoard</div>
           <paper-tabs selected="{{modeIndex}}" noink class="tabs" id="tabs">
             <template is="dom-repeat" items="[[tabs]]">
-              <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              <template is="dom-if" if="[[_isTabEnabled(item)]]">
+                <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              </template>
             </template>
           </paper-tabs>
           <div class="global-actions">
@@ -82,12 +84,12 @@ allows the user to toggle between various dashboards.
       <div id="content" class="fit">
         <content id="injected-overview"></content>
 
-        <template is="dom-if" if="[[_modeIsEvents(mode)]]">
-          <tf-event-dashboard
-            id="events"
+        <template is="dom-if" if="[[_modeIsScalars(mode)]]">
+          <tf-scalar-dashboard
+            id="scalars"
             backend="[[_backend]]"
             router="[[router]]"
-          ></tf-event-dashboard>
+          ></tf-scalar-dashboard>
         </template>
 
         <template is="dom-if" if="[[_modeIsImages(mode)]]">
@@ -125,7 +127,7 @@ allows the user to toggle between various dashboards.
           ></tf-histogram-dashboard>
         </template>
 
-        <template is="dom-if" if="[[_modeIsProjections(mode)]]">
+        <template is="dom-if" if="[[_modeIsEmbeddings(mode)]]">
           <vz-projector-dashboard
             id="projector"
             route-prefix="/data/plugin/projector">
@@ -213,7 +215,7 @@ allows the user to toggle between various dashboards.
           type: Object,
           computed: "_makeBackend(router, demoDir)",
         },
-        // Which tab is selected (events, graph, images etc).
+        // Which tab is selected (scalars, graph, images etc).
         mode: {
           type: String,
           computed: '_getModeFromIndex(modeIndex)',
@@ -237,6 +239,14 @@ allows the user to toggle between various dashboards.
           type: Boolean,
           value: false,
         },
+        disabledTabs: String,
+      },
+      _isTabEnabled: function(tab) {
+        if (this.disabledTabs != null &&
+            this.disabledTabs.split(',').indexOf(tab) >= 0) {
+          return false;
+        }
+        return true;
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
@@ -250,8 +260,8 @@ allows the user to toggle between various dashboards.
         }
         return new TF.Backend.Backend(router);
       },
-      _modeIsEvents: function(mode) {
-        return mode === "events";
+      _modeIsScalars: function(mode) {
+        return mode === "scalars";
       },
       _modeIsImages: function(mode) {
         return mode === "images";
@@ -262,8 +272,8 @@ allows the user to toggle between various dashboards.
       _modeIsGraphs: function(mode) {
         return mode === "graphs";
       },
-      _modeIsProjections: function(mode) {
-        return mode === "projections";
+      _modeIsEmbeddings: function(mode) {
+        return mode === "embeddings";
       },
       _modeIsDistributions: function(mode) {
         return mode === "distributions";
@@ -298,7 +308,7 @@ allows the user to toggle between various dashboards.
         }
       },
       reload: function() {
-        if (this.mode === "graphs" || this.mode === "projections") {
+        if (this.mode === "graphs" || this.mode === "embeddings") {
           return;
         }
         this.selectedDashboard().reload();

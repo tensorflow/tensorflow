@@ -28,12 +28,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-
-// TODO(vinuraja): Not ready yet. The collection part has to be plumbed in.
 
 namespace tensorflow {
 namespace monitoring {
@@ -68,9 +67,10 @@ class SamplerCell {
 
 // A stateful class for updating a cumulative histogram metric.
 //
-// This class encapsulates a set of values (or a single value for a label-less
-// metric). Each value is identified by a tuple of labels. The class allows the
-// user to increment each value.
+// This class encapsulates a set of histograms (or a single histogram for a
+// label-less metric) configured with a list of increasing bucket boundaries.
+// Each histogram is identified by a tuple of labels. The class allows the user
+// to add a sample to each histogram value.
 //
 // Sampler allocates storage and maintains a cell for each value. You can
 // retrieve an individual cell using a label-tuple and update it separately.
@@ -81,7 +81,10 @@ class SamplerCell {
 template <int NumLabels>
 class Sampler {
  public:
-  ~Sampler() {}
+  ~Sampler() {
+    // Deleted here, before the metric_def is destroyed.
+    registration_handle_.reset();
+  }
 
   // Creates the metric based on the metric-definition arguments.
   //
@@ -110,7 +113,17 @@ class Sampler {
   Sampler(const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
               metric_def,
           const std::vector<double>& bucket_limits)
-      : metric_def_(metric_def), bucket_limits_(bucket_limits) {}
+      : metric_def_(metric_def),
+        bucket_limits_(bucket_limits),
+        registration_handle_(CollectionRegistry::Default()->Register(
+            &metric_def_, [&](MetricCollectorGetter getter) {
+              auto metric_collector = getter.Get(&metric_def_);
+
+              mutex_lock l(mu_);
+              for (const auto& cell : cells_) {
+                metric_collector.CollectValue(cell.first, cell.second.value());
+              }
+            })) {}
 
   mutable mutex mu_;
 
@@ -121,6 +134,9 @@ class Sampler {
 
   // Bucket limits for the histograms in the cells.
   const std::vector<double> bucket_limits_;
+
+  // Registration handle with the CollectionRegistry.
+  std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   // We use a std::map here because we give out pointers to the SamplerCells,
   // which need to remain valid even after more cells.
@@ -171,7 +187,7 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
                 "Mismatch between Sampler<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {labels...};
+  const LabelArray& label_array = {{labels...}};
   mutex_lock l(mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {

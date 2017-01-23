@@ -141,19 +141,24 @@ REGISTER_OP("SparseTensorDenseMatMul")
       ShapeHandle unused;
       ShapeHandle b;
       ShapeHandle a_shape;
+      ShapeHandle a_shape_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // a_indices
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // a_values
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(a_shape, 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(a_shape, 2, &a_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &b));
 
+      bool adjoint_a;
       bool adjoint_b;
+      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_a", &adjoint_a));
       TF_RETURN_IF_ERROR(c->GetAttr("adjoint_b", &adjoint_b));
 
-      // TODO(zongheng): 1) incorporate adjoint_a. 2) When both attrs are
-      // considered, check the inner dimensions match.
       DimensionHandle output_right = c->Dim(b, adjoint_b ? 0 : 1);
-      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, output_right));
+      DimensionHandle output_left = c->Dim(a_shape, adjoint_a ? 1 : 0);
+      DimensionHandle inner_left = c->Dim(a_shape, adjoint_a ? 0 : 1);
+      DimensionHandle inner_right = c->Dim(b, adjoint_b ? 1 : 0);
+      TF_RETURN_IF_ERROR(c->Merge(inner_left, inner_right, &unused_dim));
+      c->set_output(0, c->Matrix(output_left, output_right));
       return Status::OK();
     })
     .Doc(R"doc(

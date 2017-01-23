@@ -57,7 +57,6 @@ initialized with parameters that define the distributions.
 @@MultivariateNormalCholesky
 @@MultivariateNormalDiagPlusVDVT
 @@MultivariateNormalDiagWithSoftplusStDev
-@@matrix_diag_transform
 
 ### Other multivariate distributions
 
@@ -66,6 +65,10 @@ initialized with parameters that define the distributions.
 @@Multinomial
 @@WishartCholesky
 @@WishartFull
+
+### Multivariate Utilities
+
+@@matrix_diag_transform
 
 ## Transformed distributions
 
@@ -86,10 +89,15 @@ representing the posterior or posterior predictive.
 @@normal_conjugates_known_sigma_posterior
 @@normal_conjugates_known_sigma_predictive
 
-## Kullback Leibler Divergence
+## Kullback-Leibler Divergence
 
 @@kl
 @@RegisterKL
+
+## Utilities
+
+@@softplus_inverse
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -107,6 +115,7 @@ from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
@@ -123,3 +132,5 @@ from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
+
+# pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member

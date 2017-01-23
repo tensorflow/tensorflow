@@ -18,18 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-import tempfile
-
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework import list_variables
-from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import linear
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 
 
@@ -38,15 +32,7 @@ def _as_iterable(preds, output):
     yield pred[output]
 
 
-def _get_metric_args(metric):
-  if hasattr(metric, "__code__"):
-    return inspect.getargspec(metric).args
-  elif hasattr(metric, "func") and hasattr(metric, "keywords"):
-    return [arg for arg in inspect.getargspec(metric.func).args
-            if arg not in metric.keywords.keys()]
-
-
-class SVM(trainable.Trainable, evaluable.Evaluable):
+class SVM(estimator.Estimator):
   """Support Vector Machine (SVM) model for binary classification.
 
   Currently, only linear SVMs are supported. For the underlying optimization
@@ -60,7 +46,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   (where there is one process per worker) is the number of workers running the
   train steps. It defaults to 1 (single machine).
 
-  Example Usage:
+  Example:
+
   ```python
   real_feature_column = real_valued_column(...)
   sparse_feature_column = sparse_column_with_hash_bucket(...)
@@ -105,7 +92,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                kernels=None,
                config=None,
                feature_engineering_fn=None):
-    """Constructs a `SVM~ estimator object.
+    """Constructs an `SVM` estimator object.
 
     Args:
       example_id_column: A string defining the feature column name representing
@@ -129,8 +116,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         supported. Reserved for future use for non-linear SVMs.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        targets which are the output of `input_fn` and
-                        returns features and targets which will be fed
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
                         into the model.
 
     Raises:
@@ -138,61 +125,45 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
     """
     if kernels is not None:
       raise ValueError("Kernel SVMs are not currently supported.")
-    self._optimizer = sdca_optimizer.SDCAOptimizer(
+    optimizer = sdca_optimizer.SDCAOptimizer(
         example_id_column=example_id_column,
         num_loss_partitions=num_loss_partitions,
         symmetric_l1_regularization=l1_regularization,
         symmetric_l2_regularization=l2_regularization)
 
     self._feature_columns = feature_columns
-    self._model_dir = model_dir or tempfile.mkdtemp()
-    self._chief_hook = linear._SdcaUpdateWeightsHook()  # pylint: disable=protected-access
-    self._estimator = estimator.Estimator(
-        model_fn=linear.sdca_classifier_model_fn,
-        model_dir=self._model_dir,
+    chief_hook = linear._SdcaUpdateWeightsHook()  # pylint: disable=protected-access
+    super(SVM, self).__init__(
+        model_fn=linear.sdca_model_fn,
+        model_dir=model_dir,
         config=config,
         params={
+            "head": head_lib._binary_svm_head(  # pylint: disable=protected-access
+                weight_column_name=weight_column_name,
+                enable_centered_bias=False),
             "feature_columns": feature_columns,
-            "optimizer": self._optimizer,
+            "optimizer": optimizer,
             "weight_column_name": weight_column_name,
-            "loss_type": "hinge_loss",
-            "update_weights_hook": self._chief_hook,
+            "update_weights_hook": chief_hook,
         },
         feature_engineering_fn=feature_engineering_fn)
-    if not self._estimator.config.is_chief:
-      self._chief_hook = None
-
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
-    """See trainable.Trainable."""
-    if monitors is None:
-      monitors = []
-    if self._chief_hook:
-      monitors.append(self._chief_hook)
-    return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                               batch_size=batch_size, monitors=monitors,
-                               max_steps=max_steps)
-
-  # pylint: disable=protected-access
-  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
-               batch_size=None, steps=None, metrics=None, name=None):
-    """See evaluable.Evaluable."""
-    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
-                                    feed_fn=feed_fn, batch_size=batch_size,
-                                    steps=steps, metrics=metrics, name=name)
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
+  def predict_classes(self, x=None, input_fn=None, batch_size=None,
+                      as_iterable=True):
     """Runs inference to determine the predicted class."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[head_lib.PredictionKey.CLASSES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.CLASSES
+    preds = super(SVM, self).predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.CLASSES)
-    return preds[head_lib.PredictionKey.CLASSES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
@@ -200,45 +171,42 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
                     as_iterable=True):
     """Runs inference to determine the class probability predictions."""
-    preds = self._estimator.predict(x=x, input_fn=input_fn,
-                                    batch_size=batch_size,
-                                    outputs=[
-                                        head_lib.PredictionKey.PROBABILITIES],
-                                    as_iterable=as_iterable)
+    key = prediction_key.PredictionKey.PROBABILITIES
+    preds = super(SVM, self).predict(
+        x=x,
+        input_fn=input_fn,
+        batch_size=batch_size,
+        outputs=[key],
+        as_iterable=as_iterable)
     if as_iterable:
-      return _as_iterable(preds, output=head_lib.PredictionKey.PROBABILITIES)
-    return preds[head_lib.PredictionKey.PROBABILITIES]
+      return _as_iterable(preds, output=key)
+    return preds[key]
   # pylint: enable=protected-access
-
-  def get_variable_names(self):
-    return [name for name, _ in list_variables(self._model_dir)]
 
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
              exports_to_keep=None):
     """See BaseEstimator.export."""
+    return self.export_with_defaults(
+        export_dir=export_dir,
+        signature_fn=signature_fn,
+        input_fn=input_fn,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
+
+  def export_with_defaults(
+      self,
+      export_dir,
+      signature_fn=None,
+      input_fn=None,
+      default_batch_size=1,
+      exports_to_keep=None):
+    """Same as BaseEstimator.export, but uses some defaults."""
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
-    return self._estimator.export(export_dir=export_dir,
-                                  signature_fn=signature_fn,
-                                  input_fn=input_fn or default_input_fn,
-                                  default_batch_size=default_batch_size,
-                                  exports_to_keep=exports_to_keep)
-
-  @property
-  def weights_(self):
-    values = {}
-    optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
-    for name, _ in list_variables(self._model_dir):
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          not re.match(optimizer_regex, name)):
-        values[name] = load_variable(self._model_dir, name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  def bias_(self):
-    return load_variable(self._model_dir, name="linear/bias_weight")
+    return super(SVM, self).export(export_dir=export_dir,
+                                   signature_fn=signature_fn,
+                                   input_fn=input_fn or default_input_fn,
+                                   default_batch_size=default_batch_size,
+                                   exports_to_keep=exports_to_keep)

@@ -51,6 +51,8 @@ functions below.
 
 @@stop_gradient
 
+@@hessians
+
 
 ## Gradient Clipping
 
@@ -67,6 +69,10 @@ gradients.
 
 ## Decaying the learning rate
 @@exponential_decay
+@@inverse_time_decay
+@@natural_exp_decay
+@@piecewise_constant
+@@polynomial_decay
 
 ## Moving Averages
 
@@ -82,8 +88,10 @@ See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
 for how to use threads and queues.  For documentation on the Queue API,
 see [Queues](../../api_docs/python/io_ops.md#queues).
 
+
 @@Coordinator
 @@QueueRunner
+@@LooperThread
 @@add_queue_runner
 @@start_queue_runners
 
@@ -97,56 +105,31 @@ more information about how to configure a distributed TensorFlow program.
 @@SessionManager
 @@ClusterSpec
 @@replica_device_setter
-@@Scaffold
 @@MonitoredTrainingSession
+@@MonitoredSession
+@@SingularMonitoredSession
+@@Scaffold
 @@SessionCreator
 @@ChiefSessionCreator
 @@WorkerSessionCreator
-@@MonitoredSession
 
-## Summary Operations
-
-The following ops output
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-protocol buffers as serialized string tensors.
-
-You can fetch the output of a summary op in a session, and pass it to
-a [SummaryWriter](../../api_docs/python/train.md#SummaryWriter) to append it
-to an event file.  Event files contain
-[`Event`](https://www.tensorflow.org/code/tensorflow/core/util/event.proto)
-protos that can contain `Summary` protos along with the timestamp and
-step.  You can then use TensorBoard to visualize the contents of the
-event files.  See [TensorBoard and
-Summaries](../../how_tos/summaries_and_tensorboard/index.md) for more
-details.
-
-@@scalar_summary
-@@image_summary
-@@audio_summary
-@@histogram_summary
-@@zero_fraction
-
-@@merge_summary
-@@merge_all_summaries
-
-## Adding Summaries to Event Files
+## Reading Summaries from Event Files
 
 See [Summaries and
 TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
 overview of summaries, event files, and visualization in TensorBoard.
 
-@@SummaryWriter
-@@SummaryWriterCache
 @@summary_iterator
 
-## Training utilities
+## Training Hooks
 
-@@global_step
-@@basic_train_loop
-@@get_global_step
-@@assert_global_step
-@@write_graph
+Hooks are tools that run in the process of training/evaluation of the model.
+
 @@SessionRunHook
+@@SessionRunArgs
+@@SessionRunContext
+@@SessionRunValues
+
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
@@ -155,10 +138,17 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@NanLossDuringTrainingError
 @@NanTensorHook
 @@SummarySaverHook
-@@SessionRunArgs
-@@SessionRunContext
-@@SessionRunValues
-@@LooperThread
+@@GlobalStepWaiterHook
+@@FinalOpsHook
+@@FeedFnHook
+
+## Training Utilities
+
+@@global_step
+@@basic_train_loop
+@@get_global_step
+@@assert_global_step
+@@write_graph
 """
 # pylint: enable=line-too-long
 
@@ -187,7 +177,6 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
-from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizerV2
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
@@ -199,7 +188,9 @@ from tensorflow.python.training.queue_runner import *
 # For the module level doc.
 from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
+# pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
@@ -207,6 +198,9 @@ from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
 from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
 from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
+from tensorflow.python.training.basic_session_run_hooks import GlobalStepWaiterHook
+from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
+from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
 from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.device_setter import replica_device_setter
 from tensorflow.python.training.monitored_session import Scaffold
@@ -215,6 +209,7 @@ from tensorflow.python.training.monitored_session import SessionCreator
 from tensorflow.python.training.monitored_session import ChiefSessionCreator
 from tensorflow.python.training.monitored_session import WorkerSessionCreator
 from tensorflow.python.training.monitored_session import MonitoredSession
+from tensorflow.python.training.monitored_session import SingularMonitoredSession
 from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import generate_checkpoint_state_proto
@@ -230,8 +225,6 @@ from tensorflow.python.training.session_run_hook import SessionRunContext
 from tensorflow.python.training.session_run_hook import SessionRunValues
 from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
-from tensorflow.python.training.summary_io import SummaryWriter
-from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
@@ -240,7 +233,7 @@ from tensorflow.python.training.training_util import assert_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 
-
+# pylint: disable=wildcard-import
 # Training data protos.
 from tensorflow.core.example.example_pb2 import *
 from tensorflow.core.example.feature_pb2 import *
@@ -248,7 +241,7 @@ from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
 from tensorflow.python.training.learning_rate_decay import *
-
+# pylint: enable=wildcard-import
 
 # Distributed computing support.
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
@@ -256,7 +249,6 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
-
 
 # Symbols whitelisted for export without documentation.
 _allowed_symbols = [
@@ -275,8 +267,6 @@ _allowed_symbols = [
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
     "SyncReplicasOptimizer",
-    "SyncReplicasOptimizerV2",
-
     # Protobufs:
     "BytesList",          # from example_pb2.
     "ClusterDef",
@@ -292,7 +282,6 @@ _allowed_symbols = [
     "SequenceExample",    # from example_pb2.
     "ServerDef",
 ]
-
 # Include extra modules for docstrings because:
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.

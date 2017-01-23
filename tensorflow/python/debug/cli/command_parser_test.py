@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -94,6 +96,53 @@ class ParseCommandTest(test_util.TensorFlowTestCase):
                      command_parser.parse_command(command))
 
 
+class ExtractOutputFilePathTest(test_util.TensorFlowTestCase):
+
+  def testNoOutputFilePathIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(["pt", "a:0"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertIsNone(output_path)
+
+  def testHasOutputFilePathInOneArgsIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0", ">/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testHasOutputFilePathInTwoArgsIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0", ">", "/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testHasGreaterThanSignButNoFileNameCausesSyntaxError(self):
+    with self.assertRaisesRegexp(SyntaxError, "Redirect file path is empty"):
+      command_parser.extract_output_file_path(
+          ["pt", "a:0", ">"])
+
+  def testOutputPathMergedWithLastArgIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0>/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testOutputPathInLastArgGreaterThanInSecondLastIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0>", "/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testOneArgumentIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(["lt"])
+    self.assertEqual(["lt"], args)
+    self.assertIsNone(output_path)
+
+  def testEmptyArgumentIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path([])
+    self.assertEqual([], args)
+    self.assertIsNone(output_path)
+
+
 class ParseTensorNameTest(test_util.TensorFlowTestCase):
 
   def testParseTensorNameWithoutSlicing(self):
@@ -127,6 +176,125 @@ class ValidateSlicingStringTest(test_util.TensorFlowTestCase):
     self.assertFalse(command_parser.validate_slicing_string("2,3]"))
     self.assertFalse(command_parser.validate_slicing_string("[4, foo()]"))
     self.assertFalse(command_parser.validate_slicing_string("[5, bar]"))
+
+
+class ParseIndicesTest(test_util.TensorFlowTestCase):
+
+  def testParseValidIndicesStringsWithBrackets(self):
+    self.assertEqual([0], command_parser.parse_indices("[0]"))
+    self.assertEqual([0], command_parser.parse_indices(" [0] "))
+    self.assertEqual([-1, 2], command_parser.parse_indices("[-1, 2]"))
+    self.assertEqual([3, 4, -5],
+                     command_parser.parse_indices("[3,4,-5]"))
+
+  def testParseValidIndicesStringsWithoutBrackets(self):
+    self.assertEqual([0], command_parser.parse_indices("0"))
+    self.assertEqual([0], command_parser.parse_indices(" 0 "))
+    self.assertEqual([-1, 2], command_parser.parse_indices("-1, 2"))
+    self.assertEqual([3, 4, -5], command_parser.parse_indices("3,4,-5"))
+
+  def testParseInvalidIndicesStringsWithoutBrackets(self):
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: 'a'"):
+      self.assertEqual([0], command_parser.parse_indices("0,a"))
+
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: '2\]'"):
+      self.assertEqual([0], command_parser.parse_indices("1, 2]"))
+
+    with self.assertRaisesRegexp(
+        ValueError, r"invalid literal for int\(\) with base 10: ''"):
+      self.assertEqual([0], command_parser.parse_indices("3, 4,"))
+
+
+class ParseRangesTest(test_util.TensorFlowTestCase):
+
+  INF_VALUE = sys.float_info.max
+
+  def testParseEmptyRangeString(self):
+    self.assertEqual([], command_parser.parse_ranges(""))
+    self.assertEqual([], command_parser.parse_ranges("  "))
+
+  def testParseSingleRange(self):
+    self.assertAllClose([[-0.1, 0.2]],
+                        command_parser.parse_ranges("[-0.1, 0.2]"))
+    self.assertAllClose([[-0.1, self.INF_VALUE]],
+                        command_parser.parse_ranges("[-0.1, inf]"))
+    self.assertAllClose([[-self.INF_VALUE, self.INF_VALUE]],
+                        command_parser.parse_ranges("[-inf, inf]"))
+
+  def testParseSingleListOfRanges(self):
+    self.assertAllClose([[-0.1, 0.2], [10.0, 12.0]],
+                        command_parser.parse_ranges("[[-0.1, 0.2], [10,  12]]"))
+    self.assertAllClose(
+        [[-self.INF_VALUE, -1.0], [1.0, self.INF_VALUE]],
+        command_parser.parse_ranges("[[-inf, -1.0],[1.0, inf]]"))
+
+  def testParseInvalidRangeString(self):
+    with self.assertRaises(SyntaxError):
+      command_parser.parse_ranges("[[1,2]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect number of elements in range"):
+      command_parser.parse_ranges("[1,2,3]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect number of elements in range"):
+      command_parser.parse_ranges("[inf]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect type in the 1st element of range"):
+      command_parser.parse_ranges("[1j, 1]")
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Incorrect type in the 2nd element of range"):
+      command_parser.parse_ranges("[1, 1j]")
+
+
+class ParseReadableSizeStrTest(test_util.TensorFlowTestCase):
+
+  def testParseNoUnitWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0"))
+    self.assertEqual(1024, command_parser.parse_readable_size_str("1024 "))
+    self.assertEqual(2000, command_parser.parse_readable_size_str(" 2000 "))
+
+  def testParseKiloBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0kB"))
+    self.assertEqual(1024**2, command_parser.parse_readable_size_str("1024 kB"))
+    self.assertEqual(1024**2 * 2,
+                     command_parser.parse_readable_size_str("2048k"))
+    self.assertEqual(1024**2 * 2,
+                     command_parser.parse_readable_size_str("2048kB"))
+    self.assertEqual(1024 / 4, command_parser.parse_readable_size_str("0.25k"))
+
+  def testParseMegaBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0MB"))
+    self.assertEqual(1024**3, command_parser.parse_readable_size_str("1024 MB"))
+    self.assertEqual(1024**3 * 2,
+                     command_parser.parse_readable_size_str("2048M"))
+    self.assertEqual(1024**3 * 2,
+                     command_parser.parse_readable_size_str("2048MB"))
+    self.assertEqual(1024**2 / 4,
+                     command_parser.parse_readable_size_str("0.25M"))
+
+  def testParseGigaBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0GB"))
+    self.assertEqual(1024**4, command_parser.parse_readable_size_str("1024 GB"))
+    self.assertEqual(1024**4 * 2,
+                     command_parser.parse_readable_size_str("2048G"))
+    self.assertEqual(1024**4 * 2,
+                     command_parser.parse_readable_size_str("2048GB"))
+    self.assertEqual(1024**3 / 4,
+                     command_parser.parse_readable_size_str("0.25G"))
+
+  def testParseUnsupportedUnitRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Failed to parsed human-readable byte size str: \"0foo\""):
+      command_parser.parse_readable_size_str("0foo")
+
+    with self.assertRaisesRegexp(
+        ValueError, "Failed to parsed human-readable byte size str: \"2E\""):
+      command_parser.parse_readable_size_str("2EB")
 
 
 if __name__ == "__main__":

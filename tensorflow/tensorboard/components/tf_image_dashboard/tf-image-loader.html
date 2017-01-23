@@ -27,6 +27,12 @@ future for loading older images.
 -->
 <dom-module id="tf-image-loader">
   <template>
+    <div id="image-annotation">
+      step [[step]]
+      <template is="dom-if" if="[[wallTime]]">
+        ([[wallTime]])
+      </template>
+    </div>
     <img
       id="img"
       src="[[imageUrl]]"
@@ -39,7 +45,15 @@ future for loading older images.
         position: relative;
       }
 
+      #image-annotation {
+        border-left: 4px solid;
+        padding-left: 5px;
+        font-size: 12px;
+        margin: -10px 0 10px 0;
+      }
+
       img {
+        image-rendering: -moz-crisp-edges;
         image-rendering: pixelated;
         display: block;
         width: 100%;
@@ -53,18 +67,31 @@ future for loading older images.
       properties: {
         colorScale: Object,
         imageUrl: String,
+        run: String,
+        step: Number,
+        wallTime: String,
       },
       setVisibleSeries: function(runs) {
         // Do nothing.
       },
       setSeriesData: function(run, data) {
         var last = _.last(data);
-        this.redraw(last.url);
+        this.redraw(last);
+
+        // Update the border color based on the run.
+        this.$$('#image-annotation').style.borderColor = this.colorScale.scale(run);
       },
-      redraw: function(newUrl) {
-        var url = newUrl || this.imageUrl;
+      redraw: function(imageData) {
+        var url = imageData.url || this.imageUrl;
         this.imageUrl = ""; // Force redraw
         this.imageUrl = url;
+
+        // Update the step if the value fetched is a valid number >= 0
+        // (not null, NaN, etc).
+        this.step = imageData.step >= 0 ? imageData.step : this.step;
+        if (imageData.wall_time) {
+          this.wallTime = imageData.wall_time.toString();
+        }
       },
     });
   </script>

@@ -24,13 +24,23 @@ namespace tensorforest {
 
 using tensorflow::Tensor;
 
-DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec) {
-  const int32 spec_feature =
-      (input_feature + 1 < spec.NumElements()) ? input_feature : 0;
-  CHECK(spec_feature >= 0) << "spec feature is not >= than zero: "
-                           << spec_feature;
-  return static_cast<DataColumnTypes>(
-      spec.unaligned_flat<int32>()(spec_feature));
+DataColumnTypes FindDenseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec) {
+  return static_cast<DataColumnTypes>(spec.GetDenseFeatureType(input_feature));
+}
+
+DataColumnTypes FindSparseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec) {
+  // TODO(thomaswc): Binary search here, especially when we start using more
+  // than one sparse column
+  int32 size_sum = spec.sparse(0).size();
+  int32 column_num = 0;
+  while (input_feature >= size_sum && column_num < spec.sparse_size()) {
+    ++column_num;
+    size_sum += spec.sparse(column_num).size();
+  }
+
+  return static_cast<DataColumnTypes>(spec.sparse(column_num).original_type());
 }
 
 void GetTwoBest(int max, std::function<float(int)> score_fn, float* best_score,
@@ -289,15 +299,19 @@ bool BestSplitDominatesClassificationBootstrap(const Tensor& total_counts,
     p = p * 2;
   }
 
+  int worst_g1 = 0;
   for (int i = 0; i < bootstrap_samples; i++) {
     int g1 = BootstrapGini(n1, 2 * num_classes, ds1, rand);
-    int g2 = BootstrapGini(n2, 2 * num_classes, ds2, rand);
-    if (g2 <= g1) {
-      return false;
-    }
+    worst_g1 = std::max(worst_g1, g1);
   }
 
-  return true;
+  int best_g2 = 99;
+  for (int i = 0; i < bootstrap_samples; i++) {
+    int g2 = BootstrapGini(n2, 2 * num_classes, ds2, rand);
+    best_g2 = std::min(best_g2, g2);
+  }
+
+  return worst_g1 < best_g2;
 }
 
 bool BestSplitDominatesClassificationHoeffding(const Tensor& total_counts,
@@ -395,7 +409,7 @@ double getDistanceFromLambda3(double lambda3, const std::vector<float>& mu1,
   //   x = (lambda_1 1 + 2 mu1) / (2 - 2 lambda_3)
   //   y = (lambda_2 1 + 2 mu2) / (2 + 2 lambda_3)
   double dist = 0.0;
-  for (int i = 0; i < mu1.size(); i++) {
+  for (size_t i = 0; i < mu1.size(); i++) {
     double diff = (lambda1 + 2.0 * mu1[i]) / (2.0 - 2.0 * lambda3) - mu1[i];
     dist += diff * diff;
     diff = (lambda2 + 2.0 * mu2[i]) / (2.0 + 2.0 * lambda3) - mu2[i];
@@ -526,18 +540,25 @@ bool BestSplitDominatesClassificationChebyshev(const Tensor& total_counts,
   return dirichlet_bound > dominate_fraction;
 }
 
-bool DecideNode(const Tensor& point, int32 feature, float bias,
-                DataColumnTypes type) {
-  const auto p = point.unaligned_flat<float>();
-  CHECK_LT(feature, p.size());
-  return Decide(p(feature), bias, type);
+bool DecideNode(const Tensor& dense_features,
+                const Tensor& sparse_input_indices,
+                const Tensor& sparse_input_values, int32 i, int32 feature,
+                float bias, const tensorforest::TensorForestDataSpec& spec) {
+  if (feature < spec.dense_features_size()) {
+    const auto dense_input = dense_features.matrix<float>();
+    return DecideDenseNode(dense_input, i, feature, bias, spec);
+  } else {
+    const auto sparse_indices = sparse_input_indices.matrix<int64>();
+    const auto sparse_values = sparse_input_values.vec<float>();
+    return DecideSparseNode(sparse_indices, sparse_values, i,
+                            feature - spec.dense_features_size(), bias, spec);
+  }
 }
-
 
 bool Decide(float value, float bias, DataColumnTypes type) {
   switch (type) {
     case kDataFloat:
-      return value > bias;
+      return value >= bias;
 
     case kDataCategorical:
       // We arbitrarily define categorical equality as going left.
@@ -555,6 +576,31 @@ bool IsAllInitialized(const Tensor& features) {
   return feature_vec(feature_vec.size() - 1) >= 0;
 }
 
+void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
+                           float parent_sum, const float* parent_data,
+                           float valid_leaf_threshold, int num_outputs,
+                           std::vector<float>* mean) {
+  float parent_weight = 0.0;
+  if (leaf_sum < valid_leaf_threshold && parent_sum >= 0) {
+    VLOG(1) << "not enough samples at leaf, including parent counts."
+            << "child sum = " << leaf_sum;
+    // Weight the parent's counts just enough so that the new sum is
+    // valid_leaf_threshold_, but never give any counts a weight of
+    // more than 1.
+    parent_weight =
+        std::min(1.0f, (valid_leaf_threshold - leaf_sum) / parent_sum);
+    leaf_sum += parent_weight * parent_sum;
+    VLOG(1) << "Sum w/ parent included = " << leaf_sum;
+  }
+
+  for (int c = 0; c < num_outputs; c++) {
+    float w = leaf_data[c];
+    if (parent_weight > 0.0) {
+      w += parent_weight * parent_data[c];
+    }
+    (*mean)[c] = w / leaf_sum;
+  }
+}
 
 }  // namespace tensorforest
 }  // namespace tensorflow

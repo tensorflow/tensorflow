@@ -25,11 +25,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
-namespace ops {
 
 class Output;
 
-// Represents a node in the computation graph.
+/// Represents a node in the computation graph.
 class Operation {
  public:
   Operation() : node_(nullptr) {}
@@ -57,7 +56,7 @@ class Operation {
   Node* node_;
 };
 
-// Represents a tensor value produced by an Operation.
+/// Represents a tensor value produced by an Operation.
 class Output {
  public:
   Output() = default;
@@ -88,18 +87,18 @@ struct OutputHash {
   }
 };
 
-// Represents a tensor value that can be used as an operand to an Operation.
+/// Represents a tensor value that can be used as an operand to an Operation.
 class Input {
  public:
-  // Initializer enables constructing an Input object from various kinds of C++
-  // constants such as simple primitive constants and nested initializer lists
-  // representing a multi-dimensional array. Initializer constructors are all
-  // templates, so the aforementioned kinds of C++ constants can be used to
-  // construct an Initializer. Initializer stores the value it got constructed
-  // with in a Tensor object.
+  /// Initializer enables constructing an Input object from various kinds of C++
+  /// constants such as simple primitive constants and nested initializer lists
+  /// representing a multi-dimensional array. Initializer constructors are all
+  /// templates, so the aforementioned kinds of C++ constants can be used to
+  /// construct an Initializer. Initializer stores the value it got constructed
+  /// with in a Tensor object.
   struct Initializer {
-    // Construct from a scalar value of an arithmetic type or a type that can be
-    // converted to a string (eg. a string literal).
+    /// Construct from a scalar value of an arithmetic type or a type that can
+    /// be converted to a string (eg. a string literal).
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
                               std::is_convertible<T, string>::value>::type>
@@ -112,7 +111,7 @@ class Input {
 
     Initializer(const Tensor& t) : tensor(t) {}  // NOLINT(runtime/explicit)
 
-    // Construct from a scalar value and an explicit shape
+    /// Construct from a scalar value and an explicit shape
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
                               std::is_convertible<T, string>::value>::type>
@@ -125,7 +124,7 @@ class Input {
       tensor = t;
     }
 
-    // Construct from a initializer list of scalars (a one-dimensional tensor).
+    /// Construct from a initializer list of scalars (a one-dimensional tensor).
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
                               std::is_convertible<T, string>::value>::type>
@@ -138,7 +137,7 @@ class Input {
       tensor = t;
     }
 
-    // Construct from a initializer list of scalars and an explicit shape.
+    /// Construct from a initializer list of scalars and an explicit shape.
     template <typename T, typename = typename std::enable_if<
                               std::is_arithmetic<T>::value ||
                               std::is_convertible<T, string>::value>::type>
@@ -155,11 +154,11 @@ class Input {
       tensor = t;
     }
 
-    // Construct a multi-dimensional tensor from a nested initializer list. Note
-    // that C++ syntax allows nesting of arbitrarily typed initializer lists, so
-    // such invalid initializers cannot be disallowed at compile time. This
-    // function performs checks to make sure that the nested initializer list is
-    // indeed a valid multi-dimensional tensor.
+    /// Construct a multi-dimensional tensor from a nested initializer
+    /// list. Note that C++ syntax allows nesting of arbitrarily typed
+    /// initializer lists, so such invalid initializers cannot be disallowed at
+    /// compile time. This function performs checks to make sure that the nested
+    /// initializer list is indeed a valid multi-dimensional tensor.
     Initializer(const std::initializer_list<Initializer>& v);
 
     template <typename T, bool = std::is_convertible<T, string>::value>
@@ -186,13 +185,14 @@ class Input {
     Tensor tensor;
   };
 
-  // All of Input's constructors are implicit. Input can be implicitly
-  // constructed from the following objects :
-  // * Output: This is so that the output of an Operation can be directly used
-  //   as the input to a op wrapper, which takes Inputs.
-  // * A scalar, or a multi-dimensional tensor specified as a recursive
-  //   initializer list. This enables directly passing constants as
-  //   inputs to op wrappers.
+  /// All of Input's constructors are implicit. Input can be implicitly
+  /// constructed from the following objects :
+  /// * Output: This is so that the output of an Operation can be directly used
+  ///   as the input to a op wrapper, which takes Inputs.
+  /// * A scalar, or a multi-dimensional tensor specified as a recursive
+  ///   initializer list. This enables directly passing constants as
+  ///   inputs to op wrappers.
+  /// * A Tensor object.
   Input(const Output& o) : output_(o) {}  // NOLINT(runtime/explicit)
 
   template <typename T, typename = typename std::enable_if<
@@ -220,8 +220,8 @@ class Input {
     tensor_ = Initializer(init).tensor;
   }
 
-  // Constructor specifying a node name, index and datatype. This should only be
-  // used for specifying a backward edge, needed by control flow.
+  /// Constructor specifying a node name, index and datatype. This should only
+  /// be used for specifying a backward edge, needed by control flow.
   Input(const string& name, int i, DataType dt)
       : node_name_(name), index_(i), data_type_(dt) {}
 
@@ -241,15 +241,15 @@ class Input {
   DataType data_type_ = DT_INVALID;
 };
 
-// A type for representing the output of ops that produce more than one output,
-// or a list of tensors.
+/// A type for representing the output of ops that produce more than one output,
+/// or a list of tensors.
 typedef std::vector<Output> OutputList;
 
-// A type for representing the input to ops that require a list of tensors.
+/// A type for representing the input to ops that require a list of tensors.
 class InputList {
  public:
-  // Implicitly convert a list of outputs to a list of inputs. This is useful to
-  // write code such as tf.Concat(tf.Split(x, 4)).
+  /// Implicitly convert a list of outputs to a list of inputs. This is useful
+  /// to write code such as ops::Concat(ops::Split(x, 4)).
   InputList(const OutputList& out) {  // NOLINT(runtime/explicit)
     for (auto const& x : out) {
       inputs_.push_back(x);
@@ -284,7 +284,19 @@ class InputList {
   std::vector<Input> inputs_;
 };
 
+// These symbols used to live in the ops namespace, so we temporarily
+// declare some aliases there. TODO(josh11b): Delete this!
+namespace ops {
+
+using ::tensorflow::Input;
+using ::tensorflow::InputList;
+using ::tensorflow::Operation;
+using ::tensorflow::Output;
+using ::tensorflow::OutputHash;
+using ::tensorflow::OutputList;
+
 }  // namespace ops
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_OPS_H_

@@ -4,7 +4,7 @@ set(jsoncpp_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp/src/jsoncpp)
 #set(jsoncpp_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp/src)
 set(jsoncpp_URL https://github.com/open-source-parsers/jsoncpp.git)
 set(jsoncpp_TAG 4356d9b)
-set(jsoncpp_BUILD ${CMAKE_BINARY_DIR}/jsoncpp/src/jsoncpp/src/lib_json)
+set(jsoncpp_BUILD ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp/src/jsoncpp/src/lib_json)
 set(jsoncpp_LIBRARIES ${jsoncpp_BUILD}/obj/so/libjsoncpp.so)
 set(jsoncpp_INCLUDES ${jsoncpp_BUILD})
 

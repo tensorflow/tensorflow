@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.contrib.framework.python.framework import decorator_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import decorator_utils
 
 
 def _add_experimental_function_notice_to_docstring(doc):

@@ -16,33 +16,68 @@ package op
 
 import (
 	"fmt"
+	"runtime/debug"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
-// Scope encapsulates common properties of operations being added to a Graph.
+// Scope encapsulates common operation properties when building a Graph.
 //
-// Scopes allow common properties (such as a name prefix) to be specified
-// once for multiple operations being added to a graph. The With* methods
-// create derivative scopes that encapsulate the same set of properties
-// as the parent Scope, except for the one being changed by the specific
-// With* method.
+// A Scope object (and its derivates, e.g., obtained from Scope.SubScope)
+// act as a builder for graphs. They allow common properties (such as
+// a name prefix) to be specified for multiple operations being added
+// to the graph.
 //
-// Scopes are NOT safe for concurrent use by multiple goroutines.
+// A Scope object and all its derivates (e.g., obtained from Scope.SubScope)
+// are not safe for concurrent use by multiple goroutines.
 type Scope struct {
 	graph     *tf.Graph
 	namemap   map[string]int
 	namespace string
+	err       *scopeErr
+}
+
+// scopeErr is used to share errors between all derivatives of a root scope.
+type scopeErr struct {
+	err error
 }
 
 // NewScope creates a Scope initialized with an empty Graph.
 func NewScope() *Scope {
-	return &Scope{graph: tf.NewGraph(), namemap: make(map[string]int)}
+	return &Scope{graph: tf.NewGraph(), namemap: make(map[string]int), err: new(scopeErr)}
 }
 
-// Graph returns the Graph which this Scope and its children are
-func (s *Scope) Graph() *tf.Graph {
-	return s.graph
+// Finalize returns the Graph on which this scope operates on and renders s
+// unusable. If there was an error during graph construction, that error is
+// returned instead.
+func (s *Scope) Finalize() (*tf.Graph, error) {
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	s.err.err = fmt.Errorf("Scope has been finalized and is no longer usable")
+	return s.graph, nil
+}
+
+// AddOperation adds the operation to the Graph managed by s.
+//
+// If there is a name prefix associated with s (such as if s was created
+// by a call to SubScope), then this prefix will be applied to the name
+// of the operation being added. See also Graph.AddOperation.
+func (s *Scope) AddOperation(args tf.OpSpec) *tf.Operation {
+	if s.Err() != nil {
+		return nil
+	}
+	if args.Name == "" {
+		args.Name = args.Type
+	}
+	if s.namespace != "" {
+		args.Name = s.namespace + "/" + args.Name
+	}
+	op, err := s.graph.AddOperation(args)
+	if err != nil {
+		s.UpdateErr(args.Type, err)
+	}
+	return op
 }
 
 // SubScope returns a new Scope which will cause all operations added to the
@@ -57,6 +92,25 @@ func (s *Scope) SubScope(namespace string) *Scope {
 		graph:     s.graph,
 		namemap:   make(map[string]int),
 		namespace: namespace,
+		err:       s.err,
+	}
+}
+
+// Err returns the error, if any, encountered during the construction
+// of the Graph managed by s.
+//
+// Once Err returns a non-nil error, all future calls will do the same,
+// indicating that the scope should be discarded as the graph could not
+// be constructed.
+func (s *Scope) Err() error {
+	return s.err.err
+}
+
+// UpdateErr is used to notify Scope of any graph construction errors
+// while creating the operation op.
+func (s *Scope) UpdateErr(op string, err error) {
+	if s.err.err == nil {
+		s.err.err = fmt.Errorf("failed to add operation %q: %v (Stacktrace: %s)", op, err, debug.Stack())
 	}
 }
 

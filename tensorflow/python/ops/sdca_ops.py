@@ -27,20 +27,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sdca_ops import *
 # pylint: enable=wildcard-import
 
-# pylint: disable=anomalous-backslash-in-string,protected-access
+from tensorflow.python.util.all_util import remove_undocumented
+
 ops.NotDifferentiable("SdcaFprint")
 ops.NotDifferentiable("SdcaOptimizer")
 ops.NotDifferentiable("SdcaShrinkL1")
-ops.RegisterShape("SdcaFprint")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SdcaOptimizer")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SdcaShrinkL1")(common_shapes.call_cpp_shape_fn)
+
+
+remove_undocumented(__name__)

@@ -22,8 +22,8 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -131,11 +131,12 @@ class Gamma(distribution.Distribution):
     return self._beta
 
   def _batch_shape(self):
-    return array_ops.shape(self.alpha + self.beta)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.alpha), array_ops.shape(self.beta))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.alpha.get_shape(),
-                                         self.beta.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.alpha.get_shape(), self.beta.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -208,7 +209,7 @@ class Gamma(distribution.Distribution):
     mode = (self.alpha - 1.) / self.beta
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha >= 1.,
           mode,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
@@ -234,9 +235,36 @@ class GammaWithSoftplusAlphaBeta(Gamma):
     parameters.pop("self")
     with ops.name_scope(name, values=[alpha, beta]) as ns:
       super(GammaWithSoftplusAlphaBeta, self).__init__(
-          alpha=nn.softplus(alpha),
-          beta=nn.softplus(beta),
+          alpha=nn.softplus(alpha, name="softplus_alpha"),
+          beta=nn.softplus(beta, name="softplus_beta"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
     self._parameters = parameters
+
+
+@kullback_leibler.RegisterKL(Gamma, Gamma)
+def _kl_gamma_gamma(g0, g1, name=None):
+  """Calculate the batched KL divergence KL(g0 || g1) with g0 and g1 Gamma.
+
+  Args:
+    g0: instance of a Gamma distribution object.
+    g1: instance of a Gamma distribution object.
+    name: (optional) Name to use for created operations.
+      Default is "kl_gamma_gamma".
+
+  Returns:
+    kl_gamma_gamma: `Tensor`. The batchwise KL(g0 || g1).
+  """
+  with ops.name_scope(name, "kl_gamma_gamma",
+                      values=[g0.alpha, g0.beta, g1.alpha, g1.beta]):
+    # Result from:
+    #   http://www.fil.ion.ucl.ac.uk/~wpenny/publications/densities.ps
+    # For derivation see:
+    #   http://stats.stackexchange.com/questions/11646/kullback-leibler-divergence-between-two-gamma-distributions   pylint: disable=line-too-long
+    return ((g0.alpha - g1.alpha) * math_ops.digamma(g0.alpha)
+            + math_ops.lgamma(g1.alpha)
+            - math_ops.lgamma(g0.alpha)
+            + g1.alpha * math_ops.log(g0.beta)
+            - g1.alpha * math_ops.log(g1.beta)
+            + g0.alpha * (g1.beta / g0.beta - 1.))

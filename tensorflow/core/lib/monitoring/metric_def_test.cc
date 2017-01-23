@@ -24,7 +24,7 @@ namespace {
 TEST(MetricDefTest, Simple) {
   const MetricDef<MetricKind::kCumulative, int64, 0> metric_def0(
       "/tensorflow/metric0", "An example metric with no labels.");
-  const MetricDef<MetricKind::kGauge, double, 1> metric_def1(
+  const MetricDef<MetricKind::kGauge, HistogramProto, 1> metric_def1(
       "/tensorflow/metric1", "An example metric with one label.", "LabelName");
 
   EXPECT_EQ("/tensorflow/metric0", metric_def0.name());

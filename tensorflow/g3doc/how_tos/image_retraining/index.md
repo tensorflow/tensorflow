@@ -290,11 +290,32 @@ usual split is to put 80% of the images into the main training set, keep 10%
 aside to run as validation frequently during training, and then have a final 10%
 that are used less often as a testing set to predict the real-world performance
 of the classifier. These ratios can be controlled using the
-`--testing_percentage` and `--validation_percentage` flags. One subtle thing
-that the script does is it uses the filename of the image to determine which set
-it is put into. This is designed to ensure that images don't get moved between
-training and testing sets on different runs, since that could be a problem if
-images that had been used for training a model were subsequently used in a
-validation set. In general you should be able to leave these values at their
-defaults, since you won't usually find any advantage to training to adjusting
-them.
+`--testing_percentage` and `--validation_percentage` flags. In general
+you should be able to leave these values at their defaults, since you won't
+usually find any advantage to training to adjusting them.
+
+Note that the script uses the image filenames (rather than a completely random
+function) to divide the images among the training, validation, and test sets.
+This is done to ensure that images don't get moved between training and testing
+sets on different runs, since that could be a problem if images that had been
+used for training a model were subsequently used in a validation set.
+
+You might notice that the validation accuracy fluctuates among iterations. Much
+of this fluctuation arises from the fact that a random subset of the validation
+set is chosen for each validation accuracy measurement. The fluctuations can be
+greatly reduced, at the cost of some increase in training time, by choosing
+`--validation_batch_size=-1`, which uses the entire validation set for each
+accuracy computation.
+
+Once training is complete, you may find it insightful to examine misclassified
+images in the test set. This can be done by adding the flag
+`--print_misclassified_test_images`. This may help you get a feeling for which
+types of images were most confusing for the model, and which categories were
+most difficult to distinguish. For instance, you might discover that some
+subtype of a particular category, or some unusual photo angle, is particularly
+difficult to identify, which may encourage you to add more training images of
+that subtype. Oftentimes, examining misclassified images can also point to
+errors in the input data set, such as mislabeled, low-quality, or ambiguous
+images. However, one should generally avoid point-fixing individual errors in
+the test set, since they are likely to merely reflect more general problems in
+the (much larger) training set.

@@ -777,6 +777,59 @@ TEST(DirectSessionTest, TimeoutSession) {
   session->Close();
 }
 
+// Accesses the cancellation manager for the step after the step has been
+// cancelled.
+class CancellationMgrPollingOp : public OpKernel {
+ public:
+  explicit CancellationMgrPollingOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    CancellationManager* cm = ctx->cancellation_manager();
+    while (!cm->IsCancelled()) {
+      ctx->env()->SleepForMicroseconds(1000);
+    }
+    notification.Notify();
+  }
+  static Notification notification;
+};
+Notification CancellationMgrPollingOp::notification;
+
+REGISTER_KERNEL_BUILDER(Name("CancellationMgrPollingOp").Device(DEVICE_CPU),
+                        CancellationMgrPollingOp);
+REGISTER_OP("CancellationMgrPollingOp").Doc("");
+
+TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
+  GraphDef graph;
+  // Creates a graph with one FIFOQueue and one dequeue op.
+  protobuf::TextFormat::ParseFromString(R"proto(
+    node {
+      name: 'cm_polling'
+      op: 'CancellationMgrPollingOp'
+      device: '/device:CPU:0'
+    }
+    versions {
+      producer: 9
+    }
+  )proto",
+                                        &graph);
+
+  // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
+  SessionOptions options;
+  options.config.set_operation_timeout_in_ms(100);
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(graph));
+
+  // Verifies that the error code is DEADLINE_EXCEEDED.
+  Status s = session->Run({}, {}, {"cm_polling"}, nullptr);
+  ASSERT_EQ(error::DEADLINE_EXCEEDED, s.code());
+
+  // Verify that the op ran to completion.
+  ASSERT_TRUE(CancellationMgrPollingOp::notification.HasBeenNotified());
+
+  session->Close();
+}
+
 class BlockingOpState {
  public:
   void AwaitState(int awaiting_state) {
@@ -818,6 +871,8 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
+REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_SYCL), BlockingOp);
+
 static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   FunctionDefLibrary library_graph_def;
   if (use_function_lib) {
@@ -825,7 +880,8 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
         signature: {
           name: "BlockingOpFn" input_arg: { name: "x" type: DT_FLOAT }
                                output_arg: { name: "y" type: DT_FLOAT }}
-        node: { ret: "y" op: "BlockingOp" arg: "x" })proto";
+        node_def: { name: "y" op: "BlockingOp" input: "x" }
+        ret: { key: "y" value: "y:y:0" } )proto";
     CHECK(protobuf::TextFormat::ParseFromString(
         lib, library_graph_def.add_function()));
   }
@@ -833,7 +889,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   Node* y;
   if (use_function_lib) {
@@ -853,6 +909,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
   (*options.config.mutable_device_count())["CPU"] = 2;
+  (*options.config.mutable_device_count())["GPU"] = 0;
 
   options.config.add_session_inter_op_thread_pool();
   auto* p = options.config.add_session_inter_op_thread_pool();
@@ -875,7 +932,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
       Status s = session->Run(run_options, {} /* inputs */,
                               {node->name() + ":0"} /* output_names */, {},
                               &outputs, nullptr /* run_metadata */);
-      TF_ASSERT_OK(s);
+      TF_CHECK_OK(s);
       ASSERT_EQ(1, outputs.size());
       auto flat = outputs[0].flat<float>();
       EXPECT_FLOAT_EQ(1.2, flat(0));
@@ -942,7 +999,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* x = test::graph::Constant(&g, t);
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
@@ -976,7 +1033,7 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   // Construct a graph with a variable and a single assign.
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* var_val = test::graph::Constant(&g, t);
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);
@@ -1060,7 +1117,7 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   // Construct a graph with a variable and a single assign.
   Graph g(OpRegistry::Global());
   Tensor t(DT_FLOAT, TensorShape({}));
-  t.scalar<float>()() = {1.2};
+  t.scalar<float>()() = {1.2f};
   Node* var_val = test::graph::Constant(&g, t);
   Node* var = test::graph::Var(&g, DT_FLOAT, {});
   Node* var_assign = test::graph::Assign(&g, var, var_val);

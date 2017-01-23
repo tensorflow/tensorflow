@@ -74,7 +74,7 @@ class Exponential(gamma.Gamma):
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
         name=ns)
-    # While the Gamma distribution is not reparameterizeable, the
+    # While the Gamma distribution is not re-parameterizable, the
     # exponential distribution is.
     self._is_reparameterized = True
     self._parameters = parameters
@@ -89,7 +89,7 @@ class Exponential(gamma.Gamma):
     return self._lam
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
+    shape = array_ops.concat(([n], array_ops.shape(self._lam)), 0)
     # Sample uniformly-at-random from the open-interval (0, 1).
     sampled = random_ops.random_uniform(
         shape,
@@ -113,7 +113,7 @@ class ExponentialWithSoftplusLam(Exponential):
     parameters.pop("self")
     with ops.name_scope(name, values=[lam]) as ns:
       super(ExponentialWithSoftplusLam, self).__init__(
-          lam=nn.softplus(lam),
+          lam=nn.softplus(lam, name="softplus_lam"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

@@ -133,22 +133,6 @@ class SimpleGraphExecutionState {
   Status BuildGraph(const BuildGraphOptions& options,
                     std::unique_ptr<SimpleClientGraph>* out);
 
-  // Sums execution statistics in "ss" into the CostModel.
-  void UpdateCostsFromStats(const StepStats& ss);
-
-  Microseconds TimeEstimate(const Node* n) {
-    mutex_lock l(mu_);  // could use reader lock
-    return costs_.TimeEstimate(n);
-  }
-
-  Bytes SizeEstimate(const Node* n, int output_slot) {
-    mutex_lock l(mu_);  // could use reader lock
-    return costs_.SizeEstimate(n, output_slot);
-  }
-
-  // Merge the cost model maintained by this graph_execution_state to 'costs'.
-  void MergeCostsFromGlobal(CostModel* costs);
-
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
   const Graph* full_graph() {

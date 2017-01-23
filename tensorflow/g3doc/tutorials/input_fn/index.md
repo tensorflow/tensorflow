@@ -15,9 +15,9 @@ tutorial](../tflearn/index.md):
 
 ```py
 training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TRAINING, target_dtype=np.int)
+    filename=IRIS_TRAINING, target_dtype=np.int, features_dtype=np.float32)
 test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TEST, target_dtype=np.int)
+    filename=IRIS_TEST, target_dtype=np.int, features_dtype=np.float32)
 ...
 
 classifier.fit(x=training_set.data,
@@ -139,8 +139,8 @@ arguments as your `input_fn` and use it to invoke your input function
 with the desired parameters. For example:
 
 ```python
-def my_input_function_training_set:
-  my_input_function(training_set)
+def my_input_function_training_set():
+  return my_input_function(training_set)
 
 classifier.fit(input_fn=my_input_fn_training_set, steps=2000)
 ```
@@ -222,6 +222,9 @@ logging verbosity](../monitors/index.md#enabling-logging-with-tensorflow) to
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import itertools
+
 import pandas as pd
 import tensorflow as tf
 
@@ -286,7 +289,7 @@ accept a _pandas_ `Dataframe` and return feature column and label values as
 
 ```python
 def input_fn(data_set):
-  feature_cols = {k: tf.constant(data_set[k].values
+  feature_cols = {k: tf.constant(data_set[k].values)
                   for k in FEATURES}
   labels = tf.constant(data_set[LABEL].values)
   return feature_cols, labels
@@ -300,8 +303,6 @@ which means the function can process any of the `DataFrame`s you've imported:
 
 To train the neural network regressor, run `fit` with the `training_set` passed
 to the `input_fn` as follows:
-
-<!-- TODO(skleinfeld): Decide on the best step value to use here for pedagogical purposes -->
 
 ```python
 regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)
@@ -355,7 +356,9 @@ Finally, you can use the model to predict median house values for the
 
 ```python
 y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-print ("Predictions: {}".format(str(y)))
+# .predict() returns an iterator; convert to a list and print predictions
+predictions = list(itertools.islice(y, 6))
+print ("Predictions: {}".format(str(predictions)))
 ```
 
 Your results should contain six house-value predictions in thousands of dollars,

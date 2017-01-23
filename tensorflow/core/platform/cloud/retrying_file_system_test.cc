@@ -100,7 +100,7 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
-  bool FileExists(const string& fname) override { return true; }
+  Status FileExists(const string& fname) override { return Status::OK(); }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return calls_.ConsumeNextCall("GetChildren");
@@ -261,7 +261,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
 
 TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
   // Configure the mock base random access file.
-  ExpectedCalls expected_file_calls({std::make_tuple("Sync", Status::OK())});
+  ExpectedCalls expected_file_calls({std::make_tuple("Sync", Status::OK()),
+                                     std::make_tuple("Close", Status::OK())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
 
@@ -286,7 +287,8 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
   ExpectedCalls expected_file_calls(
       {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
        std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
-       std::make_tuple("Sync", Status::OK())});
+       std::make_tuple("Sync", Status::OK()),
+       std::make_tuple("Close", Status::OK())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
 
@@ -306,12 +308,38 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
   TF_EXPECT_OK(writable_file->Sync());
 }
 
+TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry_ViaDestructor) {
+  // Configure the mock base random access file.
+  ExpectedCalls expected_file_calls(
+      {std::make_tuple("Close", errors::Unavailable("Something is wrong")),
+       std::make_tuple("Close",
+                       errors::Unavailable("Something is wrong again")),
+       std::make_tuple("Close", Status::OK())});
+  std::unique_ptr<WritableFile> base_file(
+      new MockWritableFile(expected_file_calls));
+
+  // Configure the mock base file system.
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("NewWritableFile", Status::OK())});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  base_fs->writable_file_to_return = std::move(base_file);
+  RetryingFileSystem fs(std::move(base_fs), 0);
+
+  // Retrieve the wrapped writable file.
+  std::unique_ptr<WritableFile> writable_file;
+  TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
+
+  writable_file.reset();  // Trigger Close() via destructor.
+}
+
 TEST(RetryingFileSystemTest, NewAppendableFile_SuccessWith3rdTry) {
   // Configure the mock base random access file.
   ExpectedCalls expected_file_calls(
       {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
        std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
-       std::make_tuple("Sync", Status::OK())});
+       std::make_tuple("Sync", Status::OK()),
+       std::make_tuple("Close", Status::OK())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
 
@@ -337,7 +365,8 @@ TEST(RetryingFileSystemTest, NewWritableFile_AllRetriesFailed) {
       {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
        std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
        std::make_tuple("Sync", errors::Unavailable("...and again")),
-       std::make_tuple("Sync", errors::Unavailable("And again"))});
+       std::make_tuple("Sync", errors::Unavailable("And again")),
+       std::make_tuple("Close", Status::OK())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
 

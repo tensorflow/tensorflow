@@ -1,4 +1,4 @@
-#### `tf.SparseTensorValue.__new__(_cls, indices, values, shape)` {#SparseTensorValue.__new__}
+#### `tf.SparseTensorValue.__new__(_cls, indices, values, dense_shape)` {#SparseTensorValue.__new__}
 
-Create new instance of SparseTensorValue(indices, values, shape)
+Create new instance of SparseTensorValue(indices, values, dense_shape)
 

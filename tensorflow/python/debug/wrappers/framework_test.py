@@ -26,7 +26,11 @@ from tensorflow.python.client import session
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -70,6 +74,7 @@ class TestDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     self._obs["on_run_end_count"] += 1
     self._obs["performed_action"] = request.performed_action
+    self._obs["tf_error"] = request.tf_error
 
     return framework.OnRunEndResponse()
 
@@ -138,6 +143,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
         "run_feed_dict": None,
         "on_run_end_count": 0,
         "performed_action": None,
+        "tf_error": None,
     }
 
     self._dump_root = tempfile.mkdtemp()
@@ -153,12 +159,17 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self._b_init = constant_op.constant(
         self._b_init_val, shape=[2, 1], name="b_init")
 
+    self._ph = array_ops.placeholder(dtype=dtypes.float64, name="ph")
+
     self._a = variables.Variable(self._a_init, name="a1")
     self._b = variables.Variable(self._b_init, name="b")
     self._c = constant_op.constant(self._c_val, shape=[2, 1], name="c")
 
     # Matrix product of a and b.
     self._p = math_ops.matmul(self._a, self._b, name="p1")
+
+    # Matrix product of a and ph.
+    self._q = math_ops.matmul(self._a, self._ph, name="q")
 
     # Sum of two vectors.
     self._s = math_ops.add(self._p, self._c, name="s")
@@ -170,6 +181,8 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     # Tear down temporary dump directory.
     shutil.rmtree(self._dump_root)
+
+    ops.reset_default_graph()
 
   def testSessionInit(self):
     self.assertEqual(0, self._observer["sess_init_count"])
@@ -235,6 +248,9 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
         framework.OnRunStartAction.DEBUG_RUN,
         self._observer["performed_action"])
 
+    # No TensorFlow runtime error should have happened.
+    self.assertIsNone(self._observer["tf_error"])
+
   def testSessionInitInvalidSessionType(self):
     """Attempt to wrap a non-Session-type object should cause an exception."""
 
@@ -264,6 +280,48 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegexp(TypeError, "Expected type .*; got type .*"):
       wrapper.run(self._s)
+
+  def testErrorDuringRun(self):
+
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+
+    # No matrix size mismatch.
+    self.assertAllClose(
+        np.array([[11.0], [-1.0]]),
+        wrapper.run(self._q, feed_dict={self._ph: np.array([[1.0], [2.0]])}))
+    self.assertEqual(1, self._observer["on_run_end_count"])
+    self.assertIsNone(self._observer["tf_error"])
+
+    # Now there should be a matrix size mismatch error.
+    wrapper.run(self._q, feed_dict={self._ph: np.array([[1.0], [2.0], [3.0]])})
+    self.assertEqual(2, self._observer["on_run_end_count"])
+    self.assertTrue(
+        isinstance(self._observer["tf_error"], errors.InvalidArgumentError))
+
+  def testUsingWrappedSessionShouldWorkAsContextManager(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+
+    with wrapper as sess:
+      sess.run(self._s)
+
+  def testWrapperShouldSupportSessionClose(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+    wrapper.close()
+
+  def testUsingNonDirectSessionRaisesNotImplementedError(self):
+    # TODO(cais): Remove this test once tfdbg is integrated with GrpcSession.
+    fake_non_direct_session = session.Session()
+    fake_non_direct_session._target = "foo"
+
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        r"Non-DirectSession support is not available from TensorFlow Debugger "
+        r"yet \(sess_str=foo\)"):
+      TestDebugWrapperSession(
+          fake_non_direct_session, self._dump_root, self._observer)
 
 
 if __name__ == "__main__":

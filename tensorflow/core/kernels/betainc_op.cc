@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
@@ -38,9 +37,7 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 class BetaincOp : public OpKernel {
  public:
-  explicit BetaincOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    TF_ANNOTATE_BENIGN_RACE(&signgam, "signgam output from lgamma is unused");
-  }
+  explicit BetaincOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) {
     const Tensor& a = ctx->input(0);

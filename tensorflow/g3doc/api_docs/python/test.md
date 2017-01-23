@@ -29,7 +29,7 @@ methods.  We will document these methods soon.
 
 - - -
 
-### `tf.test.main()` {#main}
+### `tf.test.main(argv=None)` {#main}
 
 Runs all unit tests.
 
@@ -723,7 +723,7 @@ then compares them using self._AssertProtoEqual().
 
 - - -
 
-#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=15, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
+#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=21, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
 
 
 
@@ -1271,7 +1271,15 @@ Return any properties that the user has recorded.
 
 #### `tf.test.TestCase.get_temp_dir()` {#TestCase.get_temp_dir}
 
+Returns a unique temporary directory for the test to use.
 
+Across different test runs, this method will return a different folder.
+This will ensure that across different runs tests will not be able to
+pollute each others environment.
+
+##### Returns:
+
+  string, the path to the unique temporary directory created for this test.
 
 
 - - -
@@ -1418,7 +1426,7 @@ Creates an absolute test srcdir path given a relative path.
 
 - - -
 
-### `tf.test.assert_equal_graph_def(actual, expected)` {#assert_equal_graph_def}
+### `tf.test.assert_equal_graph_def(actual, expected, checkpoint_v2=False)` {#assert_equal_graph_def}
 
 Asserts that two `GraphDef`s are (mostly) the same.
 
@@ -1431,6 +1439,8 @@ between the graphs, so the naming of nodes must be consistent.
 
 *  <b>`actual`</b>: The `GraphDef` we have.
 *  <b>`expected`</b>: The `GraphDef` we expected.
+*  <b>`checkpoint_v2`</b>: boolean determining whether to ignore randomized attribute
+      values that appear in V2 checkpoints.
 
 ##### Raises:
 
@@ -1461,9 +1471,25 @@ Returns whether TensorFlow was built with CUDA (GPU) support.
 
 - - -
 
-### `tf.test.is_gpu_available()` {#is_gpu_available}
+### `tf.test.is_gpu_available(cuda_only=False)` {#is_gpu_available}
 
 Returns whether TensorFlow can access a GPU.
+
+##### Args:
+
+
+*  <b>`cuda_only`</b>: limit the search to CUDA gpus.
+
+##### Returns:
+
+  True iff a gpu device of the requested kind is available.
+
+
+- - -
+
+### `tf.test.gpu_device_name()` {#gpu_device_name}
+
+Returns the name of a GPU device if available or the empty string.
 
 
 
@@ -1475,7 +1501,7 @@ differentiation of graphs for comparison against registered analytic gradients.
 
 - - -
 
-### `tf.test.compute_gradient(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None)` {#compute_gradient}
+### `tf.test.compute_gradient(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None, extra_feed_dict=None)` {#compute_gradient}
 
 Computes and returns the theoretical and numerical Jacobian.
 
@@ -1507,6 +1533,8 @@ with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 *  <b>`delta`</b>: (optional) the amount of perturbation.
 *  <b>`init_targets`</b>: list of targets to run to initialize model params.
     TODO(mrry): remove this argument.
+*  <b>`extra_feed_dict`</b>: dict that allows fixing specified tensor values
+    during the Jacobian calculation.
 
 ##### Returns:
 
@@ -1518,7 +1546,7 @@ with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 
 - - -
 
-### `tf.test.compute_gradient_error(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None)` {#compute_gradient_error}
+### `tf.test.compute_gradient_error(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None, extra_feed_dict=None)` {#compute_gradient_error}
 
 Computes the gradient error.
 
@@ -1549,6 +1577,8 @@ function in the session constructor).
 *  <b>`delta`</b>: (optional) the amount of perturbation.
 *  <b>`init_targets`</b>: list of targets to run to initialize model params.
     TODO(mrry): Remove this argument.
+*  <b>`extra_feed_dict`</b>: dict that allows fixing specified tensor values
+    during the Jacobian calculation.
 
 ##### Returns:
 
@@ -1590,7 +1620,7 @@ Report a benchmark.
 
 - - -
 
-#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, name=None, extras=None)` {#Benchmark.run_op_benchmark}
+#### `tf.test.Benchmark.run_op_benchmark(sess, op_or_tensor, feed_dict=None, burn_iters=2, min_iters=10, store_trace=False, store_memory_usage=True, name=None, extras=None, mbs=0)` {#Benchmark.run_op_benchmark}
 
 Run an op or tensor in the given session.  Report the results.
 
@@ -1607,10 +1637,14 @@ Run an op or tensor in the given session.  Report the results.
     store the trace of iteration in the benchmark report.
     The trace will be stored as a string in Google Chrome trace format
     in the extras field "full_trace_chrome_format".
+*  <b>`store_memory_usage`</b>: Boolean, whether to run an extra untimed iteration,
+    calculate memory usage, and store that in extras fields.
 *  <b>`name`</b>: (optional) Override the BenchmarkEntry name with `name`.
     Otherwise it is inferred from the top-level method name.
 *  <b>`extras`</b>: (optional) Dict mapping string keys to additional benchmark info.
     Values may be either floats or values that are convertible to strings.
+*  <b>`mbs`</b>: (optional) The number of megabytes moved by this op, used to
+    calculate the ops throughput.
 
 ##### Returns:
 

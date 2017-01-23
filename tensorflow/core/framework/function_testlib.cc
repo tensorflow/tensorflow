@@ -91,7 +91,7 @@ FunctionDef XTimesTwo() {
 }
 
 FunctionDef XTimesFour() {
-  return FDH::Define(
+  return FDH::Create(
       // Name
       "XTimesFour",
       // Args
@@ -103,12 +103,13 @@ FunctionDef XTimesFour() {
       // Nodes
       {
           {{"x2"}, "XTimesTwo", {"x"}, {{"T", "$T"}}},
-          {{"y"}, "XTimesTwo", {"x2"}, {{"T", "$T"}}},
-      });
+          {{"y"}, "XTimesTwo", {"x2:y:0"}, {{"T", "$T"}}},
+      },
+      {{"y", "y:y:0"}});
 }
 
 FunctionDef XTimes16() {
-  return FDH::Define(
+  return FDH::Create(
       // Name
       "XTimes16",
       // Args
@@ -120,8 +121,9 @@ FunctionDef XTimes16() {
       // Nodes
       {
           {{"x4"}, "XTimesFour", {"x"}, {{"T", "$T"}}},
-          {{"y"}, "XTimesFour", {"x4"}, {{"T", "$T"}}},
-      });
+          {{"y"}, "XTimesFour", {"x4:y:0"}, {{"T", "$T"}}},
+      },
+      {{"y", "y:y:0"}});
 }
 
 FunctionDef WXPlusB() {

@@ -51,14 +51,15 @@ struct EvaluateParams {
   int current_epoch;
   int32 num_split_after_samples;
   int32 min_split_samples;
+  int32 check_dominates_every_samples;
   bool need_random;
   int64 random_seed;
   std::function<bool(int, random::SimplePhilox*)> dominate_method;
 };
 
 void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
-              int32 end, std::vector<int32>* final_finished_leaves,
-              std::vector<int32>* final_stale) {
+              int32 end, std::unordered_set<int32>* final_finished_leaves,
+              std::unordered_set<int32>* final_stale) {
   const auto leaves = params.leaves.unaligned_flat<int32>();
   const auto node_map = params.node_to_accumulator.unaligned_flat<int32>();
   const auto sums = params.accumulator_sums.tensor<float, 2>();
@@ -77,9 +78,10 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
     simple_philox.reset(new random::SimplePhilox(&rnd_gen));
   }
 
+  std::unordered_set<int32> visited;
   for (int32 i = start; i < end; i++) {
     const int32 leaf = internal::SubtleMustCopy(leaves(i));
-    if (leaf == -1) {
+    if (leaf == -1 || visited.find(leaf) != visited.end()) {
       continue;
     }
     if (!FastBoundsCheck(leaf, node_map.size())) {
@@ -115,80 +117,23 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
       continue;
     }
 
+    if (count % params.check_dominates_every_samples != 0) {
+      continue;
+    }
+
     bool finished = params.dominate_method(accumulator, simple_philox.get());
     if (finished) {
       finished_leaves.push_back(leaf);
     }
+
+    visited.insert(leaf);
   }
   mutex_lock m(*mutex);
-  final_finished_leaves->insert(final_finished_leaves->end(),
-                                finished_leaves.begin(), finished_leaves.end());
-  final_stale->insert(final_stale->end(), stale.begin(), stale.end());
+  final_finished_leaves->insert(finished_leaves.begin(), finished_leaves.end());
+  final_stale->insert(stale.begin(), stale.end());
 }
 }  // namespace
 
-REGISTER_OP("FinishedNodes")
-    .Attr("regression: bool = false")
-    .Attr("num_split_after_samples: int")
-    .Attr("min_split_samples: int")
-    .Attr("dominate_fraction: float = 0.99")
-    // TODO(thomaswc): Test out bootstrap on several datasets, confirm it
-    // works well, make it the default.
-    .Attr(
-        "dominate_method:"
-        " {'none', 'hoeffding', 'bootstrap', 'chebyshev'} = 'hoeffding'")
-    .Attr("random_seed: int = 0")
-    .Input("leaves: int32")
-    .Input("node_to_accumulator: int32")
-    .Input("split_sums: float")
-    .Input("split_squares: float")
-    .Input("accumulator_sums: float")
-    .Input("accumulator_squares: float")
-    .Input("birth_epochs: int32")
-    .Input("current_epoch: int32")
-    .Output("finished: int32")
-    .Output("stale: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Determines which of the given leaf nodes are done accumulating.
-
-leaves:= A 1-d int32 tensor.  Lists the nodes that are currently leaves.
-node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
-  is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
-split_sums:= a 3-d tensor where `split_sums[a][s]` summarizes the
-  training labels for examples that fall into the fertile node associated with
-  accumulator slot s and have then taken the *left* branch of candidate split
-  s.  For a classification problem, `split_sums[a][s][c]` is the count of such
-  examples with class c and for regression problems, `split_sums[a][s]` is the
-  sum of the regression labels for such examples.
-split_squares: Same as split_sums, but it contains the sum of the
-  squares of the regression labels.  Only used for regression.  For
-  classification problems, pass a dummy tensor into this.
-accumulator_sums: For classification, `accumulator_sums[a][c]` records how
-  many training examples have class c and have ended up in the fertile node
-  associated with accumulator slot a.  It has the total sum in entry 0 for
-  convenience. For regression, it is the same except it contains the sum
-  of the input labels that have been seen, and entry 0 contains the number
-  of training examples that have been seen.
-accumulator_squares: Same as accumulator_sums, but it contains the sum of the
-  squares of the regression labels.  Only used for regression.  For
-  classification problems, pass a dummy tensor into this.
-birth_epochs:= A 1-d int32 tensor.  `birth_epochs[i]` contains the epoch
-  the i-th node was created in.
-current_epoch:= A 1-d int32 tensor with shape (1).  `current_epoch[0]`
-  stores the current epoch number.
-finished:= A 1-d int32 tensor containing the indices of the finished nodes.
-  Nodes are finished if they have received at least num_split_after_samples
-  samples, or if they have received min_split_samples and the best scoring
-  split is sufficiently greater than the next best split.
-stale:= A 1-d int32 tensor containing the fertile nodes that were created two
-  or more epochs ago.
-
-)doc");
 
 class FinishedNodes : public OpKernel {
  public:
@@ -205,6 +150,9 @@ class FinishedNodes : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr("dominate_method", &dominate_method_));
     OP_REQUIRES_OK(context, context->GetAttr("random_seed", &random_seed_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("check_dominates_every_samples",
+                                    &check_dominates_every_samples_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -266,6 +214,7 @@ class FinishedNodes : public OpKernel {
     params.min_split_samples = min_split_samples_;
     params.num_split_after_samples = num_split_after_samples_;
     params.need_random = false;
+    params.check_dominates_every_samples = check_dominates_every_samples_;
 
     if (regression_) {
       params.dominate_method =
@@ -300,8 +249,8 @@ class FinishedNodes : public OpKernel {
       }
     }
 
-    std::vector<int32> finished_leaves;
-    std::vector<int32> stale;
+    std::unordered_set<int32> finished_leaves;
+    std::unordered_set<int32> stale;
     mutex m;
     // Require at least 100 leaves per thread.  I guess that's about 800 cost
     // per unit.  This isn't well defined.
@@ -343,6 +292,7 @@ class FinishedNodes : public OpKernel {
   float dominate_fraction_;
   string dominate_method_;
   int32 random_seed_;
+  int32 check_dominates_every_samples_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FinishedNodes").Device(DEVICE_CPU),

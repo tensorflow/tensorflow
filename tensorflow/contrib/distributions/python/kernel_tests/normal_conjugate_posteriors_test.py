@@ -20,21 +20,27 @@ from __future__ import print_function
 
 import math
 
-import tensorflow as tf
+from tensorflow.contrib import distributions as distributions_lib
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-distributions = tf.contrib.distributions
+distributions = distributions_lib
 
 
-class NormalTest(tf.test.TestCase):
+class NormalTest(test.TestCase):
 
   def testNormalConjugateKnownSigmaPosterior(self):
-    with tf.Session():
-      mu0 = tf.constant([3.0])
-      sigma0 = tf.constant([math.sqrt(10.0)])
-      sigma = tf.constant([math.sqrt(2.0)])
-      x = tf.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
-      s = tf.reduce_sum(x)
-      n = tf.size(x)
+    with session.Session():
+      mu0 = constant_op.constant([3.0])
+      sigma0 = constant_op.constant([math.sqrt(10.0)])
+      sigma = constant_op.constant([math.sqrt(2.0)])
+      x = constant_op.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
+      s = math_ops.reduce_sum(x)
+      n = array_ops.size(x)
       prior = distributions.Normal(mu=mu0, sigma=sigma0)
       posterior = distributions.normal_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
@@ -45,15 +51,17 @@ class NormalTest(tf.test.TestCase):
       self.assertEqual(posterior_log_pdf.shape, (6,))
 
   def testNormalConjugateKnownSigmaPosteriorND(self):
-    with tf.Session():
+    with session.Session():
       batch_size = 6
-      mu0 = tf.constant([[3.0, -3.0]] * batch_size)
-      sigma0 = tf.constant([[math.sqrt(10.0), math.sqrt(15.0)]] * batch_size)
-      sigma = tf.constant([[math.sqrt(2.0)]] * batch_size)
-      x = tf.transpose(
-          tf.constant([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=tf.float32))
-      s = tf.reduce_sum(x)
-      n = tf.size(x)
+      mu0 = constant_op.constant([[3.0, -3.0]] * batch_size)
+      sigma0 = constant_op.constant([[math.sqrt(10.0), math.sqrt(15.0)]] *
+                                    batch_size)
+      sigma = constant_op.constant([[math.sqrt(2.0)]] * batch_size)
+      x = array_ops.transpose(
+          constant_op.constant(
+              [[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=dtypes.float32))
+      s = math_ops.reduce_sum(x)
+      n = array_ops.size(x)
       prior = distributions.Normal(mu=mu0, sigma=sigma0)
       posterior = distributions.normal_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
@@ -64,17 +72,19 @@ class NormalTest(tf.test.TestCase):
       self.assertEqual(posterior_log_pdf.shape, (6, 2))
 
   def testNormalConjugateKnownSigmaNDPosteriorND(self):
-    with tf.Session():
+    with session.Session():
       batch_size = 6
-      mu0 = tf.constant([[3.0, -3.0]] * batch_size)
-      sigma0 = tf.constant([[math.sqrt(10.0), math.sqrt(15.0)]] * batch_size)
-      sigma = tf.constant([[math.sqrt(2.0), math.sqrt(4.0)]] * batch_size)
-      x = tf.constant([
-          [-2.5, 2.5, 4.0, 0.0, -1.0, 2.0],
-          [2.5, -2.5, -4.0, 0.0, 1.0, -2.0]], dtype=tf.float32)
-      s = tf.reduce_sum(x, reduction_indices=[1])
-      x = tf.transpose(x)  # Reshape to shape (6, 2)
-      n = tf.constant([6] * 2)
+      mu0 = constant_op.constant([[3.0, -3.0]] * batch_size)
+      sigma0 = constant_op.constant([[math.sqrt(10.0), math.sqrt(15.0)]] *
+                                    batch_size)
+      sigma = constant_op.constant([[math.sqrt(2.0), math.sqrt(4.0)]] *
+                                   batch_size)
+      x = constant_op.constant(
+          [[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0], [2.5, -2.5, -4.0, 0.0, 1.0, -2.0]],
+          dtype=dtypes.float32)
+      s = math_ops.reduce_sum(x, reduction_indices=[1])
+      x = array_ops.transpose(x)  # Reshape to shape (6, 2)
+      n = constant_op.constant([6] * 2)
       prior = distributions.Normal(mu=mu0, sigma=sigma0)
       posterior = distributions.normal_conjugates_known_sigma_posterior(
           prior=prior, sigma=sigma, s=s, n=n)
@@ -88,14 +98,14 @@ class NormalTest(tf.test.TestCase):
       self.assertEqual(posterior_log_pdf.eval().shape, (6, 2))
 
   def testNormalConjugateKnownSigmaPredictive(self):
-    with tf.Session():
+    with session.Session():
       batch_size = 6
-      mu0 = tf.constant([3.0] * batch_size)
-      sigma0 = tf.constant([math.sqrt(10.0)] * batch_size)
-      sigma = tf.constant([math.sqrt(2.0)] * batch_size)
-      x = tf.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
-      s = tf.reduce_sum(x)
-      n = tf.size(x)
+      mu0 = constant_op.constant([3.0] * batch_size)
+      sigma0 = constant_op.constant([math.sqrt(10.0)] * batch_size)
+      sigma = constant_op.constant([math.sqrt(2.0)] * batch_size)
+      x = constant_op.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
+      s = math_ops.reduce_sum(x)
+      n = array_ops.size(x)
       prior = distributions.Normal(mu=mu0, sigma=sigma0)
       predictive = distributions.normal_conjugates_known_sigma_predictive(
           prior=prior, sigma=sigma, s=s, n=n)
@@ -107,4 +117,4 @@ class NormalTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

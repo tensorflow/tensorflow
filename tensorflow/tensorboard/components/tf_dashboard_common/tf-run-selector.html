@@ -56,7 +56,7 @@ Properties out:
     <template
       is="dom-if"
       if="[[logdir]]">
-      <div id="logdir" inner-h-t-m-l="{{_breakAtSlashes(logdir)}}"></div>
+      <div id="logdir" inner-h-t-m-l="{{_breakString(logdir)}}"></div>
     </template>
     <style>
       :host {
@@ -127,10 +127,9 @@ Properties out:
     _toggleAll: function() {
       this.$.multiCheckbox.toggleAll();
     },
-    // Makes a string only be broken at the right of slashes instead of in front
-    // of any arbitrary character.
-    _breakAtSlashes: function(originalString) {
-      return originalString.replace(/\//g, '/<wbr>');
+    // Break the string at natural points, including commas, equals, and slashes
+    _breakString: function(originalString) {
+      return originalString.replace(/([\/=-_,])/g, "$1<wbr>")
     },
   });
   </script>

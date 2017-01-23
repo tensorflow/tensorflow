@@ -30,15 +30,6 @@ class TBPlugin(object):
   """TensorBoard plugin interface. Every plugin must extend from this class."""
   __metaclass__ = ABCMeta
 
-  def initialize(self, handler):
-    """Initializes the plugin.
-
-    Args:
-      handler: The tensorboard http handler that has methods that are used
-               by plugins such as serving json or gzip response.
-    """
-    self.handler = handler
-
   @abstractmethod
   def get_plugin_handlers(self, run_paths, logdir):
     """Returns a set of http handlers that the plugin implements.

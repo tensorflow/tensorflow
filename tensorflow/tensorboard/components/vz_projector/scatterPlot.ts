@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {PointAccessor} from './data';
-import {HoverContext} from './hoverContext';
-import {LabelRenderParams, RenderContext} from './renderContext';
+import {ProjectorEventContext} from './projectorEventContext';
+import {CameraType, LabelRenderParams, RenderContext} from './renderContext';
+import {BoundingBox, ScatterPlotRectangleSelector} from './scatterPlotRectangleSelector';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {ScatterPlotVisualizerAxes} from './scatterPlotVisualizerAxes';
-import {SelectionContext} from './selectionContext';
-import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
-import {dist_2D, Point2D, Point3D} from './vector';
+import * as util from './util';
+import {Point2D, Point3D} from './vector';
 
 const BACKGROUND_COLOR = 0xffffff;
 
@@ -42,45 +40,21 @@ const ORTHO_CAMERA_FRUSTUM_HALF_EXTENT = 1.2;
 const SHIFT_KEY = 16;
 const CTRL_KEY = 17;
 
-const START_CAMERA_POS_3D = new THREE.Vector3(0.6, 1.0, 1.85);
+const START_CAMERA_POS_3D = new THREE.Vector3(0.45, 0.9, 1.6);
 const START_CAMERA_TARGET_3D = new THREE.Vector3(0, 0, 0);
-const START_CAMERA_POS_2D = new THREE.Vector3(0, 0, 1);
+const START_CAMERA_POS_2D = new THREE.Vector3(0, 0, 4);
 const START_CAMERA_TARGET_2D = new THREE.Vector3(0, 0, 0);
 
 const ORBIT_MOUSE_ROTATION_SPEED = 1;
 const ORBIT_ANIMATION_ROTATION_CYCLE_IN_SECONDS = 7;
 
-/** The spacial data of points and lines that will be shown in the projector. */
-export interface DataSet {
-  points: DataPoint[];
-  traces: DataTrace[];
-}
-
-/**
- * Points in 3D space that will be used in the projector. If the projector is
- * in 2D mode, the Z coordinate of the point will be 0.
- */
-export interface DataPoint {
-  projectedPoint: Point3D;
-  /** index of the trace, used for highlighting on click */
-  traceIndex?: number;
-  /** index in the original data source */
-  index: number;
-}
-
-/** A single collection of points which make up a trace through space. */
-export interface DataTrace {
-  /** Indices into the DataPoints array in the Data object. */
-  pointIndices: number[];
-}
-
 export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
 /** Supported modes of interaction. */
-export enum Mode {
-  SELECT,
-  HOVER
+export enum MouseMode {
+  AREA_SELECT,
+  CAMERA_AND_CLICK_SELECT
 }
 
 /** Defines a camera, suitable for serialization. */
@@ -98,30 +72,17 @@ export class CameraDef {
  * array of visualizers and dispatches application events to them.
  */
 export class ScatterPlot {
-  private dataSet: DataSet;
-  private selectionContext: SelectionContext;
-  private hoverContext: HoverContext;
+  private projectorEventContext: ProjectorEventContext;
 
-  private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
 
-  private labelAccessor: (index: number) => string;
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
 
-  // Accessors for rendering and labeling the points.
-  private pointAccessors: [PointAccessor, PointAccessor, PointAccessor];
-
-  // Scaling functions for each axis.
-  private xScale: d3.scale.Linear<number, number>;
-  private yScale: d3.scale.Linear<number, number>;
-  private zScale: d3.scale.Linear<number, number>;
-
-  // window layout dimensions
   private height: number;
   private width: number;
 
-  private mode: Mode;
+  private mouseMode: MouseMode;
   private backgroundColor: number = BACKGROUND_COLOR;
 
   private dimensionality: number = 3;
@@ -130,37 +91,37 @@ export class ScatterPlot {
   private scene: THREE.Scene;
   private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
-  private selectionSphere: THREE.Mesh;
 
-  private cameraDef: CameraDef|null = null;
+  private cameraDef: CameraDef = null;
   private camera: THREE.Camera;
+  private orbitAnimationOnNextCameraCreation: boolean = false;
   private orbitCameraControls: any;
   private orbitAnimationId: number;
 
+  private worldSpacePointPositions: Float32Array;
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
   private labels: LabelRenderParams;
+  private traceColors: {[trace: number]: Float32Array};
+  private traceOpacities: Float32Array;
+  private traceWidths: Float32Array;
 
   private selecting = false;
   private nearestPoint: number;
   private mouseIsDown = false;
   private isDragSequence = false;
+  private rectangleSelector: ScatterPlotRectangleSelector;
 
   constructor(
-      container: d3.Selection<any>, labelAccessor: (index: number) => string,
-      selectionContext: SelectionContext, hoverContext: HoverContext) {
+      container: d3.Selection<any>,
+      projectorEventContext: ProjectorEventContext) {
     this.containerNode = container.node() as HTMLElement;
-    this.selectionContext = selectionContext;
-    this.hoverContext = hoverContext;
+    this.projectorEventContext = projectorEventContext;
     this.getLayoutValues();
 
-    this.labelAccessor = labelAccessor;
-    this.xScale = d3.scale.linear();
-    this.yScale = d3.scale.linear();
-    this.zScale = d3.scale.linear();
-
     this.scene = new THREE.Scene();
-    this.renderer = new THREE.WebGLRenderer();
+    this.renderer = new THREE.WebGLRenderer(
+        {alpha: true, premultipliedAlpha: false, antialias: false});
     this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
@@ -170,7 +131,9 @@ export class ScatterPlot {
     this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
     this.renderer.render(this.scene, this.camera);
 
-    this.addAxesToScene();
+    this.rectangleSelector = new ScatterPlotRectangleSelector(
+        this.containerNode,
+        (boundingBox: BoundingBox) => this.selectBoundingBox(boundingBox));
     this.addInteractionListeners();
   }
 
@@ -204,6 +167,34 @@ export class ScatterPlot {
     cameraControls.addEventListener('end', () => {});
   }
 
+  private makeOrbitControls(
+      camera: THREE.Camera, cameraDef: CameraDef, cameraIs3D: boolean) {
+    if (this.orbitCameraControls != null) {
+      this.orbitCameraControls.dispose();
+    }
+    const occ =
+        new (THREE as any).OrbitControls(camera, this.renderer.domElement);
+    occ.target0 = new THREE.Vector3(
+        cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
+    occ.position0 = new THREE.Vector3().copy(camera.position);
+    occ.zoom0 = cameraDef.zoom;
+    occ.enableRotate = cameraIs3D;
+    occ.autoRotate = false;
+    occ.rotateSpeed = ORBIT_MOUSE_ROTATION_SPEED;
+    if (cameraIs3D) {
+      occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+      occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
+    } else {
+      occ.mouseButtons.ORBIT = null;
+      occ.mouseButtons.PAN = THREE.MOUSE.LEFT;
+    }
+    occ.reset();
+
+    this.camera = camera;
+    this.orbitCameraControls = occ;
+    this.addCameraControlsEventListeners(this.orbitCameraControls);
+  }
+
   private makeCamera3D(cameraDef: CameraDef, w: number, h: number) {
     let camera: THREE.PerspectiveCamera;
     {
@@ -217,23 +208,10 @@ export class ScatterPlot {
           cameraDef.target[0], cameraDef.target[1], cameraDef.target[2]);
       camera.lookAt(at);
       camera.zoom = cameraDef.zoom;
+      camera.updateProjectionMatrix();
     }
-
-    const occ =
-        new (THREE as any).OrbitControls(camera, this.renderer.domElement);
-
-    occ.enableRotate = true;
-    occ.rotateSpeed = ORBIT_MOUSE_ROTATION_SPEED;
-    occ.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    occ.mouseButtons.PAN = THREE.MOUSE.RIGHT;
-
-    if (this.orbitCameraControls != null) {
-      this.orbitCameraControls.dispose();
-    }
-
     this.camera = camera;
-    this.orbitCameraControls = occ;
-    this.addCameraControlsEventListeners(this.orbitCameraControls);
+    this.makeOrbitControls(camera, cameraDef, true);
   }
 
   private makeCamera2D(cameraDef: CameraDef, w: number, h: number) {
@@ -261,25 +239,10 @@ export class ScatterPlot {
       camera.up = new THREE.Vector3(0, 1, 0);
       camera.lookAt(target);
       camera.zoom = cameraDef.zoom;
+      camera.updateProjectionMatrix();
     }
-
-    const occ =
-        new (THREE as any).OrbitControls(camera, this.renderer.domElement);
-
-    occ.target = target;
-    occ.enableRotate = false;
-    occ.enableDamping = false;
-    occ.autoRotate = false;
-    occ.mouseButtons.ORBIT = null;
-    occ.mouseButtons.PAN = THREE.MOUSE.LEFT;
-
-    if (this.orbitCameraControls != null) {
-      this.orbitCameraControls.dispose();
-    }
-
     this.camera = camera;
-    this.orbitCameraControls = occ;
-    this.addCameraControlsEventListeners(occ);
+    this.makeOrbitControls(camera, cameraDef, false);
   }
 
   private makeDefaultCameraDef(dimensionality: number): CameraDef {
@@ -314,6 +277,9 @@ export class ScatterPlot {
     this.orbitCameraControls.minDistance = MIN_ZOOM;
     this.orbitCameraControls.maxDistance = MAX_ZOOM;
     this.orbitCameraControls.update();
+    if (this.orbitAnimationOnNextCameraCreation) {
+      this.startOrbitAnimation();
+    }
   }
 
   private onClick(e?: MouseEvent, notify = true) {
@@ -322,8 +288,8 @@ export class ScatterPlot {
     }
     // Only call event handlers if the click originated from the scatter plot.
     if (!this.isDragSequence && notify) {
-      const selection = this.nearestPoint ? [this.nearestPoint] : [];
-      this.selectionContext.notifySelectionChanged(selection);
+      const selection = (this.nearestPoint != null) ? [this.nearestPoint] : [];
+      this.projectorEventContext.notifySelectionChanged(selection);
     }
     this.isDragSequence = false;
     this.render();
@@ -332,14 +298,10 @@ export class ScatterPlot {
   private onMouseDown(e: MouseEvent) {
     this.isDragSequence = false;
     this.mouseIsDown = true;
-    // If we are in selection mode, and we have in fact clicked a valid point,
-    // create a sphere so we can select things
     if (this.selecting) {
       this.orbitCameraControls.enabled = false;
+      this.rectangleSelector.onMouseDown(e.offsetX, e.offsetY);
       this.setNearestPointToMouse(e);
-      if (this.nearestPoint) {
-        this.createSelectionSphere();
-      }
     } else if (
         !e.ctrlKey && this.sceneIs3D() &&
         this.orbitCameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
@@ -361,8 +323,7 @@ export class ScatterPlot {
   private onMouseUp(e: any) {
     if (this.selecting) {
       this.orbitCameraControls.enabled = true;
-      this.scene.remove(this.selectionSphere);
-      this.selectionSphere = null;
+      this.rectangleSelector.onMouseUp();
       this.render();
     }
     this.mouseIsDown = false;
@@ -373,20 +334,14 @@ export class ScatterPlot {
    * hoverlisteners (usually called from embedding.ts)
    */
   private onMouseMove(e: MouseEvent) {
-    this.stopOrbitAnimation();
-    if (!this.dataSet) {
-      return;
-    }
     this.isDragSequence = this.mouseIsDown;
     // Depending if we're selecting or just navigating, handle accordingly.
     if (this.selecting && this.mouseIsDown) {
-      if (this.selectionSphere) {
-        this.adjustSelectionSphere(e);
-      }
+      this.rectangleSelector.onMouseMove(e.offsetX, e.offsetY);
       this.render();
     } else if (!this.mouseIsDown) {
       this.setNearestPointToMouse(e);
-      this.hoverContext.notifyHoverOverPoint(this.nearestPoint);
+      this.projectorEventContext.notifyHoverOverPoint(this.nearestPoint);
     }
   }
 
@@ -414,14 +369,64 @@ export class ScatterPlot {
 
     // If shift is released, stop selecting
     if (e.keyCode === SHIFT_KEY) {
-      this.selecting = (this.getMode() === Mode.SELECT);
+      this.selecting = (this.getMouseMode() === MouseMode.AREA_SELECT);
       if (!this.selecting) {
         this.containerNode.style.cursor = 'default';
       }
-      this.scene.remove(this.selectionSphere);
-      this.selectionSphere = null;
       this.render();
     }
+  }
+
+  /**
+   * Returns a list of indices of points in a bounding box from the picking
+   * texture.
+   * @param boundingBox The bounding box to select from.
+   */
+  private getPointIndicesFromPickingTexture(boundingBox: BoundingBox):
+      number[] {
+    if (this.worldSpacePointPositions == null) {
+      return null;
+    }
+    const pointCount = this.worldSpacePointPositions.length / 3;
+    const dpr = window.devicePixelRatio || 1;
+    const x = Math.floor(boundingBox.x * dpr);
+    const y = Math.floor(boundingBox.y * dpr);
+    const width = Math.floor(boundingBox.width * dpr);
+    const height = Math.floor(boundingBox.height * dpr);
+
+    // Create buffer for reading all of the pixels from the texture.
+    let pixelBuffer = new Uint8Array(width * height * 4);
+
+    // Read the pixels from the bounding box.
+    this.renderer.readRenderTargetPixels(
+        this.pickingTexture, x, this.pickingTexture.height - y, width, height,
+        pixelBuffer);
+
+    // Keep a flat list of each point and whether they are selected or not. This
+    // approach is more efficient than using an object keyed by the index.
+    let pointIndicesSelection =
+        new Uint8Array(this.worldSpacePointPositions.length);
+    for (let i = 0; i < width * height; i++) {
+      const id = (pixelBuffer[i * 4] << 16) | (pixelBuffer[i * 4 + 1] << 8) |
+          pixelBuffer[i * 4 + 2];
+      if (id !== 0xffffff && (id < pointCount)) {
+        pointIndicesSelection[id] = 1;
+      }
+    }
+    let pointIndices: number[] = [];
+    for (let i = 0; i < pointIndicesSelection.length; i++) {
+      if (pointIndicesSelection[i] === 1) {
+        pointIndices.push(i);
+      }
+    }
+
+    return pointIndices;
+  }
+
+
+  private selectBoundingBox(boundingBox: BoundingBox) {
+    let pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+    this.projectorEventContext.notifySelectionChanged(pointIndices);
   }
 
   private setNearestPointToMouse(e: MouseEvent) {
@@ -429,71 +434,10 @@ export class ScatterPlot {
       this.nearestPoint = null;
       return;
     }
-
-    // Create buffer for reading a single pixel.
-    let pixelBuffer = new Uint8Array(4);
-    const dpr = window.devicePixelRatio || 1;
-    const x = e.offsetX * dpr;
-    const y = e.offsetY * dpr;
-    // Read the pixel under the mouse from the texture.
-    this.renderer.readRenderTargetPixels(
-        this.pickingTexture, x, this.pickingTexture.height - y, 1, 1,
-        pixelBuffer);
-    // Interpret the pixel as an ID.
-    const id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
-    this.nearestPoint =
-        (id !== 0xffffff) && (id < this.dataSet.points.length) ? id : null;
-  }
-
-  /** Returns the squared distance to the mouse for the i-th point. */
-  private getDist2ToMouse(i: number, e: MouseEvent) {
-    let point = getProjectedPointFromIndex(this.dataSet, i);
-    let screenCoords =
-        vector3DToScreenCoords(this.camera, this.width, this.height, point);
-    let dpr = window.devicePixelRatio || 1;
-    return dist_2D(
-        [e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
-  }
-
-  private adjustSelectionSphere(e: MouseEvent) {
-    const dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
-    this.selectionSphere.scale.set(dist, dist, dist);
-    const selectedPoints: number[] = [];
-    this.dataSet.points.forEach(point => {
-      const pt = point.projectedPoint;
-      const pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
-      const distPointToSphereOrigin =
-          this.selectionSphere.position.clone().sub(pointVect).length();
-      if (distPointToSphereOrigin < dist) {
-        selectedPoints.push(this.dataSet.points.indexOf(point));
-      }
-    });
-    this.selectionContext.notifySelectionChanged(selectedPoints);
-  }
-
-  private removeAll() {
-    this.visualizers.forEach(v => {
-      v.removeAllFromScene(this.scene);
-    });
-  }
-
-  private createSelectionSphere() {
-    let geometry = new THREE.SphereGeometry(1, 300, 100);
-    let material = new THREE.MeshPhongMaterial({
-      color: 0x000000,
-      specular:
-          (this.sceneIs3D() && 0xffffff),  // In 2d, make sphere look flat.
-      emissive: 0x000000,
-      shininess: 10,
-      shading: THREE.SmoothShading,
-      opacity: 0.125,
-      transparent: true,
-    });
-    this.selectionSphere = new THREE.Mesh(geometry, material);
-    this.selectionSphere.scale.set(0, 0, 0);
-    let pos = this.dataSet.points[this.nearestPoint].projectedPoint;
-    this.scene.add(this.selectionSphere);
-    this.selectionSphere.position.set(pos[0], pos[1], pos[2]);
+    const boundingBox:
+        BoundingBox = {x: e.offsetX, y: e.offsetY, width: 1, height: 1};
+    const pointIndices = this.getPointIndicesFromPickingTexture(boundingBox);
+    this.nearestPoint = (pointIndices != null) ? pointIndices[0] : null;
   }
 
   private getLayoutValues(): Point2D {
@@ -502,51 +446,22 @@ export class ScatterPlot {
     return [this.width, this.height];
   }
 
-  /**
-   * Returns an x, y, z value for each item of our data based on the accessor
-   * methods.
-   */
-  private getPointsCoordinates() {
-    const xAccessor = this.pointAccessors[0];
-    const yAccessor = this.pointAccessors[1];
-    const zAccessor = this.pointAccessors[2];
-
-    // Determine max and min of each axis of our data.
-    const xExtent = d3.extent(this.dataSet.points, (p, i) => xAccessor(i));
-    const yExtent = d3.extent(this.dataSet.points, (p, i) => yAccessor(i));
-    const range = [-CUBE_LENGTH / 2, CUBE_LENGTH / 2];
-
-    this.xScale.domain(xExtent).range(range);
-    this.yScale.domain(yExtent).range(range);
-
-    if (zAccessor) {
-      const zExtent = d3.extent(this.dataSet.points, (p, i) => zAccessor(i));
-      this.zScale.domain(zExtent).range(range);
-    }
-
-    // Determine 3d coordinates of each data point.
-    this.dataSet.points.forEach((d, i) => {
-      d.projectedPoint[0] = this.xScale(xAccessor(i));
-      d.projectedPoint[1] = this.yScale(yAccessor(i));
-    });
-
-    if (zAccessor) {
-      this.dataSet.points.forEach((d, i) => {
-        d.projectedPoint[2] = this.zScale(zAccessor(i));
-      });
-    } else {
-      this.dataSet.points.forEach((d, i) => {
-        d.projectedPoint[2] = 0;
-      });
-    }
-  }
-
-  private addAxesToScene() {
-    this.addVisualizer(new ScatterPlotVisualizerAxes());
-  }
-
   private sceneIs3D(): boolean {
     return this.dimensionality === 3;
+  }
+
+  private remove3dAxisFromScene(): THREE.Object3D {
+    const axes = this.scene.getObjectByName('axes');
+    if (axes != null) {
+      this.scene.remove(axes);
+    }
+    return axes;
+  }
+
+  private add3dAxis() {
+    const axes = new THREE.AxisHelper();
+    axes.name = 'axes';
+    this.scene.add(axes);
   }
 
   /** Set 2d vs 3d mode. */
@@ -555,8 +470,14 @@ export class ScatterPlot {
       throw new RangeError('dimensionality must be 2 or 3');
     }
     this.dimensionality = dimensionality;
+
     const def = this.cameraDef || this.makeDefaultCameraDef(dimensionality);
     this.recreateCamera(def);
+
+    this.remove3dAxisFromScene();
+    if (dimensionality === 3) {
+      this.add3dAxis();
+    }
   }
 
   /** Gets the current camera information, suitable for serialization. */
@@ -572,8 +493,10 @@ export class ScatterPlot {
   }
 
   /** Sets parameters for the next camera recreation. */
-  setCameraDefForNextCameraCreation(def: CameraDef) {
+  setCameraParametersForNextCameraCreation(
+      def: CameraDef, orbitAnimation: boolean) {
     this.cameraDef = def;
+    this.orbitAnimationOnNextCameraCreation = orbitAnimation;
   }
 
   /** Gets the current camera position. */
@@ -629,61 +552,28 @@ export class ScatterPlot {
 
   /** Adds a visualizer to the set, will start dispatching events to it */
   addVisualizer(visualizer: ScatterPlotVisualizer) {
-    this.visualizers.push(visualizer);
-    if (this.dataSet) {
-      visualizer.onDataSet(this.dataSet, this.spriteImage);
-    }
-    if (this.labelAccessor) {
-      visualizer.onSetLabelAccessor(this.labelAccessor);
-    }
     if (this.scene) {
-      visualizer.onRecreateScene(
-          this.scene, this.sceneIs3D(), this.backgroundColor);
+      visualizer.setScene(this.scene);
     }
+    visualizer.onResize(this.width, this.height);
+    visualizer.onPointPositionsChanged(this.worldSpacePointPositions);
+    this.visualizers.push(visualizer);
   }
 
   /** Removes all visualizers attached to this scatter plot. */
   removeAllVisualizers() {
-    this.removeAll();
+    this.visualizers.forEach(v => v.dispose());
     this.visualizers = [];
-    this.addAxesToScene();
   }
 
-  recreateScene() {
-    this.removeAll();
-    this.visualizers.forEach(v => {
-      v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);
-    });
-    this.resize(false);
-    this.render();
-  }
-
-  /** Sets the data for the scatter plot. */
-  setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
-    this.removeAll();
-    this.dataSet = dataSet;
-    this.spriteImage = spriteImage;
-    this.nearestPoint = null;
-    this.visualizers.forEach(v => {
-      v.onDataSet(dataSet, spriteImage);
-    });
-    this.render();
-  }
-
-  update() {
-    this.getPointsCoordinates();
-    this.visualizers.forEach(v => {
-      v.onUpdate(this.dataSet);
-    });
-    this.render();
+  /** Update scatter plot with a new array of packed xyz point positions. */
+  setPointPositions(worldSpacePointPositions: Float32Array) {
+    this.worldSpacePointPositions = worldSpacePointPositions;
+    this.visualizers.forEach(
+        v => v.onPointPositionsChanged(worldSpacePointPositions));
   }
 
   render() {
-    if (!this.dataSet) {
-      return;
-    }
-
-    // place the light near the camera
     {
       const lightPos = this.camera.position.clone();
       lightPos.x += 1;
@@ -691,48 +581,46 @@ export class ScatterPlot {
       this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
     }
 
-    const cameraSpacePointExtents: [number, number] = getNearFarPoints(
-        this.dataSet, this.camera.position, this.orbitCameraControls.target);
+    const cameraType = (this.camera instanceof THREE.PerspectiveCamera) ?
+        CameraType.Perspective :
+        CameraType.Orthographic;
+
+    let cameraSpacePointExtents: [number, number] = [0, 0];
+    if (this.worldSpacePointPositions != null) {
+      cameraSpacePointExtents = util.getNearFarPoints(
+          this.worldSpacePointPositions, this.camera.position,
+          this.orbitCameraControls.target);
+    }
 
     const rc = new RenderContext(
-        this.camera, this.orbitCameraControls.target, this.width, this.height,
-        cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.pointColors, this.pointScaleFactors, this.labelAccessor,
-        this.labels);
+        this.camera, cameraType, this.orbitCameraControls.target, this.width,
+        this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1],
+        this.backgroundColor, this.pointColors, this.pointScaleFactors,
+        this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
 
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
     // the mouse's current x,y coordinates will reveal the data point that the
     // mouse is over.
-    this.visualizers.forEach(v => {
-      v.onPickingRender(rc);
-    });
+    this.visualizers.forEach(v => v.onPickingRender(rc));
 
-    this.renderer.render(this.scene, this.camera, this.pickingTexture);
+    {
+      const axes = this.remove3dAxisFromScene();
+      this.renderer.render(this.scene, this.camera, this.pickingTexture);
+      if (axes != null) {
+        this.scene.add(axes);
+      }
+    }
 
     // Render second pass to color buffer, to be displayed on the canvas.
-    this.visualizers.forEach(v => {
-      v.onRender(rc);
-    });
+    this.visualizers.forEach(v => v.onRender(rc));
 
     this.renderer.render(this.scene, this.camera);
   }
 
-  setPointAccessors(pointAccessors:
-                        [PointAccessor, PointAccessor, PointAccessor]) {
-    this.pointAccessors = pointAccessors;
-  }
-
-  setLabelAccessor(labelAccessor: (index: number) => string) {
-    this.labelAccessor = labelAccessor;
-    this.visualizers.forEach(v => {
-      v.onSetLabelAccessor(labelAccessor);
-    });
-  }
-
-  setMode(mode: Mode) {
-    this.mode = mode;
-    if (mode === Mode.SELECT) {
+  setMouseMode(mouseMode: MouseMode) {
+    this.mouseMode = mouseMode;
+    if (mouseMode === MouseMode.AREA_SELECT) {
       this.selecting = true;
       this.containerNode.style.cursor = 'crosshair';
     } else {
@@ -756,7 +644,22 @@ export class ScatterPlot {
     this.labels = labels;
   }
 
-  getMode(): Mode { return this.mode; }
+  /** Set the colors for every data trace. (RGB triplets) */
+  setTraceColors(colors: {[trace: number]: Float32Array}) {
+    this.traceColors = colors;
+  }
+
+  setTraceOpacities(opacities: Float32Array) {
+    this.traceOpacities = opacities;
+  }
+
+  setTraceWidths(widths: Float32Array) {
+    this.traceWidths = widths;
+  }
+
+  getMouseMode(): MouseMode {
+    return this.mouseMode;
+  }
 
   resetZoom() {
     this.recreateCamera(this.makeDefaultCameraDef(this.dimensionality));
@@ -768,9 +671,6 @@ export class ScatterPlot {
         .selectAll('canvas')
         .style('filter', isNight ? 'invert(100%)' : null);
   }
-
-  showAxes(show: boolean) {}
-  showTickLabels(show: boolean) {}
 
   resize(render = true) {
     const [oldW, oldH] = [this.width, this.height];
@@ -809,9 +709,7 @@ export class ScatterPlot {
       this.pickingTexture.texture.minFilter = THREE.LinearFilter;
     }
 
-    this.visualizers.forEach(v => {
-      v.onResize(newW, newH);
-    });
+    this.visualizers.forEach(v => v.onResize(newW, newH));
 
     if (render) {
       this.render();

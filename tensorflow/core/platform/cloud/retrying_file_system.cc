@@ -43,7 +43,6 @@ bool IsRetriable(Status status) {
 
 void WaitBeforeRetry(const int64 delay_micros) {
   const int64 random_micros = random::New64() % 1000000;
-
   Env::Default()->SleepForMicroseconds(std::min(delay_micros + random_micros,
                                                 kMaximumBackoffMicroseconds));
 }
@@ -57,7 +56,9 @@ Status CallWithRetries(const std::function<Status()>& f,
       return status;
     }
     const int64 delay_micros = initial_delay_microseconds << retries;
-    WaitBeforeRetry(delay_micros);
+    if (delay_micros > 0) {
+      WaitBeforeRetry(delay_micros);
+    }
     retries++;
   }
 }
@@ -65,7 +66,7 @@ Status CallWithRetries(const std::function<Status()>& f,
 class RetryingRandomAccessFile : public RandomAccessFile {
  public:
   RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file,
-                           int64 delay_microseconds = 1000000)
+                           int64 delay_microseconds)
       : base_file_(std::move(base_file)),
         initial_delay_microseconds_(delay_microseconds) {}
 
@@ -84,9 +85,14 @@ class RetryingRandomAccessFile : public RandomAccessFile {
 class RetryingWritableFile : public WritableFile {
  public:
   RetryingWritableFile(std::unique_ptr<WritableFile> base_file,
-                       int64 delay_microseconds = 1000000)
+                       int64 delay_microseconds)
       : base_file_(std::move(base_file)),
         initial_delay_microseconds_(delay_microseconds) {}
+
+  ~RetryingWritableFile() {
+    // Makes sure the retrying version of Close() is called in the destructor.
+    Close();
+  }
 
   Status Append(const StringPiece& data) override {
     return CallWithRetries(
@@ -120,7 +126,8 @@ Status RetryingFileSystem::NewRandomAccessFile(
                                                base_file_system_.get(),
                                                filename, &base_file),
                                      initial_delay_microseconds_));
-  result->reset(new RetryingRandomAccessFile(std::move(base_file)));
+  result->reset(new RetryingRandomAccessFile(std::move(base_file),
+                                             initial_delay_microseconds_));
   return Status::OK();
 }
 
@@ -131,7 +138,8 @@ Status RetryingFileSystem::NewWritableFile(
                                                base_file_system_.get(),
                                                filename, &base_file),
                                      initial_delay_microseconds_));
-  result->reset(new RetryingWritableFile(std::move(base_file)));
+  result->reset(new RetryingWritableFile(std::move(base_file),
+                                         initial_delay_microseconds_));
   return Status::OK();
 }
 
@@ -142,7 +150,8 @@ Status RetryingFileSystem::NewAppendableFile(
                                                base_file_system_.get(),
                                                filename, &base_file),
                                      initial_delay_microseconds_));
-  result->reset(new RetryingWritableFile(std::move(base_file)));
+  result->reset(new RetryingWritableFile(std::move(base_file),
+                                         initial_delay_microseconds_));
   return Status::OK();
 }
 
@@ -153,7 +162,7 @@ Status RetryingFileSystem::NewReadOnlyMemoryRegionFromFile(
                          initial_delay_microseconds_);
 }
 
-bool RetryingFileSystem::FileExists(const string& fname) {
+Status RetryingFileSystem::FileExists(const string& fname) {
   // No status -- no retries.
   return base_file_system_->FileExists(fname);
 }

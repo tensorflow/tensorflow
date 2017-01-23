@@ -349,7 +349,7 @@ following keyword arguments to the `Supervisor()` constructor:
    If not specified, the supervisor uses the first op in the
    `tf.GraphKeys.INIT_OP` collection.  If the collection is empty, the
    supervisor adds an op to initialize all the variables in the graph by
-   calling `tf.initialize_all_variables()`.
+   calling `tf.global_variables_initializer()`.
 
    Pass `None` to not use an init op.
 
@@ -374,7 +374,7 @@ following keyword arguments to the `Supervisor()` constructor:
  * `ready_op`: Op to check if the model is initialized.
 
    After running the local init op, the init op, and the init function, the
-   supervisor verifies that the model is fully intialized by running the ready
+   supervisor verifies that the model is fully initialized by running the ready
    op.  This is an op that returns an empty string if the model is initialized,
    or a description of what parts of the model are not initialized if not.
 

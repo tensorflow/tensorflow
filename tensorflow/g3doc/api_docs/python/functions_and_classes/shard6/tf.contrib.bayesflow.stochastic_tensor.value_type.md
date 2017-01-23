@@ -6,7 +6,8 @@ Typical usage:
 
 ```
 with sg.value_type(sg.MeanValue(stop_gradients=True)):
-  st = sg.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
+  st = sg.StochasticTensor(tf.contrib.distributions.Normal, mu=mu,
+                           sigma=sigma)
 ```
 
 In the example above, `st.value()` (or equivalently, `tf.identity(st)`) will
@@ -18,7 +19,7 @@ in a `stop_gradients` call to disable any possible backpropagation.
 ##### Args:
 
 
-*  <b>`dist_value_type`</b>: An instance of `MeanValue`, `SampleAndReshapeValue`, or
+*  <b>`dist_value_type`</b>: An instance of `MeanValue`, `SampleValue`, or
     any other stochastic value type.
 
 ##### Yields:

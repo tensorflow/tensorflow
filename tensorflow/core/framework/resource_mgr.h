@@ -21,6 +21,7 @@ limitations under the License.
 #include <typeinfo>
 #include <unordered_map>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -76,6 +77,24 @@ class ResourceBase : public core::RefCounted {
  public:
   // Returns a debug string for *this.
   virtual string DebugString() = 0;
+};
+
+// Container used for per-step resources.
+class ScopedStepContainer {
+ public:
+  // step_id: the unique ID of this step. Doesn't have to be sequential, just
+  // has to be unique.
+  // cleanup: callback to delete a container of this name.
+  ScopedStepContainer(const int64 step_id,
+                      std::function<void(const string&)> cleanup)
+      : name_(strings::StrCat("__per_step_", step_id)), cleanup_(cleanup) {}
+  ~ScopedStepContainer() { cleanup_(name_); }
+
+  const string& name() const { return name_; }
+
+ private:
+  const string name_;
+  const std::function<void(const string&)> cleanup_;
 };
 
 class ResourceMgr {
@@ -164,6 +183,9 @@ class ResourceMgr {
 template <typename T>
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name);
+template <typename T>
+ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
+                                         const string& name);
 
 // Returns a resource handle from a numbered op input.
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
@@ -175,6 +197,11 @@ Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
 // Looks up a resource pointed by a given resource handle.
 template <typename T>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
+
+// Looks up or creates a resource.
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              T** value, std::function<Status(T**)> creator);
 
 // Destroys a resource pointed by a given resource handle.
 template <typename T>
@@ -341,6 +368,13 @@ Status ResourceMgr::Delete(const string& container, const string& name) {
 template <typename T>
 Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
                               T** resource) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &dtype));
+  if (dtype == DT_RESOURCE) {
+    const Tensor* handle;
+    TF_RETURN_IF_ERROR(ctx->input(input_name, &handle));
+    return LookupResource(ctx, handle->scalar<ResourceHandle>()(), resource);
+  }
   string container;
   string shared_name;
   {
@@ -365,12 +399,24 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name) {
   ResourceHandle result;
   result.set_device(ctx->device()->attributes().name());
-  result.set_container(container);
+  string actual_container;
+  if (!container.empty()) {
+    actual_container = container;
+  } else {
+    actual_container = ctx->resource_manager()->default_container();
+  }
+  result.set_container(actual_container);
   result.set_name(name);
   auto type_index = MakeTypeIndex<T>();
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   return result;
+}
+
+template <typename T>
+ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
+                                         const string& name) {
+  return MakeResourceHandle<T>(ctx, ctx->step_container()->name(), name);
 }
 
 namespace internal {
@@ -407,6 +453,14 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
 }
 
 template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              T** value, std::function<Status(T**)> creator) {
+  TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
+  return ctx->resource_manager()->LookupOrCreate(p.container(), p.name(), value,
+                                                 creator);
+}
+
+template <typename T>
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
@@ -432,7 +486,7 @@ template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
   Tensor* output = nullptr;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-  output->flat<ResourceHandle>()(0) =
+  output->scalar<ResourceHandle>()() =
       MakeResourceHandle<T>(ctx, container_, name_);
 }
 

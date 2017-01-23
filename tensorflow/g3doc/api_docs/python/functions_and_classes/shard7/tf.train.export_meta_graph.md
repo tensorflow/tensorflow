@@ -1,4 +1,4 @@
-### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False, graph=None, export_scope=None, **kwargs)` {#export_meta_graph}
+### `tf.train.export_meta_graph(filename=None, meta_info_def=None, graph_def=None, saver_def=None, collection_list=None, as_text=False, graph=None, export_scope=None, clear_devices=False, **kwargs)` {#export_meta_graph}
 
 Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -22,6 +22,8 @@ a subgraph.
     the subgraph. The scope name will be striped from the node definitions
     for easy import later into new name scopes. If `None`, the whole graph
     is exported. graph_def and export_scope cannot both be specified.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during export.
 *  <b>`**kwargs`</b>: Optional keyed arguments.
 
 ##### Returns:

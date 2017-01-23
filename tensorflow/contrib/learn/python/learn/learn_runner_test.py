@@ -20,23 +20,47 @@ from __future__ import print_function
 
 import json
 import os
+import sys
 
-import tensorflow as tf
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
+from tensorflow.contrib.learn.python.learn import evaluable  # pylint: disable=g-import-not-at-top
+from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn import learn_runner
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.contrib.learn.python.learn import trainable
+from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+
+patch = test.mock.patch
 
 
-class TestExperiment(tf.contrib.learn.Experiment):
+class TestExperiment(experiment.Experiment):
 
   def __init__(self, default=None, config=None):
     self.default = default
     self.config = config
 
-  @property
-  def estimator(self):
-    class Estimator(object):
+    class Estimator(evaluable.Evaluable, trainable.Trainable):
       config = self.config
-    return Estimator()
+
+      def model_dir(self):
+        raise NotImplementedError
+
+      def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+              monitors=None, max_steps=None):
+        raise NotImplementedError
+
+      def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
+                   batch_size=None, steps=None, metrics=None, name=None,
+                   checkpoint_path=None, hooks=None):
+        raise NotImplementedError
+
+    super(TestExperiment, self).__init__(Estimator(), None, None)
 
   def local_run(self):
     return "local_run"
@@ -56,28 +80,31 @@ class TestExperiment(tf.contrib.learn.Experiment):
 
 # pylint: disable=unused-argument
 def build_experiment(output_dir):
-  tf.logging.info("In default build_experiment.")
+  tf_logging.info("In default build_experiment.")
   return TestExperiment()
 
 
 def build_non_experiment(output_dir):
   return "Ceci n'est pas un Experiment."
+
+
 # pylint: enable=unused-argument
 
 
 def build_distributed_cluster_spec():
-  return tf.train.ClusterSpec(
-      {"ps": ["localhost:1234", "localhost:1235"],
-       "worker": ["localhost:1236", "localhost:1237"],
-       "master": ["localhost:1238"],
-       "foo_has_no_default_schedule": ["localhost:1239"]})
+  return {
+      run_config_lib.TaskType.PS: ["localhost:1234", "localhost:1235"],
+      run_config_lib.TaskType.WORKER: ["localhost:1236", "localhost:1237"],
+      run_config_lib.TaskType.MASTER: ["localhost:1238"],
+      "foo_has_no_default_schedule": ["localhost:1239"]
+  }
 
 
 def build_non_distributed_cluster_spec():
-  return tf.train.ClusterSpec({"foo": ["localhost:1234"]})
+  return {"foo": ["localhost:1234"]}
 
 
-class MainTest(tf.test.TestCase):
+class MainTest(test.TestCase):
 
   def setUp(self):
     # Ensure the TF_CONFIG environment variable is unset for all tests.
@@ -97,10 +124,13 @@ class MainTest(tf.test.TestCase):
                          output_dir="/tmp",
                          schedule="local_run"))
 
-  def test_schedule_from_tf_config(self):
-    os.environ["TF_CONFIG"] = json.dumps(
-        {"cluster": build_distributed_cluster_spec().as_dict(),
-         "task": {"type": "worker"}})
+  def test_schedule_from_tf_config_runs_train_on_worker(self):
+    os.environ["TF_CONFIG"] = json.dumps({
+        "cluster": build_distributed_cluster_spec(),
+        "task": {
+            "type": run_config_lib.TaskType.WORKER
+        }
+    })
     # RunConfig constructor will set job_name from TF_CONFIG.
     config = run_config.RunConfig()
     self.assertEqual(
@@ -108,40 +138,33 @@ class MainTest(tf.test.TestCase):
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
                          output_dir="/tmp"))
 
-  def test_schedule_from_manually_specified_job_name(self):
-    config = run_config.RunConfig(
-        job_name="worker", cluster_spec=build_distributed_cluster_spec())
-    self.assertEqual(
-        "train",
-        learn_runner.run(lambda output_dir: TestExperiment(config=config),
-                         output_dir="/tmp"))
+  def test_schedule_from_tf_config_runs_train_and_evaluate_on_master(self):
+    tf_config = {
+        "cluster": build_distributed_cluster_spec(),
+        "task": {
+            "type": run_config_lib.TaskType.MASTER
+        }
+    }
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      self.assertEqual(
+          "train_and_evaluate",
+          learn_runner.run(lambda output_dir: TestExperiment(config=config),
+                           output_dir="/tmp"))
 
-  def test_schedule_from_config_runs_train_and_evaluate_on_master(self):
-    config = run_config.RunConfig(
-        job_name="master",
-        cluster_spec=build_distributed_cluster_spec(),
-        task=0,
-        is_chief=True)
-    self.assertEqual(
-        "train_and_evaluate",
-        learn_runner.run(lambda output_dir: TestExperiment(config=config),
-                         output_dir="/tmp"))
-
-  def test_schedule_from_config_runs_serve_on_ps(self):
-    config = run_config.RunConfig(
-        job_name="ps", cluster_spec=build_distributed_cluster_spec())
-    self.assertEqual(
-        "run_std_server",
-        learn_runner.run(lambda output_dir: TestExperiment(config=config),
-                         output_dir="/tmp"))
-
-  def test_schedule_from_config_runs_train_on_worker(self):
-    config = run_config.RunConfig(
-        job_name="worker", cluster_spec=build_distributed_cluster_spec())
-    self.assertEqual(
-        "train",
-        learn_runner.run(lambda output_dir: TestExperiment(config=config),
-                         output_dir="/tmp"))
+  def test_schedule_from_tf_config_runs_serve_on_ps(self):
+    tf_config = {
+        "cluster": build_distributed_cluster_spec(),
+        "task": {
+            "type": run_config_lib.TaskType.PS
+        }
+    }
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      self.assertEqual(
+          "run_std_server",
+          learn_runner.run(lambda output_dir: TestExperiment(config=config),
+                           output_dir="/tmp"))
 
   def test_fail_no_output_dir(self):
     self.assertRaisesRegexp(ValueError, "Must specify an output directory",
@@ -151,24 +174,29 @@ class MainTest(tf.test.TestCase):
   def test_no_schedule_and_no_config_runs_train_and_evaluate(self):
     self.assertEqual(
         "train_and_evaluate",
-        learn_runner.run(build_experiment,
-                         output_dir="/tmp"))
+        learn_runner.run(build_experiment, output_dir="/tmp"))
 
   def test_no_schedule_and_non_distributed_runs_train_and_evaluate(self):
-    config = run_config.RunConfig(
-        cluster_spec=build_non_distributed_cluster_spec())
-    self.assertEqual(
-        "train_and_evaluate",
-        learn_runner.run(lambda output_dir: TestExperiment(config=config),
-                         output_dir="/tmp"))
+    tf_config = {"cluster": build_non_distributed_cluster_spec()}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      self.assertEqual(
+          "train_and_evaluate",
+          learn_runner.run(lambda output_dir: TestExperiment(config=config),
+                           output_dir="/tmp"))
 
-  def test_fail_job_name_with_no_default_schedule(self):
-    config = run_config.RunConfig(
-        job_name="foo_has_no_default_schedule",
-        cluster_spec=build_distributed_cluster_spec())
-    create_experiment_fn = lambda output_dir: TestExperiment(config=config)
-    self.assertRaisesRegexp(ValueError, "No default schedule",
-                            learn_runner.run, create_experiment_fn, "/tmp")
+  def test_fail_task_type_with_no_default_schedule(self):
+    tf_config = {
+        "cluster": build_distributed_cluster_spec(),
+        "task": {
+            "type": "foo_has_no_default_schedule"
+        }
+    }
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      create_experiment_fn = lambda output_dir: TestExperiment(config=config)
+      self.assertRaisesRegexp(ValueError, "No default schedule",
+                              learn_runner.run, create_experiment_fn, "/tmp")
 
   def test_fail_non_callable(self):
     self.assertRaisesRegexp(TypeError, "Experiment builder .* is not callable",
@@ -192,16 +220,17 @@ class MainTest(tf.test.TestCase):
                             learn_runner.run, build_experiment, "/tmp",
                             "default")
 
-  def test_fail_schedule_from_config_with_no_job_name(self):
-    config = run_config.RunConfig(
-        job_name=None, cluster_spec=build_distributed_cluster_spec())
-    self.assertRaisesRegexp(
-        ValueError,
-        "Must specify a schedule",
-        learn_runner.run,
-        lambda output_dir: TestExperiment(config=config),
-        output_dir="/tmp")
+  def test_fail_schedule_from_config_with_no_task_type(self):
+    tf_config = {"cluster": build_distributed_cluster_spec()}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      self.assertRaisesRegexp(
+          ValueError,
+          "Must specify a schedule",
+          learn_runner.run,
+          lambda output_dir: TestExperiment(config=config),
+          output_dir="/tmp")
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

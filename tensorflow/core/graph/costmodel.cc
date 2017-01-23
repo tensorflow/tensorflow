@@ -243,6 +243,11 @@ void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
   if (id < 0) return;
   Ensure(id);
   auto& current_max = max_mem_usage_[id].output_port_mem[output_slot];
+  // If the memory allocator doesn't track memory usage, let's infer a lower
+  // bound from the tensor shape and its data type.
+  if (bytes.value() < 0) {
+    bytes = MinTensorMemoryUsage(tensor_shape, dtype);
+  }
   if (bytes.value() > current_max.value()) {
     current_max = bytes.value();
     max_mem_usage_[id].output_port_shape[output_slot] = tensor_shape;
@@ -474,6 +479,20 @@ void CostModel::WriteSummaryToLog() const {
               << time_[i] << " avg time "
               << (time_[i] / (std::max(1, count_[i])));
   }
+}
+
+Bytes CostModel::MinTensorMemoryUsage(const TensorShapeProto& tensor_shape,
+                                      const DataType& dtype) {
+  if (tensor_shape.unknown_rank()) {
+    return Bytes(-1);
+  }
+
+  size_t num_coefficients = 1;
+  for (const TensorShapeProto::Dim& dim : tensor_shape.dim()) {
+    // If the dimension is unknown, it has to be at least 1
+    num_coefficients *= std::max<size_t>(dim.size(), 1);
+  }
+  return Bytes(num_coefficients * DataTypeSize(dtype));
 }
 
 }  // namespace tensorflow

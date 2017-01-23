@@ -20,17 +20,24 @@ from __future__ import print_function
 
 import os.path
 
-
-import tensorflow as tf
-
 from tensorflow.contrib.session_bundle import constants
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
 from tensorflow.contrib.session_bundle import manifest_pb2
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
-
+from tensorflow.python.platform import test
+from tensorflow.python.training import saver
 
 FLAGS = flags.FLAGS
 
@@ -38,10 +45,10 @@ GLOBAL_STEP = 222
 
 
 def tearDownModule():
-  gfile.DeleteRecursively(tf.test.get_temp_dir())
+  gfile.DeleteRecursively(test.get_temp_dir())
 
 
-class SaveRestoreShardedTest(tf.test.TestCase):
+class SaveRestoreShardedTest(test.TestCase):
 
   def doBasicsOneExportPath(self,
                             export_path,
@@ -50,66 +57,73 @@ class SaveRestoreShardedTest(tf.test.TestCase):
                             sharded=True,
                             export_count=1):
     # Build a graph with 2 parameter nodes on different devices.
-    tf.reset_default_graph()
-    with tf.Session(
+    ops.reset_default_graph()
+    with session.Session(
         target="",
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
       # v2 is an unsaved variable derived from v0 and v1.  It is used to
       # exercise the ability to run an init op when restoring a graph.
       with sess.graph.device("/cpu:0"):
-        v0 = tf.Variable(10, name="v0")
+        v0 = variables.Variable(10, name="v0")
       with sess.graph.device("/cpu:1"):
-        v1 = tf.Variable(20, name="v1")
-      v2 = tf.Variable(1, name="v2", trainable=False, collections=[])
-      assign_v2 = tf.assign(v2, tf.add(v0, v1))
-      init_op = tf.group(assign_v2, name="init_op")
+        v1 = variables.Variable(20, name="v1")
+      v2 = variables.Variable(1, name="v2", trainable=False, collections=[])
+      assign_v2 = state_ops.assign(v2, math_ops.add(v0, v1))
+      init_op = control_flow_ops.group(assign_v2, name="init_op")
 
-      tf.add_to_collection("v", v0)
-      tf.add_to_collection("v", v1)
-      tf.add_to_collection("v", v2)
+      ops.add_to_collection("v", v0)
+      ops.add_to_collection("v", v1)
+      ops.add_to_collection("v", v2)
 
       named_tensor_bindings = {"logical_input_A": v0, "logical_input_B": v1}
       signatures = {
-          "foo": exporter.regression_signature(input_tensor=v0,
-                                               output_tensor=v1),
-          "generic": exporter.generic_signature(named_tensor_bindings)
+          "foo":
+              exporter.regression_signature(
+                  input_tensor=v0, output_tensor=v1),
+          "generic":
+              exporter.generic_signature(named_tensor_bindings)
       }
 
-      asset_filepath_orig = os.path.join(tf.test.get_temp_dir(), "hello42.txt")
-      asset_file = tf.constant(asset_filepath_orig, name="filename42")
-      tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, asset_file)
+      asset_filepath_orig = os.path.join(test.get_temp_dir(), "hello42.txt")
+      asset_file = constant_op.constant(asset_filepath_orig, name="filename42")
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset_file)
 
       with gfile.FastGFile(asset_filepath_orig, "w") as f:
         f.write("your data here")
-      assets_collection = tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS)
+      assets_collection = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
 
-      ignored_asset = os.path.join(tf.test.get_temp_dir(), "ignored.txt")
+      ignored_asset = os.path.join(test.get_temp_dir(), "ignored.txt")
       with gfile.FastGFile(ignored_asset, "w") as f:
         f.write("additional data here")
 
-      tf.initialize_all_variables().run()
+      variables.global_variables_initializer().run()
 
       # Run an export.
-      save = tf.train.Saver({"v0": v0,
-                             "v1": v1},
-                            restore_sequentially=True,
-                            sharded=sharded,
-                            write_version=tf.train.SaverDef.V1)
+      save = saver.Saver(
+          {
+              "v0": v0,
+              "v1": v1
+          },
+          restore_sequentially=True,
+          sharded=sharded,
+          write_version=saver_pb2.SaverDef.V1)
       export = exporter.Exporter(save)
-      compare_def = tf.get_default_graph().as_graph_def()
-      export.init(compare_def,
-                  init_op=init_op,
-                  clear_devices=clear_devices,
-                  default_graph_signature=exporter.classification_signature(
-                      input_tensor=v0),
-                  named_graph_signatures=signatures,
-                  assets_collection=assets_collection)
+      compare_def = ops.get_default_graph().as_graph_def()
+      export.init(
+          compare_def,
+          init_op=init_op,
+          clear_devices=clear_devices,
+          default_graph_signature=exporter.classification_signature(
+              input_tensor=v0),
+          named_graph_signatures=signatures,
+          assets_collection=assets_collection)
 
       for x in range(export_count):
-        export.export(export_path,
-                      tf.constant(global_step + x),
-                      sess,
-                      exports_to_keep=gc.largest_export_versions(2))
+        export.export(
+            export_path,
+            constant_op.constant(global_step + x),
+            sess,
+            exports_to_keep=gc.largest_export_versions(2))
       # Set global_step to the last exported version, as the rest of the test
       # uses it to construct model export path, loads model from it, and does
       # verifications. We want to make sure to always use the last exported
@@ -117,11 +131,11 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       global_step += export_count - 1
 
     # Restore graph.
-    tf.reset_default_graph()
-    with tf.Session(
+    ops.reset_default_graph()
+    with session.Session(
         target="",
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
-      save = tf.train.import_meta_graph(
+      save = saver.import_meta_graph(
           os.path.join(export_path, constants.VERSION_FORMAT_SPECIFIER %
                        global_step, constants.META_GRAPH_DEF_FILENAME))
       self.assertIsNotNone(save)
@@ -131,7 +145,7 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       # Validate custom graph_def.
       graph_def_any = collection_def[constants.GRAPH_KEY].any_list.value
       self.assertEquals(len(graph_def_any), 1)
-      graph_def = tf.GraphDef()
+      graph_def = graph_pb2.GraphDef()
       graph_def_any[0].Unpack(graph_def)
       if clear_devices:
         for node in compare_def.node:
@@ -181,38 +195,39 @@ class SaveRestoreShardedTest(tf.test.TestCase):
       # Validate graph restoration.
       if sharded:
         save.restore(sess,
-                     os.path.join(
-                        export_path, constants.VERSION_FORMAT_SPECIFIER %
-                        global_step, constants.VARIABLES_FILENAME_PATTERN))
+                     os.path.join(export_path,
+                                  constants.VERSION_FORMAT_SPECIFIER %
+                                  global_step,
+                                  constants.VARIABLES_FILENAME_PATTERN))
       else:
         save.restore(sess,
-                     os.path.join(
-                        export_path, constants.VERSION_FORMAT_SPECIFIER %
-                        global_step, constants.VARIABLES_FILENAME))
-      self.assertEqual(10, tf.get_collection("v")[0].eval())
-      self.assertEqual(20, tf.get_collection("v")[1].eval())
-      tf.get_collection(constants.INIT_OP_KEY)[0].run()
-      self.assertEqual(30, tf.get_collection("v")[2].eval())
+                     os.path.join(export_path,
+                                  constants.VERSION_FORMAT_SPECIFIER %
+                                  global_step, constants.VARIABLES_FILENAME))
+      self.assertEqual(10, ops.get_collection("v")[0].eval())
+      self.assertEqual(20, ops.get_collection("v")[1].eval())
+      ops.get_collection(constants.INIT_OP_KEY)[0].run()
+      self.assertEqual(30, ops.get_collection("v")[2].eval())
 
   def testDuplicateExportRaisesError(self):
-    export_path = os.path.join(tf.test.get_temp_dir(), "export_duplicates")
+    export_path = os.path.join(test.get_temp_dir(), "export_duplicates")
     self.doBasicsOneExportPath(export_path)
     self.assertRaises(RuntimeError, self.doBasicsOneExportPath, export_path)
 
   def testBasics(self):
-    export_path = os.path.join(tf.test.get_temp_dir(), "export")
+    export_path = os.path.join(test.get_temp_dir(), "export")
     self.doBasicsOneExportPath(export_path)
 
   def testBasicsNoShard(self):
-    export_path = os.path.join(tf.test.get_temp_dir(), "export_no_shard")
+    export_path = os.path.join(test.get_temp_dir(), "export_no_shard")
     self.doBasicsOneExportPath(export_path, sharded=False)
 
   def testClearDevice(self):
-    export_path = os.path.join(tf.test.get_temp_dir(), "export_clear_device")
+    export_path = os.path.join(test.get_temp_dir(), "export_clear_device")
     self.doBasicsOneExportPath(export_path, clear_devices=True)
 
   def testGC(self):
-    export_path = os.path.join(tf.test.get_temp_dir(), "gc")
+    export_path = os.path.join(test.get_temp_dir(), "gc")
     self.doBasicsOneExportPath(export_path, global_step=100)
     self.assertEquals(gfile.ListDirectory(export_path), ["00000100"])
     self.doBasicsOneExportPath(export_path, global_step=101)
@@ -223,9 +238,9 @@ class SaveRestoreShardedTest(tf.test.TestCase):
         sorted(gfile.ListDirectory(export_path)), ["00000101", "00000102"])
 
   def testExportMultipleTimes(self):
-    export_path = os.path.join(tf.test.get_temp_dir(), "export_multiple_times")
+    export_path = os.path.join(test.get_temp_dir(), "export_multiple_times")
     self.doBasicsOneExportPath(export_path, export_count=10)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

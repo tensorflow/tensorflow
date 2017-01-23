@@ -14,8 +14,10 @@ set(tf_op_lib_names
     "no_op"
     "parsing_ops"
     "random_ops"
+    "resource_variable_ops"
     "script_ops"
     "sdca_ops"
+    "set_ops"  
     "sendrecv_ops"
     "sparse_ops"
     "state_ops"
@@ -35,6 +37,17 @@ foreach(tf_op_lib_name ${tf_op_lib_names})
 
     add_dependencies(tf_${tf_op_lib_name} tf_core_framework)
 endforeach()
+
+function(GENERATE_CONTRIB_OP_LIBRARY op_lib_name cc_srcs)
+    add_library(tf_contrib_${op_lib_name}_ops OBJECT ${cc_srcs})
+    add_dependencies(tf_contrib_${op_lib_name}_ops tf_core_framework)
+endfunction()
+
+GENERATE_CONTRIB_OP_LIBRARY(cudnn_rnn "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(factorization_clustering "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(factorization_factorization "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(framework_variable "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(tensor_forest "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/ops/tensor_forest_ops.cc")
 
 ########################################################
 # tf_user_ops library

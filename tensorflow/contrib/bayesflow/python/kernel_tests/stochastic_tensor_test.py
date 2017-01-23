@@ -19,46 +19,54 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib import distributions as distributions_lib
+from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
-distributions = tf.contrib.distributions
-sge = tf.contrib.bayesflow.stochastic_gradient_estimators
-st = tf.contrib.bayesflow.stochastic_tensor
+distributions = distributions_lib
+sge = stochastic_gradient_estimators
+st = stochastic_tensor
 
 
-class StochasticTensorTest(tf.test.TestCase):
+class StochasticTensorTest(test.TestCase):
 
   def testConstructionAndValue(self):
     with self.test_session() as sess:
       mu = [0.0, 0.1, 0.2]
-      sigma = tf.constant([1.1, 1.2, 1.3])
-      sigma2 = tf.constant([0.1, 0.2, 0.3])
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
+      sigma2 = constant_op.constant([0.1, 0.2, 0.3])
 
       prior_default = st.StochasticTensor(
-          distributions.Normal, mu=mu, sigma=sigma)
-      self.assertTrue(
-          isinstance(prior_default.value_type, st.SampleAndReshapeValue))
+          distributions.Normal(
+              mu=mu, sigma=sigma))
+      self.assertTrue(isinstance(prior_default.value_type, st.SampleValue))
       prior_0 = st.StochasticTensor(
-          distributions.Normal, mu=mu, sigma=sigma,
-          dist_value_type=st.SampleAndReshapeValue())
-      self.assertTrue(isinstance(prior_0.value_type, st.SampleAndReshapeValue))
+          distributions.Normal(
+              mu=mu, sigma=sigma),
+          dist_value_type=st.SampleValue())
+      self.assertTrue(isinstance(prior_0.value_type, st.SampleValue))
 
-      with st.value_type(st.SampleAndReshapeValue()):
-        prior = st.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
-        self.assertTrue(isinstance(prior.value_type, st.SampleAndReshapeValue))
+      with st.value_type(st.SampleValue()):
+        prior = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
+        self.assertTrue(isinstance(prior.value_type, st.SampleValue))
         likelihood = st.StochasticTensor(
-            distributions.Normal, mu=prior, sigma=sigma2)
-        self.assertTrue(
-            isinstance(likelihood.value_type, st.SampleAndReshapeValue))
+            distributions.Normal(
+                mu=prior, sigma=sigma2))
+        self.assertTrue(isinstance(likelihood.value_type, st.SampleValue))
 
-      coll = tf.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
+      coll = ops.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
       self.assertEqual(coll, [prior_default, prior_0, prior, likelihood])
 
       # Also works: tf.convert_to_tensor(prior)
-      prior_default = tf.identity(prior_default)
-      prior_0 = tf.identity(prior_0)
-      prior = tf.identity(prior)
-      likelihood = tf.identity(likelihood)
+      prior_default = array_ops.identity(prior_default)
+      prior_0 = array_ops.identity(prior_0)
+      prior = array_ops.identity(prior)
+      likelihood = array_ops.identity(likelihood)
 
       # Mostly a smoke test for now...
       prior_0_val, prior_val, prior_default_val, _ = sess.run(
@@ -74,10 +82,10 @@ class StochasticTensorTest(tf.test.TestCase):
   def testMeanValue(self):
     with self.test_session() as sess:
       mu = [0.0, -1.0, 1.0]
-      sigma = tf.constant([1.1, 1.2, 1.3])
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
 
       with st.value_type(st.MeanValue()):
-        prior = st.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
+        prior = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
         self.assertTrue(isinstance(prior.value_type, st.MeanValue))
 
       prior_mean = prior.mean()
@@ -87,14 +95,15 @@ class StochasticTensorTest(tf.test.TestCase):
       self.assertAllEqual(prior_mean_val, mu)
       self.assertAllEqual(prior_mean_val, prior_value_val)
 
-  def testSampleAndReshapeValue(self):
+  def testSampleValueScalar(self):
     with self.test_session() as sess:
       mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
-      sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
+      sigma = constant_op.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
 
-      with st.value_type(st.SampleAndReshapeValue()):
+      with st.value_type(st.SampleValue()):
         prior_single = st.StochasticTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
+            distributions.Normal(
+                mu=mu, sigma=sigma))
 
       prior_single_value = prior_single.value()
       self.assertEqual(prior_single_value.get_shape(), (2, 3))
@@ -102,24 +111,10 @@ class StochasticTensorTest(tf.test.TestCase):
       prior_single_value_val = sess.run([prior_single_value])[0]
       self.assertEqual(prior_single_value_val.shape, (2, 3))
 
-      with st.value_type(st.SampleAndReshapeValue(n=2)):
-        prior_double = st.StochasticTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_double_value = prior_double.value()
-      self.assertEqual(prior_double_value.get_shape(), (4, 3))
-
-      prior_double_value_val = sess.run([prior_double_value])[0]
-      self.assertEqual(prior_double_value_val.shape, (4, 3))
-
-  def testSampleValue(self):
-    with self.test_session() as sess:
-      mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
-      sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
-
-      with st.value_type(st.SampleValue()):
+      with st.value_type(st.SampleValue(1)):
         prior_single = st.StochasticTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
+            distributions.Normal(
+                mu=mu, sigma=sigma))
         self.assertTrue(isinstance(prior_single.value_type, st.SampleValue))
 
       prior_single_value = prior_single.value()
@@ -128,9 +123,10 @@ class StochasticTensorTest(tf.test.TestCase):
       prior_single_value_val = sess.run([prior_single_value])[0]
       self.assertEqual(prior_single_value_val.shape, (1, 2, 3))
 
-      with st.value_type(st.SampleValue(n=2)):
+      with st.value_type(st.SampleValue(2)):
         prior_double = st.StochasticTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
+            distributions.Normal(
+                mu=mu, sigma=sigma))
 
       prior_double_value = prior_double.value()
       self.assertEqual(prior_double_value.get_shape(), (2, 2, 3))
@@ -141,11 +137,11 @@ class StochasticTensorTest(tf.test.TestCase):
   def testDistributionEntropy(self):
     with self.test_session() as sess:
       mu = [0.0, -1.0, 1.0]
-      sigma = tf.constant([1.1, 1.2, 1.3])
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
       with st.value_type(st.MeanValue()):
-        prior = st.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
+        prior = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
         entropy = prior.entropy()
-        deep_entropy = prior.entropy()
+        deep_entropy = prior.distribution.entropy()
         expected_deep_entropy = distributions.Normal(
             mu=mu, sigma=sigma).entropy()
         entropies = sess.run([entropy, deep_entropy, expected_deep_entropy])
@@ -155,35 +151,34 @@ class StochasticTensorTest(tf.test.TestCase):
   def testSurrogateLoss(self):
     with self.test_session():
       mu = [[3.0, -4.0, 5.0], [6.0, -7.0, 8.0]]
-      sigma = tf.constant(1.0)
+      sigma = constant_op.constant(1.0)
 
       # With default
       with st.value_type(st.MeanValue(stop_gradient=True)):
-        dt = st.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
-      loss = dt.loss([tf.constant(2.0)])
+        dt = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
+      loss = dt.loss([constant_op.constant(2.0)])
       self.assertTrue(loss is not None)
-      self.assertAllClose(dt.distribution.log_prob(mu).eval() * 2.0,
-                          loss.eval())
+      self.assertAllClose(
+          dt.distribution.log_prob(mu).eval() * 2.0, loss.eval())
 
       # With passed-in loss_fn.
       dt = st.StochasticTensor(
-          distributions.Normal,
-          mu=mu,
-          sigma=sigma,
+          distributions.Normal(
+              mu=mu, sigma=sigma),
           dist_value_type=st.MeanValue(stop_gradient=True),
           loss_fn=sge.get_score_function_with_constant_baseline(
-              baseline=tf.constant(8.0)))
-      loss = dt.loss([tf.constant(2.0)])
+              baseline=constant_op.constant(8.0)))
+      loss = dt.loss([constant_op.constant(2.0)])
       self.assertTrue(loss is not None)
       self.assertAllClose((dt.distribution.log_prob(mu) * (2.0 - 8.0)).eval(),
                           loss.eval())
 
 
-class ValueTypeTest(tf.test.TestCase):
+class ValueTypeTest(test.TestCase):
 
   def testValueType(self):
     type_mean = st.MeanValue()
-    type_reshape = st.SampleAndReshapeValue()
+    type_reshape = st.SampleValue()
     type_full = st.SampleValue()
     with st.value_type(type_mean):
       self.assertEqual(st.get_current_value_type(), type_mean)
@@ -196,61 +191,63 @@ class ValueTypeTest(tf.test.TestCase):
       st.get_current_value_type()
 
 
-class ObservedStochasticTensorTest(tf.test.TestCase):
+class ObservedStochasticTensorTest(test.TestCase):
 
   def testConstructionAndValue(self):
     with self.test_session() as sess:
       mu = [0.0, 0.1, 0.2]
-      sigma = tf.constant([1.1, 1.2, 1.3])
-      obs = tf.zeros((2, 3))
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
+      obs = array_ops.zeros((2, 3))
       z = st.ObservedStochasticTensor(
-          distributions.Normal, mu=mu, sigma=sigma, value=obs)
+          distributions.Normal(
+              mu=mu, sigma=sigma), value=obs)
       [obs_val, z_val] = sess.run([obs, z.value()])
       self.assertAllEqual(obs_val, z_val)
 
-      coll = tf.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
+      coll = ops.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
       self.assertEqual(coll, [z])
 
   def testConstructionWithUnknownShapes(self):
-    mu = tf.placeholder(tf.float32)
-    sigma = tf.placeholder(tf.float32)
-    obs = tf.placeholder(tf.float32)
+    mu = array_ops.placeholder(dtypes.float32)
+    sigma = array_ops.placeholder(dtypes.float32)
+    obs = array_ops.placeholder(dtypes.float32)
     z = st.ObservedStochasticTensor(
-        distributions.Normal, mu=mu, sigma=sigma, value=obs)
+        distributions.Normal(
+            mu=mu, sigma=sigma), value=obs)
 
-    mu2 = tf.placeholder(tf.float32, shape=[None])
-    sigma2 = tf.placeholder(tf.float32, shape=[None])
-    obs2 = tf.placeholder(tf.float32, shape=[None, None])
+    mu2 = array_ops.placeholder(dtypes.float32, shape=[None])
+    sigma2 = array_ops.placeholder(dtypes.float32, shape=[None])
+    obs2 = array_ops.placeholder(dtypes.float32, shape=[None, None])
     z2 = st.ObservedStochasticTensor(
-        distributions.Normal, mu=mu2, sigma=sigma2, value=obs2)
+        distributions.Normal(
+            mu=mu2, sigma=sigma2), value=obs2)
 
-    coll = tf.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
+    coll = ops.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
     self.assertEqual(coll, [z, z2])
 
   def testConstructionErrors(self):
     mu = [0., 0.]
     sigma = [1., 1.]
-    self.assertRaises(ValueError, st.ObservedStochasticTensor,
-                      distributions.Normal, mu=mu, sigma=sigma,
-                      value=tf.zeros((3,)))
-    self.assertRaises(ValueError, st.ObservedStochasticTensor,
-                      distributions.Normal, mu=mu, sigma=sigma,
-                      value=tf.zeros((3, 1)))
-    self.assertRaises(ValueError, st.ObservedStochasticTensor,
-                      distributions.Normal, mu=mu, sigma=sigma,
-                      value=tf.zeros((1, 2), dtype=tf.int32))
-
-
-class AutomaticDistributionImportTest(tf.test.TestCase):
-
-  def testImportNormal(self):
-    self.assertTrue(hasattr(st, "NormalTensor"))
-    self.assertTrue(callable(st.NormalTensor))
-    norm = st.NormalTensor(mu=0.0, sigma=1.0)
-    self.assertEqual(type(norm).__name__, "NormalTensor")
-    self.assertTrue(isinstance(norm, st.NormalTensor))
-    self.assertTrue(isinstance(norm, st.StochasticTensor))
+    self.assertRaises(
+        ValueError,
+        st.ObservedStochasticTensor,
+        distributions.Normal(
+            mu=mu, sigma=sigma),
+        value=array_ops.zeros((3,)))
+    self.assertRaises(
+        ValueError,
+        st.ObservedStochasticTensor,
+        distributions.Normal(
+            mu=mu, sigma=sigma),
+        value=array_ops.zeros((3, 1)))
+    self.assertRaises(
+        ValueError,
+        st.ObservedStochasticTensor,
+        distributions.Normal(
+            mu=mu, sigma=sigma),
+        value=array_ops.zeros(
+            (1, 2), dtype=dtypes.int32))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

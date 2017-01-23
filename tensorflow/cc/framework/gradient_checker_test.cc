@@ -34,8 +34,8 @@ TEST(GradientCheckerTest, BasicFloat) {
   auto x = Placeholder(scope, DT_FLOAT, Placeholder::Shape(shape));
   auto y = Square(scope, x);
   float max_error;
-  TF_ASSERT_OK(
-      ComputeGradientError<float>(scope, x, shape, y, shape, &max_error));
+  TF_ASSERT_OK(ComputeGradientError<float>(scope, {x}, {shape}, {y}, {shape},
+                                           &max_error));
   EXPECT_LT(max_error, 1e-4);
 }
 
@@ -45,8 +45,8 @@ TEST(GradientCheckerTest, BasicDouble) {
   auto x = Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape));
   auto y = Square(scope, x);
   double max_error;
-  TF_ASSERT_OK(
-      ComputeGradientError<double>(scope, x, shape, y, shape, &max_error));
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, {x}, {shape}, {y}, {shape},
+                                            &max_error));
   EXPECT_LT(max_error, 1e-10);
 }
 
@@ -61,8 +61,54 @@ TEST(GradientCheckerTest, MatMulGrad) {
   auto y = Const(scope, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, y_shape);
   auto z = MatMul(scope, x, y);
   double max_error;
-  TF_ASSERT_OK(
-      ComputeGradientError<double>(scope, x, x_shape, z, z_shape, &max_error));
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, {x}, {x_shape}, {z},
+                                            {z_shape}, &max_error));
+  EXPECT_LT(max_error, 1e-10);
+}
+
+TEST(GradientCheckerTest, SplitGrad) {
+  // Split is an op with single inputs and multiple outputs.
+  Scope scope = Scope::NewRootScope();
+  TensorShape x_shape({5, 2});
+  auto x = Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape));
+  // Split along the second dimension.
+  auto split_dim = Const(scope, 1, {});
+  auto y = Split(scope, split_dim, x, /* num_split */ 2);
+  TensorShape y_shape = TensorShape({5, 1});
+  double max_error;
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, {x}, {x_shape}, y.output,
+                                            {y_shape, y_shape}, &max_error));
+  EXPECT_LT(max_error, 1e-10);
+}
+
+TEST(GradientCheckerTest, PackGrad) {
+  // Pack is an op with multiple inputs and a single output.
+  Scope scope = Scope::NewRootScope();
+  TensorShape x_shape({1, 2, 3});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape)));
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape)));
+  auto y = Pack(scope, xs, Pack::Axis(0));
+  TensorShape y_shape({2, 1, 2, 3});
+  double max_error;
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, xs, {x_shape, x_shape}, {y},
+                                            {y_shape}, &max_error));
+  EXPECT_LT(max_error, 1e-10);
+}
+
+TEST(GradientCheckerTest, PackUnpackGrad) {
+  // Chaining a Pack op to an Unpack op allows us to test the gradient checker
+  // in a multiple input/output scenario.
+  Scope scope = Scope::NewRootScope();
+  TensorShape shape({1, 2, 3});
+  std::vector<Output> xs;
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape)));
+  xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape)));
+  auto tmp = Pack(scope, xs, Pack::Axis(0));
+  auto y = Unpack(scope, tmp, 2, Unpack::Axis(0));
+  double max_error;
+  TF_ASSERT_OK(ComputeGradientError<double>(scope, xs, {shape, shape}, y.output,
+                                            {shape, shape}, &max_error));
   EXPECT_LT(max_error, 1e-10);
 }
 

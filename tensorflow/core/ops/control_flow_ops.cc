@@ -30,6 +30,12 @@ Status SwitchShape(InferenceContext* c) {
   ShapeHandle out = c->input(0);
   c->set_output(0, out);
   c->set_output(1, out);
+
+  // Handle resource shape / dtype.
+  c->set_output_handle_shape(0, c->input_handle_shape(0));
+  c->set_output_handle_shape(1, c->input_handle_shape(0));
+  c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+  c->set_output_handle_dtype(1, c->input_handle_dtype(0));
   return Status::OK();
 }
 }  // namespace
@@ -122,7 +128,7 @@ Status MergeShape(InferenceContext* c) {
     int32 rank = c->Rank(out);
     for (int i = 1; i < c->num_inputs(); ++i) {
       ShapeHandle input = c->input(i);
-      if (c->Rank(input) != rank) {
+      if (!c->RankKnown(input) || c->Rank(input) != rank) {
         out = c->UnknownShape();
         break;
       }
@@ -314,9 +320,10 @@ Only useful as a placeholder for control edges.
 // --------------------------------------------------------------------------
 REGISTER_OP("Abort")
     .Attr("error_msg: string = ''")
+    .Attr("exit_without_error: bool = false")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
-Raise a exception to abort the process when called.
+Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal.
 
 Returns nothing but an exception.
 

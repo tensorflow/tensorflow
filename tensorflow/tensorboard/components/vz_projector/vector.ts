@@ -19,7 +19,7 @@ import {assert} from './util';
  * @fileoverview Useful vector utilities.
  */
 
-export type Vector = number[];
+export type Vector = Float32Array | number[];
 export type Point2D = [number, number];
 export type Point3D = [number, number, number];
 
@@ -43,9 +43,9 @@ export function sum(a: Vector): number {
 }
 
 /** Returns the sum of two vectors, i.e. a + b */
-export function add(a: Vector, b: Vector): Vector {
+export function add(a: Vector, b: Vector): Float32Array {
   assert(a.length === b.length, 'Vectors a and b must be of same length');
-  let result = new Array(a.length);
+  let result = new Float32Array(a.length);
   for (let i = 0; i < a.length; ++i) {
     result[i] = a[i] + b[i];
   }
@@ -53,9 +53,9 @@ export function add(a: Vector, b: Vector): Vector {
 }
 
 /** Subtracts vector b from vector a, i.e. returns a - b */
-export function sub(a: Vector, b: Vector): Vector {
+export function sub(a: Vector, b: Vector): Float32Array {
   assert(a.length === b.length, 'Vectors a and b must be of same length');
-  let result = new Array(a.length);
+  let result = new Float32Array(a.length);
   for (let i = 0; i < a.length; ++i) {
     result[i] = a[i] - b[i];
   }
@@ -92,11 +92,6 @@ export function dist2_2D(a: Vector, b: Vector): number {
   let dX = a[0] - b[0];
   let dY = a[1] - b[1];
   return dX * dX + dY * dY;
-}
-
-/** Returns the euclidean distance between 2 2D points. */
-export function dist_2D(a: Vector, b: Vector): number {
-  return Math.sqrt(dist2_2D(a, b));
 }
 
 /** Returns the square euclidean distance between two 3D points. */
@@ -151,12 +146,13 @@ export function unit(a: Vector): void {
  * @param vectors Array of vectors to be projected.
  * @param newDim The resulting dimension of the vectors.
  */
-export function projectRandom(vectors: number[][], newDim: number): number[][] {
+export function projectRandom(vectors: Float32Array[], newDim: number):
+    Float32Array[] {
   let dim = vectors[0].length;
   let N = vectors.length;
-  let newVectors: number[][] = new Array(N);
+  let newVectors: Float32Array[] = new Array(N);
   for (let i = 0; i < N; ++i) {
-    newVectors[i] = new Array(newDim);
+    newVectors[i] = new Float32Array(newDim);
   }
   // Make nDim projections.
   for (let k = 0; k < newDim; ++k) {
@@ -175,15 +171,6 @@ export function project2d(a: Vector, dir1: Vector, dir2: Vector): Point2D {
   return [dot(a, dir1), dot(a, dir2)];
 }
 
-/** Returns a vector filled with zeros */
-export function zeros(length: number): Vector {
-  let result = new Array(length);
-  for (let i = 0; i < length; ++i) {
-    result[i] = 0;
-  }
-  return result;
-}
-
 /**
  * Computes the centroid of the data points. If the provided data points are not
  * vectors, an accessor function needs to be provided.
@@ -197,7 +184,7 @@ export function centroid<T>(dataPoints: T[], accessor?: (a: T) => Vector):
     accessor = (a: T) => <any>a;
   }
   assert(dataPoints.length >= 0, '`vectors` must be of length >= 1');
-  let centroid = zeros(accessor(dataPoints[0]).length);
+  let centroid = new Float32Array(accessor(dataPoints[0]).length);
   for (let i = 0; i < dataPoints.length; ++i) {
     let dataPoint = dataPoints[i];
     let vector = accessor(dataPoint);
@@ -215,9 +202,9 @@ export function centroid<T>(dataPoints: T[], accessor?: (a: T) => Vector):
  * Generates a vector of the specified size where each component is drawn from
  * a random (0, 1) gaussian distribution.
  */
-export function rn(size: number): Vector {
+export function rn(size: number): Float32Array {
   let normal = d3.random.normal();
-  let result = new Array(size);
+  let result = new Float32Array(size);
   for (let i = 0; i < size; ++i) {
     result[i] = normal();
   }
@@ -249,7 +236,7 @@ export function cosSim(a: Vector, b: Vector): number {
  * typed array with row-first order.
  */
 export function toTypedArray<T>(
-    dataPoints: T[], accessor: (dataPoint: T) => number[]): Float32Array {
+    dataPoints: T[], accessor: (dataPoint: T) => Float32Array): Float32Array {
   let N = dataPoints.length;
   let dim = accessor(dataPoints[0]).length;
   let result = new Float32Array(N * dim);

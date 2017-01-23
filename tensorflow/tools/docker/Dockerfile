@@ -30,10 +30,9 @@ RUN pip --no-cache-dir install \
         numpy \
         scipy \
         sklearn \
+        Pillow \
         && \
     python -m ipykernel.kernelspec
-
-ENV TENSORFLOW_VERSION 0.11.0rc1
 
 # --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 # These lines will be edited automatically by parameterized_docker_build.sh. #
@@ -43,8 +42,10 @@ ENV TENSORFLOW_VERSION 0.11.0rc1
 
 # Install TensorFlow CPU version from central repo
 RUN pip --no-cache-dir install \
-    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-${TENSORFLOW_VERSION}-cp27-none-linux_x86_64.whl
+    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.0.0-cp27-none-linux_x86_64.whl
 # --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
+
+# RUN ln -s /usr/bin/python3 /usr/bin/python#
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/

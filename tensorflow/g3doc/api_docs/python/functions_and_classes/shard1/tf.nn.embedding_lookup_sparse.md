@@ -1,4 +1,4 @@
-### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None)` {#embedding_lookup_sparse}
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None, max_norm=None)` {#embedding_lookup_sparse}
 
 Computes embeddings for the given ids and weights.
 
@@ -15,7 +15,8 @@ is the sum of the size of params along dimension 0.
 *  <b>`params`</b>: A single tensor representing the complete embedding tensor,
     or a list of P tensors all of same shape except for the first dimension,
     representing sharded embedding tensors.  Alternatively, a
-    `PartitionedVariable`, created by partitioning along dimension 0.
+    `PartitionedVariable`, created by partitioning along dimension 0. Each
+    element must be appropriately sized for the given `partition_strategy`.
 *  <b>`sp_ids`</b>: N x M SparseTensor of int64 ids (typically from FeatureValueToId),
     where N is typically batch size and M is arbitrary.
 *  <b>`sp_weights`</b>: either a SparseTensor of float / double weights, or None to
@@ -31,6 +32,8 @@ is the sum of the size of params along dimension 0.
     "mean" is the weighted sum divided by the total weight.
     "sqrtn" is the weighted sum divided by the square root of the sum of the
     squares of the weights.
+*  <b>`max_norm`</b>: If not None, each embedding is normalized to have l2 norm equal
+    to max_norm before combining.
 
 ##### Returns:
 

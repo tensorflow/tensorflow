@@ -21,171 +21,179 @@ from __future__ import print_function
 
 import re
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib.framework.python.framework import tensor_util
+from tensorflow.contrib.framework.python.ops import variables as variables_lib2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.platform import test
 
 
-class FloatDTypeTest(tf.test.TestCase):
+class FloatDTypeTest(test.TestCase):
 
   def test_assert_same_float_dtype(self):
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype(None, None))
+    self.assertIs(dtypes.float32, tensor_util.assert_same_float_dtype([], None))
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype([], dtypes.float32))
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype(None, dtypes.float32))
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype([None, None], None))
     self.assertIs(
-        tf.float32, tf.contrib.framework.assert_same_float_dtype(None, None))
-    self.assertIs(
-        tf.float32, tf.contrib.framework.assert_same_float_dtype([], None))
-    self.assertIs(
-        tf.float32,
-        tf.contrib.framework.assert_same_float_dtype([], tf.float32))
-    self.assertIs(
-        tf.float32,
-        tf.contrib.framework.assert_same_float_dtype(None, tf.float32))
-    self.assertIs(
-        tf.float32,
-        tf.contrib.framework.assert_same_float_dtype([None, None], None))
-    self.assertIs(
-        tf.float32,
-        tf.contrib.framework.assert_same_float_dtype([None, None], tf.float32))
+        dtypes.float32,
+        tensor_util.assert_same_float_dtype([None, None], dtypes.float32))
 
-    const_float = tf.constant(3.0, dtype=tf.float32)
+    const_float = constant_op.constant(3.0, dtype=dtypes.float32)
     self.assertIs(
-        tf.float32,
-        tf.contrib.framework.assert_same_float_dtype([const_float], tf.float32))
-    self.assertRaises(
-        ValueError,
-        tf.contrib.framework.assert_same_float_dtype, [const_float], tf.int32)
+        dtypes.float32,
+        tensor_util.assert_same_float_dtype([const_float], dtypes.float32))
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
+                      [const_float], dtypes.int32)
 
-    sparse_float = tf.SparseTensor(
-        tf.constant([[111], [232]], tf.int64),
-        tf.constant([23.4, -43.2], tf.float32),
-        tf.constant([500], tf.int64))
-    self.assertIs(tf.float32, tf.contrib.framework.assert_same_float_dtype(
-        [sparse_float], tf.float32))
-    self.assertRaises(
-        ValueError,
-        tf.contrib.framework.assert_same_float_dtype, [sparse_float], tf.int32)
-    self.assertRaises(
-        ValueError, tf.contrib.framework.assert_same_float_dtype,
-        [const_float, None, sparse_float], tf.float64)
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype([sparse_float],
+                                                      dtypes.float32))
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
+                      [sparse_float], dtypes.int32)
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
+                      [const_float, None, sparse_float], dtypes.float64)
 
-    self.assertIs(
-        tf.float32,
-        tf.contrib.framework.assert_same_float_dtype(
-            [const_float, sparse_float]))
-    self.assertIs(tf.float32, tf.contrib.framework.assert_same_float_dtype(
-        [const_float, sparse_float], tf.float32))
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype(
+                      [const_float, sparse_float]))
+    self.assertIs(dtypes.float32,
+                  tensor_util.assert_same_float_dtype(
+                      [const_float, sparse_float], dtypes.float32))
 
-    const_int = tf.constant(3, dtype=tf.int32)
-    self.assertRaises(ValueError, tf.contrib.framework.assert_same_float_dtype,
+    const_int = constant_op.constant(3, dtype=dtypes.int32)
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
                       [sparse_float, const_int])
-    self.assertRaises(ValueError, tf.contrib.framework.assert_same_float_dtype,
-                      [sparse_float, const_int], tf.int32)
-    self.assertRaises(ValueError, tf.contrib.framework.assert_same_float_dtype,
-                      [sparse_float, const_int], tf.float32)
-    self.assertRaises(
-        ValueError, tf.contrib.framework.assert_same_float_dtype, [const_int])
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
+                      [sparse_float, const_int], dtypes.int32)
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
+                      [sparse_float, const_int], dtypes.float32)
+    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
+                      [const_int])
 
 
-class AssertScalarTest(tf.test.TestCase):
+class AssertScalarTest(test.TestCase):
 
   def test_assert_scalar(self):
-    tf.contrib.framework.assert_scalar(tf.constant(3))
-    tf.contrib.framework.assert_scalar(tf.constant("foo"))
-    tf.contrib.framework.assert_scalar(3)
-    tf.contrib.framework.assert_scalar("foo")
+    tensor_util.assert_scalar(constant_op.constant(3))
+    tensor_util.assert_scalar(constant_op.constant("foo"))
+    tensor_util.assert_scalar(3)
+    tensor_util.assert_scalar("foo")
     with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
-      tf.contrib.framework.assert_scalar(tf.constant([3, 4]))
+      tensor_util.assert_scalar(constant_op.constant([3, 4]))
 
   def test_assert_scalar_int(self):
-    tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.int32))
-    tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.int64))
-    tf.contrib.framework.assert_scalar_int(3)
+    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int32))
+    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int64))
+    tensor_util.assert_scalar_int(3)
     with self.assertRaisesRegexp(ValueError, "Unexpected type"):
-      tf.contrib.framework.assert_scalar_int(tf.constant(3, dtype=tf.float32))
+      tensor_util.assert_scalar_int(
+          constant_op.constant(
+              3, dtype=dtypes.float32))
     with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
-      tf.contrib.framework.assert_scalar_int(
-          tf.constant([3, 4], dtype=tf.int32))
+      tensor_util.assert_scalar_int(
+          constant_op.constant(
+              [3, 4], dtype=dtypes.int32))
 
 
-class LocalVariabletest(tf.test.TestCase):
+class LocalVariabletest(test.TestCase):
 
   def test_local_variable(self):
     with self.test_session() as sess:
-      self.assertEquals([], tf.local_variables())
+      self.assertEquals([], variables_lib.local_variables())
       value0 = 42
-      tf.contrib.framework.local_variable(value0)
+      variables_lib2.local_variable(value0)
       value1 = 43
-      tf.contrib.framework.local_variable(value1)
-      variables = tf.local_variables()
+      variables_lib2.local_variable(value1)
+      variables = variables_lib.local_variables()
       self.assertEquals(2, len(variables))
-      self.assertRaises(tf.OpError, sess.run, variables)
-      tf.initialize_variables(variables).run()
+      self.assertRaises(errors_impl.OpError, sess.run, variables)
+      variables_lib.initialize_variables(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
 
-class ReduceSumNTest(tf.test.TestCase):
+class ReduceSumNTest(test.TestCase):
 
   def test_reduce_sum_n(self):
     with self.test_session():
-      a = tf.constant(1)
-      b = tf.constant([2])
-      c = tf.constant([[3, 4], [5, 6]])
-      self.assertEqual(21, tf.contrib.framework.reduce_sum_n([a, b, c]).eval())
+      a = constant_op.constant(1)
+      b = constant_op.constant([2])
+      c = constant_op.constant([[3, 4], [5, 6]])
+      self.assertEqual(21, tensor_util.reduce_sum_n([a, b, c]).eval())
 
 
-class WithShapeTest(tf.test.TestCase):
+class WithShapeTest(test.TestCase):
 
-  def _assert_with_shape(
-      self, tensor, expected_value, expected_shape, unexpected_shapes):
+  def _assert_with_shape(self, tensor, expected_value, expected_shape,
+                         unexpected_shapes):
     for unexpected_shape in unexpected_shapes:
-      self.assertRaises(
-          ValueError, tf.contrib.framework.with_shape, unexpected_shape, tensor)
+      self.assertRaises(ValueError, tensor_util.with_shape, unexpected_shape,
+                        tensor)
       pattern = (
           r"\[Wrong shape for %s \[expected\] \[actual\].\] \[%s\] \[%s\]" %
-          (tensor.name,
-           " ".join([str(dim) for dim in unexpected_shape]),
+          (tensor.name, " ".join([str(dim) for dim in unexpected_shape]),
            " ".join([str(dim) for dim in expected_shape])))
-      self.assertRaisesRegexp(
-          tf.OpError,
-          re.compile(pattern),
-          tf.contrib.framework.with_shape(
-              tf.constant(unexpected_shape), tensor).eval)
-      expected_placeholder = tf.placeholder(tf.float32)
-      self.assertRaisesRegexp(
-          tf.OpError,
-          re.compile(pattern),
-          tf.contrib.framework.with_same_shape(
-              expected_placeholder, tensor).eval, {
-                  expected_placeholder: np.ones(unexpected_shape)
-              })
+      self.assertRaisesRegexp(errors_impl.OpError,
+                              re.compile(pattern),
+                              tensor_util.with_shape(
+                                  constant_op.constant(unexpected_shape),
+                                  tensor).eval)
+      expected_placeholder = array_ops.placeholder(dtypes.float32)
+      self.assertRaisesRegexp(errors_impl.OpError,
+                              re.compile(pattern),
+                              tensor_util.with_same_shape(expected_placeholder,
+                                                          tensor).eval,
+                              {expected_placeholder: np.ones(unexpected_shape)})
 
-    self.assertIs(tensor, tf.contrib.framework.with_shape(
-        expected_shape, tensor))
-    self.assertIs(tensor, tf.contrib.framework.with_same_shape(
-        tf.constant(1, shape=expected_shape), tensor))
-    tensor_with_shape = tf.contrib.framework.with_shape(
-        tf.constant(expected_shape), tensor)
+    self.assertIs(tensor, tensor_util.with_shape(expected_shape, tensor))
+    self.assertIs(
+        tensor,
+        tensor_util.with_same_shape(
+            constant_op.constant(
+                1, shape=expected_shape), tensor))
+    tensor_with_shape = tensor_util.with_shape(
+        constant_op.constant(expected_shape), tensor)
     np.testing.assert_array_equal(expected_value, tensor_with_shape.eval())
-    tensor_with_same_shape = tf.contrib.framework.with_same_shape(
-        expected_placeholder, tensor)
-    np.testing.assert_array_equal(expected_value, tensor_with_same_shape.eval({
-        expected_placeholder: np.ones(expected_shape)
-    }))
+    tensor_with_same_shape = tensor_util.with_same_shape(expected_placeholder,
+                                                         tensor)
+    np.testing.assert_array_equal(expected_value,
+                                  tensor_with_same_shape.eval({
+                                      expected_placeholder:
+                                          np.ones(expected_shape)
+                                  }))
 
   def test_with_shape_invalid_expected_shape(self):
     with self.test_session():
-      self.assertRaisesRegexp(
-          ValueError, "Invalid rank", tf.contrib.framework.with_shape,
-          [[1], [2]], tf.constant(1.0))
+      self.assertRaisesRegexp(ValueError, "Invalid rank",
+                              tensor_util.with_shape, [[1], [2]],
+                              constant_op.constant(1.0))
 
   def test_with_shape_invalid_type(self):
     with self.test_session():
-      self.assertRaisesRegexp(
-          ValueError, "Invalid dtype", tf.contrib.framework.with_shape,
-          [1.1], tf.constant([1.0]))
-      self.assertRaisesRegexp(
-          ValueError, "Invalid dtype", tf.contrib.framework.with_shape,
-          np.array([1.1]), tf.constant(1.0))
-      self.assertRaisesRegexp(
-          ValueError, "Invalid dtype", tf.contrib.framework.with_shape,
-          tf.constant(np.array([1.1])), tf.constant(1.0))
+      self.assertRaisesRegexp(ValueError, "Invalid dtype",
+                              tensor_util.with_shape, [1.1],
+                              constant_op.constant([1.0]))
+      self.assertRaisesRegexp(ValueError, "Invalid dtype",
+                              tensor_util.with_shape,
+                              np.array([1.1]), constant_op.constant(1.0))
+      self.assertRaisesRegexp(ValueError, "Invalid dtype",
+                              tensor_util.with_shape,
+                              constant_op.constant(np.array([1.1])),
+                              constant_op.constant(1.0))
 
   def test_with_shape_0(self):
     with self.test_session():
@@ -193,7 +201,11 @@ class WithShapeTest(tf.test.TestCase):
       shape = [0]
       unexpected_shapes = [[1], [2], [1, 1]]
       self._assert_with_shape(
-          tf.constant(value, shape=shape), value, shape, unexpected_shapes)
+          constant_op.constant(
+              value, shape=shape),
+          value,
+          shape,
+          unexpected_shapes)
 
   def test_with_shape_1(self):
     with self.test_session():
@@ -201,7 +213,11 @@ class WithShapeTest(tf.test.TestCase):
       shape = [1]
       unexpected_shapes = [[0], [2], [1, 1]]
       self._assert_with_shape(
-          tf.constant(value, shape=shape), value, shape, unexpected_shapes)
+          constant_op.constant(
+              value, shape=shape),
+          value,
+          shape,
+          unexpected_shapes)
 
   def test_with_shape_2(self):
     with self.test_session():
@@ -209,7 +225,11 @@ class WithShapeTest(tf.test.TestCase):
       shape = [2]
       unexpected_shapes = [[0], [1], [2, 1]]
       self._assert_with_shape(
-          tf.constant(value, shape=shape), value, shape, unexpected_shapes)
+          constant_op.constant(
+              value, shape=shape),
+          value,
+          shape,
+          unexpected_shapes)
 
   def test_with_shape_2x2(self):
     with self.test_session():
@@ -217,191 +237,192 @@ class WithShapeTest(tf.test.TestCase):
       shape = [2, 2]
       unexpected_shapes = [[0], [1], [2, 1]]
       self._assert_with_shape(
-          tf.constant(value, shape=shape), value, shape, unexpected_shapes)
+          constant_op.constant(
+              value, shape=shape),
+          value,
+          shape,
+          unexpected_shapes)
 
   def test_with_shape_none(self):
     with self.test_session():
-      tensor_no_shape = tf.placeholder(tf.float32)
+      tensor_no_shape = array_ops.placeholder(dtypes.float32)
 
       compatible_shape = [2, 2]
-      with_present_2x2 = tf.contrib.framework.with_shape(
-          compatible_shape, tensor_no_shape)
+      with_present_2x2 = tensor_util.with_shape(compatible_shape,
+                                                tensor_no_shape)
       self.assertEquals(compatible_shape, with_present_2x2.get_shape().dims)
-      with_future_2x2 = tf.contrib.framework.with_shape(
-          tf.constant(compatible_shape), tensor_no_shape)
+      with_future_2x2 = tensor_util.with_shape(
+          constant_op.constant(compatible_shape), tensor_no_shape)
 
       array_2x2 = [[42.0, 43.0], [44.0, 45.0]]
       for tensor_2x2 in [with_present_2x2, with_future_2x2]:
-        np.testing.assert_array_equal(
-            array_2x2, tensor_2x2.eval({tensor_no_shape: array_2x2}))
-        self.assertRaisesRegexp(
-            tf.OpError, "Wrong shape", tensor_2x2.eval,
-            {tensor_no_shape: [42.0, 43.0]})
-        self.assertRaisesRegexp(
-            tf.OpError, "Wrong shape", tensor_2x2.eval,
-            {tensor_no_shape: [42.0]})
+        np.testing.assert_array_equal(array_2x2,
+                                      tensor_2x2.eval({
+                                          tensor_no_shape: array_2x2
+                                      }))
+        self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
+                                tensor_2x2.eval,
+                                {tensor_no_shape: [42.0, 43.0]})
+        self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
+                                tensor_2x2.eval, {tensor_no_shape: [42.0]})
 
   def test_with_shape_partial(self):
     with self.test_session():
-      tensor_partial_shape = tf.placeholder(tf.float32)
+      tensor_partial_shape = array_ops.placeholder(dtypes.float32)
       tensor_partial_shape.set_shape([None, 2])
 
       for incompatible_shape in [[0], [1]]:
         self.assertRaisesRegexp(
             ValueError, r"Shapes \(\?, 2\) and \([01],\) are not compatible",
-            tf.contrib.framework.with_shape,
-            incompatible_shape, tensor_partial_shape)
+            tensor_util.with_shape, incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[1, 2, 1]]:
-        self.assertRaisesRegexp(
-            ValueError, "Dimensions must be equal",
-            tf.contrib.framework.with_shape,
-            incompatible_shape, tensor_partial_shape)
+        self.assertRaisesRegexp(ValueError, "Dimensions must be equal",
+                                tensor_util.with_shape, incompatible_shape,
+                                tensor_partial_shape)
       for incompatible_shape in [[2, 1]]:
         self.assertRaisesRegexp(
             ValueError, r"Shapes \(\?, 2\) and \(2, 1\) are not compatible",
-            tf.contrib.framework.with_shape,
-            incompatible_shape, tensor_partial_shape)
+            tensor_util.with_shape, incompatible_shape, tensor_partial_shape)
 
       compatible_shape = [2, 2]
-      with_present_2x2 = tf.contrib.framework.with_shape(
-          compatible_shape, tensor_partial_shape)
+      with_present_2x2 = tensor_util.with_shape(compatible_shape,
+                                                tensor_partial_shape)
       self.assertEquals(compatible_shape, with_present_2x2.get_shape().dims)
-      with_future_2x2 = tf.contrib.framework.with_shape(
-          tf.constant(compatible_shape), tensor_partial_shape)
+      with_future_2x2 = tensor_util.with_shape(
+          constant_op.constant(compatible_shape), tensor_partial_shape)
 
       array_2x2 = [[42.0, 43.0], [44.0, 45.0]]
       for tensor_2x2 in [with_present_2x2, with_future_2x2]:
-        np.testing.assert_array_equal(
-            array_2x2, tensor_2x2.eval({tensor_partial_shape: array_2x2}))
-        self.assertRaises(
-            ValueError, tensor_2x2.eval, {tensor_partial_shape: [42.0, 43.0]})
-        self.assertRaises(
-            ValueError, tensor_2x2.eval, {tensor_partial_shape: [42.0]})
+        np.testing.assert_array_equal(array_2x2,
+                                      tensor_2x2.eval({
+                                          tensor_partial_shape: array_2x2
+                                      }))
+        self.assertRaises(ValueError, tensor_2x2.eval,
+                          {tensor_partial_shape: [42.0, 43.0]})
+        self.assertRaises(ValueError, tensor_2x2.eval,
+                          {tensor_partial_shape: [42.0]})
 
 
-class ConvertToTensorOrSparseTensorTest(tf.test.TestCase):
-
-  def test_convert_dense(self):
-    with self.test_session():
-      value = [42, 43]
-      from_value = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
-          value)
-      self.assertAllEqual(value, from_value.eval())
-
-  def test_convert_sparse(self):
-    with self.test_session():
-      indices = [[0, 1], [1, 0]]
-      values = [42, 43]
-      shape = [2, 2]
-      sparse_tensor_value = tf.SparseTensorValue(indices, values, shape)
-      sparse_tensor = tf.SparseTensor.from_value(sparse_tensor_value)
-      from_value = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
-          sparse_tensor_value).eval()
-      from_tensor = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
-          sparse_tensor).eval()
-      for convertee in [from_value, from_tensor]:
-        self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
-        self.assertAllEqual(sparse_tensor_value.values, convertee.values)
-        self.assertAllEqual(sparse_tensor_value.shape, convertee.shape)
-
-
-class RemoveSqueezableDimensionsTest(tf.test.TestCase):
+class RemoveSqueezableDimensionsTest(test.TestCase):
 
   def testRemoveSqueezableDimensions(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
+        predictions_have_static_shape=False,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=False,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_extraLabelDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=True)
+        predictions_have_static_shape=False,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=False,
+        labels_have_extra_dim=True)
 
   def testRemoveSqueezableDimensions_staticLabel(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
+        predictions_have_static_shape=False,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=True,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_staticLabel_extraLabelDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=True)
+        predictions_have_static_shape=False,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=True,
+        labels_have_extra_dim=True)
 
   def testRemoveSqueezableDimensions_extraPredictionDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=True,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
+        predictions_have_static_shape=False,
+        predictions_have_extra_dim=True,
+        labels_have_static_shape=False,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_extraPredictionDim_staticLabel(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=True,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
+        predictions_have_static_shape=False,
+        predictions_have_extra_dim=True,
+        labels_have_static_shape=True,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_staticPrediction(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
+        predictions_have_static_shape=True,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=False,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_staticPrediction_extraLabelDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=True)
+        predictions_have_static_shape=True,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=False,
+        labels_have_extra_dim=True)
 
   def testRemoveSqueezableDimensions_static(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
+        predictions_have_static_shape=True,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=True,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_static_extraLabelDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=True)
+        predictions_have_static_shape=True,
+        predictions_have_extra_dim=False,
+        labels_have_static_shape=True,
+        labels_have_extra_dim=True)
 
   def testRemoveSqueezableDimensions_staticPrediction_extraPredictionDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=True,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
+        predictions_have_static_shape=True,
+        predictions_have_extra_dim=True,
+        labels_have_static_shape=False,
+        labels_have_extra_dim=False)
 
   def testRemoveSqueezableDimensions_static_extraPredictionDim(self):
     self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=True,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
+        predictions_have_static_shape=True,
+        predictions_have_extra_dim=True,
+        labels_have_static_shape=True,
+        labels_have_extra_dim=False)
 
   # TODO(ptucker): Replace this with parameterized test.
-  def _testRemoveSqueezableDimensions(
-      self,
-      predictions_have_static_shape,
-      predictions_have_extra_dim,
-      labels_have_static_shape,
-      labels_have_extra_dim):
+  def _testRemoveSqueezableDimensions(self, predictions_have_static_shape,
+                                      predictions_have_extra_dim,
+                                      labels_have_static_shape,
+                                      labels_have_extra_dim):
     assert not (predictions_have_extra_dim and labels_have_extra_dim)
     predictions_value = (0, 1, 1, 0, 0, 1, 0)
     labels_value = (0, 0, 1, 1, 0, 0, 0)
 
-    input_predictions_value = (
-        [[p] for p in predictions_value] if predictions_have_extra_dim else
-        predictions_value)
-    input_labels_value = (
-        [[l] for l in labels_value] if labels_have_extra_dim else labels_value)
+    input_predictions_value = ([[p] for p in predictions_value] if
+                               predictions_have_extra_dim else
+                               predictions_value)
+    input_labels_value = ([[l] for l in labels_value] if labels_have_extra_dim
+                          else labels_value)
 
-    with tf.Graph().as_default() as g:
+    with ops.Graph().as_default() as g:
       feed_dict = {}
       if predictions_have_static_shape:
-        predictions = tf.constant(input_predictions_value, dtype=tf.int32)
+        predictions = constant_op.constant(
+            input_predictions_value, dtype=dtypes.int32)
       else:
-        predictions = tf.placeholder(dtype=tf.int32, name="predictions")
+        predictions = array_ops.placeholder(
+            dtype=dtypes.int32, name="predictions")
         feed_dict[predictions] = input_predictions_value
       if labels_have_static_shape:
-        labels = tf.constant(input_labels_value, dtype=tf.int32)
+        labels = constant_op.constant(input_labels_value, dtype=dtypes.int32)
       else:
-        labels = tf.placeholder(dtype=tf.int32, name="labels")
+        labels = array_ops.placeholder(dtype=dtypes.int32, name="labels")
         feed_dict[labels] = input_labels_value
 
       squeezed_predictions, squeezed_labels = (
-          tf.contrib.framework.remove_squeezable_dimensions(
-              predictions, labels))
+          tensor_util.remove_squeezable_dimensions(predictions, labels))
       with self.test_session(g):
-        tf.initialize_local_variables().run()
+        variables_lib.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))
         self.assertAllClose(
@@ -409,4 +430,4 @@ class RemoveSqueezableDimensionsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

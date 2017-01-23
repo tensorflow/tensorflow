@@ -291,7 +291,7 @@ genrule(
           "#define HAVE_PCRE\n" +
           "#define HAVE_POPEN\n" +
           "#define PACKAGE_BUGREPORT \"http://www.swig.org\"\n" +
-          "#define PACKAGE_VERSION \"3.0.2\"\n" +
+          "#define PACKAGE_VERSION \"3.0.8\"\n" +
           "#define STDC_HEADERS\n" +
           "#define SWIG_CXX \"bazel4lyfe\"\n" +
           "#define SWIG_LIB \"external/swig/Lib\"\n" +
@@ -323,6 +323,7 @@ genrule(
           "    -e '/swig_pike/d'" +
           "    -e '/swig_r/d'" +
           "    -e '/swig_ruby/d'" +
+          "    -e '/swig_scilab/d'" +
           "    -e '/swig_sexp/d'" +
           "    -e '/swig_tcl/d'" +
           "    -e '/swig_uffi/d'" +

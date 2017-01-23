@@ -20,18 +20,11 @@ from __future__ import print_function
 
 import argparse
 import os
+import sys
 
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.datasets import mnist
-
-SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
-
-TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'  # MNIST filenames
-TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
-TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
-TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
-
 
 FLAGS = None
 
@@ -102,6 +95,5 @@ if __name__ == '__main__':
       set.\
       """
   )
-  FLAGS = parser.parse_args()
-
-  tf.app.run()
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

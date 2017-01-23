@@ -36,7 +36,6 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
@@ -44,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -52,6 +52,31 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
+
+
+# Op names which identify variable reads which should be saved.
+_VARIABLE_OPS = set(["Variable",
+                     "VariableV2",
+                     "AutoReloadVariable",
+                     "ReadVariableOp",
+                     "ResourceGather"])
+
+
+def _set_cpu0(device_string):
+  """Creates a new device string based on `device_string` but using /CPU:0.
+
+  If the device is already on /CPU:0, this is a no-op.
+
+  Args:
+    device_string: A device string.
+
+  Returns:
+    A device string.
+  """
+  parsed_device = pydev.DeviceSpec.from_string(device_string)
+  parsed_device.device_type = "CPU"
+  parsed_device.device_index = 0
+  return parsed_device.to_string()
 
 
 class BaseSaverBuilder(object):
@@ -129,7 +154,24 @@ class BaseSaverBuilder(object):
           validate_shape=restored_shapes is None and
           self.op.get_shape().is_fully_defined())
 
-  def __init__(self, write_version=saver_pb2.SaverDef.V1):
+  class ResourceVariableSaveable(SaveableObject):
+    """SaveableObject implementation that handles ResourceVariables."""
+
+    def __init__(self, var, slice_spec, name):
+      self.read_op = var
+      spec = BaseSaverBuilder.SaveSpec(var, slice_spec, name)
+      super(BaseSaverBuilder.ResourceVariableSaveable, self).__init__(
+          var, [spec], name)
+
+    def restore(self, restored_tensors, restored_shapes):
+      restored_tensor = restored_tensors[0]
+      if restored_shapes is not None:
+        restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
+      return resource_variable_ops.assign_variable_op(
+          self.read_op.op.inputs[0],
+          restored_tensor)
+
+  def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version
 
   def save_op(self, filename_tensor, saveables):
@@ -355,8 +397,7 @@ class BaseSaverBuilder(object):
       # available on the GPU.
       # TODO(touts): Re-enable restore on GPU when we can support annotating
       # string tensors as "HostMemory" inputs.
-      with ops.device(
-          graph_util.set_cpu0(saveable.device) if saveable.device else None):
+      with ops.device(_set_cpu0(saveable.device) if saveable.device else None):
         with ops.control_dependencies(restore_control_inputs):
           tensors = self.restore_op(filename_tensor, saveable, preferred_shard)
           shapes = None
@@ -406,8 +447,7 @@ class BaseSaverBuilder(object):
 
   @staticmethod
   def _IsVariable(v):
-    return isinstance(v, ops.Tensor) and (v.op.type == "Variable" or
-                                          v.op.type == "AutoReloadVariable")
+    return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
 
   def _GroupByDevices(self, saveables):
     """Group Variable tensor slices per device.
@@ -461,6 +501,11 @@ class BaseSaverBuilder(object):
     for var in op_list:
       if isinstance(var, BaseSaverBuilder.SaveableObject):
         names_to_saveables[var.name] = var
+      elif isinstance(var, variables.PartitionedVariable):
+        if var.name in names_to_saveables:
+          raise ValueError("At least two variables have the same name: %s" %
+                           var.name)
+        names_to_saveables[var.name] = var
       elif isinstance(var, variables.Variable) and var._save_slice_info:
         name = var._save_slice_info.full_name
         if name in names_to_saveables:
@@ -471,7 +516,7 @@ class BaseSaverBuilder(object):
         else:
           names_to_saveables[name] = [var]
       else:
-        var = ops.convert_to_tensor(var, as_ref=True)
+        var = ops.internal_convert_to_tensor(var, as_ref=True)
         if not BaseSaverBuilder._IsVariable(var):
           raise TypeError("Variable to save is not a Variable: %s" % var)
         name = var.op.name
@@ -511,7 +556,9 @@ class BaseSaverBuilder(object):
       op = names_to_saveables[name]
       if isinstance(op, BaseSaverBuilder.SaveableObject):
         self._AddSaveable(saveables, seen_ops, op)
-      elif isinstance(op, (list, tuple)):
+      elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
+        if isinstance(op, variables.PartitionedVariable):
+          op = list(op)
         # A set of slices.
         slice_name = None
         # pylint: disable=protected-access
@@ -532,12 +579,16 @@ class BaseSaverBuilder(object):
         # pylint: enable=protected-access
       else:
         # A variable or tensor.
-        variable = ops.convert_to_tensor(op, as_ref=True)
+        variable = ops.internal_convert_to_tensor(op, as_ref=True)
         if not BaseSaverBuilder._IsVariable(variable):
           raise TypeError("names_to_saveables must be a dict mapping string "
                           "names to Tensors/Variables. Not a variable: %s" %
                           variable)
-        saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
+        if variable.op.type in ["Variable", "VariableV2", "AutoReloadVariable"]:
+          saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
+        else:
+          saveable = BaseSaverBuilder.ResourceVariableSaveable(
+              variable, "", name)
         self._AddSaveable(saveables, seen_ops, saveable)
     return saveables
 
@@ -899,7 +950,7 @@ class Saver(object):
                builder=None,
                defer_build=False,
                allow_empty=False,
-               write_version=saver_pb2.SaverDef.V1,
+               write_version=saver_pb2.SaverDef.V2,
                pad_step_number=False):
     """Creates a `Saver`.
 
@@ -966,10 +1017,10 @@ class Saver(object):
         variables in the graph. Otherwise, construct the saver anyway and make
         it a no-op.
       write_version: controls what format to use when saving checkpoints.  It
-        also affects certain filepath matching logic.  Defaults to V1
-        currently, and will be switched to the more memory-efficient V2 format
-        in the future.  If set to V2, the Saver is still able to restore from
-        old V1 checkpoints.
+        also affects certain filepath matching logic.  The V2 format is the
+        recommended choice: it is much more optimized than V1 in terms of
+        memory required and latency incurred during restore.  Regardless of
+        this flag, the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -1000,6 +1051,7 @@ class Saver(object):
       self.build()
     if self.saver_def:
       self._check_saver_def()
+      self._write_version = self.saver_def.version
 
   def build(self):
     """Builds saver_def."""
@@ -1283,11 +1335,10 @@ class Saver(object):
       latest_filename = "checkpoint"
     if self._write_version != saver_pb2.SaverDef.V2:
       logging.warning("*******************************************************")
-      logging.warning("TensorFlow's V1 checkpoint format is deprecated;"
-                      " V2 will become the default shortly after 10/31/2016.")
-      logging.warning("Consider switching to the more efficient V2 format now:")
+      logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
+      logging.warning("Consider switching to the more efficient V2 format:")
       logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
-      logging.warning("to prevent breakage.")
+      logging.warning("now on by default.")
       logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
@@ -1343,7 +1394,8 @@ class Saver(object):
                         filename=None,
                         collection_list=None,
                         as_text=False,
-                        export_scope=None):
+                        export_scope=None,
+                        clear_devices=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1351,6 +1403,8 @@ class Saver(object):
       collection_list: List of string keys to collect.
       as_text: If `True`, writes the meta_graph as an ASCII proto.
       export_scope: Optional `string`. Name scope to remove.
+      clear_devices: Whether or not to clear the device field for an `Operation`
+        or `Tensor` during export.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1361,7 +1415,8 @@ class Saver(object):
         saver_def=self.saver_def,
         collection_list=collection_list,
         as_text=as_text,
-        export_scope=export_scope)
+        export_scope=export_scope,
+        clear_devices=clear_devices)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1377,26 +1432,9 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
-
-    Raises:
-      ValueError: DEPRECATED, do not rely on this Error.  If the given
-        `save_path` does not point to a file.
     """
     if self._is_empty:
       return
-
-    # NOTE(zongheng): checking at the Python layer prevents the underlying
-    # restore Op to handle more than one checkpoint format, potentially.  This
-    # is a DEPRECATED error and might be removed in the future.
-    #
-    # Performs this check only for V1, as the V2 restore op can read either a
-    # V1 ckpt or a V2 ckpt, making this check invalid.
-    if self.saver_def.version == saver_pb2.SaverDef.V1:
-      file_path = _prefix_to_checkpoint_path(save_path, self.saver_def.version)
-      if not file_io.get_matching_files(file_path):
-        raise ValueError("Restore called with invalid save path: %r. "
-                         "File path is: %r" % (save_path, file_path))
-
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
@@ -1413,7 +1451,7 @@ class Saver(object):
                                   export_scope=export_scope)
 
 
-def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
+def _prefix_to_checkpoint_path(prefix, format_version):
   """Returns the pathname of a checkpoint file, given the checkpoint prefix.
 
   For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,
@@ -1461,8 +1499,8 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
-def import_meta_graph(meta_graph_or_file, import_scope=None,
-                      **kwargs):
+def import_meta_graph(meta_graph_or_file, clear_devices=False,
+                      import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
@@ -1516,6 +1554,8 @@ def import_meta_graph(meta_graph_or_file, import_scope=None,
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during import.
     import_scope: Optional `string`. Name scope to add. Only used when
       initializing from protocol buffer.
     **kwargs: Optional keyed arguments.
@@ -1532,6 +1572,7 @@ def import_meta_graph(meta_graph_or_file, import_scope=None,
     meta_graph_def = meta_graph_or_file
 
   meta_graph.import_scoped_meta_graph(meta_graph_def,
+                                      clear_devices=clear_devices,
                                       import_scope=import_scope,
                                       **kwargs)
   if meta_graph_def.HasField("saver_def"):
@@ -1555,6 +1596,7 @@ def export_meta_graph(filename=None,
                       as_text=False,
                       graph=None,
                       export_scope=None,
+                      clear_devices=False,
                       **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -1576,6 +1618,8 @@ def export_meta_graph(filename=None,
       the subgraph. The scope name will be striped from the node definitions
       for easy import later into new name scopes. If `None`, the whole graph
       is exported. graph_def and export_scope cannot both be specified.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during export.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1593,6 +1637,7 @@ def export_meta_graph(filename=None,
       as_text=as_text,
       graph=graph,
       export_scope=export_scope,
+      clear_devices=clear_devices,
       **kwargs)
   return meta_graph_def
 

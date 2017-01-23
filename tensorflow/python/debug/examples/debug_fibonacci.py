@@ -17,19 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python import debug as tf_debug
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_integer("tensor_size", 30,
-                     "Size of tensor. E.g., if the value is 30, the tensors "
-                     "will have shape [30, 30].")
-flags.DEFINE_integer("length", 20,
-                     "Length of the fibonacci sequence to compute.")
+FLAGS = None
 
 
 def main(_):
@@ -45,13 +42,34 @@ def main(_):
   for i in xrange(2, FLAGS.length):
     n0, n1 = n1, tf.add(n0, n1, name="node_%.2d" % i)
 
-  sess.run(tf.initialize_all_variables())
+  sess.run(tf.global_variables_initializer())
 
   # Wrap the TensorFlow Session object for debugging.
-  sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+  sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
 
   sess.run(n1)
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--tensor_size",
+      type=int,
+      default=30,
+      help="""\
+      Size of tensor. E.g., if the value is 30, the tensors will have shape
+      [30, 30].\
+      """)
+  parser.add_argument(
+      "--length",
+      type=int,
+      default=20,
+      help="Length of the fibonacci sequence to compute.")
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

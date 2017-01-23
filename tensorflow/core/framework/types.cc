@@ -37,6 +37,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
+const char* const DEVICE_SYCL = "SYCL";
 
 string DataTypeString(DataType dtype) {
   if (IsRefType(dtype)) {
@@ -87,8 +88,8 @@ string DataTypeString(DataType dtype) {
     case DT_RESOURCE:
       return "resource";
     default:
-      LOG(FATAL) << "Unrecognized DataType enum value " << dtype;
-      return "";
+      LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
+      return strings::StrCat("unknown dtype enum (", dtype, ")");
   }
 }
 

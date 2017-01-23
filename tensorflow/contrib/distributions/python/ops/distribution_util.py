@@ -20,14 +20,18 @@ from __future__ import print_function
 
 import functools
 import hashlib
+import math
 import numpy as np
 
+from tensorflow.contrib import framework as contrib_framework
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -99,6 +103,36 @@ def assert_symmetric(matrix):
   matrix_t = array_ops.matrix_transpose(matrix)
   return control_flow_ops.with_dependencies(
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
+
+
+def same_dynamic_shape(a, b):
+  """Returns whether a and b have the same dynamic shape.
+
+  Args:
+    a: `Tensor`
+    b: `Tensor`
+
+  Returns:
+    `Boolean` `Tensor` representing if both tensors have the same shape.
+  """
+  a = ops.convert_to_tensor(a, name="a")
+  b = ops.convert_to_tensor(b, name="b")
+
+  # One of the shapes isn't fully defined, so we need to use the dynamic
+  # shape.
+  return control_flow_ops.cond(
+      math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
+      # Here we can't just do math_ops.equal(a.shape, b.shape), since
+      # static shape inference may break the equality comparison between
+      # shape(a) and shape(b) in math_ops.equal.
+      lambda: math_ops.reduce_all(math_ops.equal(
+          array_ops.concat((
+              array_ops.shape(a),
+              array_ops.shape(b)), 0),
+          array_ops.concat((
+              array_ops.shape(b),
+              array_ops.shape(a)), 0))),
+      lambda: constant_op.constant(False))
 
 
 def get_logits_and_prob(
@@ -332,12 +366,12 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = math_ops.select(math_ops.less(shift, 0),
+      shift = array_ops.where(math_ops.less(shift, 0),
                               math_ops.mod(-shift, ndims),
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
-      perm = array_ops.concat(0, (last, first))
+      perm = array_ops.concat((last, first), 0)
       return array_ops.transpose(x, perm=perm)
 
 
@@ -376,7 +410,7 @@ def pick_vector(cond,
     TypeError: if `cond` is not a constant and
       `true_vector.dtype != false_vector.dtype`
   """
-  with ops.op_scope((cond, true_vector, false_vector), name):
+  with ops.name_scope(name, values=(cond, true_vector, false_vector)):
     cond = ops.convert_to_tensor(cond, name="cond")
     if cond.dtype != dtypes.bool:
       raise TypeError("%s.dtype=%s which is not %s" %
@@ -392,17 +426,199 @@ def pick_vector(cond,
           % (true_vector.name, true_vector.dtype,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
-    return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
-                           [math_ops.select(cond, 0, n)],
-                           [math_ops.select(cond, n, -1)])
+    return array_ops.slice(
+        array_ops.concat((true_vector, false_vector), 0),
+        [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
 def gen_new_seed(seed, salt):
   """Generate a new seed, from the given seed and salt."""
-  if seed:
-    string = (str(seed) + salt).encode("utf-8")
-    return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
-  return None
+  if seed is None:
+    return None
+  string = (str(seed) + salt).encode("utf-8")
+  return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
+
+
+def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
+  """Creates a (batch of) lower triangular matrix from a vector of inputs.
+
+  If `x.get_shape()` is `[b1, b2, ..., bK, d]` then the output shape is `[b1,
+  b2, ..., bK, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
+  `n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))`.
+
+  Although the non-batch complexity is O(n^2), large constants and sub-optimal
+  vectorization means the complexity of this function is 5x slower than zeroing
+  out the upper triangular, i.e., `tf.matrix_band_part(X, -1, 0)`.  This
+  function becomes competitive only when several matmul/cholesky/etc ops can be
+  ellided in constructing the input.  Example: wiring a fully connected layer as
+  a covariance matrix; this function reduces the final layer by 2x and possibly
+  reduces the network arch complexity considerably.  In most cases it is better
+  to simply build a full matrix and zero out the upper triangular elements,
+  e.g., `tril = tf.matrix_band_part(full, -1, 0)`, rather than directly
+  construct a lower triangular.
+
+  Example:
+
+  ```python
+  fill_lower_triangular([1, 2, 3, 4, 5, 6])
+  # Returns: [[1, 0, 0],
+  #           [2, 3, 0],
+  #           [4, 5, 6]]
+  ```
+
+  For comparison, a pure numpy version of this function can be found in
+  `distribution_util_test.py`, function `_fill_lower_triangular`.
+
+  Args:
+    x: `Tensor` representing lower triangular elements.
+    validate_args: `Boolean`, default `False`.  Whether to ensure the shape of
+      `x` can be mapped to a lower triangular matrix (controls non-static checks
+      only).
+    name: `String`. The name to give this op.
+
+  Returns:
+    tril: `Tensor` with lower triangular elements filled from `x`.
+
+  Raises:
+    ValueError: if shape if `x` has static shape which cannot be mapped to a
+      lower triangular matrix.
+  """
+  # TODO(jvdillon): Replace this code with dedicated op when it exists.
+  with ops.name_scope(name, values=(x,)):
+    x = ops.convert_to_tensor(x, name="x")
+    if (x.get_shape().ndims is not None and
+        x.get_shape()[-1].value is not None):
+      d = x.get_shape()[-1].value
+      # d = n(n+1)/2 implies n is:
+      n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))
+      d_inferred = n * (n + 1) /2
+      if d != d_inferred:
+        raise ValueError("Input cannot be mapped to a lower triangular; "
+                         "n*(n+1)/2 = %d != %d" % (d_inferred, d))
+      final_shape = x.get_shape()[:-1].concatenate(
+          tensor_shape.TensorShape([n, n]))
+    else:
+      d = math_ops.cast(array_ops.shape(x)[-1], dtype=dtypes.float32)
+      # d = n(n+1)/2 implies n is:
+      n = math_ops.cast(0.5 * (dtypes.sqrt(1. + 8. * d) - 1.),
+                        dtype=dtypes.int32)
+      if validate_args:
+        is_valid_input_shape = check_ops.assert_equal(
+            n * (n + 1) / 2, d,
+            message="Input cannot be mapped to a lower triangular.")
+        n = control_flow_ops.with_dependencies([is_valid_input_shape], n)
+      final_shape = x.get_shape()[:-1].concatenate(
+          tensor_shape.TensorShape([None, None]))
+
+    def tril_ids(n):
+      """Internal helper to create vector of linear indices into y."""
+      # Build the ids statically; chose 512 because it implies 1MiB.
+      if not contrib_framework.is_tensor(n) and n <= 512:
+        ids = np.arange(n**2, dtype=np.int32)
+        rows = (ids / n).astype(np.int32)  # Implicit floor.
+        # We need to stop incrementing the index when we encounter
+        # upper-triangular elements.  The idea here is to compute the
+        # lower-right number of zeros then by "symmetry" subtract this from the
+        # total number of zeros, n(n-1)/2.
+        # Then we note that: n(n-1)/2 - (n-r)*(n-r-1)/2 = r(2n-r-1)/2
+        offset = (rows * (2 * n - rows - 1) / 2).astype(np.int32)
+        # We could also zero out when (rows < cols) == (rows < ids-n*rows).
+        # mask = (ids <= (n + 1) * rows).astype(np.int32)
+      else:
+        ids = math_ops.range(n**2)
+        rows = math_ops.cast(ids / n, dtype=dtypes.int32)
+        offset = math_ops.cast(rows * (2 * n - rows - 1) / 2,
+                               dtype=dtypes.int32)
+      return ids - offset
+
+    # Special-case non-batch case.
+    if x.get_shape().ndims == 1:
+      y = array_ops.gather(x, array_ops.reshape(tril_ids(n), [n, n]))
+      y = array_ops.matrix_band_part(y, -1, 0)
+      y.set_shape(y.get_shape().merge_with(final_shape))
+      return y
+
+    # Make ids for each batch dim.
+    if (x.get_shape().ndims is not None and
+        x.get_shape()[:-1].is_fully_defined()):
+      batch_shape = np.asarray(x.get_shape()[:-1].as_list(), dtype=np.int32)
+      m = np.prod(batch_shape).astype(np.int32)
+    else:
+      batch_shape = array_ops.shape(x)[:-1]
+      m = array_ops.reduce_prod(array_ops.shape(x)[:-1])
+    batch_ids = math_ops.range(m)
+
+    # Assemble the tril_ids into batch,tril_id pairs.
+    idx = array_ops.stack([
+        array_ops.tile(array_ops.expand_dims(batch_ids, 1), [1, n * n]),
+        array_ops.tile(array_ops.expand_dims(tril_ids(n), 0), [m, 1])
+    ])
+    idx = array_ops.transpose(idx, [1, 2, 0])
+
+    # Gather up, reshape, and return.
+    y = array_ops.reshape(x, [-1, d])
+    y = array_ops.gather_nd(y, idx)
+    y = array_ops.reshape(y, array_ops.concat([batch_shape, [n, n]], 0))
+    y = array_ops.matrix_band_part(y, -1, 0)
+    y.set_shape(y.get_shape().merge_with(final_shape))
+    return y
+
+
+# TODO(jvdillon): Merge this test back into:
+# tensorflow/python/ops/softplus_op_test.py
+# once TF core is accepting new ops.
+def softplus_inverse(x, name=None):
+  """Computes the inverse softplus, i.e., x = softplus_inverse(softplus(x)).
+
+  Mathematically this op is equivalent to:
+
+  ```none
+  softplus_inverse = log(exp(x) - 1.)
+  ```
+
+  Args:
+    x: `Tensor`. Non-negative (not enforced), floating-point.
+    name: A name for the operation (optional).
+
+  Returns:
+    `Tensor`. Has the same type/shape as input `x`.
+  """
+  with ops.name_scope(name, "softplus_inverse", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    # We begin by deriving a more numerically stable softplus_inverse:
+    # x = softplus(y) = Log[1 + exp{y}], (which means x > 0).
+    # ==> exp{x} = 1 + exp{y}                                (1)
+    # ==> y = Log[exp{x} - 1]                                (2)
+    #       = Log[(exp{x} - 1) / exp{x}] + Log[exp{x}]
+    #       = Log[(1 - exp{-x}) / 1] + Log[exp{x}]
+    #       = Log[1 - exp{-x}] + x                           (3)
+    # (2) is the "obvious" inverse, but (3) is more stable than (2) for large x.
+    # For small x (e.g. x = 1e-10), (3) will become -inf since 1 - exp{-x} will
+    # be zero.  To fix this, we use 1 - exp{-x} approx x for small x > 0.
+    #
+    # In addition to the numerically stable derivation above, we clamp
+    # small/large values to be congruent with the logic in:
+    # tensorflow/core/kernels/softplus_op.h
+    #
+    # Finally, we set the input to one whenever the input is too large or too
+    # small. This ensures that no unchosen codepath is +/- inf. This is
+    # necessary to ensure the gradient doesn't get NaNs. Recall that the
+    # gradient of `where` behaves like `pred*pred_true + (1-pred)*pred_false`
+    # thus an `inf` in an unselected path results in `0*inf=nan`. We are careful
+    # to overwrite `x` with ones only when we will never actually use this
+    # value.  Note that we use ones and not zeros since `log(expm1(0.)) = -inf`.
+    threshold = np.log(np.finfo(x.dtype.as_numpy_dtype).eps) + 2.
+    is_too_small = math_ops.less(x, np.exp(threshold))
+    is_too_large = math_ops.greater(x, -threshold)
+    too_small_value = math_ops.log(x)
+    too_large_value = x
+    # This `where` will ultimately be a NOP because we won't select this
+    # codepath whenever we used the surrogate `ones_like`.
+    x = array_ops.where(math_ops.logical_or(is_too_small, is_too_large),
+                        array_ops.ones_like(x), x)
+    y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
+    return array_ops.where(is_too_small, too_small_value,
+                           array_ops.where(is_too_large, too_large_value, y))
 
 
 class AppendDocstring(object):
@@ -442,7 +658,8 @@ class AppendDocstring(object):
     self._additional_note = additional_note
     if condition_kwargs_dict:
       bullets = []
-      for (key, value) in condition_kwargs_dict.items():
+      for key in sorted(condition_kwargs_dict.keys()):
+        value = condition_kwargs_dict[key]
         if any(x.isspace() for x in key):
           raise ValueError(
               "Parameter name \"%s\" contains whitespace." % key)
@@ -450,8 +667,8 @@ class AppendDocstring(object):
         if "\n" in value:
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
-        bullets.append("*  <b>`%s`</b>: %s" % (key, value))
-      self._additional_note += ("\n\n##### <b>`condition_kwargs`</b>:\n\n" +
+        bullets.append("*  `%s`: %s" % (key, value))
+      self._additional_note += ("\n\n##### `condition_kwargs`:\n\n" +
                                 "\n".join(bullets))
 
   def __call__(self, fn):

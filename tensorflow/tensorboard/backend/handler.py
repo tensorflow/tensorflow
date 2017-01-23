@@ -24,13 +24,11 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
+import functools
 import imghdr
-import json
 import mimetypes
 import os
 
-import six
-import six as _six
 from six import StringIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
@@ -42,8 +40,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.lib.python import http
-from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
-
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
@@ -98,10 +94,44 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   #                      responses using send_header.
   protocol_version = 'HTTP/1.1'
 
-  def __init__(self, multiplexer, logdir, *args):
+  def __init__(self, multiplexer, name_to_plugin_dict, logdir, *args):
     self._multiplexer = multiplexer
+    self._registered_plugins = name_to_plugin_dict
     self._logdir = logdir
+    self._setup_data_handlers()
     BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
+
+  def _setup_data_handlers(self):
+    self.data_handlers = {
+        DATA_PREFIX + LOGDIR_ROUTE: self._serve_logdir,
+        DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
+        DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
+        DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
+        DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
+        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
+            self._serve_compressed_histograms,
+        DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
+        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
+        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
+        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
+        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
+        '/app.js': self._serve_js
+    }
+
+    # Serve the routes from the registered plugins using their name as the route
+    # prefix. For example if plugin z has two routes /a and /b, they will be
+    # served as /data/plugin/z/a and /data/plugin/z/b.
+    for name in self._registered_plugins:
+      try:
+        plugin = self._registered_plugins[name]
+        plugin_handlers = plugin.get_plugin_handlers(
+            self._multiplexer.RunPaths(), self._logdir)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.warning('Plugin %s failed. Exception: %s', name, str(e))
+        continue
+      for route, handler in plugin_handlers.items():
+        path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
+        self.data_handlers[path] = functools.partial(handler, self)
 
   def respond(self, *args, **kwargs):
     """Delegates to http.Respond."""
@@ -436,6 +466,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
   def _serve_static_file(self, path):
     """Serves the static file located at the given path.
+
     Args:
       path: The path of the static file, relative to the tensorboard/ directory.
     """
@@ -483,35 +514,6 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     if clean_path.endswith('/'):
       clean_path = clean_path[:-1]
 
-    data_handlers = {
-        DATA_PREFIX + LOGDIR_ROUTE: self._serve_logdir,
-        DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
-        DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
-        DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
-        DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
-        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
-            self._serve_compressed_histograms,
-        DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
-        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
-        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
-        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
-        '/app.js': self._serve_js
-    }
-
-    # Serve the routes from the registered plugins using their name as the route
-    # prefix. For example if plugin z has two routes /a and /b, they will be
-    # served as /data/plugin/z/a and /data/plugin/z/b.
-    for name in REGISTERED_PLUGINS:
-      plugin = REGISTERED_PLUGINS[name]()
-      # Initialize the plugin by passing the main http handler.
-      plugin.initialize(self)
-      plugin_handlers = plugin.get_plugin_handlers(self._multiplexer.RunPaths(),
-                                                   self._logdir)
-      for route, handler in six.iteritems(plugin_handlers):
-        path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
-        data_handlers[path] = handler
-
     query_params = urlparse.parse_qs(parsed_url.query)
     # parse_qs returns a list of values for each key; we're only interested in
     # the first.
@@ -524,8 +526,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return
       query_params[key] = query_params[key][0]
 
-    if clean_path in data_handlers:
-      data_handlers[clean_path](query_params)
+    if clean_path in self.data_handlers:
+      self.data_handlers[clean_path](query_params)
     elif clean_path in TAB_ROUTES:
       self._serve_index(query_params)
     else:

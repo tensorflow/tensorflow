@@ -17,11 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/meta_support.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace {
@@ -75,9 +76,15 @@ class DequantizeOp : public OpKernel {
            scale_factor) +
           min_range;
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      QuantizedTensorToFloatInPlaceUsingEigen<T>(
-          ctx->template eigen_device<Device>(), input, min_range, max_range,
-          output);
+      if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
+        auto input_ui8_array = input.flat<quint8>();
+        meta::Dequantize(ctx, input_ui8_array.data(), input_ui8_array.size(),
+                         min_range, max_range, output->flat<float>().data());
+      } else {
+        QuantizedTensorToFloatInPlaceUsingEigen<T>(
+            ctx->template eigen_device<Device>(), input, min_range, max_range,
+            output);
+      }
     }
   }
 

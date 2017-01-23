@@ -78,16 +78,9 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
-#### `tf.DType.is_ref_dtype` {#DType.is_ref_dtype}
+#### `tf.DType.is_bool` {#DType.is_bool}
 
-Returns `True` if this `DType` represents a reference type.
-
-
-- - -
-
-#### `tf.DType.as_ref` {#DType.as_ref}
-
-Returns a reference `DType` based on this `DType`.
+Returns whether this is a boolean data type
 
 
 - - -

@@ -295,12 +295,30 @@ module TF.URIStorage {
       get: (name: string) => T, propertyName: string, defaultVal: T): Function {
     return function() {
       let URIStorageName = getURIStorageName(this, propertyName);
+      // setComponentValue will be called every time the hash changes, and is
+      // responsible for ensuring that new state in the hash will be propagated
+      // to the component with that property.
+      // It is important that this function does not re-assign needlessly,
+      // to avoid Polymer observer churn.
       let setComponentValue = () => {
-        // Clone, in case the caller will mutuate this object, we
-        // don't want to mutate our default instance
-        let v = _.clone(defaultVal);
         let uriValue = get(URIStorageName);
-        this[propertyName] = uriValue !== undefined ? uriValue : v;
+        let currentValue = this[propertyName];
+        // if uriValue is undefined, we will ensure that the property has the
+        // default value
+        if (uriValue === undefined) {
+          if (!_.isEqual(currentValue, defaultVal)) {
+            // If we don't have an explicit URI value, then we need to ensure
+            // the property value is equal to the default value.
+            // We will assign a clone rather than the canonical default, because
+            // the component receiving this property may mutate it, and we need
+            // to keep a pristine copy of the default.
+            this[propertyName] = _.clone(defaultVal);
+          }
+          // In this case, we have an explicit URI value, so we will ensure that
+          // the component has an equivalent value.
+        } else if (!_.isEqual(uriValue, currentValue)) {
+          this[propertyName] = uriValue;
+        }
       };
       // Set the value on the property.
       setComponentValue();

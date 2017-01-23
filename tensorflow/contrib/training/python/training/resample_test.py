@@ -21,10 +21,17 @@ import collections
 import math
 
 import numpy
-import tensorflow as tf
+from tensorflow.contrib.training.python.training import resample
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class ResampleTest(tf.test.TestCase):
+class ResampleTest(test.TestCase):
   """Tests that resampling runs and outputs are close to expected values."""
 
   def testRoundtrip(self, rate=0.25, count=5, n=500):
@@ -34,13 +41,14 @@ class ResampleTest(tf.test.TestCase):
     bar = self.get_values(count)
     weights = self.get_weights(count)
 
-    resampled_in, rates = tf.contrib.training.weighted_resample(
-        [foo, bar], tf.constant(weights), rate, seed=123)
+    resampled_in, rates = resample.weighted_resample(
+        [foo, bar], constant_op.constant(weights), rate, seed=123)
 
-    resampled_back_out = tf.contrib.training.resample_at_rate(
-        resampled_in, 1.0/rates, seed=456)
+    resampled_back_out = resample.resample_at_rate(
+        resampled_in, 1.0 / rates, seed=456)
 
-    init = tf.initialize_local_variables()
+    init = control_flow_ops.group(variables.local_variables_initializer(),
+                                  variables.global_variables_initializer())
     with self.test_session() as s:
       s.run(init)  # initialize
 
@@ -48,8 +56,7 @@ class ResampleTest(tf.test.TestCase):
       counts_resampled = collections.Counter()
       counts_reresampled = collections.Counter()
       for _ in range(n):
-        resampled_vs, reresampled_vs = s.run(
-            [resampled_in, resampled_back_out])
+        resampled_vs, reresampled_vs = s.run([resampled_in, resampled_back_out])
 
         self.assertAllEqual(resampled_vs[0], resampled_vs[1])
         self.assertAllEqual(reresampled_vs[0], reresampled_vs[1])
@@ -63,8 +70,12 @@ class ResampleTest(tf.test.TestCase):
       self.assert_expected(weights, rate, counts_resampled, n)
 
       # and that re-resampling gives the approx identity.
-      self.assert_expected([1.0 for _ in weights], 1.0, counts_reresampled, n,
-                           abs_delta=0.1*n*count)
+      self.assert_expected(
+          [1.0 for _ in weights],
+          1.0,
+          counts_reresampled,
+          n,
+          abs_delta=0.1 * n * count)
 
   def testCorrectRates(self, rate=0.25, count=10, n=500, rtol=0.1):
     """Tests that the rates returned by weighted_resample are correct."""
@@ -76,13 +87,15 @@ class ResampleTest(tf.test.TestCase):
     vals = self.get_values(count)
     weights = self.get_weights(count)
 
-    resampled, rates = tf.contrib.training.weighted_resample(
-        [vals], tf.constant(weights), rate)
+    resampled, rates = resample.weighted_resample([vals],
+                                                  constant_op.constant(weights),
+                                                  rate)
 
-    invrates = 1.0/rates
+    invrates = 1.0 / rates
 
-    init = tf.initialize_local_variables()
-    expected_sum_op = tf.reduce_sum(vals)
+    init = control_flow_ops.group(variables.local_variables_initializer(),
+                                  variables.global_variables_initializer())
+    expected_sum_op = math_ops.reduce_sum(vals)
     with self.test_session() as s:
       s.run(init)
       expected_sum = n * s.run(expected_sum_op)
@@ -96,31 +109,46 @@ class ResampleTest(tf.test.TestCase):
 
     # sum(inv_rate) ~= N*count:
     expected_count = count * n
-    self.assertAlmostEqual(expected_count, weight_sum,
-                           delta=(rtol * expected_count))
+    self.assertAlmostEqual(
+        expected_count, weight_sum, delta=(rtol * expected_count))
 
     # sum(vals) * n ~= weighted_sum(resampled, 1.0/weights)
-    self.assertAlmostEqual(expected_sum, weighted_value_sum,
-                           delta=(rtol*expected_sum))
+    self.assertAlmostEqual(
+        expected_sum, weighted_value_sum, delta=(rtol * expected_sum))
 
     # Mean ~= weighted mean:
     expected_mean = expected_sum / float(n * count)
-    self.assertAlmostEqual(expected_mean, weighted_value_sum/weight_sum,
-                           delta=(rtol*expected_mean))
+    self.assertAlmostEqual(
+        expected_mean,
+        weighted_value_sum / weight_sum,
+        delta=(rtol * expected_mean))
 
   def testZeroRateUnknownShapes(self, count=10):
     """Tests that resampling runs with completely runtime shapes."""
     # Use placeholcers without shape set:
-    vals = tf.placeholder(dtype=tf.int32)
-    rates = tf.placeholder(dtype=tf.float32)
+    vals = array_ops.placeholder(dtype=dtypes.int32)
+    rates = array_ops.placeholder(dtype=dtypes.float32)
 
-    resampled = tf.contrib.training.resample_at_rate([vals], rates)
+    resampled = resample.resample_at_rate([vals], rates)
 
     with self.test_session() as s:
-      rs = s.run(resampled,
-                 {vals: list(range(count)),
-                  rates: numpy.zeros(shape=[count], dtype=numpy.float32)})
+      rs = s.run(resampled, {
+          vals: list(range(count)),
+          rates: numpy.zeros(
+              shape=[count], dtype=numpy.float32)
+      })
       self.assertEqual(0, len(rs))
+
+  def testDtypes(self, count=10):
+    """Test that we can define the ops with float64 weights."""
+
+    vals = self.get_values(count)
+    weights = math_ops.cast(self.get_weights(count), dtypes.float64)
+
+    # should not error:
+    resample.resample_at_rate([vals], weights)
+    resample.weighted_resample(
+        [vals], weights, overall_rate=math_ops.cast(1.0, dtypes.float64))
 
   def get_weights(self, n, mean=10.0, stddev=5):
     """Returns random positive weight values."""
@@ -133,10 +161,15 @@ class ResampleTest(tf.test.TestCase):
     return results
 
   def get_values(self, n):
-    return tf.constant(list(range(n)))
+    return constant_op.constant(list(range(n)))
 
-  def assert_expected(
-      self, weights, overall_rate, counts, n, tol=2.0, abs_delta=0):
+  def assert_expected(self,
+                      weights,
+                      overall_rate,
+                      counts,
+                      n,
+                      tol=2.0,
+                      abs_delta=0):
     # Overall, we expect sum(counts) there to be `overall_rate` * n *
     # len(weights)...  with a stddev on that expectation equivalent to
     # performing (n * len(weights)) trials each with probability of
@@ -147,7 +180,8 @@ class ResampleTest(tf.test.TestCase):
     stddev = math.sqrt(len(weights) * n * overall_rate * (1 - overall_rate))
 
     self.assertAlmostEqual(
-        expected_overall_count, actual_overall_count,
+        expected_overall_count,
+        actual_overall_count,
         delta=(stddev * tol + abs_delta))
 
     # And we can form a similar expectation for each item -- it should
@@ -155,16 +189,19 @@ class ResampleTest(tf.test.TestCase):
     # weight, which is similar to performing `expected_overall_count`
     # trials each with a probability of weight/weight_sum.
     weight_sum = sum(weights)
-    fractions = [w/weight_sum for w in weights]
+    fractions = [w / weight_sum for w in weights]
     expected_counts = [expected_overall_count * f for f in fractions]
 
-    stddevs = [math.sqrt(expected_overall_count * f * (1-f)) for f in fractions]
+    stddevs = [
+        math.sqrt(expected_overall_count * f * (1 - f)) for f in fractions
+    ]
 
     for i in range(len(expected_counts)):
       expected_count = expected_counts[i]
       actual_count = counts[i]
-      self.assertAlmostEqual(expected_count, actual_count,
-                             delta=(stddevs[i] * tol + abs_delta))
+      self.assertAlmostEqual(
+          expected_count, actual_count, delta=(stddevs[i] * tol + abs_delta))
+
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

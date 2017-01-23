@@ -113,28 +113,40 @@ function setup_python {
     echo -e "\n\nERROR: Problem getting python include path.  Is distutils installed?"
     exit 1
   fi
-  local python_lib_path
-  # Split python_path into an array of paths, this allows path containing spaces
-  IFS=','
-  python_lib_path=($(python_path))
-  unset IFS
-  echo "Found possible Python library paths:"
-  for x in "${python_lib_path[@]}"; do
-    echo "  $x"
-  done
-  set -- "${python_lib_path[@]}"
-  echo "Please input the desired Python library path to use.  Default is ["$1"]"
-  read b || true
-  if [ "$b" == "" ]; then
-   python_lib="$(default_python_path "${python_lib_path[0]}")"
-   echo $python_lib
-  else
-    if test -d "$b" -a -x "$b"; then
-      python_lib="$b"
+
+  if [ -z "$PYTHON_LIB_PATH" ]; then
+    local python_lib_path
+    # Split python_path into an array of paths, this allows path containing spaces
+    IFS=','
+    python_lib_path=($(python_path))
+    unset IFS
+
+    if [ 1 = "$USE_DEFAULT_PYTHON_LIB_PATH" ]; then
+      PYTHON_LIB_PATH="$(default_python_path "${python_lib_path[0]}")"
+      echo "Using python library path: $PYTHON_LIB_PATH"
+
     else
-      echo -e "\n\nERROR: The path you have entered does not exist."
-      exit 1
+      echo "Found possible Python library paths:"
+      for x in "${python_lib_path[@]}"; do
+        echo "  $x"
+      done
+      set -- "${python_lib_path[@]}"
+      echo "Please input the desired Python library path to use.  Default is ["$1"]"
+      read b || true
+      if [ "$b" == "" ]; then
+        PYTHON_LIB_PATH="$(default_python_path "${python_lib_path[0]}")"
+        echo "Using python library path: $PYTHON_LIB_PATH"
+      else
+        PYTHON_LIB_PATH="$b"
+      fi
     fi
+  fi
+
+  if test -d "$PYTHON_LIB_PATH" -a -x "$PYTHON_LIB_PATH"; then
+    python_lib="$PYTHON_LIB_PATH"
+  else
+    echo -e "\n\nERROR: Invalid python library path: ${PYTHON_LIB_PATH}."
+    exit 1
   fi
 
   local numpy_include=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import numpy; print(numpy.get_include());')

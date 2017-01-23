@@ -54,17 +54,17 @@ to combine them into a single op that generates all the summary data.
 Then, you can just run the merged summary op, which will generate a serialized
 `Summary` protobuf object with all of your summary data at a given step.
 Finally, to write this summary data to disk, pass the summary protobuf to a
-[`tf.train.SummaryWriter`](../../api_docs/python/train.md#SummaryWriter).
+[`tf.summary.FileWriter`](../../api_docs/python/summary.md#FileWriter).
 
-The `SummaryWriter` takes a logdir in its constructor - this logdir is quite
+The `FileWriter` takes a logdir in its constructor - this logdir is quite
 important, it's the directory where all of the events will be written out.
-Also, the `SummaryWriter` can optionally take a `Graph` in its constructor.
+Also, the `FileWriter` can optionally take a `Graph` in its constructor.
 If it receives a `Graph` object, then TensorBoard will visualize your graph
 along with tensor shape information. This will give you a much better sense of
 what flows through the graph: see
 [Tensor shape information](../../how_tos/graph_viz/index.md#tensor-shape-information).
 
-Now that you've modified your graph and have a `SummaryWriter`, you're ready to
+Now that you've modified your graph and have a `FileWriter`, you're ready to
 start running your network! If you want, you could run the merged summary op
 every single step, and record a ton of training data. That's likely to be more
 data than you need, though. Instead, consider running the merged summary op
@@ -135,7 +135,7 @@ with tf.name_scope('cross_entropy'):
   # So here we use tf.nn.softmax_cross_entropy_with_logits on the
   # raw outputs of the nn_layer above, and then average across
   # the batch.
-  diff = tf.nn.softmax_cross_entropy_with_logits(y, y_)
+  diff = tf.nn.softmax_cross_entropy_with_logits(targets=y_, logits=y)
   with tf.name_scope('total'):
     cross_entropy = tf.reduce_mean(diff)
 tf.summary.scalar('cross_entropy', cross_entropy)
@@ -153,14 +153,14 @@ tf.summary.scalar('accuracy', accuracy)
 
 # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
 merged = tf.summary.merge_all()
-train_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train',
+train_writer = tf.summary.FileWriter(FLAGS.summaries_dir + '/train',
                                       sess.graph)
-test_writer = tf.train.SummaryWriter(FLAGS.summaries_dir + '/test')
-tf.initialize_all_variables().run()
+test_writer = tf.summary.FileWriter(FLAGS.summaries_dir + '/test')
+tf.global_variables_initializer().run()
 ```
 
-After we've initialized the `SummaryWriters`, we have to add summaries to the
-`SummaryWriters` as we train and test the model.
+After we've initialized the `FileWriters`, we have to add summaries to the
+`FileWriters` as we train and test the model.
 
 ```python
 # Train the model, and also write summaries.
@@ -199,7 +199,7 @@ tensorflow.tensorboard`)
 tensorboard --logdir=path/to/log-directory
 ```
 
-where `logdir` points to the directory where the `SummaryWriter` serialized its
+where `logdir` points to the directory where the `FileWriter` serialized its
 data.  If this `logdir` directory contains subdirectories which contain
 serialized data from separate runs, then TensorBoard will visualize the data
 from all of those runs. Once TensorBoard is running, navigate your web browser

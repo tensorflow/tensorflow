@@ -23,6 +23,7 @@ from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
@@ -69,16 +70,18 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
   """
   if not isinstance(inputs, list):
     raise TypeError("Inputs must be a list")
-  if not all(isinstance(i, ops.SparseTensor) or
+  if not all(isinstance(i, sparse_tensor.SparseTensor) or
              isinstance(i, ops.Tensor) for i in inputs):
     raise TypeError("All inputs must be SparseTensors")
 
-  sparse_inputs = [i for i in inputs if isinstance(i, ops.SparseTensor)]
-  dense_inputs = [i for i in inputs if not isinstance(i, ops.SparseTensor)]
+  sparse_inputs = [i for i in inputs
+                   if isinstance(i, sparse_tensor.SparseTensor)]
+  dense_inputs = [i for i in inputs
+                  if not isinstance(i, sparse_tensor.SparseTensor)]
 
   indices = [sp_input.indices for sp_input in sparse_inputs]
   values = [sp_input.values for sp_input in sparse_inputs]
-  shapes = [sp_input.shape for sp_input in sparse_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
   out_type = dtypes.int64 if hashed_output else dtypes.string
 
   internal_type = dtypes.string
@@ -117,10 +120,10 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
             internal_type=internal_type,
             name=name))
 
-  return ops.SparseTensor(indices_out, values_out, shape_out)
+  return sparse_tensor.SparseTensor(indices_out, values_out, shape_out)
 
 
-ops.RegisterShape("SparseFeatureCross")(common_shapes.call_cpp_shape_fn)
 ops.NotDifferentiable("SparseFeatureCross")
-ops.RegisterShape("SparseFeatureCrossV2")(common_shapes.call_cpp_shape_fn)
+
+
 ops.NotDifferentiable("SparseFeatureCrossV2")

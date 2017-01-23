@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <set>
 
+#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -36,83 +37,6 @@ using shape_inference::ShapeHandle;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
-
-REGISTER_OP("SampleInputs")
-    .Attr("split_initializations_per_input: int")
-    .Attr("split_sampling_random_seed: int")
-    .Input("input_data: float")
-    .Input("sparse_input_indices: int64")
-    .Input("sparse_input_values: float")
-    .Input("sparse_input_shape: int64")
-    .Input("input_weights: float")
-    .Input("node_to_accumulator: int32")
-    .Input("leaves: int32")
-    .Input("candidate_split_features: int32")
-    .Input("candidate_split_thresholds: float")
-    .Output("accumulators_to_update: int32")
-    .Output("new_split_feature_rows: int32")
-    .Output("new_split_threshold_rows: float")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle candidate_split_features;
-      TF_RETURN_IF_ERROR(
-          c->WithRank(c->input(7), 2, &candidate_split_features));
-      DimensionHandle split_dim = c->Dim(candidate_split_features, 1);
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, split_dim));
-      c->set_output(2, c->Matrix(InferenceContext::kUnknownDim, split_dim));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Initializes candidate splits for newly fertile nodes.
-
-In an extremely random forest, we don't consider all possible threshold
-values for a candidate split feature, but rather only a sampling of them.
-This Op takes those samples from the training data in `input_data`.  The
-feature and threshold samples are stored in tensors that are indexed by
-accumulator slot, so for each input, we must first look up which leaf
-it ended up in (using `leaves`) and then which accumulator slot if any
-that leaf maps to (using `node_to_accumulator`).
-
-The attribute `split_initializations_per_input` controls how many splits
-a single training example can initialize, and the attribute
-`split_sampling_random_seed` sets the random number generator's seed
-(a value of 0 means use the current time as the seed).
-
-input_data: The features for the current batch of training data.
-  `input_data[i][j]` is the j-th feature of the i-th input.
-sparse_input_indices: The indices tensor from the SparseTensor input.
-sparse_input_values: The values tensor from the SparseTensor input.
-sparse_input_shape: The shape tensor from the SparseTensor input.
-input_weights: For a dense input, input_weights[i] is the weight associated
-  with input_data[i].  For sparse input, input_weights[i] is the weight
-  associated with sparse_input_values[i].  Or in either case, if all the
-  weights are 1, input_weights can be empty.  SampleInputs will reject inputs
-  with weight less than Uniform([0,1)), so weights outside of that range may
-  not be what you want.
-node_to_accumulator: For a fertile node i, node_to_accumulator[i] is the
-  associated accumulator slot.  For non-fertile nodes, it is -1.
-leaves: `leaves[i]` is the leaf that the i-th input landed in, as
-  calculated by CountExtremelyRandomStats.
-candidate_split_features: The current features for the candidate splits;
-  `candidate_split_features[a][s]` is the index of the feature being
-  considered by split s in accumulator slot a.
-candidate_split_thresholds: The current thresholds for the candidate splits;
-  `candidate_split_thresholds[a][s]` is the threshold value being
-  considered by split s in accumulator slot a.
-accumulators_to_update: A list of the accumulators to change in the
-  candidate_split_features and candidate_split_thresholds tensors.
-new_split_feature_rows: The new values for the candidate_split_features
-  tensor.  Intended to be used with
-  `tf.scatter_update(candidate_split_features,
-                     accumulators_to_update,
-                     new_split_feature_rows)`
-new_split_threshold_rows:  The new values for the candidate_split_thresholds
-  tensor.  Intended to be used with
-  `tf.scatter_update(candidate_split_thresholds,
-                     accumulators_to_update,
-                     new_split_feature_thresholds)`
-
-)doc");
 
 class SampleInputs : public OpKernel {
  public:
@@ -134,45 +58,68 @@ class SampleInputs : public OpKernel {
 
     rng_ = std::unique_ptr<random::SimplePhilox>(
         new random::SimplePhilox(single_rand_.get()));
+
+    string serialized_proto;
+    OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
+    input_spec_.ParseFromString(serialized_proto);
   }
 
-  // Returns true if index and val were successfully set.
-  template <typename T>
-  bool GetRandomFeatureDense(const T& inputs, int32 num_features,
-                             int32 input_index, int32* index, float* val) {
-    *index = rng_->Uniform(num_features);
-    *val = inputs(input_index, *index);
-    return true;
-  }
+  // Returns the number of sparse values for example input_index.
+  // Also returns the index where those features start in sparse_input_start
+  // if any were found.
+  int32 GetNumSparseFeatures(const Tensor& sparse_input_indices,
+                             int32 input_index, int64* sparse_input_start) {
+    // Binary search for input_index.
+    // TODO(gilberth): Consider using std::lower_bound, std::upper_bound
+    // for a simpler but possibly slower solution, or searching for
+    // input_start and input_end simultaneously.
+    const auto indices = sparse_input_indices.matrix<int64>();
+    const int64 num_total = sparse_input_indices.shape().dim_size(0);
+    int64 index;
+    int64 low = 0;
+    int64 high = num_total;
 
-  // Returns true if index and val were successfully set.
-  template <typename T1, typename T2>
-  bool GetRandomFeatureSparse(const T1& sparse_indices, const T2& sparse_values,
-                              int32 input_index, int32* index, float* val) {
-    int32 low = 0;
-    int32 high = sparse_values.dimension(0);
-    while (low < high) {
-      int32 vi = low + rng_->Uniform(high - low);
-      int64 i = internal::SubtleMustCopy(sparse_indices(vi, 0));
-      if (i == input_index) {
-        int64 ind = internal::SubtleMustCopy(sparse_indices(vi, 1));
-        CHECK(ind < kint32max);
-        *index = static_cast<int32>(ind);
-        *val = sparse_values(vi);
-        return true;
+    while (true) {
+      if (low == high) {
+        return 0;
       }
-      if (i < input_index) {
-        low = vi + 1;
+      index = low + (high - low) / 2;
+      const int64 feature_index = indices(index, 0);
+      if (feature_index == input_index) {
+        // found it.
+        break;
+      } else if (feature_index < input_index) {
+        // Correct for the implicit floor in the index assignment.
+        if (low == index) {
+          return 0;
+        }
+        low = index;
       } else {
-        high = vi;
+        high = index;
       }
     }
 
-    // If we get here, an example was empty.  That's unfortunate, but we try
-    // to continue anyway by trying to look at another example.
-    LOG(WARNING) << "Could not find any values for input " << input_index
-                 << " inside sparse_input_indices";
-    return false;
+    // Scan for the start and end of the input_index range.
+    int64 input_start = index;
+    int64 val = indices(input_start, 0);
+    while (val == input_index) {
+      --input_start;
+      if (input_start < 0) {
+        break;
+      }
+      val = indices(input_start, 0);
+    }
+    *sparse_input_start = input_start + 1;
+    int32 input_end = index;
+    val = indices(input_end, 0);
+    while (val == input_index) {
+      ++input_end;
+      if (input_end >= num_total) {
+        break;
+      }
+      val = indices(input_end, 0);
+    }
+    return input_end - input_start - 1;
   }
 
   // increment_input implements a "++" operation for the situation when
@@ -203,6 +150,11 @@ class SampleInputs : public OpKernel {
     bool have_weights = (input_weights.shape().dim_size(0) > 0);
 
     if (sparse_input) {
+      // TODO(gilberth): This is because we can't figure out the shape
+      // of a sparse tensor at graph-build time, even if the dimension is
+      // actually known.
+      input_spec_.mutable_sparse(0)->set_size(
+          sparse_input_shape.unaligned_flat<int64>()(1));
       OP_REQUIRES(context, sparse_input_shape.shape().dims() == 1,
                   errors::InvalidArgument(
                       "sparse_input_shape should be one-dimensional"));
@@ -229,7 +181,8 @@ class SampleInputs : public OpKernel {
                         "sparse_input_values and input_weights should agree "
                         "on the number of inputs"));
       }
-    } else {
+    }
+    if (input_data.shape().dim_size(0) > 0) {
       OP_REQUIRES(context, input_data.shape().dims() == 2,
                   errors::InvalidArgument(
                   "input_data should be two-dimensional"));
@@ -271,29 +224,6 @@ class SampleInputs : public OpKernel {
     if (!CheckTensorBounds(context, leaves)) return;
     if (!CheckTensorBounds(context, split_features)) return;
     if (!CheckTensorBounds(context, split_thresholds)) return;
-
-    int32 num_features;
-    std::function<bool(int32, int32*, float*)> get_random_feature;
-    // TODO(thomaswc): Figure out a way to avoid calling .vec, etc. over and
-    // over again
-    if (sparse_input) {
-      num_features = sparse_input_shape.unaligned_flat<int64>()(1);
-      get_random_feature = [&sparse_input_indices, &sparse_input_values, this](
-          int32 input_index, int32* index, float* val) -> bool {
-        const auto sparse_indices = sparse_input_indices.matrix<int64>();
-        const auto sparse_values = sparse_input_values.vec<float>();
-        return GetRandomFeatureSparse(sparse_indices, sparse_values,
-                                      input_index, index, val);
-      };
-    } else {
-      num_features = static_cast<int32>(input_data.shape().dim_size(1));
-      get_random_feature = [&input_data, num_features, this](
-          int32 input_index, int32* index, float* val) -> bool {
-        const auto inputs = input_data.tensor<float, 2>();
-        return GetRandomFeatureDense(inputs, num_features, input_index, index,
-                                     val);
-      };
-    }
 
     const auto leaves_vec = leaves.unaligned_flat<int32>();
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
@@ -401,20 +331,38 @@ class SampleInputs : public OpKernel {
           }
           int32 index;
           float val;
-          const bool success = get_random_feature(*it, &index, &val);
-          CHECK(index >= 0) << "sample inputs chose negative feature: "
-                            << index;
-          increment_input(split_initializations_per_input_, &it,
-                          &input_used_count);
-          if (success) {
-            VLOG(1) << "Over-writing @ " << output_slot << "," << split;
-            new_split_feature_rows_flat(output_slot, split) = index;
-            new_split_threshold_rows_flat(output_slot, split) = val;
-          } else {
-            LOG(ERROR) << "get_random_feature failed, bailing on output for "
-                       << "accumulator " << accumulator;
+          int64 sparse_input_start;
+          int32 num_total_features = input_spec_.dense_features_size();
+          if (sparse_input) {
+            num_total_features += GetNumSparseFeatures(
+                sparse_input_indices, *it, &sparse_input_start);
+          }
+          if (num_total_features == 0) {
+            LOG(WARNING) << "num total features is zero.";
             break;
           }
+          const int32 rand_feature = rng_->Uniform(num_total_features);
+          if (rand_feature < input_spec_.dense_features_size()) {
+            const auto inputs = input_data.tensor<float, 2>();
+            index = rand_feature;
+            val = inputs(*it, rand_feature);
+          } else {
+            const auto indices = sparse_input_indices.matrix<int64>();
+            const auto values = sparse_input_values.vec<float>();
+            const int32 sparse_index = sparse_input_start + rand_feature -
+                                       input_spec_.dense_features_size();
+            index =
+                indices(sparse_index, 1) + input_spec_.dense_features_size();
+            val = values(sparse_index);
+          }
+          CHECK(index >= 0)
+              << "sample inputs chose negative feature: " << index;
+          increment_input(split_initializations_per_input_, &it,
+                          &input_used_count);
+
+          VLOG(1) << "Over-writing @ " << output_slot << "," << split;
+          new_split_feature_rows_flat(output_slot, split) = index;
+          new_split_threshold_rows_flat(output_slot, split) = val;
         }
       }
       ++output_slot;
@@ -426,6 +374,7 @@ class SampleInputs : public OpKernel {
   int32 split_sampling_random_seed_;
   std::unique_ptr<random::PhiloxRandom> single_rand_;
   std::unique_ptr<random::SimplePhilox> rng_;
+  tensorforest::TensorForestDataSpec input_spec_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SampleInputs").Device(DEVICE_CPU), SampleInputs);

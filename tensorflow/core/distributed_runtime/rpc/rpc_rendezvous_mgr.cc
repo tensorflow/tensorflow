@@ -71,8 +71,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     req_.set_rendezvous_key(key.data(), key.size());
   }
 
-  void Reset() {
-    delete wi_;
+  void Reset(WorkerCacheInterface* wc) {
+    wc->ReleaseWorker(src_worker_, wi_);
     wi_ = nullptr;
     alloc_attrs_ = AllocatorAttributes();
     dst_device_ = nullptr;
@@ -87,7 +87,14 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     done_ = nullptr;
   }
 
-  ~RpcRecvTensorCall() override { delete wi_; }
+  ~RpcRecvTensorCall() override {
+    // Since only the RpcRecvTensorFreeList will delete an
+    // RpcRecvTensorCall, and it always sets this->wi_ to null when
+    // a call object is released to it, we can assert that this->wi_ is
+    // always null at the point of deletion.
+    CHECK_EQ(static_cast<WorkerInterface*>(nullptr), wi_)
+        << "Leaking WorkerInterface in RpcRecvTensorCall destructor.";
+  }
 
   void Start(std::function<void()> recv_done) override {
     StartRTCall(std::move(recv_done));
@@ -156,7 +163,7 @@ class RpcRecvTensorFreeList {
  public:
   RpcRecvTensorFreeList() {}
   ~RpcRecvTensorFreeList() {
-    for (int i = 0; i < objects_.size(); i++) {
+    for (size_t i = 0; i < objects_.size(); i++) {
       delete objects_[i];
     }
   }
@@ -173,8 +180,8 @@ class RpcRecvTensorFreeList {
     return new RpcRecvTensorCall;
   }
 
-  void Release(RpcRecvTensorCall* obj) {
-    obj->Reset();
+  void Release(RpcRecvTensorCall* obj, WorkerCacheInterface* wc) {
+    obj->Reset(wc);
     {
       mutex_lock l(mu_);
       if (objects_.size() < kMaxObjects) {
@@ -205,7 +212,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   ~WorkerFreeListCache() {
     for (auto p : workers_) {
-      delete p.second.worker;
+      wrapped_->ReleaseWorker(p.first, p.second.worker);
     }
   }
 
@@ -296,7 +303,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
-    get_call_freelist()->Release(call);
+    get_call_freelist()->Release(call, cache_);
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
@@ -318,7 +325,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     cache_->ReleaseWorker(call->src_worker_, call->wi_);
     call->wi_ = nullptr;
-    get_call_freelist()->Release(call);
+    get_call_freelist()->Release(call, cache_);
     Unref();
   });
 }

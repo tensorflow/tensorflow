@@ -1,4 +1,4 @@
-### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, name=None)` {#decode_jpeg}
+### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, dct_method=None, name=None)` {#decode_jpeg}
 
 Decode a JPEG-encoded image to a uint8 tensor.
 
@@ -33,6 +33,13 @@ downscaling the image later.
 *  <b>`acceptable_fraction`</b>: An optional `float`. Defaults to `1`.
     The minimum required fraction of lines before a truncated
     input is accepted.
+*  <b>`dct_method`</b>: An optional `string`. Defaults to `""`.
+    string specifying a hint about the algorithm used for
+    decompression.  Defaults to "" which maps to a system-specific
+    default.  Currently valid values are ["INTEGER_FAST",
+    "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+    jpeg library changes to a version that does not have that specific
+    option.)
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

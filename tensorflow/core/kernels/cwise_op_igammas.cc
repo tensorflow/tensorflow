@@ -16,18 +16,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-#if EIGEN_HAS_C99_MATH
-
-template <typename Device, typename Functor>
-class IGammaOp : public BinaryOp<Device, Functor> {
- public:
-  explicit IGammaOp(OpKernelConstruction* ctx)
-      : BinaryOp<Device, Functor>(ctx) {
-    TF_ANNOTATE_BENIGN_RACE(&signgam, "signgam output from lgamma is unused");
-  }
-};
-
-REGISTER2(IGammaOp, CPU, "Igamma", functor::igamma, float, double);
-REGISTER2(IGammaOp, CPU, "Igammac", functor::igammac, float, double);
-#endif  // EIGEN_HAS_C99_MATH
+REGISTER2(BinaryOp, CPU, "Igamma", functor::igamma, float, double);
+REGISTER2(BinaryOp, CPU, "Igammac", functor::igammac, float, double);
 }  // namespace tensorflow
