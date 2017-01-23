@@ -274,10 +274,10 @@ def bidirectional_rnn(cell_fw,
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
   outputs = [
-      array_ops_.concat_v2([fw, bw], 1) for fw, bw in zip(output_fw, output_bw)
+      array_ops_.concat([fw, bw], 1) for fw, bw in zip(output_fw, output_bw)
   ]
 
-  return outputs, array_ops_.concat_v2([state_fw, state_bw], 1)
+  return outputs, array_ops_.concat([state_fw, state_bw], 1)
 
 
 # End of TensorFlow 0.7

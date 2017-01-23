@@ -979,12 +979,6 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
-# concat_v2 is an alias for concat. concat_v2 will be deprecated and removed
-# soon, please use concat.
-def concat_v2(values, axis, name="concat_v2"):
-  return concat(values, axis, name)
-
-
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
 
