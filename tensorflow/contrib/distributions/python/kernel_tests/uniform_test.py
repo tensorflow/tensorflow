@@ -204,7 +204,7 @@ class UniformTest(test.TestCase):
       b = 100.0
       uniform = uniform_lib.Uniform(a=a, b=b)
       s_uniform = stats.uniform(loc=a, scale=b - a)
-      self.assertAllClose(uniform.std().eval(), s_uniform.std())
+      self.assertAllClose(uniform.stddev().eval(), s_uniform.std())
 
   def testUniformNans(self):
     with self.test_session():

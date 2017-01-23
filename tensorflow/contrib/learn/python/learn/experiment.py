@@ -139,23 +139,15 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
-    self._train_monitors = train_monitors or []
+    self._train_monitors = train_monitors[:] if train_monitors else []
+    self._eval_hooks = eval_hooks[:] if eval_hooks else []
+    self._set_export_strategies(export_strategies)
     # Mutable fields, using the setters.
-    self.eval_hooks = eval_hooks
-    self.export_strategies = export_strategies
     self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
 
   @property
   def estimator(self):
     return self._estimator
-
-  @property
-  def train_input_fn(self):
-    return self._train_input_fn
-
-  @property
-  def eval_input_fn(self):
-    return self._eval_input_fn
 
   @property
   def eval_metrics(self):
@@ -170,39 +162,6 @@ class Experiment(object):
     return self._eval_steps
 
   @property
-  def train_hooks(self):
-    """Returns a shallow copy of train hooks for inspecting."""
-    return [m for m in self._train_monitors]
-
-  @property
-  def eval_hooks(self):
-    return self._eval_hooks
-
-  @eval_hooks.setter
-  def eval_hooks(self, value):
-    self._eval_hooks = value or []
-
-  @property
-  def local_eval_frequency(self):
-    return self._local_eval_frequency
-
-  @property
-  def eval_delay_secs(self):
-    return self._eval_delay_secs
-
-  @property
-  def continuous_eval_throttle_secs(self):
-    return self._continuous_eval_throttle_secs
-
-  @property
-  def min_eval_frequency(self):
-    return self._min_eval_frequency
-
-  @property
-  def delay_workers_by_global_step(self):
-    return self._delay_workers_by_global_step
-
-  @property
   def continuous_eval_predicate_fn(self):
     return self._continuous_eval_predicate_fn
 
@@ -213,16 +172,11 @@ class Experiment(object):
           "`continuous_eval_predicate_fn` must be a callable, or None.")
     self._continuous_eval_predicate_fn = value
 
-  @property
-  def export_strategies(self):
-    return self._export_strategies
-
-  @export_strategies.setter
-  def export_strategies(self, value):
+  def _set_export_strategies(self, value):
     if value is None:
       self._export_strategies = []
     elif isinstance(value, list):
-      self._export_strategies = value
+      self._export_strategies = value[:]
     elif isinstance(value, export_strategy.ExportStrategy):
       self._export_strategies = [value]
     else:
@@ -232,6 +186,20 @@ class Experiment(object):
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
     self._train_monitors.extend(additional_hooks)
+
+  def reset_export_strategies(self, new_export_strategies=None):
+    """Resets the export strategies with the `new_export_strategies`.
+
+    Args:
+      new_export_strategies: A new list of `ExportStrategy`s, or a single one,
+        or None.
+
+    Returns:
+      The old export strategies.
+    """
+    old_export_strategies = self._export_strategies
+    self._set_export_strategies(new_export_strategies)
+    return old_export_strategies
 
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.

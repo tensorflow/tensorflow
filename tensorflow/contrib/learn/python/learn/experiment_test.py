@@ -143,9 +143,9 @@ class ExperimentTest(test.TestCase):
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics')
     fit_args = ex.train(delay_secs=0)
-    self.assertEquals(1, est.fit_count)
+    self.assertEqual(1, est.fit_count)
     self.assertIn(('max_steps', 'train_steps'), fit_args)
-    self.assertEquals(0, est.eval_count)
+    self.assertEqual(0, est.eval_count)
 
   def test_train_delay(self):
     est = TestEstimator()
@@ -271,9 +271,9 @@ class ExperimentTest(test.TestCase):
         eval_steps='steps',
         eval_delay_secs=0)
     ex.evaluate()
-    self.assertEquals(0, est.fit_count)
-    self.assertEquals(1, est.eval_count)
-    self.assertEquals([noop_hook], est.eval_hooks)
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(1, est.eval_count)
+    self.assertEqual([noop_hook], est.eval_hooks)
 
   def test_evaluate_delay(self):
     est = TestEstimator()
@@ -287,7 +287,7 @@ class ExperimentTest(test.TestCase):
       with test.mock.patch('time.sleep', SheepCounter()) as sheep:
         ex.evaluate(delay_secs=delay)
       self.assertAlmostEqual(delay, sheep.total_time, delta=0.1)
-      self.assertEquals([noop_hook], est.eval_hooks)
+      self.assertEqual([noop_hook], est.eval_hooks)
 
   def test_continuous_eval(self):
     est = TestEstimator()
@@ -303,9 +303,9 @@ class ExperimentTest(test.TestCase):
         continuous_eval_throttle_secs=0)
     self.assertRaises(
         StopIteration, ex.continuous_eval, evaluate_checkpoint_only_once=False)
-    self.assertEquals(0, est.fit_count)
-    self.assertEquals(6, est.eval_count)
-    self.assertEquals([noop_hook], est.eval_hooks)
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(6, est.eval_count)
+    self.assertEqual([noop_hook], est.eval_hooks)
 
   def test_continuous_eval_throttle_delay(self):
     for delay in [0, 1, 2]:
@@ -345,9 +345,9 @@ class ExperimentTest(test.TestCase):
         continuous_eval_throttle_secs=0,
         continuous_eval_predicate_fn=_predicate_fn)
     ex.continuous_eval(evaluate_checkpoint_only_once=False)
-    self.assertEquals(0, est.fit_count)
-    self.assertEquals(3, est.eval_count)
-    self.assertEquals([noop_hook], est.eval_hooks)
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(3, est.eval_count)
+    self.assertEqual([noop_hook], est.eval_hooks)
 
   def test_run_local(self):
     est = TestEstimator()
@@ -362,33 +362,63 @@ class ExperimentTest(test.TestCase):
         eval_steps=100,
         local_eval_frequency=10)
     ex.local_run()
-    self.assertEquals(1, est.fit_count)
-    self.assertEquals(1, est.eval_count)
-    self.assertEquals(1, len(est.monitors))
-    self.assertEquals([noop_hook], est.eval_hooks)
+    self.assertEqual(1, est.fit_count)
+    self.assertEqual(1, est.eval_count)
+    self.assertEqual(1, len(est.monitors))
+    self.assertEqual([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
-  def test_train_monitors_returns_shallow_copy(self):
+  def test_train_hooks_extend_does_not_mutate_input_hooks(self):
     noop_hook = _NoopHook()
+    input_hooks = [noop_hook]
+
     ex = experiment.Experiment(
         TestEstimator(),
         train_input_fn='train_input',
         eval_input_fn='eval_input',
         eval_metrics='eval_metrics',
-        train_monitors=[noop_hook],
-        train_steps=100,
-        eval_steps=100,
-        local_eval_frequency=10)
-    self.assertAllEqual([noop_hook], ex.train_hooks)
+        train_monitors=input_hooks)
+    self.assertAllEqual([noop_hook], ex._train_monitors)
 
     another_noop_hook = _NoopHook()
-    # Assert that the property getter returns a shallow copy.
-    ex.train_hooks.extend([another_noop_hook])
-    self.assertAllEqual([noop_hook], ex.train_hooks)
-
-    # Assert that the extend API mutates the monitors.
+    # Assert that the extend API mutates the hooks, but not the input hooks
     ex.extend_train_hooks([another_noop_hook])
-    self.assertAllEqual([noop_hook, another_noop_hook], ex.train_hooks)
+    self.assertAllEqual([noop_hook, another_noop_hook], ex._train_monitors)
+    self.assertAllEqual([noop_hook], input_hooks)
+
+  def test_export_strategies_reset(self):
+    est = TestEstimator()
+    export_strategy_1 = saved_model_export_utils.make_export_strategy(
+        est, 'export_input_1', exports_to_keep=None)
+
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        train_steps=100,
+        eval_steps=100,
+        export_strategies=[export_strategy_1])
+    ex.train_and_evaluate()
+    self.assertEqual(1, est.export_count)
+
+    # After reset with empty list (None), the count does not change and the user
+    # provided export strategy list should remain intact.
+    old_es = ex.reset_export_strategies()
+    ex.train_and_evaluate()
+    self.assertAllEqual([export_strategy_1], old_es)
+    self.assertEqual(1, est.export_count)
+
+    # After reset with list, the count should increase with the number of items.
+    export_strategy_2 = saved_model_export_utils.make_export_strategy(
+        est, 'export_input_2', exports_to_keep=None)
+    export_strategy_3 = saved_model_export_utils.make_export_strategy(
+        est, 'export_input_3', exports_to_keep=None)
+
+    old_es = ex.reset_export_strategies([export_strategy_2, export_strategy_3])
+    ex.train_and_evaluate()
+    self.assertAllEqual([], old_es)
+    self.assertEqual(3, est.export_count)
 
   def test_train_and_evaluate(self):
     est = TestEstimator()
@@ -405,11 +435,11 @@ class ExperimentTest(test.TestCase):
         eval_steps=100,
         export_strategies=export_strategy)
     ex.train_and_evaluate()
-    self.assertEquals(1, est.fit_count)
-    self.assertEquals(1, est.eval_count)
-    self.assertEquals(1, est.export_count)
-    self.assertEquals(1, len(est.monitors))
-    self.assertEquals([noop_hook], est.eval_hooks)
+    self.assertEqual(1, est.fit_count)
+    self.assertEqual(1, est.eval_count)
+    self.assertEqual(1, est.export_count)
+    self.assertEqual(1, len(est.monitors))
+    self.assertEqual([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
   @test.mock.patch.object(server_lib, 'Server')
@@ -454,8 +484,8 @@ class ExperimentTest(test.TestCase):
     ex = experiment.Experiment(
         est, train_input_fn='train_input', eval_input_fn='eval_input')
     ex.test()
-    self.assertEquals(1, est.fit_count)
-    self.assertEquals(1, est.eval_count)
+    self.assertEqual(1, est.fit_count)
+    self.assertEqual(1, est.eval_count)
 
   def test_continuous_eval_evaluates_checkpoint_once(self):
     # Temporarily disabled until we figure out the threading story on Jenkins.
@@ -487,7 +517,7 @@ class ExperimentTest(test.TestCase):
 
     # But we should have evaluated once.
     count = ex.estimator.eval_count
-    self.assertEquals(1, count)
+    self.assertEqual(1, count)
 
 
 if __name__ == '__main__':

@@ -245,6 +245,26 @@ class Stream {
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
 
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
+
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int16> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
+
   Stream &ThenConvolveWithScratch(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<Eigen::half> &input_data,

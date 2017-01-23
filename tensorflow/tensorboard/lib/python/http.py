@@ -23,8 +23,11 @@ import gzip
 import json
 import re
 import time
+import wsgiref.handlers
 
 import six
+
+from werkzeug import wrappers
 
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.lib.python import json_util
@@ -57,9 +60,14 @@ _JSON_MIMETYPES = set([
 ])
 
 
-def Respond(handler, content, content_type, code=200, expires=0,
-            content_encoding=None, encoding='utf-8'):
-  """Sends HTTP/1.1 response.
+def Respond(request,
+            content,
+            content_type,
+            code=200,
+            expires=0,
+            content_encoding=None,
+            encoding='utf-8'):
+  """Construct a werkzeug Response.
 
   Responses are transmitted to the browser with compression if: a) the browser
   supports it; b) it's sane to compress the content_type in question; and c)
@@ -85,10 +93,9 @@ def Respond(handler, content, content_type, code=200, expires=0,
   content_type parameter explicitly defines a charset parameter, in which case
   the serialized JSON bytes will use that instead of escape sequences.
 
-  This function blocks until the request has finished transmitting.
-
   Args:
-    handler: BaseHTTPRequestHandler object.
+    request: A werkzeug Request object. Used mostly to check the
+      Accept-Encoding header.
     content: Payload data as byte string, unicode string, or maybe JSON.
     content_type: Media type and optionally an output charset.
     code: Numeric HTTP status code to use.
@@ -97,11 +104,9 @@ def Respond(handler, content, content_type, code=200, expires=0,
     encoding: Input charset if content parameter has byte strings.
 
   Returns:
-    Nothing; the response is transmitted as a side effect.
+    A werkzeug Response object (a WSGI application).
   """
-  if code >= 400:
-    handler.log_message('returning %d to %s for %s',
-                        code, handler.client_address[0], handler.path)
+
   mimetype = _EXTRACT_MIMETYPE_PATTERN.search(content_type).group(0)
   charset_match = _EXTRACT_CHARSET_PATTERN.search(content_type)
   charset = charset_match.group(1) if charset_match else encoding
@@ -118,26 +123,27 @@ def Respond(handler, content, content_type, code=200, expires=0,
   if textual and not charset_match and mimetype not in _JSON_MIMETYPES:
     content_type += '; charset=' + charset
   if (not content_encoding and textual and
-      _ALLOWS_GZIP_PATTERN.search(handler.headers.get('Accept-Encoding', ''))):
+      _ALLOWS_GZIP_PATTERN.search(request.headers.get('Accept-Encoding', ''))):
     out = six.BytesIO()
     f = gzip.GzipFile(fileobj=out, mode='wb', compresslevel=3)
     f.write(content)
     f.close()
     content = out.getvalue()
     content_encoding = 'gzip'
-  handler.send_response(code)
-  handler.send_header('Content-Type', content_type)
-  handler.send_header('Content-Length', str(len(content)))
+  if request.method == 'HEAD':
+    content = ''
+  headers = []
+
+  headers.append(('Content-Length', str(len(content))))
   if content_encoding:
-    handler.send_header('Content-Encoding', content_encoding)
+    headers.append(('Content-Encoding', content_encoding))
   if expires > 0:
-    handler.send_header('Expires',
-                        handler.date_time_string(time.time() + float(expires)))
-    handler.send_header('Cache-Control', 'private, max-age=%d' % expires)
+    e = wsgiref.handlers.format_date_time(time.time() + float(expires))
+    headers.append(('Expires', e))
+    headers.append(('Cache-Control', 'private, max-age=%d' % expires))
   else:
-    handler.send_header('Expires', '0')
-    handler.send_header('Cache-Control', 'no-cache, must-revalidate')
-  handler.end_headers()
-  if handler.command != 'HEAD' and content:
-    handler.wfile.write(content)
-  handler.wfile.flush()
+    headers.append(('Expires', '0'))
+    headers.append(('Cache-Control', 'no-cache, must-revalidate'))
+
+  return wrappers.Response(
+      response=content, status=code, headers=headers, content_type=content_type)

@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cc_test",
+    "tf_py_test",
 )
 
 exports_files(["LICENSE"])
@@ -233,4 +234,26 @@ cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
+)
+
+py_library(
+    name = "transform_graph_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:pywrap_tensorflow"],
+)
+
+tf_py_test(
+    name = "transform_graph_py_test",
+    size = "small",
+    srcs = ["python/transform_graph_test.py"],
+    additional_deps = [
+        ":transform_graph_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+    ],
+    main = "python/transform_graph_test.py",
 )

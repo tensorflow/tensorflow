@@ -2292,6 +2292,7 @@ tf_py_wrap_cc(
         "util/port.i",
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
+        "util/transform_graph.i",
     ],
     deps = [
         ":cpp_shape_inference",
@@ -2310,6 +2311,7 @@ tf_py_wrap_cc(
         "//tensorflow/core:lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + tf_additional_lib_deps() + tf_additional_plugin_deps(),
@@ -2350,6 +2352,111 @@ py_test(
     name = "server_lib_test",
     size = "small",
     srcs = ["training/server_lib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_multiple_containers_test",
+    size = "small",
+    srcs = ["training/server_lib_multiple_containers_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_clear_container_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_clear_container_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_clear_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_clear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_no_clear_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_no_clear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_sparse_job_test",
+    size = "small",
+    srcs = ["training/server_lib_sparse_job_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",

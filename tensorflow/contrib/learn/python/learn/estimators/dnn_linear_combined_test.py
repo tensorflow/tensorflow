@@ -76,8 +76,9 @@ class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
   def logits_dimension(self):
     return 1
 
-  def head_ops(self, features, labels, mode, train_op_fn, logits=None,
-               logits_input=None, scope=None):
+  def create_model_fn_ops(
+      self, features, labels, mode, train_op_fn, logits=None, logits_input=None,
+      scope=None):
     """See `_Head`."""
     self._head_ops_called_times += 1
     loss = losses.mean_squared_error(labels, logits)

@@ -112,6 +112,17 @@ string FilterLayoutString(FilterLayout layout) {
   return "unknown filter layout";
 }
 
+string PadAlignmentString(PadAlignment alignment) {
+  switch (alignment) {
+    case PadAlignment::kDefault:
+      return "default";
+    case PadAlignment::kCudnnPadding:
+      return "cuDNN padding";
+    case PadAlignment::kTensorFlowPadding:
+      return "TensorFlow padding";
+  }
+}
+
 string ShortPoolingModeString(PoolingMode mode) {
   switch (mode) {
     case PoolingMode::kMaximum:
@@ -381,7 +392,10 @@ int64 FilterDescriptor::ComputeWeightCount() const {
 // -- ConvolutionDescriptor
 
 ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
-    : zero_padding_(ndims, 0), filter_strides_(ndims, 1), ndims_(ndims) {}
+    : zero_padding_(ndims, 0),
+      filter_strides_(ndims, 1),
+      pad_alignment_(PadAlignment::kDefault),
+      ndims_(ndims) {}
 
 ConvolutionDescriptor::ConvolutionDescriptor()
     : ConvolutionDescriptor(/*ndims=*/2) {}
@@ -396,7 +410,9 @@ string ConvolutionDescriptor::ToString() const {
     port::Appendf(&strides, "%lld ", filter_strides_[i]);
   }
 
-  return port::Printf("{zero_padding: %s filter_strides: %s}", padding.c_str(),
+  return port::Printf("{zero_padding: %s pad_alignment: %s filter_strides: %s}",
+                      padding.c_str(),
+                      PadAlignmentString(pad_alignment_).c_str(),
                       strides.c_str());
 }
 

@@ -122,7 +122,7 @@ class LinearOperator(object):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite`.
+  for `X = non_singular, self_adjoint, positive_definite, square`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -139,6 +139,7 @@ class LinearOperator(object):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
+               is_square=None,
                name=None):
     r"""Initialize the `LinearOperator`.
 
@@ -158,12 +159,20 @@ class LinearOperator(object):
         the operator to be self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
+      is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
     Raises:
-      ValueError: if any member of graph_parents is `None` or not a `Tensor`.
+      ValueError:  If any member of graph_parents is `None` or not a `Tensor`.
+      ValueError:  If hints are set incorrectly.
     """
     # Check and auto-set flags.
+    if is_square is False:
+      if is_non_singular or is_positive_definite:
+        raise ValueError(
+            "A non-singular or positive definite operator is always square.")
+    self._is_square_set_by_user = is_square
+
     if is_positive_definite:
       if is_non_singular is False:
         raise ValueError("A positive definite matrix is always non-singular.")
@@ -224,6 +233,20 @@ class LinearOperator(object):
   @property
   def is_positive_definite(self):
     return self._is_positive_definite
+
+  @property
+  def is_square(self):
+    """Return `True/False` depending on if this operator is square."""
+    # Static checks done after __init__.  Why?  Because domain/range dimension
+    # sometimes requires lots of work done in the derived class after init.
+    static_square_check = self.domain_dimension == self.range_dimension
+    if self._is_square_set_by_user is False and static_square_check:
+      raise ValueError(
+          "User set is_square hint to False, but the operator was square.")
+    if self._is_square_set_by_user is None:
+      return static_square_check
+
+    return self._is_square_set_by_user
 
   def _shape(self):
     # Write this in derived class to enable all static shape methods.
@@ -500,7 +523,14 @@ class LinearOperator(object):
 
     Returns:
       `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
+
+    Raises:
+      NotImplementedError:  If `self.is_square` is `False`.
     """
+    if self.is_square is False:
+      raise NotImplementedError(
+          "Determinant not implemented for an operator that is expected to "
+          "not be square.")
     with self._name_scope(name):
       return self._determinant()
 
@@ -515,7 +545,14 @@ class LinearOperator(object):
 
     Returns:
       `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
+
+    Raises:
+      NotImplementedError:  If `self.is_square` is `False`.
     """
+    if self.is_square is False:
+      raise NotImplementedError(
+          "Determinant not implemented for an operator that is expected to "
+          "not be square.")
     with self._name_scope(name):
       return self._log_abs_determinant()
 
@@ -556,12 +593,16 @@ class LinearOperator(object):
       `Tensor` with shape `[...,N, R]` and same `dtype` as `rhs`.
 
     Raises:
-      ValueError:  If self.is_non_singular is False.
+      NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
     if self.is_non_singular is False:
-      raise ValueError(
-          "Exact solve cannot be called with an operator that is expected to "
+      raise NotImplementedError(
+          "Exact solve not implemented for an operator that is expected to "
           "be singular.")
+    if self.is_square is False:
+      raise NotImplementedError(
+          "Exact solve not implemented for an operator that is expected to "
+          "not be square.")
     with self._name_scope(name, values=[rhs]):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)

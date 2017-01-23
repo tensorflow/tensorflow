@@ -42,9 +42,6 @@ const char* const kXlaClusterAttr = "_XlaCluster";
 namespace {
 
 bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
-  // _Send and _Recv should not be marked for compilation.
-  if (node.IsSend() || node.IsRecv()) return false;
-
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().

@@ -468,6 +468,66 @@ Stream &Stream::ThenConvolve(
                                  output, /*scratch_allocator=*/nullptr);
 }
 
+Stream &Stream::ThenConvolveQuantized(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<int8> &filter_coefficients,
+    const DeviceMemory<float> &coefficient_scales,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> *output) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_coefficients),
+            PARAM(coefficient_scales), PARAM(convolution_descriptor),
+            PARAM(output_descriptor), PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolveQuantized(
+          this, input_descriptor, input_data, filter_descriptor,
+          filter_coefficients, coefficient_scales, convolution_descriptor,
+          output_descriptor, output));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveQuantized(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<int16> &filter_coefficients,
+    const DeviceMemory<float> &coefficient_scales,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> *output) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_coefficients),
+            PARAM(coefficient_scales), PARAM(convolution_descriptor),
+            PARAM(output_descriptor), PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolveQuantized(
+          this, input_descriptor, input_data, filter_descriptor,
+          filter_coefficients, coefficient_scales, convolution_descriptor,
+          output_descriptor, output));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenSeparableConvolve(
     const dnn::BatchDescriptor &batch_descriptor,
     const DeviceMemory<float> &input_data,
