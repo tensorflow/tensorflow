@@ -796,6 +796,8 @@ def train(train_op,
                 logging.info('Stopping Training.')
                 break
           except errors.OutOfRangeError:
+            # OutOfRangeError is thrown when epoch limit per 
+            # tf.train.limit_epochs is reached.
             logging.info('Caught OutOfRangeError. Stopping Training.')
           if logdir and sv.is_chief:
             logging.info('Finished training! Saving model to disk.')
