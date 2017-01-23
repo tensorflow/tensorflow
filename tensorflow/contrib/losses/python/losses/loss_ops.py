@@ -421,7 +421,6 @@ def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       [logits, labels, weights]) as scope:
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
-    weights = array_ops.squeeze(weights)
 
     losses = nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
                                                          logits=logits,
