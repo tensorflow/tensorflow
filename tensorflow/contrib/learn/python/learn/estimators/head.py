@@ -22,6 +22,7 @@ import abc
 import functools
 import six
 
+from tensorflow.contrib import framework as framework_lib
 from tensorflow.contrib import losses as losses_lib
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -330,6 +331,8 @@ class _Head(object):
 # TODO(zakaria): use contrib losses.
 def _mean_squared_loss(logits, labels):
   with ops.name_scope(None, "mean_squared_loss", (logits, labels)) as name:
+    logits = ops.convert_to_tensor(logits)
+    labels = ops.convert_to_tensor(labels)
     # To prevent broadcasting inside "-".
     if len(labels.get_shape()) == 1:
       labels = array_ops.expand_dims(labels, dim=(1,))
@@ -391,6 +394,7 @@ class _RegressionHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
+    logits = ops.convert_to_tensor(logits)
     _check_logits_input_not_supported(logits, logits_input)
 
     centered_bias = None
@@ -453,11 +457,14 @@ class _RegressionHead(_Head):
 def _log_loss_with_two_classes(logits, labels):
   with ops.name_scope(None, "log_loss_with_two_classes",
                       (logits, labels)) as name:
+    logits = ops.convert_to_tensor(logits)
+    labels = math_ops.to_float(labels)
+    # TODO(ptucker): This will break for dynamic shapes.
     # sigmoid_cross_entropy_with_logits requires [batch_size, 1] labels.
     if len(labels.get_shape()) == 1:
       labels = array_ops.expand_dims(labels, dim=(1,))
     return nn.sigmoid_cross_entropy_with_logits(
-        labels=math_ops.to_float(labels), logits=logits, name=name)
+        labels=labels, logits=logits, name=name)
 
 
 def _one_class_to_two_class_logits(logits):
@@ -515,6 +522,7 @@ class _BinaryLogisticHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
+    logits = ops.convert_to_tensor(logits)
     _check_logits_input_not_supported(logits, logits_input)
 
     centered_bias = None
@@ -627,13 +635,14 @@ class _BinaryLogisticHead(_Head):
 
 
 def _softmax_cross_entropy_loss(logits, labels):
-  with ops.name_scope(None, "softmax_cross_entropy_loss", (
-      logits,
-      labels,)) as name:
+  with ops.name_scope(
+      None, "softmax_cross_entropy_loss", (logits, labels,)) as name:
+    labels = ops.convert_to_tensor(labels)
     # Check that we got integer for classification.
     if not labels.dtype.is_integer:
       raise ValueError("Labels dtype should be integer "
                        "Instead got %s." % labels.dtype)
+    # TODO(ptucker): This will break for dynamic shapes.
     # sparse_softmax_cross_entropy_with_logits requires [batch_size] labels.
     if len(labels.get_shape()) == 2:
       labels = array_ops.squeeze(labels, squeeze_dims=(1,))
@@ -707,6 +716,7 @@ class _MultiClassHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
+    logits = ops.convert_to_tensor(logits)
     _check_logits_input_not_supported(logits, logits_input)
 
     centered_bias = None
@@ -869,6 +879,7 @@ class _MultiClassHead(_Head):
 
 def _to_labels_tensor(labels, label_name):
   labels = labels[label_name] if isinstance(labels, dict) else labels
+  labels = framework_lib.convert_to_tensor_or_sparse_tensor(labels)
   if isinstance(labels, sparse_tensor.SparseTensor):
     raise ValueError("SparseTensor is not supported as labels.")
   return labels
@@ -1034,6 +1045,10 @@ class _MultiLabelHead(_MultiClassHead):
     return metrics
 
 
+def _noop(unused_loss):
+  return control_flow_ops.no_op()
+
+
 class _MultiHead(_Head):
   """_Head to combine multiple _Head objects.
 
@@ -1074,7 +1089,7 @@ class _MultiHead(_Head):
 
   def create_model_fn_ops(self,
                           features,
-                          target,
+                          labels,
                           mode,
                           train_op_fn,
                           logits=None,
@@ -1084,7 +1099,7 @@ class _MultiHead(_Head):
 
     Args:
       features: input dict.
-      target: labels dict.
+      labels: labels dict.
       mode: estimator's ModeKeys
       train_op_fn: function that takes a scalar loss and returns an op to
           optimize with the loss.
@@ -1102,10 +1117,6 @@ class _MultiHead(_Head):
       ValueError: if mode is not recognized or both logits and logits_input is
           provided.
     """
-
-    def _noop(unused_loss):
-      return control_flow_ops.no_op()
-
     if logits is not None and logits_input is not None:
       raise ValueError("only one of logits and logits_input must be provided.")
 
@@ -1115,17 +1126,13 @@ class _MultiHead(_Head):
       for head, logits in zip(self._heads, all_logits):
         all_model_fn_ops.append(
             head.create_model_fn_ops(
-                features, target, mode, _noop, logits=logits, scope=scope))
+                features, labels, mode, _noop, logits=logits, scope=scope))
     else:
       # Uses logits_input
       for head in self._heads:
         all_model_fn_ops.append(
             head.create_model_fn_ops(
-                features,
-                target,
-                mode,
-                _noop,
-                logits_input=logits_input,
+                features, labels, mode, _noop, logits_input=logits_input,
                 scope=scope))
 
     if mode == model_fn.ModeKeys.TRAIN:
@@ -1235,10 +1242,8 @@ def _weighted_loss(loss, weight):
   """Returns cumulative weighted loss as 1d `Tensor`."""
   with ops.name_scope(None, "weighted_loss", (loss, weight)) as name:
     return math_ops.multiply(
-        array_ops.reshape(
-            loss, shape=(-1,)),
-        array_ops.reshape(
-            weight, shape=(-1,)),
+        array_ops.reshape(loss, shape=(-1,)),
+        array_ops.reshape(weight, shape=(-1,)),
         name=name)
 
 
@@ -1259,6 +1264,8 @@ def _loss(loss_unweighted, weight, name):
       loss = math_ops.reduce_mean(loss_unweighted, name=name_scope)
       return loss, loss
     loss_weighted = _weighted_loss(loss_unweighted, weight)
+    # TODO(ptucker): This might be wrong if weights are broadcast to loss shape.
+    # We should use tf.losses here.
     weighted_average_loss = math_ops.div(
         math_ops.reduce_sum(loss_weighted),
         math_ops.to_float(math_ops.reduce_sum(weight)),
@@ -1436,6 +1443,7 @@ def _indicator_labels_streaming_mean(predictions,
                                      weights=None,
                                      class_id=None):
   del predictions
+  labels = ops.convert_to_tensor(labels)
   if class_id is not None:
     labels = labels[:, class_id]
   return metrics_lib.streaming_mean(labels, weights=weights)
@@ -1446,6 +1454,7 @@ def _predictions_streaming_mean(predictions,
                                 weights=None,
                                 class_id=None):
   del labels
+  predictions = ops.convert_to_tensor(predictions)
   if class_id is not None:
     predictions = predictions[:, class_id]
   return metrics_lib.streaming_mean(predictions, weights=weights)
@@ -1461,6 +1470,8 @@ def _class_id_labels_to_indicator(labels, num_classes):
 
 
 def _streaming_auc(predictions, labels, weights=None, class_id=None):
+  predictions = ops.convert_to_tensor(predictions)
+  labels = ops.convert_to_tensor(labels)
   if class_id is not None:
     predictions = predictions[:, class_id]
     labels = labels[:, class_id]
