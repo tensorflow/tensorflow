@@ -816,9 +816,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     input_shape = tuple(array_ops.shape(input_) for input_ in flat_input)
     batch_size = input_shape[0][1]
 
-    # for input_ in input_shape:
-    #   if input_[1].get_shape() != batch_size.get_shape():
-    #     raise ValueError("All inputs should have the same batch size")
+    for input_ in input_shape:
+      if input_[1].get_shape() != batch_size.get_shape():
+        raise ValueError("All inputs should have the same batch size")
 
     if initial_state is not None:
       state = initial_state
@@ -827,13 +827,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
         raise ValueError("If no initial_state is provided, dtype must be.")
       state = cell.zero_state(batch_size, dtype)
 
-    # def _assert_has_shape(x, shape):
-    #   x_shape = array_ops.shape(x)
-    #   packed_shape = array_ops.pack(shape)
-    #   return control_flow_ops.Assert(
-    #       math_ops.reduce_all(math_ops.equal(x_shape, packed_shape)),
-    #       ["Expected shape for Tensor %s is " % x.name,
-    #        packed_shape, " but saw shape: ", x_shape])
+    def _assert_has_shape(x, shape):
+      x_shape = array_ops.shape(x)
+      packed_shape = array_ops.pack(shape)
+      return control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(x_shape, packed_shape)),
+          ["Expected shape for Tensor %s is " % x.name,
+           packed_shape, " but saw shape: ", x_shape])
 
     if sequence_length is not None:
       # Perform some shape validation
@@ -922,13 +922,13 @@ def _dynamic_rnn_loop(cell,
 
   # const_time_steps, const_batch_size = inputs_got_shape[0].as_list()[:2]
 
-  # for shape in inputs_got_shape:
+  for shape in inputs_got_shape:
   #   if not shape[2:].is_fully_defined():
   #     raise ValueError(
   #         "Input size (depth of inputs) must be accessible via shape inference,"
   #         " but saw value None.")
-  #   got_time_steps = shape[0].value
-  #   got_batch_size = shape[1].value
+    got_time_steps = shape[0].value
+    got_batch_size = shape[1].value
   #   if const_time_steps != got_time_steps:
   #     raise ValueError(
   #         "Time steps is not the same for all the elements in the input in a "
