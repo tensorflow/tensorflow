@@ -39,6 +39,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
+from tensorflow.python.training import input
 from tensorflow.python.training import saver as saver_lib
 
 FLAGS = flags.FLAGS
@@ -158,14 +159,14 @@ class EvaluationTest(test.TestCase):
     self.assertEqual(ret, [])
 
   def testWithEpochLimit(self):
-    predictions_limited = tf.train.limit_epochs(self._predictions, num_epochs=1)
-    labels_limited = tf.train.limit_epochs(self._labels, num_epochs=1)
+    predictions_limited = input.limit_epochs(self._predictions, num_epochs=1)
+    labels_limited = input.limit_epochs(self._labels, num_epochs=1)
 
-    value_op, update_op = slim.metrics.streaming_accuracy(
+    value_op, update_op = metric_ops.streaming_accuracy(
         predictions_limited, labels_limited)
 
-    init_op = tf.group(tf.global_variables_initializer(),
-                       tf.local_variables_initializer())
+    init_op = control_flow_ops.group(variables.global_variables_initializer(),
+                                     variables.local_variables_initializer())
     # Create checkpoint and log directories:
     chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
     gfile.MakeDirs(chkpt_dir)
@@ -173,13 +174,13 @@ class EvaluationTest(test.TestCase):
     gfile.MakeDirs(logdir)
 
     # Save initialized variables to a checkpoint directory:
-    saver = tf.train.Saver()
+    saver = saver_lib.Saver()
     with self.test_session() as sess:
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
 
     # Now, run the evaluation loop:
-    accuracy_value = slim.evaluation.evaluation_loop(
+    accuracy_value = evaluation.evaluation_loop(
         '', chkpt_dir, logdir, eval_op=update_op, final_op=value_op,
         max_number_of_evaluations=1, num_evals=10000)
     self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
