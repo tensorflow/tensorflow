@@ -362,7 +362,7 @@ prior to the initial matrix multiply by `weights`.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
+*  <b>`inputs`</b>: A tensor of at least rank 2 and static value for the last dimension;
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
 *  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
