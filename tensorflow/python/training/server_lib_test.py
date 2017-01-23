@@ -217,6 +217,13 @@ class GrpcServerTest(test.TestCase):
       with self.assertRaises(errors_impl.DeadlineExceededError):
         sess.run(blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000))
 
+  def testTwoServersSamePort(self):
+    # Starting a server with the same target as the cached server should fail.
+    server = self._cached_server
+    with self.assertRaises(errors_impl.UnknownError):
+      _ = server_lib.Server(
+          {"local_2": [server.target[len("grpc://"):]]})
+
 
 class ServerDefTest(test.TestCase):
 
