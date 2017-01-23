@@ -257,16 +257,17 @@ def mean(values, weights=None, metrics_collections=None,
 
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
+      update_count_op = state_ops.assign_add(count, num_values)
     else:
       weights = weights_broadcast_ops.broadcast_weights(
           math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.reduce_sum(weights)
+      with ops.control_dependencies([values]):
+        update_count_op = state_ops.assign_add(count, num_values)
 
-    with ops.control_dependencies([values]):
-      update_total_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
-      update_count_op = state_ops.assign_add(count, num_values)
-
+    update_total_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
+      
     mean_t = _safe_div(total, count, 'value')
     update_op = _safe_div(update_total_op, update_count_op, 'update_op')
 
@@ -973,15 +974,17 @@ def mean_tensor(values, weights=None, metrics_collections=None,
     count = _create_local('count_tensor', shape=values.get_shape())
 
     num_values = array_ops.ones_like(values)
-    if weights is not None:
+    if weights is None:
+      update_count_op = state_ops.assign_add(count, num_values)
+    else:
       weights = weights_broadcast_ops.broadcast_weights(
           math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
+      with ops.control_dependencies([values]):
+        update_count_op = state_ops.assign_add(count, num_values)
 
-    with ops.control_dependencies([values]):
-      update_total_op = state_ops.assign_add(total, values)
-      update_count_op = state_ops.assign_add(count, num_values)
+    update_total_op = state_ops.assign_add(total, values)
 
     def compute_mean(total, count, name):
       non_zero_count = math_ops.maximum(count,
