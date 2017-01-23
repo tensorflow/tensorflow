@@ -242,8 +242,7 @@ load(
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl([
-						"libiomp5.so",
-						"libmklml_intel.so",
+						"//third_party/mkl:intel_binary_blob",
 						],
 						),
 )

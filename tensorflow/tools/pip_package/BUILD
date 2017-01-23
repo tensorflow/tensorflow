@@ -5,7 +5,7 @@ package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_license_deps")
-
+load("//third_party/mkl:build_defs.bzl","if_mkl")
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
 # public headers.  Not all of the headers returned by the filegroup
@@ -128,33 +128,6 @@ sh_binary(
             "//tensorflow/python/saved_model:all_files",
             "//tensorflow/python/tools:all_files",
             "//tensorflow/tensorboard",
-        ],
-				"//third_party/mkl:using_mkl": [
-						"//third_party/mkl:intel_binary_blob",
-						":licenses",
-						"MANIFEST.in",
-						"README",
-						"setup.py",
-						":included_headers",
-						":simple_console",
-						"//tensorflow:tensorflow_py",
-						"//tensorflow/contrib/labeled_tensor:all_files",
-						"//tensorflow/contrib/ndlstm:all_files",
-						"//tensorflow/contrib/nn:all_files",
-						"//tensorflow/contrib/session_bundle:all_files",
-						"//tensorflow/contrib/slim:all_files",
-						"//tensorflow/contrib/slim/python/slim/data:all_files",
-						"//tensorflow/contrib/slim/python/slim/nets:all_files",
-						"//tensorflow/contrib/specs:all_files",
-						"//tensorflow/contrib/tensor_forest:all_files",
-						"//tensorflow/contrib/tensor_forest/hybrid:all_files",
-						"//tensorflow/examples/tutorials/mnist:package",
-						"//tensorflow/python:util_example_parser_configuration",
-						"//tensorflow/python/debug:all_files",
-						"//tensorflow/python/saved_model:all_files",
-						"//tensorflow/python/tools:all_files",
-						"//tensorflow/tensorboard",
-				],
-    }
-		),
+        ] 
+				}) + if_mkl(["//third_party/mkl:intel_binary_blob"])
 )
