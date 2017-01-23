@@ -87,13 +87,13 @@ class EvaluationTest(test.TestCase):
                                                         self._labels)
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
-    # Create Checkpoint and log directories
+    # Create checkpoint and log directories:
     chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
     gfile.MakeDirs(chkpt_dir)
     logdir = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
     gfile.MakeDirs(logdir)
 
-    # Save initialized variables to checkpoint directory
+    # Save initialized variables to a checkpoint directory:
     saver = saver_lib.Saver()
     with self.test_session() as sess:
       init_op.run()
@@ -166,13 +166,13 @@ class EvaluationTest(test.TestCase):
 
     init_op = tf.group(tf.global_variables_initializer(),
                        tf.local_variables_initializer())
-    # Create Checkpoint and log directories
+    # Create checkpoint and log directories:
     chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
     gfile.MakeDirs(chkpt_dir)
     logdir = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
     gfile.MakeDirs(logdir)
 
-    # Save initialized variables to checkpoint directory
+    # Save initialized variables to a checkpoint directory:
     saver = tf.train.Saver()
     with self.test_session() as sess:
       init_op.run()
