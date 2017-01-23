@@ -160,12 +160,6 @@ class DType(object):
                                                    np.floating)
 
   @property
-  def is_real(self):
-    """Return whether this is a representation of a real floating point type.
-    Can be quantized."""
-    return self.base_dtype in (float16, float32, float64, bfloat16)
-
-  @property
   def is_complex(self):
     """Returns whether this is a complex floating point type."""
     return self.base_dtype in (complex64, complex128)
