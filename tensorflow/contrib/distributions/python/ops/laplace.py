@@ -87,7 +87,7 @@ class Laplace(distribution.Distribution):
       super(Laplace, self).__init__(
           dtype=self._loc.dtype,
           is_continuous=True,
-          is_reparameterized=True,
+          reparameterization_type=distribution.FULLY_REPARAMETERIZED,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           parameters=parameters,
@@ -161,10 +161,7 @@ class Laplace(distribution.Distribution):
   def _mean(self):
     return self.loc + array_ops.zeros_like(self.scale)
 
-  def _variance(self):
-    return math_ops.square(self._std())
-
-  def _std(self):
+  def _stddev(self):
     return math.sqrt(2.) * self.scale + array_ops.zeros_like(self.loc)
 
   def _median(self):

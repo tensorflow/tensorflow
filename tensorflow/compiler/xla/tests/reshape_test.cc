@@ -243,8 +243,8 @@ XLA_TEST_F(ReshapeTest, ReshapeSplitAndShuffle) {
 
 // The following tests use the same input 3D array; they test the examples we
 // show for the Reshape operation in the operation_semantics document.
-// TODO(eliben): find a way to show this code in the documentation without
-// duplication.
+// TODO(b/34503277): find a way to show this code in the documentation without
+// duplication on the TF documentation server.
 Array3D<int> v_array_for_doc_R3_tests({{{10, 11, 12}, {15, 16, 17}},
                                        {{20, 21, 22}, {25, 26, 27}},
                                        {{30, 31, 32}, {35, 36, 37}},

@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
@@ -95,7 +97,7 @@ class _ControlOutputCache(object):
     return control_outputs.get(op, [])
 
 
-def _subscribe(tensor, side_effects, control_cache):
+def _subscribe_new(tensor, side_effects, control_cache):
   """Helper method that subscribes a single tensor to a list of side_effects.
 
   Args:
@@ -133,6 +135,105 @@ def _subscribe(tensor, side_effects, control_cache):
   return out
 
 
+def _subscribe_extend(tensor, side_effects):
+  """Helper method to extend the list of side_effects for a subscribed tensor.
+
+  Args:
+    tensor: A `tf.Tensor` as returned by subscribe().
+    side_effects: List of side_effect functions, see subscribe for details.
+  Returns:
+    The given subscribed tensor (for API consistency).
+  """
+  assert len(tensor.op.inputs) == 1, 'Op {} must only have one input'.format(
+      tensor.op.name)
+  source_tensor = tensor.op.inputs[0]
+
+  # Build the side effect graphs and add their outputs to the list of control
+  # dependencies for the subscribed tensor.
+  outs = []
+  name_scope = source_tensor.op.name + '/subscription/'
+  with ops.name_scope(name_scope):
+    for s in side_effects:
+      outs += s(source_tensor)
+
+  for out in outs:
+    out_type = type(out)
+    if out_type is ops.Tensor:
+      out = out.op
+    tensor.op._control_inputs.append(out)  # pylint: disable=protected-access
+  tensor.op._recompute_node_def()  # pylint: disable=protected-access
+
+  return tensor
+
+
+def _is_subscribed_identity(tensor):
+  """Checks if the given tensor is an identity op returned by `subscribe()`.
+
+  Args:
+    tensor: A `tf.Tensor` to check.
+  Returns:
+    True if the given tensor matches the criteria for subscription identies:
+    its op type is `Identity`, its name matches the name of its input and
+    conforms to the convention for subscribed nodes.
+    False otherwise.
+  """
+  # Subscribed tensor are assumed to be identity ops.
+  if tensor.op.type != 'Identity':
+    return False
+
+  # Check that the tensor name matches the convention in place for identity ops
+  # created by subscribe().
+  match = re.match(
+      r'(?P<prefix_name>^.*?)/subscription/Identity[^/]+', tensor.name)
+  if match is None or len(match.groups()) != 1:
+    return False
+  prefix_name = match.group('prefix_name')
+
+  # Get a reference to the source tensor and check that it has a matching name.
+  assert len(tensor.op.inputs) == 1, 'Op {} must only have one input'.format(
+      tensor.op.name)
+  source_tensor = tensor.op.inputs[0]
+  if prefix_name != source_tensor.op.name:
+    return False
+
+  return True
+
+
+def _subscribe(tensor, side_effects, control_cache):
+  """Helper method that subscribes a single tensor to a list of side_effects.
+
+  This method will check if the given tensor has already been subscribed or if
+  it's a tensor returned by a previous call to `subscribe()` and, if so, will
+  reuse the existing identity op, appending the given side effects to the list
+  of existing ones.
+
+  Args:
+    tensor: The `tf.Tensor` to be subscribed.
+    side_effects: List of side_effect functions, see subscribe for details.
+    control_cache: `_ControlOutputCache` helper to get control_outputs faster.
+  Returns:
+    The modified replacement to the passed in tensor which triggers the side
+    effects or the given tensor, if it was already been subscribed.
+  """
+
+  if _is_subscribed_identity(tensor):
+    return _subscribe_extend(tensor, side_effects)
+
+  # Check if the given tensor has already been subscribed by inspecting its
+  # outputs.
+  name_scope = tensor.op.name + '/subscription/Identity'
+  consumers = tensor.consumers()
+  matching_ops = [op for op in consumers if op.name.startswith(name_scope)]
+  assert len(matching_ops) <= 1, ('Op {} must only have one subscription '
+                                  'op connected to it').format(tensor.op.name)
+  if len(matching_ops) == 1:
+    candidate_tensor = matching_ops[0].outputs[0]
+    if _is_subscribed_identity(candidate_tensor):
+      return _subscribe_extend(candidate_tensor, side_effects)
+
+  return _subscribe_new(tensor, side_effects, control_cache)
+
+
 def subscribe(tensors, side_effects):
   """Subscribe to a tensor.
 
@@ -149,7 +250,10 @@ def subscribe(tensors, side_effects):
   the side effects. Subscribe will construct the additions to your
   graph and return the created identity tensor downstream of the control
   dependencies. Use these tensors as you would normally in the rest of
-  your tensorflow code.
+  your tensorflow code. If a given tensor has already been subscribed or a
+  tensor returned by a call to subscribe is passed, the previously created
+  identity tensor will be reused and the side effect graphs will be added to
+  the existing ones.
 
   Args:
     tensors: `Tensor` or set of tensors to subscribe to. Set of tensors format

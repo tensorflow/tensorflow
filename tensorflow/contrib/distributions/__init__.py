@@ -21,6 +21,7 @@ initialized with parameters that define the distributions.
 
 ## Base classes
 
+@@ReparameterizationType
 @@Distribution
 
 ## Univariate (scalar) distributions

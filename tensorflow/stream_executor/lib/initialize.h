@@ -22,6 +22,8 @@ limitations under the License.
 #else
 
 #undef REGISTER_MODULE_INITIALIZER
+#undef DECLARE_MODULE_INITIALIZER
+#undef REGISTER_MODULE_INITIALIZER_SEQUENCE
 
 namespace perftools {
 namespace gputools {
@@ -31,6 +33,18 @@ class Initializer {
  public:
   typedef void (*InitializerFunc)();
   explicit Initializer(InitializerFunc func) { func(); }
+
+  struct Dependency {
+    Dependency(const char *n, Initializer *i) : name(n), initializer(i) {}
+    const char *const name;
+    Initializer *const initializer;
+  };
+
+  struct DependencyRegisterer {
+    DependencyRegisterer(const char *type, const char *name,
+                         Initializer *initializer,
+                         const Dependency &dependency);
+  };
 };
 
 }  // namespace port
@@ -44,6 +58,14 @@ class Initializer {
 
 #define REGISTER_MODULE_INITIALIZER(name, body) \
   REGISTER_INITIALIZER(module, name, body)
+
+#define DECLARE_INITIALIZER(type, name)         \
+  extern perftools::gputools::port::Initializer \
+      google_initializer_##type##_##name
+
+#define DECLARE_MODULE_INITIALIZER(name) DECLARE_INITIALIZER(module, name)
+
+#define REGISTER_MODULE_INITIALIZER_SEQUENCE(name1, name2)
 
 #endif  // !defined(PLATFORM_GOOGLE)
 

@@ -937,7 +937,7 @@ sized sequences for efficient training via `dynamic_rnn`.
 
 - - -
 
-### `tf.contrib.training.bucket(tensors, which_bucket, batch_size, num_buckets, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=None, shared_name=None, name=None)` {#bucket}
+### `tf.contrib.training.bucket(tensors, which_bucket, batch_size, num_buckets, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=True, shared_name=None, name=None)` {#bucket}
 
 Lazy bucketing of input tensors according to `which_bucket`.
 
@@ -1001,11 +1001,10 @@ operations that depend on fixed batch_size would fail.
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
     batches to be smaller if there are insufficient items left in the queues.
-*  <b>`keep_input`</b>: (Optional).  A `bool` scalar Tensor.  If provided, this tensor
-    controls whether the input is added to the queue or not.  If it evaluates
-    `True`, then `tensors` are added to the bucket; otherwise they are
-    dropped.  This tensor essentially acts as a filtering mechanism.
-    The default behavior is to assume `keep_input=True`.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
+    whether the input is added to the queue or not.  If it evaluates `True`,
+    then `tensors` are added to the bucket; otherwise they are dropped.  This
+    tensor essentially acts as a filtering mechanism.
 *  <b>`shared_name`</b>: (Optional). If set, the queues will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
@@ -1027,7 +1026,7 @@ operations that depend on fixed batch_size would fail.
 
 - - -
 
-### `tf.contrib.training.bucket_by_sequence_length(input_length, tensors, batch_size, bucket_boundaries, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=None, shared_name=None, name=None)` {#bucket_by_sequence_length}
+### `tf.contrib.training.bucket_by_sequence_length(input_length, tensors, batch_size, bucket_boundaries, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=True, shared_name=None, name=None)` {#bucket_by_sequence_length}
 
 Lazy bucketing of inputs according to their length.
 
@@ -1060,11 +1059,10 @@ bucket the given `input_length` belongs to.  See the documentation for
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
     batches to be smaller if there are insufficient items left in the queues.
-*  <b>`keep_input`</b>: (Optional).  A `bool` scalar Tensor.  If provided, this tensor
-    controls whether the input is added to the queue or not.  If it evaluates
-    `True`, then `tensors` are added to the bucket; otherwise they are
-    dropped.  This tensor essentially acts as a filtering mechanism.
-    The default behavior is to assume `keep_input=True`.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
+    whether the input is added to the queue or not.  If it evaluates `True`,
+    then `tensors` are added to the bucket; otherwise they are dropped.  This
+    tensor essentially acts as a filtering mechanism.
 *  <b>`shared_name`</b>: (Optional). If set, the queues will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.

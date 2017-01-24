@@ -194,7 +194,6 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
   # values for which these end up being bad, especially in 16bit.
   assert_finite(x)
   assert_finite(y)
-  np.testing.assert_array_less(0, y)
 
   f_x = bijector.forward(x)
   g_y = bijector.inverse(y)

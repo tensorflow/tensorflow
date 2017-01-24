@@ -50,9 +50,12 @@ public final class Session implements AutoCloseable {
   /** Construct a new session with the associated {@link Graph}. */
   public Session(Graph g) {
     graph = g;
-    try (Graph.Reference r = g.ref()) {
+    Graph.Reference r = g.ref();
+    try {
       nativeHandle = allocate(r.nativeHandle());
       graphRef = g.ref();
+    } finally {
+      r.close();
     }
   }
 
@@ -193,7 +196,8 @@ public final class Session implements AutoCloseable {
       for (Operation op : targets) {
         targetOpHandles[idx++] = op.getUnsafeNativeHandle();
       }
-      try (Reference runref = new Reference()) {
+      Reference runRef = new Reference();
+      try {
         Session.run(
             nativeHandle,
             null, /* runOptions */
@@ -205,6 +209,8 @@ public final class Session implements AutoCloseable {
             targetOpHandles,
             false, /* wantRunMetadata */
             outputTensorHandles);
+      } finally {
+        runRef.close();
       }
       List<Tensor> ret = new ArrayList<Tensor>();
       for (long h : outputTensorHandles) {

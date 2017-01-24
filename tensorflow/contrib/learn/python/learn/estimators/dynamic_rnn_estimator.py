@@ -700,11 +700,11 @@ def _to_rnn_cell(cell_or_type, num_units, num_layers):
     raise TypeError(
         'cell_or_type must be a subclass of RNNCell or one of {}.'.format(
             list(_CELL_TYPES.keys())))
-  cell = cell_or_type(num_units=num_units)
+  single_cell = lambda: cell_or_type(num_units=num_units)
   if num_layers > 1:
     cell = contrib_rnn.MultiRNNCell(
-        [cell] * num_layers, state_is_tuple=True)
-  return cell
+        [single_cell() for _ in range(num_layers)], state_is_tuple=True)
+  return single_cell()
 
 
 @experimental

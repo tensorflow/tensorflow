@@ -365,10 +365,9 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     string layout;
     if (!IsScalar(shape) && !IsOpaque(shape)) {
       if (LayoutUtil::HasLayout(shape)) {
-        layout = tensorflow::strings::StrCat(
-            " ", LayoutUtil::HumanString(shape.layout()));
+        layout = LayoutUtil::HumanString(shape.layout());
       } else {
-        layout = " (no layout)";
+        layout = "{no layout}";
       }
     }
     return tensorflow::strings::StrCat(
