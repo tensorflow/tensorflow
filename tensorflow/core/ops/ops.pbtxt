@@ -13446,6 +13446,95 @@ op {
   summary: "Produces the max pool of the input tensor for quantized types."
 }
 op {
+  name: "QuantizedMul"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    description: "The float value that the lowest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    description: "The float value that the highest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    description: "The float value that the lowest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    description: "The float value that the highest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    description: "The float value that the highest quantized output value represents.\n\n*NOTE*: `QuantizedMul` supports limited forms of broadcasting. More about\nbroadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Returns x * y element-wise, working on quantized buffers."
+  is_commutative: true
+}
+op {
   name: "QuantizedRelu"
   input_arg {
     name: "features"
