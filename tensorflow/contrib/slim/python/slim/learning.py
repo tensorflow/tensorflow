@@ -788,12 +788,17 @@ def train(train_op,
           sv.start_queue_runners(sess, [chief_queue_runner])
           sess.run(init_tokens_op)
         try:
-          while not sv.should_stop():
-            total_loss, should_stop = train_step_fn(sess, train_op, global_step,
-                                                    train_step_kwargs)
-            if should_stop:
-              logging.info('Stopping Training.')
-              break
+          try:
+            while not sv.should_stop():
+              total_loss, should_stop = train_step_fn(sess, train_op, global_step,
+                                                      train_step_kwargs)
+              if should_stop:
+                logging.info('Stopping Training.')
+                break
+          except errors.OutOfRangeError:
+            # OutOfRangeError is thrown when epoch limit per 
+            # tf.train.limit_epochs is reached.
+            logging.info('Caught OutOfRangeError. Stopping Training.')
           if logdir and sv.is_chief:
             logging.info('Finished training! Saving model to disk.')
             sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
