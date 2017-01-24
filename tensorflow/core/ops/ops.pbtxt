@@ -13815,6 +13815,7 @@ op {
   }
   summary: "Closes the given queue."
   description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."
+  is_stateful: true
 }
 op {
   name: "QueueDequeue"
@@ -13917,6 +13918,7 @@ op {
   }
   summary: "Dequeues n tuples of one or more tensors from the given queue."
   description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+  is_stateful: true
 }
 op {
   name: "QueueDequeueUpTo"
@@ -13988,6 +13990,7 @@ op {
   }
   summary: "Dequeues n tuples of one or more tensors from the given queue."
   description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+  is_stateful: true
 }
 op {
   name: "QueueDequeueV2"
@@ -14018,6 +14021,7 @@ op {
   }
   summary: "Dequeues a tuple of one or more tensors from the given queue."
   description: "This operation has k outputs, where k is the number of components\nin the tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until an element\nhas been dequeued (or \'timeout_ms\' elapses, if specified)."
+  is_stateful: true
 }
 op {
   name: "QueueEnqueue"
@@ -14107,6 +14111,7 @@ op {
   }
   summary: "Enqueues zero or more tuples of one or more tensors in the given queue."
   description: "This operation slices each component tensor along the 0th dimension to\nmake multiple queue elements. All of the tuple components must have the\nsame size in the 0th dimension.\n\nThe components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelements have been enqueued (or \'timeout_ms\' elapses, if specified)."
+  is_stateful: true
 }
 op {
   name: "QueueEnqueueV2"
@@ -14136,6 +14141,7 @@ op {
   }
   summary: "Enqueues a tuple of one or more tensors in the given queue."
   description: "The components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelement has been enqueued (or \'timeout_ms\' elapses, if specified)."
+  is_stateful: true
 }
 op {
   name: "QueueSize"
@@ -14165,6 +14171,7 @@ op {
     type: DT_INT32
   }
   summary: "Computes the number of elements in the given queue."
+  is_stateful: true
 }
 op {
   name: "RGBToHSV"
@@ -14762,6 +14769,7 @@ op {
   }
   summary: "Returns the number of records this Reader has produced."
   description: "This is the same as the number of ReaderRead executions that have\nsucceeded."
+  is_stateful: true
 }
 op {
   name: "ReaderNumWorkUnitsCompleted"
@@ -14789,6 +14797,7 @@ op {
     type: DT_INT64
   }
   summary: "Returns the number of work units this Reader has finished processing."
+  is_stateful: true
 }
 op {
   name: "ReaderRead"
@@ -14878,6 +14887,7 @@ op {
   }
   summary: "Returns up to `num_records` (key, value) pairs produced by a Reader."
   description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file).\nIt may return less than `num_records` even before the last batch."
+  is_stateful: true
 }
 op {
   name: "ReaderReadV2"
@@ -14903,6 +14913,7 @@ op {
   }
   summary: "Returns the next record (key, value pair) produced by a Reader."
   description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file)."
+  is_stateful: true
 }
 op {
   name: "ReaderReset"
@@ -14922,6 +14933,7 @@ op {
     type: DT_RESOURCE
   }
   summary: "Restore a Reader to its initial clean state."
+  is_stateful: true
 }
 op {
   name: "ReaderRestoreState"
@@ -14953,6 +14965,7 @@ op {
   }
   summary: "Restore a reader to a previously saved state."
   description: "Not all Readers support being restored, so this can produce an\nUnimplemented error."
+  is_stateful: true
 }
 op {
   name: "ReaderSerializeState"
@@ -14982,6 +14995,7 @@ op {
   }
   summary: "Produce a string tensor that encodes the state of a Reader."
   description: "Not all Readers support being serialized, so this can produce an\nUnimplemented error."
+  is_stateful: true
 }
 op {
   name: "Real"
@@ -16009,6 +16023,7 @@ op {
   }
   summary: "Update \'*var\' according to the adadelta scheme."
   description: "accum = rho() * accum + (1 - rho()) * grad.square();\nupdate = (update_accum + epsilon).sqrt() * (accum + epsilon()).rsqrt() * grad;\nupdate_accum = rho() * update_accum + (1 - rho()) * update.square();\nvar -= update;"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyAdagrad"
@@ -16064,6 +16079,7 @@ op {
   }
   summary: "Update \'*var\' according to the adagrad scheme."
   description: "accum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyAdagradDA"
@@ -16138,6 +16154,7 @@ op {
     description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Update \'*var\' according to the proximal adagrad scheme."
+  is_stateful: true
 }
 op {
   name: "ResourceApplyAdam"
@@ -16223,6 +16240,7 @@ op {
   }
   summary: "Update \'*var\' according to the Adam algorithm."
   description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyCenteredRMSProp"
@@ -16302,6 +16320,7 @@ op {
   }
   summary: "Update \'*var\' according to the centered RMSProp algorithm."
   description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\n\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nmg <- rho * mg_{t-1} + (1-rho) * grad\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)\nvar <- var - mom"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyFtrl"
@@ -16377,6 +16396,7 @@ op {
   }
   summary: "Update \'*var\' according to the Ftrl-proximal scheme."
   description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyGradientDescent"
@@ -16426,6 +16446,7 @@ op {
     description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Update \'*var\' by subtracting \'alpha\' * \'delta\' from it."
+  is_stateful: true
 }
 op {
   name: "ResourceApplyMomentum"
@@ -16494,6 +16515,7 @@ op {
   }
   summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
   description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyProximalAdagrad"
@@ -16559,6 +16581,7 @@ op {
   }
   summary: "Update \'*var\' and \'*accum\' according to FOBOS with Adagrad learning rate."
   description: "accum += grad * grad\nprox_v = var - lr * grad * (1 / sqrt(accum))\nvar = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyProximalGradientDescent"
@@ -16619,6 +16642,7 @@ op {
   }
   summary: "Update \'*var\' as FOBOS algorithm with fixed learning rate."
   description: "prox_v = var - alpha * delta\nvar = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}"
+  is_stateful: true
 }
 op {
   name: "ResourceApplyRMSProp"
@@ -16693,6 +16717,7 @@ op {
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
   description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyAdadelta"
@@ -16776,6 +16801,7 @@ op {
     description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "var: Should be from a Variable()."
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyAdagrad"
@@ -16846,6 +16872,7 @@ op {
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
   description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyAdagradDA"
@@ -16935,6 +16962,7 @@ op {
     description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Update entries in \'*var\' and \'*accum\' according to the proximal adagrad scheme."
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyCenteredRMSProp"
@@ -17029,6 +17057,7 @@ op {
   }
   summary: "Update \'*var\' according to the centered RMSProp algorithm."
   description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyFtrl"
@@ -17119,6 +17148,7 @@ op {
   }
   summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
   description: "That is for rows we have grad for, we update var, accum and linear as follows:\naccum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyMomentum"
@@ -17202,6 +17232,7 @@ op {
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
   description: "Set use_nesterov = True if you want to use Nesterov momentum.\n\nThat is for rows we have grad for, we update var and accum as follows:\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyProximalAdagrad"
@@ -17282,6 +17313,7 @@ op {
   }
   summary: "Sparse update entries in \'*var\' and \'*accum\' according to FOBOS algorithm."
   description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nprox_v = var\nprox_v -= lr * grad * (1 / sqrt(accum))\nvar = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyProximalGradientDescent"
@@ -17357,6 +17389,7 @@ op {
   }
   summary: "Sparse update \'*var\' as FOBOS algorithm with fixed learning rate."
   description: "That is for rows we have grad for, we update var as follows:\nprox_v = var - alpha * grad\nvar = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}"
+  is_stateful: true
 }
 op {
   name: "ResourceSparseApplyRMSProp"
@@ -17446,6 +17479,7 @@ op {
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
   description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  is_stateful: true
 }
 op {
   name: "Restore"
@@ -23540,6 +23574,7 @@ op {
   }
   summary: "Delete the TensorArray from its resource container.  This enables"
   description: "the user to close and release the resource in the middle of a step/run."
+  is_stateful: true
 }
 op {
   name: "TensorArrayConcat"
@@ -23650,6 +23685,7 @@ op {
   }
   summary: "Concat the elements from the TensorArray into value `value`."
   description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
+  is_stateful: true
 }
 op {
   name: "TensorArrayGather"
@@ -23760,6 +23796,7 @@ op {
   }
   summary: "Gather specific elements from the TensorArray into output `value`."
   description: "All elements selected by `indices` must have the same shape."
+  is_stateful: true
 }
 op {
   name: "TensorArrayGrad"
@@ -23948,6 +23985,7 @@ op {
     description: "The type of the elem that is returned."
   }
   summary: "Read an element from the TensorArray into output `value`."
+  is_stateful: true
 }
 op {
   name: "TensorArrayScatter"
@@ -24042,6 +24080,7 @@ op {
   }
   summary: "Scatter the data from the input value into specific TensorArray elements."
   description: "`indices` must be a vector, its length must match the first dim of `value`."
+  is_stateful: true
 }
 op {
   name: "TensorArraySize"
@@ -24097,6 +24136,7 @@ op {
     type: DT_INT32
   }
   summary: "Get the current size of the TensorArray."
+  is_stateful: true
 }
 op {
   name: "TensorArraySplit"
@@ -24191,6 +24231,7 @@ op {
   }
   summary: "Split the data from the input value into TensorArray elements."
   description: "Assuming that `lengths` takes on values\n\n  ```(n0, n1, ..., n(T-1))```\n\nand that `value` has shape\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,\n\nthis splits values into a TensorArray with T tensors.\n\nTensorArray index t will be the subtensor of values with starting position\n\n  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```\n\nand having size\n\n  ```nt x d0 x d1 x ...```"
+  is_stateful: true
 }
 op {
   name: "TensorArrayUnpack"
@@ -24419,6 +24460,7 @@ op {
     type: "type"
   }
   summary: "Push an element onto the tensor_array."
+  is_stateful: true
 }
 op {
   name: "TensorSummary"
