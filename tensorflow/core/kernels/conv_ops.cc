@@ -229,6 +229,10 @@ class LaunchXsmmConvOp<CPUDevice, float> {
       return false;
     }
 
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
+
     auto input_ptr = input.template flat<float>().data();
     auto filter_ptr = filter.template flat<float>().data();
     auto output_ptr = output->template flat<float>().data();
