@@ -85,7 +85,7 @@ port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = port::MakeUnique<StreamExecutor>(
-      this, new HostExecutor(config.plugin_config));
+      this, port::MakeUnique<HostExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -118,3 +118,8 @@ static void InitializeHostPlatform() {
 
 REGISTER_MODULE_INITIALIZER(
     host_platform, perftools::gputools::host::InitializeHostPlatform());
+
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
+// Note that module initialization sequencing is not supported in the
+// open-source project, so this will be a no-op there.
+REGISTER_MODULE_INITIALIZER_SEQUENCE(host_platform, multi_platform_manager);

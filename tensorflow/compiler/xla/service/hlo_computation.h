@@ -83,18 +83,18 @@ class HloComputation {
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
-  void RemoveInstruction(HloInstruction* instruction);
+  Status RemoveInstruction(HloInstruction* instruction);
 
   // Remove an instruction from the computation and also transitively any
   // operand that has no users post removing an instruction. The instruction
   // must have no users. Instruction is deallocated with this call.
-  void RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
+  Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
   // Replace all uses of "instruction_to_replace" with "instruction". Also, if
   // instruction_to_replace is the root of this computation then the root is set
   // to "instruction". Does not remove "instruction_to_replace".
-  void ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
-                                HloInstruction* instruction);
+  Status ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
+                                  HloInstruction* instruction);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
@@ -192,15 +192,15 @@ class HloComputation {
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
-  void ReplaceWithNewInstruction(
+  Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction);
 
   // Replace old instruction with new instruction.  Updates uses and root
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
-  void ReplaceInstruction(HloInstruction* old_instruction,
-                          HloInstruction* new_instruction);
+  Status ReplaceInstruction(HloInstruction* old_instruction,
+                            HloInstruction* new_instruction);
 
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
@@ -217,6 +217,12 @@ class HloComputation {
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
 
+  // Returns true if instructions of the given opcode can be removed from the
+  // computation. Instructions such as parameters and send/receive instructions
+  // cannot be removed without violating invariants of the HLO computation or
+  // module.
+  static bool IsRemovable(const HloOpcode& opcode);
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
@@ -230,7 +236,7 @@ class HloComputation {
   // Remove an instruction from the computation if found. The instruction must
   // have no users. Instruction is deallocated with this call.
   // Return whether instruction was found and removed.
-  bool RemoveInstructionIfFound(HloInstruction* instruction);
+  StatusOr<bool> RemoveInstructionIfFound(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //

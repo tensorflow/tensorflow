@@ -80,7 +80,7 @@ class Poisson(distribution.Distribution):
     super(Poisson, self).__init__(
         dtype=self._lam.dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -125,9 +125,6 @@ class Poisson(distribution.Distribution):
 
   def _variance(self):
     return array_ops.identity(self.lam)
-
-  def _std(self):
-    return math_ops.sqrt(self.variance())
 
   @distribution_util.AppendDocstring(
       """Note that when `lam` is an integer, there are actually two modes.

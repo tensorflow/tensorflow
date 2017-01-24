@@ -88,7 +88,7 @@ FILL THIS IN
 #### Matrix property hints
 
 This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-for `X = non_singular, self_adjoint, positive_definite`.
+for `X = non_singular, self_adjoint, positive_definite, square`.
 These have the following meaning
 * If `is_X == True`, callers should expect the operator to have the
   property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -99,7 +99,7 @@ These have the following meaning
   way.
 - - -
 
-#### `tf.contrib.linalg.LinearOperator.__init__(dtype, graph_parents=None, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, name=None)` {#LinearOperator.__init__}
+#### `tf.contrib.linalg.LinearOperator.__init__(dtype, graph_parents=None, is_non_singular=None, is_self_adjoint=None, is_positive_definite=None, is_square=None, name=None)` {#LinearOperator.__init__}
 
 Initialize the `LinearOperator`.
 
@@ -121,12 +121,14 @@ Initialize the `LinearOperator`.
     the operator to be self-adjoint to be positive-definite.  See:
 *  <b>`https`</b>: //en.wikipedia.org/wiki/Positive-definite_matrix\
         #Extension_for_non_symmetric_matrices
+*  <b>`is_square`</b>: Expect that this operator acts like square [batch] matrices.
 *  <b>`name`</b>: A name for this `LinearOperator`.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if any member of graph_parents is `None` or not a `Tensor`.
+*  <b>`ValueError`</b>: If any member of graph_parents is `None` or not a `Tensor`.
+*  <b>`ValueError`</b>: If hints are set incorrectly.
 
 
 - - -
@@ -248,6 +250,11 @@ Determinant for every batch member.
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
 
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
 
 - - -
 
@@ -321,6 +328,13 @@ List of graph dependencies of this `LinearOperator`.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperator.is_square` {#LinearOperator.is_square}
+
+Return `True/False` depending on if this operator is square.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperator.log_abs_determinant(name='log_abs_det')` {#LinearOperator.log_abs_determinant}
 
 Log absolute value of determinant for every batch member.
@@ -333,6 +347,11 @@ Log absolute value of determinant for every batch member.
 ##### Returns:
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
+
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
 
 
 - - -
@@ -451,7 +470,7 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If self.is_non_singular is False.
+*  <b>`NotImplementedError`</b>: If `self.is_non_singular` or `is_square` is False.
 
 
 - - -

@@ -547,24 +547,26 @@ ReferenceUtil::ReduceToRowArray2D(
   int64 interior_padding0 = padding.dimensions(0).interior_padding();
   int64 out0 =
       in0 + low_padding0 + high_padding0 + (in0 - 1) * interior_padding0;
+
   int64 in1 = operand.n2();
   int64 high_padding1 = padding.dimensions(1).edge_padding_high();
   int64 low_padding1 = padding.dimensions(1).edge_padding_low();
   int64 interior_padding1 = padding.dimensions(1).interior_padding();
   int64 out1 =
       in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
+
   auto result = MakeUnique<Array2D<float>>(out0, out1);
   result->Fill(pad);
-  int64 i0 = 0;
-  for (int64 o0 = low_padding0; o0 < out0 - high_padding0;
-       o0 += interior_padding0 + 1) {
-    int64 i1 = 0;
-    for (int64 o1 = low_padding1; o1 < out1 - high_padding1;
-         o1 += interior_padding1 + 1) {
-      (*result)(o0, o1) = operand(i0, i1);
-      ++i1;
+  int64 o0 = low_padding0;
+  for (int64 i0 = 0; i0 < in0; ++i0) {
+    int64 o1 = low_padding1;
+    for (int64 i1 = 0; i1 < in1; ++i1) {
+      if (o0 >= 0 && o1 >= 0 && o0 < out0 && o1 < out1) {
+        (*result)(o0, o1) = operand(i0, i1);
+      }
+      o1 += interior_padding1 + 1;
     }
-    ++i0;
+    o0 += interior_padding0 + 1;
   }
   return result;
 }

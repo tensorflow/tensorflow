@@ -256,7 +256,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "stage_op",
     srcs = ["stage_op.cc"],
     deps = [
@@ -2252,12 +2252,15 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["matmul_op_test.cc"],
     deps = [
-        ":matmul_op",
         ":ops_testutil",
         ":ops_util",
-        "//tensorflow/core:core_cpu",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -3546,6 +3549,7 @@ filegroup(
         "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",
+        "spacetobatch_functor.h",
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
@@ -3627,6 +3631,7 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
+        "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
@@ -3664,6 +3669,8 @@ filegroup(
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
+        "spacetobatch_functor.cc",
+        "spacetobatch_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
         "summary_op.cc",
@@ -3703,6 +3710,7 @@ filegroup(
         "quantized_conv_ops.cc",
         "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
+        "quantized_mul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
         "reference_gemm.h",
@@ -3806,6 +3814,7 @@ tf_kernel_library(
         "quantized_conv_ops.cc",
         "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
+        "quantized_mul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
         "requantization_range_op.cc",
@@ -3988,6 +3997,55 @@ tf_cc_test(
         ":ops_util",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+# Android-only test for quantized instance norm.
+cc_binary(
+    name = "quantized_mul_op_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_mul_op_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-pie",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":android_tensorflow_kernels",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:android_tensorflow_lib",
+        "//tensorflow/core:android_tensorflow_test_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "quantized_mul_op_test",
+    size = "small",
+    srcs = ["quantized_mul_op_test.cc"],
+    deps = [
+        ":math",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",

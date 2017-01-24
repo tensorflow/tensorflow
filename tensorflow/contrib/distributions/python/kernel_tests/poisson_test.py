@@ -154,9 +154,9 @@ class PoissonTest(test.TestCase):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.5]
       poisson = poisson_lib.Poisson(lam=lam_v)
-      self.assertEqual(poisson.std().get_shape(), (3,))
-      self.assertAllClose(poisson.std().eval(), stats.poisson.std(lam_v))
-      self.assertAllClose(poisson.std().eval(), np.sqrt(lam_v))
+      self.assertEqual(poisson.stddev().get_shape(), (3,))
+      self.assertAllClose(poisson.stddev().eval(), stats.poisson.std(lam_v))
+      self.assertAllClose(poisson.stddev().eval(), np.sqrt(lam_v))
 
   def testPoissonMode(self):
     with self.test_session():

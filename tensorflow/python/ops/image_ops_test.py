@@ -668,6 +668,27 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
+  def testRandomFlipLeftRight(self):
+    x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+    y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_left_right(x_tf)
+
+      count_flipped = 0
+      count_unflipped = 0
+      for _ in range(50):
+        y_tf = y.eval()
+        if y_tf[0][0] == 1:
+          self.assertAllEqual(y_tf, x_np)
+          count_unflipped += 1
+        else:
+          self.assertAllEqual(y_tf, y_np)
+          count_flipped += 1
+      self.assertGreaterEqual(count_flipped, 1)
+      self.assertGreaterEqual(count_unflipped, 1)
+
   def testIdempotentUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
@@ -686,6 +707,26 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y = image_ops.flip_up_down(x_tf)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+
+  def testRandomFlipUpDown(self):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+    y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_up_down(x_tf)
+      count_flipped = 0
+      count_unflipped = 0
+      for _ in range(50):
+        y_tf = y.eval()
+        if y_tf[0][0] == 1:
+          self.assertAllEqual(y_tf, x_np)
+          count_unflipped += 1
+        else:
+          self.assertAllEqual(y_tf, y_np)
+          count_flipped += 1
+      self.assertGreaterEqual(count_flipped, 1)
+      self.assertGreaterEqual(count_unflipped, 1)
 
   def testIdempotentTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])

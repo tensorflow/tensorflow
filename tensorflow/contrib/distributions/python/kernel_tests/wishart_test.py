@@ -95,7 +95,7 @@ class WishartCholeskyTest(test.TestCase):
       scale = make_pd(1., 2)
       df = 4
       w = distributions.WishartCholesky(df, chol(scale))
-      self.assertAllEqual(chol(wishart_var(df, scale)), w.std().eval())
+      self.assertAllEqual(chol(wishart_var(df, scale)), w.stddev().eval())
 
   def testVariance(self):
     with self.test_session():
