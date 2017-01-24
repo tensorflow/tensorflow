@@ -84,7 +84,7 @@ StatusOr<bool> ParallelizationPreparation::Run(HloModule* module) {
       HloInstruction* copy =
           entry_computation->AddInstruction(HloInstruction::CreateUnary(
               head_operand->shape(), HloOpcode::kCopy, head_operand));
-      head->ReplaceOperandWith(0, copy);
+      TF_RETURN_IF_ERROR(head->ReplaceOperandWith(0, copy));
       instructions_to_outline.insert(instructions_to_outline.begin(), copy);
     }
 

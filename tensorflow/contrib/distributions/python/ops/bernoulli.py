@@ -79,7 +79,7 @@ class Bernoulli(distribution.Distribution):
     super(Bernoulli, self).__init__(
         dtype=dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -161,9 +161,6 @@ class Bernoulli(distribution.Distribution):
 
   def _variance(self):
     return self.q * self.p
-
-  def _std(self):
-    return math_ops.sqrt(self._variance())
 
   def _mode(self):
     """Returns `1` if `p > 1-p` and `0` otherwise."""

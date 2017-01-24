@@ -48,7 +48,6 @@ tf_cc_test(
         ":saved_model_half_plus_two",
     ],
     linkstatic = 1,
-    tags = ["manual"],
     deps = [
         ":constants",
         ":loader",

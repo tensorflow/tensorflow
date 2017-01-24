@@ -53,6 +53,16 @@ message GPUOptions {
   // specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
   // physical to visible device mapping prior to invoking TensorFlow.
   string visible_device_list = 5;
+
+  // In the event polling loop sleep this many microseconds between
+  // PollEvents calls, when the queue is not empty.  If value is not
+  // set or set to 0, gets set to a non-zero default.
+  int32 polling_active_delay_usecs = 6;
+
+  // In the event polling loop sleep this many millisconds between
+  // PollEvents calls, when the queue is empty.  If value is not
+  // set or set to 0, gets set to a non-zero default.
+  int32 polling_inactive_delay_msecs = 7;
 };
 
 // Options passed to the graph optimizer

@@ -25,6 +25,7 @@ func TestNewTensor(t *testing.T) {
 		shape []int64
 		value interface{}
 	}{
+		{nil, bool(true)},
 		{nil, int8(5)},
 		{nil, int16(5)},
 		{nil, int32(5)},
@@ -36,6 +37,7 @@ func TestNewTensor(t *testing.T) {
 		{nil, complex(float32(5), float32(6))},
 		{nil, complex(float64(5), float64(6))},
 		{nil, "a string"},
+		{[]int64{2}, []bool{true, false}},
 		{[]int64{1}, []float64{1}},
 		{[]int64{1}, [1]float64{1}},
 		{[]int64{2}, []string{"string", "slice"}},
@@ -105,6 +107,7 @@ func TestNewTensor(t *testing.T) {
 
 func TestTensorSerialization(t *testing.T) {
 	var tests = []interface{}{
+		bool(true),
 		int8(5),
 		int16(5),
 		int32(5),
@@ -123,6 +126,7 @@ func TestTensorSerialization(t *testing.T) {
 			{{0, -1}, {-2, -3}, {-4, -5}},
 			{{-6, -7}, {-8, -9}, {-10, -11}},
 		},
+		[]bool{true, false, true},
 	}
 	for _, v := range tests {
 		t1, err := NewTensor(v)

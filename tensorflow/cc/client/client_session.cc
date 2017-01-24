@@ -32,8 +32,11 @@ ClientSession::ClientSession(const Scope& scope) : ClientSession(scope, "") {}
 
 ClientSession::ClientSession(const Scope& scope,
                              const SessionOptions& session_options)
-    : session_(NewSession(session_options)),
-      graph_(scope.graph_as_shared_ptr()) {
+    : graph_(scope.graph_as_shared_ptr()) {
+  Session* new_session;
+  Status status = NewSession(session_options, &new_session);
+  TF_CHECK_OK(status) << status;
+  session_.reset(new_session);
   CHECK_NOTNULL(session_.get());
 }
 

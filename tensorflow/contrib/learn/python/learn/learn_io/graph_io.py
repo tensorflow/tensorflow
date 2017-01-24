@@ -49,7 +49,8 @@ def read_batch_examples(file_pattern,
                         num_threads=1,
                         read_batch_size=1,
                         parse_fn=None,
-                        name=None):
+                        name=None,
+                        seed=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -73,7 +74,7 @@ def read_batch_examples(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` as shown in the tests.
+      `tf.global_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -81,6 +82,7 @@ def read_batch_examples(file_pattern,
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
+    seed: An integer (optional). Seed used if randomize_input == True.
 
   Returns:
     String `Tensor` of batched `Example` proto.
@@ -98,7 +100,8 @@ def read_batch_examples(file_pattern,
       num_threads=num_threads,
       read_batch_size=read_batch_size,
       parse_fn=parse_fn,
-      name=name)
+      name=name,
+      seed=seed)
   return examples
 
 
@@ -111,7 +114,8 @@ def read_keyed_batch_examples(file_pattern,
                               num_threads=1,
                               read_batch_size=1,
                               parse_fn=None,
-                              name=None):
+                              name=None,
+                              seed=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -135,7 +139,7 @@ def read_keyed_batch_examples(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` as shown in the tests.
+      `tf.global_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -143,6 +147,7 @@ def read_keyed_batch_examples(file_pattern,
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
+    seed: An integer (optional). Seed used if randomize_input == True.
 
   Returns:
     Returns tuple of:
@@ -163,7 +168,8 @@ def read_keyed_batch_examples(file_pattern,
       read_batch_size=read_batch_size,
       parse_fn=parse_fn,
       setup_shared_queue=False,
-      name=name)
+      name=name,
+      seed=seed)
 
 
 def _read_keyed_batch_examples_shared_queue(file_pattern,
@@ -175,7 +181,8 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
                                             num_threads=1,
                                             read_batch_size=1,
                                             parse_fn=None,
-                                            name=None):
+                                            name=None,
+                                            seed=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Given file pattern (or list of files), will setup a shared queue for file
@@ -204,7 +211,7 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` as shown in the tests.
+      `tf.global_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -212,6 +219,7 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
     parse_fn: Parsing function, takes `Example` Tensor returns parsed
       representation. If `None`, no parsing is done.
     name: Name of resulting op.
+    seed: An integer (optional). Seed used if randomize_input == True.
 
   Returns:
     Returns tuple of:
@@ -232,7 +240,8 @@ def _read_keyed_batch_examples_shared_queue(file_pattern,
       read_batch_size=read_batch_size,
       parse_fn=parse_fn,
       setup_shared_queue=True,
-      name=name)
+      name=name,
+      seed=seed)
 
 
 def _get_file_names(file_pattern, randomize_input):
@@ -303,7 +312,8 @@ def _read_keyed_batch_examples_helper(file_pattern,
                                       filter_fn=None,
                                       parse_fn=None,
                                       setup_shared_queue=False,
-                                      name=None):
+                                      name=None,
+                                      seed=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Args:
@@ -316,7 +326,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` as shown in the tests.
+      `tf.global_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -328,6 +338,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
       representation. If `None`, no parsing is done.
     setup_shared_queue: Whether to set up a shared queue for file names.
     name: Name of resulting op.
+    seed: An integer (optional). Seed used if randomize_input == True.
 
   Returns:
     Returns tuple of:
@@ -362,7 +373,8 @@ def _read_keyed_batch_examples_helper(file_pattern,
             capacity=1, dtypes=[dtypes.string], shapes=[[]])
         enqueue_op = file_name_queue.enqueue(
             input_pipeline_ops.seek_next(
-                file_names, shuffle=randomize_input, num_epochs=num_epochs))
+                file_names, shuffle=randomize_input, num_epochs=num_epochs,
+                seed=seed))
         queue_runner.add_queue_runner(
             queue_runner.QueueRunner(file_name_queue, [enqueue_op]))
       else:
@@ -371,7 +383,8 @@ def _read_keyed_batch_examples_helper(file_pattern,
                 file_names, name='input'),
             shuffle=randomize_input,
             num_epochs=num_epochs,
-            name=file_name_queue_scope)
+            name=file_name_queue_scope,
+            seed=seed)
 
     example_list = _get_examples(file_name_queue, reader, num_threads,
                                  read_batch_size, filter_fn, parse_fn)
@@ -396,7 +409,8 @@ def _read_keyed_batch_examples_helper(file_pattern,
           min_after_dequeue=min_after_dequeue,
           enqueue_many=enqueue_many,
           name=scope,
-          allow_smaller_final_batch=allow_smaller_final_batch)
+          allow_smaller_final_batch=allow_smaller_final_batch,
+          seed=seed)
     else:
       queued_examples_with_keys = input_ops.batch_join(
           example_list,
@@ -447,7 +461,7 @@ def read_keyed_batch_features(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() as shown in the tests.
+      tf.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     feature_queue_capacity: Capacity of the parsed features queue.
@@ -527,7 +541,7 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() as shown in the tests.
+      tf.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     feature_queue_capacity: Capacity of the parsed features queue.
@@ -720,7 +734,7 @@ def read_batch_features(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() as shown in the tests.
+      tf.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     feature_queue_capacity: Capacity of the parsed features queue. Set this
       value to a small number, for example 5 if the parsed features are large.
@@ -772,7 +786,7 @@ def read_batch_record_features(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.local_variables_initializer() as shown in the tests.
+      tf.local_variables_initializer() and run the op in a session.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     name: Name of resulting op.

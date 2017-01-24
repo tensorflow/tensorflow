@@ -94,7 +94,7 @@ class Uniform(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype((self._a, self._b))
     super(Uniform, self).__init__(
         dtype=self._a.dtype,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         is_continuous=True,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -177,5 +177,5 @@ class Uniform(distribution.Distribution):
   def _variance(self):
     return math_ops.square(self.range()) / 12.
 
-  def _std(self):
+  def _stddev(self):
     return self.range() / math.sqrt(12.)

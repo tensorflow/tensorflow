@@ -37,8 +37,8 @@ distributions = distributions_lib
 class NormalNotParam(distributions.Normal):
 
   @property
-  def is_reparameterized(self):
-    return False
+  def reparameterization_type(self):
+    return distributions.NOT_REPARAMETERIZED
 
 
 class TestSurrogateLosses(test.TestCase):
@@ -52,8 +52,12 @@ class TestSurrogateLosses(test.TestCase):
         likelihood = st.StochasticTensor(
             distributions.Normal(
                 mu=prior, sigma=sigma))
-        self.assertTrue(prior.distribution.is_reparameterized)
-        self.assertTrue(likelihood.distribution.is_reparameterized)
+        self.assertEqual(
+            prior.distribution.reparameterization_type,
+            distributions.FULLY_REPARAMETERIZED)
+        self.assertEqual(
+            likelihood.distribution.reparameterization_type,
+            distributions.FULLY_REPARAMETERIZED)
 
       loss = math_ops.square(array_ops.identity(likelihood) - [0.0, 0.1, 0.2])
       sum_loss = math_ops.reduce_sum(loss)
