@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_H_
-
-#include <string>
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_INTERFACE_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_INTERFACE_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -28,41 +26,16 @@ namespace xla {
 
 // Base class for HLO passes. These are used with the HloPassPipeline to
 // organize a sequence of passes.
-class HloPass {
+class HloPassInterface {
  public:
-  explicit HloPass(const string& name) : name_(name) {}
-  virtual ~HloPass() {}
-
-  const string& name() const { return name_; }
+  virtual ~HloPassInterface() = default;
+  virtual tensorflow::StringPiece name() const = 0;
 
   // Run the pass on the given HLO module.  Return whether it modified the
   // module.
   virtual StatusOr<bool> Run(HloModule* module) = 0;
-
- private:
-  const string name_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(HloPass);
-};
-
-// Do an HLO pass to a fix point.
-template <typename Pass>
-class HloPassFix : public Pass {
- public:
-  template <typename... Args>
-  explicit HloPassFix(Args&&... args) : Pass(args...) {}
-
-  StatusOr<bool> Run(HloModule* module) override {
-    bool changed = false;
-    bool changed_this_iteration = true;
-    while (changed_this_iteration) {
-      TF_ASSIGN_OR_RETURN(changed_this_iteration, Pass::Run(module));
-      changed |= changed_this_iteration;
-    }
-    return changed;
-  }
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_INTERFACE_H_

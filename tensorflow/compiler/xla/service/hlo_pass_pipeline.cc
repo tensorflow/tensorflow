@@ -35,11 +35,12 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
       tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
   tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
 
-  string prefix = name() + ": pipeline start";
+  string prefix = name().ToString() + ": pipeline start";
   bool changed = false;
   string message;
   for (auto& pass : passes_) {
-    if (!disabled_passes.empty() && disabled_passes.count(pass->name()) > 0) {
+    if (!disabled_passes.empty() &&
+        disabled_passes.count(pass->name().ToString()) > 0) {
       continue;
     }
 
