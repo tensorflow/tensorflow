@@ -396,6 +396,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@zlib_archive//:zlib",
   )
 
+  native.new_http_archive(
+      name = "nccl_archive",
+      url = "https://github.com/NVIDIA/nccl/archive/2a974f5ca2aa12b178046b2206b43f1fd69d9fae.tar.gz",
+      sha256 = "d6aa1a3f20ae85358890d9a96f49c51a75baa1d3af3598501f29ff9ef8a3107d",
+      strip_prefix = "nccl-2a974f5ca2aa12b178046b2206b43f1fd69d9fae",
+      build_file = str(Label("//third_party:nccl.BUILD")),
+  )
+
   # Make junit-4.12 available as //external:junit
   native.http_jar(
       name = "junit_jar",
