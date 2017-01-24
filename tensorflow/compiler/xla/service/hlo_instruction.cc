@@ -204,6 +204,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     const ConvolutionDimensionNumbers& dimension_numbers) {
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kConvolution, shape));
+  if (window_util::HasBaseDilation(window)) {
+    instruction->set_name(instruction->name() + "-base-dilated");
+  }
+  if (window_util::HasWindowDilation(window)) {
+    instruction->set_name(instruction->name() + "-window-dilated");
+  }
   instruction->AppendOperand(lhs);
   instruction->AppendOperand(rhs);
   instruction->window_ = MakeUnique<Window>(window);
@@ -1294,10 +1300,10 @@ string HloInstruction::SignatureString() const {
                                      ShapeUtil::HumanString(shape()));
 }
 
-string HloInstruction::ToString() const {
+string HloInstruction::ToString(bool compact_operands) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
-    // For constants, emit the actual value in place of an empty operand list.
+    // For constants, show the actual value in place of an empty operand list.
     if (ShapeUtil::ElementsIn(shape()) <= 10) {
       // LiteralUtil::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
@@ -1313,32 +1319,28 @@ string HloInstruction::ToString() const {
         first = false;
       }
     } else {
-      // Don't try emitting large constants.
+      // Do not show large constants.
       operands = "{...}";
     }
   } else {
+    tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
+    const int64 kMaxOperandsToShowIfCompact = 4;
+    if (compact_operands && slice.size() > kMaxOperandsToShowIfCompact) {
+      slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
+    }
     operands = tensorflow::str_util::Join(
-        operands_, ", ", [](string* out, HloInstruction* operand) {
-          tensorflow::strings::StrAppend(
-              out, ShapeUtil::HumanStringWithLayout(operand->shape()), " ",
-              operand->name());
+        slice, ", ", [&](string* out, HloInstruction* operand) {
+          *out += ShapeUtil::HumanStringWithLayout(operand->shape());
+          if (!compact_operands) {
+            tensorflow::strings::StrAppend(out, " ", operand->name());
+          }
         });
-  }
-  string extra;
-  if (LayoutUtil::HasLayout(shape())) {
-    if (ShapeUtil::IsTuple(shape())) {
-      // Tuple shapes are recursive, so the layout field of the top-level shape
-      // does not include all layout information. In this case, print out the
-      // entire shape with layout.
-      tensorflow::strings::StrAppend(&extra, ", layout=",
-                                     ShapeUtil::HumanStringWithLayout(shape()));
-    } else {
-      tensorflow::strings::StrAppend(
-          &extra, tensorflow::strings::Printf(
-                      ", layout=%s",
-                      LayoutUtil::HumanString(shape().layout()).c_str()));
+    const int64 remaining = operands_.size() - slice.size();
+    if (slice.size() != operands_.size()) {
+      tensorflow::strings::StrAppend(&operands, ", ...(+", remaining, ")");
     }
   }
+  string extra;
   if (CanHaveDimensionsField()) {
     tensorflow::strings::StrAppend(
         &extra, ", dimensions={",
@@ -1384,9 +1386,9 @@ string HloInstruction::ToString() const {
     tensorflow::strings::StrAppend(&extra, ", index=", tuple_index());
   }
   return tensorflow::strings::Printf(
-      "%s %s = %s(%s)%s", ShapeUtil::HumanString(shape()).c_str(),
-      name().c_str(), HloOpcodeString(opcode()).c_str(), operands.c_str(),
-      extra.c_str());
+      "%s = %s %s(%s)%s", name().c_str(),
+      ShapeUtil::HumanStringWithLayout(shape()).c_str(),
+      HloOpcodeString(opcode()).c_str(), operands.c_str(), extra.c_str());
 }
 
 string HloInstruction::ToShortString() const {
