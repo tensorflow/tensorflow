@@ -50,25 +50,30 @@ def generator_input_fn(x,
                        shuffle=True,
                        queue_capacity=1000,
                        num_threads=1):
-  """Returns input function that would feed a generator that yields dictionarys of numpy arrays into the model.
+  """Returns input function that would feed a generator that yields dictionary
+  of numpy arrays into the model.
 
   This returns a function outputting `features` and `target` based on the dict
-  of numpy arrays. The dict `features` has the same keys as an element yielded from x.
+  of numpy arrays. The dict `features` has the same keys as an element yielded
+  from x.
 
   Example:
-  ```python
-  def generator():
-    for index in range(10):
-      yield {height: np.random.randint(32,36), 'age':np.random.randint(18,80), "label":np.ones(1)}
-  x = generator
-  with tf.Session() as session:
-    input_fn = generator_io.generator_input_fn(
-        generator(), target_key="label", batch_size=2, shuffle=False, num_epochs=1)
-  ```
+    ```python
+    def generator():
+      for index in range(10):
+        yield {height: np.random.randint(32,36), 'age':np.random.randint(18,80),
+              "label":np.ones(1)}
+    x = generator
+    with tf.Session() as session:
+      input_fn = generator_io.generator_input_fn(
+          generator(), target_key="label", batch_size=2, shuffle=False,
+          num_epochs=1)
+    ```
 
   Args:
     x: generator returning dictionaries of numpy arrays.
-    target_key: String, the key of the numpy array in x dictionaries to use as target.
+    target_key: String, the key of the numpy array in x dictionaries to use as
+      target.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
       run forever.
@@ -81,20 +86,25 @@ def generator_input_fn(x,
     Function, that has signature of ()->(dict of `features`, `target`)
 
   Raises:
-    ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
-      values in `x` have same shape).
-    TypeError: `x` is not a dict.
+    TypeError: `x` is not `FunctionType`.
+    TypeError: `x` is not `GeneratorType`.
+    TypeError: `target_key` is not `str`.
+    KeyError:  `target_key` not a key in next(`x`)
   """
   
   def input_fn():
     """generator input function."""
     if not isinstance(x, FunctionType):
       raise TypeError('x must be a function to a generator ; got {}'.format(type(x).__name__))
-    if not isinstance(x(),GeneratorType):
+    if not isinstance(x(), GeneratorType):
       raise TypeError('x() must be a generator ; got {}'.format(type(x()).__name__))
     if target_key is not None and not isinstance(target_key, str):
       raise TypeError('target_key must be string ; got {}'.format(type(target_key).__name__))
-    
+
+    input_keys = next(x()).keys()
+    if target_key not in input_keys:
+      raise KeyError('target_key must be present in the yielded dictionary')
+
     queue = feeding_functions.enqueue_data(
       x,
       queue_capacity,
@@ -106,7 +116,7 @@ def generator_input_fn(x,
     features = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
     
-    input_keys = next(x()).keys()
+
     # Remove the first `Tensor` in `features`, which is the row number.
     if len(features) > 0:
       features.pop(0)
