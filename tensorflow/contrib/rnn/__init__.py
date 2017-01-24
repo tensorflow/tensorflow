@@ -36,6 +36,8 @@
 @@EmbeddingWrapper
 @@InputProjectionWrapper
 @@OutputProjectionWrapper
+@@DeviceWrapper
+@@ResidualWrapper
 
 ### Block RNNCells
 @@LSTMBlockCell
@@ -76,6 +78,7 @@ from tensorflow.contrib.rnn.python.ops.core_rnn import static_state_saving_rnn
 
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicLSTMCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DeviceWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DropoutWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import EmbeddingWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import GRUCell
@@ -84,6 +87,7 @@ from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMStateTuple
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import MultiRNNCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import OutputProjectionWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import ResidualWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import RNNCell
 
 # pylint: disable=unused-import,wildcard-import, line-too-long
