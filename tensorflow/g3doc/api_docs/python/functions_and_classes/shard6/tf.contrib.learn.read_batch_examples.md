@@ -1,4 +1,4 @@
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None)` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None, seed=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -33,6 +33,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 *  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
     representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
+*  <b>`seed`</b>: An integer (optional). Seed used if randomize_input == True.
 
 ##### Returns:
 
