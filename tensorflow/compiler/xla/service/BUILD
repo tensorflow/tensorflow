@@ -576,6 +576,7 @@ cc_test(
         ":algebraic_simplifier",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1006,7 +1007,10 @@ cc_test(
 
 cc_library(
     name = "hlo_pass",
-    hdrs = ["hlo_pass.h"],
+    hdrs = [
+        "hlo_pass_fix.h",
+        "hlo_pass_interface.h",
+    ],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:status_macros",
