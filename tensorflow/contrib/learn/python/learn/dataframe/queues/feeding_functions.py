@@ -20,11 +20,9 @@ from __future__ import print_function
 
 import collections
 import random
-
 import itertools
 import numpy as np
 import six
-
 from types import FunctionType
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
