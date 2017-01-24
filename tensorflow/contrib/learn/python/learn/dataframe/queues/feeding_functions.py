@@ -121,19 +121,19 @@ class _GeneratorFeedFn(object):
 
     list_dict = collections.OrderedDict({self._index_placeholder: np.arange(self._index, self._index + self._batch_size)})
     list_dict_size = 0
-    try:
-      while len(list_dict_size) < self._batch_size:
+    while list_dict_size < self._batch_size:
+      try:
         data_row = next(self._iterator)
-        for index,key in enumerate(data_row.keys()):
-          list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])
-        list_dict_size += 1
-    except StopIteration:
-      self._epoch += 1
-      self._iterator = self._generator_function()
-      self._index = 0
-    finally:
-      feed_dict = {key: np.asarray(item) for key, item in list(list_dict.items())}
-      return feed_dict
+      except StopIteration:
+        self._epoch += 1
+        self._iterator = self._generator_function()
+        self._index = 0
+        data_row = next(self._iterator)
+      for index,key in enumerate(data_row.keys()):
+        list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])
+      list_dict_size += 1
+    feed_dict = {key: np.asarray(item) for key, item in list(list_dict.items())}
+    return feed_dict
 
 
 class _OrderedDictNumpyFeedFn(object):

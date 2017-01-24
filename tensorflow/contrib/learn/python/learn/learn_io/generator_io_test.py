@@ -51,11 +51,10 @@ class GeneratorIoTest(test.TestCase):
       threads = queue_runner_impl.start_queue_runners(session, coord=coord)
       
       res = session.run([features, target])
-      self.assertAllEqual(res[0]['a'], np.asarray([0, 1]).reshape(-1, 2))
-      self.assertAllEqual(res[0]['b'], np.asarray([32, 33]).reshape(-1, 2))
-      self.assertAllEqual(res[1], np.asarray([-32, -31]).reshape(-1, 2))
+      self.assertAllEqual(res[0]['a'], np.asarray([0, 1]).reshape(-1, 1))
+      self.assertAllEqual(res[0]['b'], np.asarray([32, 33]).reshape(-1, 1))
+      self.assertAllEqual(res[1], np.asarray([-32, -31]).reshape(-1, 1))
       
-      session.run([features, target])
       with self.assertRaises(errors.OutOfRangeError):
         session.run([features, target])
       
