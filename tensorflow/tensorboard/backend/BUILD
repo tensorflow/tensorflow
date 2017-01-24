@@ -17,7 +17,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/tensorboard:projector",
-        "//tensorflow/tensorboard/lib/python:http",
+        "//tensorflow/tensorboard/lib/python:http_util",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],

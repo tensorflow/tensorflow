@@ -8,8 +8,8 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_library(
-    name = "http",
-    srcs = ["http.py"],
+    name = "http_util",
+    srcs = ["http_util.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -21,12 +21,12 @@ py_library(
 )
 
 py_test(
-    name = "http_test",
+    name = "http_util_test",
     size = "small",
-    srcs = ["http_test.py"],
+    srcs = ["http_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":http",
+        ":http_util",
         "//tensorflow/python:client_testlib",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",

@@ -42,7 +42,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import process_graph
-from tensorflow.tensorboard.lib.python import http
+from tensorflow.tensorboard.lib.python import http_util
 
 
 DATA_PREFIX = '/data'
@@ -256,7 +256,8 @@ class TensorBoardWSGIApp(object):
   @wrappers.Request.application
   def _serve_logdir(self, request):
     """Respond with a JSON object containing this TensorBoard's logdir."""
-    return http.Respond(request, {'logdir': self._logdir}, 'application/json')
+    return http_util.Respond(
+        request, {'logdir': self._logdir}, 'application/json')
 
   @wrappers.Request.application
   def _serve_scalars(self, request):
@@ -271,40 +272,40 @@ class TensorBoardWSGIApp(object):
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
-      return http.Respond(request, string_io.getvalue(), 'text/csv')
+      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
     else:
-      return http.Respond(request, values, 'application/json')
+      return http_util.Respond(request, values, 'application/json')
 
   @wrappers.Request.application
   def _serve_graph(self, request):
     """Given a single run, return the graph definition in json format."""
     run = request.args.get('run', None)
     if run is None:
-      return http.Respond(request, 'query parameter "run" is required',
-                          'text/plain', 400)
+      return http_util.Respond(
+          request, 'query parameter "run" is required', 'text/plain', 400)
 
     try:
       graph = self._multiplexer.Graph(run)
     except ValueError:
-      return http.Respond(request, '404 Not Found', code=404)
+      return http_util.Respond(request, '404 Not Found', code=404)
 
     limit_attr_size = request.args.get('limit_attr_size', None)
     if limit_attr_size is not None:
       try:
         limit_attr_size = int(limit_attr_size)
       except ValueError:
-        return http.Respond(request,
-                            'query parameter `limit_attr_size` must be integer',
-                            'text/plain', 400)
+        return http_util.Respond(
+            request, 'query parameter `limit_attr_size` must be integer',
+            'text/plain', 400)
 
     large_attrs_key = request.args.get('large_attrs_key', None)
     try:
       process_graph.prepare_graph_for_ui(graph, limit_attr_size,
                                          large_attrs_key)
     except ValueError as e:
-      return http.Respond(request, e.message, 'text/plain', 400)
+      return http_util.Respond(request, e.message, 'text/plain', 400)
 
-    return http.Respond(request, str(graph), 'text/x-protobuf')  # pbtxt
+    return http_util.Respond(request, str(graph), 'text/x-protobuf')  # pbtxt
 
   @wrappers.Request.application
   def _serve_run_metadata(self, request):
@@ -312,16 +313,17 @@ class TensorBoardWSGIApp(object):
     tag = request.args.get('tag', None)
     run = request.args.get('run', None)
     if tag is None:
-      return http.Respond(request, 'query parameter "tag" is required',
-                          'text/plain', 400)
+      return http_util.Respond(
+          request, 'query parameter "tag" is required', 'text/plain', 400)
     if run is None:
-      return http.Respond(request, 'query parameter "run" is required',
-                          'text/plain', 400)
+      return http_util.Respond(
+          request, 'query parameter "run" is required', 'text/plain', 400)
     try:
       run_metadata = self._multiplexer.RunMetadata(run, tag)
     except ValueError:
-      return http.Respond(request, '404 Not Found', code=404)
-    return http.Respond(request, str(run_metadata), 'text/x-protobuf')  # pbtxt
+      return http_util.Respond(request, '404 Not Found', code=404)
+    return http_util.Respond(
+        request, str(run_metadata), 'text/x-protobuf')  # pbtxt
 
   @wrappers.Request.application
   def _serve_histograms(self, request):
@@ -329,7 +331,7 @@ class TensorBoardWSGIApp(object):
     tag = request.args.get('tag')
     run = request.args.get('run')
     values = self._multiplexer.Histograms(run, tag)
-    return http.Respond(request, values, 'application/json')
+    return http_util.Respond(request, values, 'application/json')
 
   @wrappers.Request.application
   def _serve_compressed_histograms(self, request):
@@ -355,9 +357,10 @@ class TensorBoardWSGIApp(object):
         for value in compressed_histogram.compressed_histogram_values:
           row += [value.rank_in_bps, value.value]
         writer.writerow(row)
-      return http.Respond(request, string_io.getvalue(), 'text/csv')
+      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
     else:
-      return http.Respond(request, compressed_histograms, 'application/json')
+      return http_util.Respond(
+          request, compressed_histograms, 'application/json')
 
   @wrappers.Request.application
   def _serve_images(self, request):
@@ -379,7 +382,7 @@ class TensorBoardWSGIApp(object):
 
     images = self._multiplexer.Images(run, tag)
     response = self._image_response_for_run(images, run, tag)
-    return http.Respond(request, response, 'application/json')
+    return http_util.Respond(request, response, 'application/json')
 
   @wrappers.Request.application
   def _serve_image(self, request):
@@ -390,7 +393,7 @@ class TensorBoardWSGIApp(object):
     image = self._multiplexer.Images(run, tag)[index]
     encoded_image_string = image.encoded_image_string
     content_type = _content_type_for_image(encoded_image_string)
-    return http.Respond(request, encoded_image_string, content_type)
+    return http_util.Respond(request, encoded_image_string, content_type)
 
   def _query_for_individual_image(self, run, tag, index):
     """Builds a URL for accessing the specified image.
@@ -435,7 +438,7 @@ class TensorBoardWSGIApp(object):
 
     audio_list = self._multiplexer.Audio(run, tag)
     response = self._audio_response_for_run(audio_list, run, tag)
-    return http.Respond(request, response, 'application/json')
+    return http_util.Respond(request, response, 'application/json')
 
   @wrappers.Request.application
   def _serve_individual_audio(self, request):
@@ -444,7 +447,8 @@ class TensorBoardWSGIApp(object):
     run = request.args.get('run')
     index = int(request.args.get('index'))
     audio = self._multiplexer.Audio(run, tag)[index]
-    return http.Respond(request, audio.encoded_audio_string, audio.content_type)
+    return http_util.Respond(
+        request, audio.encoded_audio_string, audio.content_type)
 
   def _query_for_individual_audio(self, run, tag, index):
     """Builds a URL for accessing the specified audio.
@@ -495,7 +499,7 @@ class TensorBoardWSGIApp(object):
         logging.warning('Unable to get first event timestamp for run %s',
                         run_name)
         run_data['firstEventTimestamp'] = None
-    return http.Respond(request, runs, 'application/json')
+    return http_util.Respond(request, runs, 'application/json')
 
   @wrappers.Request.application
   def _serve_index(self, request):
@@ -521,7 +525,7 @@ class TensorBoardWSGIApp(object):
     orig_path = path.lstrip('/')
     if not self._path_is_safe(orig_path):
       logging.warning('path not safe: %s', orig_path)
-      return http.Respond(request, 'Naughty naughty!', 'text/plain', 400)
+      return http_util.Respond(request, 'Naughty naughty!', 'text/plain', 400)
       # Resource loader wants a path relative to //WORKSPACE/tensorflow.
     path = os.path.join('tensorboard', orig_path)
     # Open the file and read it.
@@ -544,10 +548,10 @@ class TensorBoardWSGIApp(object):
         contents = resource_loader.load_resource(path)
       except IOError:
         logging.info('path %s not found, sending 404', path)
-        return http.Respond(request, 'Not found', 'text/plain', code=404)
+        return http_util.Respond(request, 'Not found', 'text/plain', code=404)
     mimetype, content_encoding = mimetypes.guess_type(path)
     mimetype = mimetype or 'application/octet-stream'
-    return http.Respond(
+    return http_util.Respond(
         request,
         contents,
         mimetype,

@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.pywrap_tensorflow import TransformGraphWithStringInputs
+from tensorflow.python.util import compat
 
 
 def TransformGraph(input_graph_def, inputs, outputs, transforms):
@@ -41,9 +42,9 @@ def TransformGraph(input_graph_def, inputs, outputs, transforms):
   """
 
   input_graph_def_string = input_graph_def.SerializeToString()
-  inputs_string = ",".join(inputs)
-  outputs_string = ",".join(outputs)
-  transforms_string = " ".join(transforms)
+  inputs_string = compat.as_bytes(",".join(inputs))
+  outputs_string = compat.as_bytes(",".join(outputs))
+  transforms_string = compat.as_bytes(" ".join(transforms))
   with errors.raise_exception_on_not_ok_status() as status:
     output_graph_def_string = TransformGraphWithStringInputs(
         input_graph_def_string, inputs_string, outputs_string,
