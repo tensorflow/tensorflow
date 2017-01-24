@@ -69,12 +69,6 @@ class DecodeRawOp : public OpKernel {
         context, context->allocate_output("output", out_shape, &output_tensor));
     auto out = output_tensor->flat_inner_dims<T>();
     DCHECK_EQ(flat_in.size(), out.dimensions()[0]);
-    OP_REQUIRES(
-        context,
-        little_endian_ == ::tensorflow::port::kLittleEndian || sizeof(T) == 1,
-        errors::Unimplemented("Unimplemented support for little_endian=",
-                              little_endian_ ? "true" : "false"));
-    // Endianness matches, so just copy each string byte-for-byte.
     T* out_data = out.data();
     for (int64 i = 0; i < flat_in.size(); ++i) {
       const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
