@@ -7,9 +7,20 @@ licenses(["notice"])  # Apache 2.0
 
 java_library(
     name = "tensorflow",
-    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    srcs = [":java_sources"],
     data = [":libtensorflow_jni"],
     visibility = ["//visibility:public"],
+)
+
+# NOTE(ashankar): Rule to include the Java API in the Android Inference Library
+# .aar. At some point, might make sense for a .aar rule here instead.
+filegroup(
+    name = "java_sources",
+    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    visibility = [
+        "//tensorflow/contrib/android:__pkg__",
+        "//tensorflow/java:__pkg__",
+    ],
 )
 
 java_library(
