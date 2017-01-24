@@ -178,9 +178,7 @@ class handles{
                     "Destroy handle");
     }
   private:
- 
     std::unordered_map<libxsmm_dnn_conv_desc_wrap , libxsmm_dnn_layer*, HashFunction> libxsmm_handles;
- 
 };
 
 static handles libxsmm_handles;
@@ -197,9 +195,9 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   libxsmm_dnn_conv_desc_wrap w(desc);
   void* scratch;
  
-  if(kind == LIBXSMM_DNN_COMPUTE_KIND_FWD)
+  if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD)
     libxsmm_handle = libxsmm_handles.find(w);
-  else{
+  else {
     libxsmm_handle = libxsmm_dnn_create_conv_layer(desc, &status);
     chk_libxsmm_err(status, "Create handle");
   }
@@ -229,9 +227,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   int blocksifm = desc.C%ifmblock ==0 ? desc.C/ifmblock :desc.C/ifmblock + 1;           
   int blocksofm = desc.K%ofmblock ==0 ? desc.K/ofmblock :desc.K/ofmblock + 1;
   float *native_filter = (float*)libxsmm_aligned_scratch( blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float), 2097152);
- 
 
-  
   const DeviceBase::CpuWorkerThreads* worker_threads =
       ctx->device()->tensorflow_cpu_worker_threads();
 
