@@ -123,8 +123,8 @@ class _GeneratorFeedFn(object):
     try:
       while len(list_dict_size) < self._batch_size:
         data_row = next(self._iterator)
-        for key in data_row.keys():
-          list_dict.setdefault(key, list()).append(data_row[key])
+        for index,key in enumerate(data_row.keys()):
+          list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])
         list_dict_size += 1
     except StopIteration:
       self._epoch += 1
