@@ -175,7 +175,6 @@ tensorflow::Status InstructionCopier::RecordAmbiguousOrNonDistinctIndices(
   const PointsToSet& points_to =
       points_to_analysis.GetPointsToSet(instruction_);
   // Mapping from LogicalBuffer to index (used to detect non-distinct indices).
-  // TODO(b/32116879) User ShapeIndex here when it is available.
   std::unordered_map<const LogicalBuffer*, std::vector<ShapeIndex>>
       buffer_to_source_indices;
   TF_RETURN_IF_ERROR(points_to.ForEachElement([this, &buffer_to_source_indices](
