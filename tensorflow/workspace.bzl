@@ -76,11 +76,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.6.5.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.6.5.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.6.6.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.6.6.tar.gz",
       ],
-      sha256 = "5231419a8e13e7a6d286cf25d32a3aa75c443a625e5ea57024d36468bc3d5936",
-      strip_prefix = "libxsmm-1.6.5",
+      sha256 = "7c048a48e17f7f14a475be7b83e6e941289e03debb42ce9e02a06353412f9f2a",
+      strip_prefix = "libxsmm-1.6.6",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
