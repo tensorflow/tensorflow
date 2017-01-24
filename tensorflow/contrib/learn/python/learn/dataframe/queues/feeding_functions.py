@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import collections
 import random
+
+import itertools
 import numpy as np
+import six
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
@@ -53,7 +56,7 @@ class _ArrayFeedFn(object):
                num_epochs=None):
     if len(placeholders) != 2:
       raise ValueError("_array_feed_fn expects 2 placeholders; got {}.".format(
-          len(placeholders)))
+        len(placeholders)))
     self._placeholders = placeholders
     self._array = array
     self._max = len(array)
@@ -70,8 +73,8 @@ class _ArrayFeedFn(object):
                                    "Already emitted %s epochs." % self._epoch)
 
     integer_indexes = [
-        j % self._max for j in range(self._trav, self._trav + self._batch_size)
-    ]
+      j % self._max for j in range(self._trav, self._trav + self._batch_size)
+      ]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly
@@ -80,9 +83,51 @@ class _ArrayFeedFn(object):
 
     self._trav = (integer_indexes[-1] + 1) % self._max
     return {
-        self._placeholders[0]: integer_indexes,
-        self._placeholders[1]: self._array[integer_indexes]
+      self._placeholders[0]: integer_indexes,
+      self._placeholders[1]: self._array[integer_indexes]
     }
+
+
+class _GeneratorFeedFn(object):
+  """Creates feed dictionaries from `Generator` of `dicts` of numpy arrays."""
+
+  def __init__(self,
+               placeholders,
+               generator,
+               batch_size,
+               random_start=False,
+               seed=None,
+               num_epochs=None):
+    first_sample = next(generator)
+    if len(placeholders) != len(first_sample) + 1:
+      raise ValueError("Expected {} placeholders; got {}.".format(
+        len(first_sample), len(placeholders)))
+    self._index_placeholder = placeholders[0]
+    self._col_placeholders = placeholders[1:]
+    self._iterator = generator
+    self._batch_size = batch_size
+    self._num_epochs = num_epochs
+    self._epoch = 0
+    random.seed(seed)
+
+  def __call__(self):
+    if self._num_epochs and self._epoch >= self._num_epochs:
+      raise errors.OutOfRangeError(None, None,
+                                   "Already emitted %s epochs." % self._epoch)
+
+    list_dict = collections.OrderedDict({self._index_placeholder: np.arange(self._batch_size)})
+    list_dict_size = 0
+    try:
+      while len(list_dict_size) < self._batch_size:
+        data_row = next(self._iterator)
+        for key in data_row.keys():
+          list_dict.setdefault(key, list()).append(data_row[key])
+        list_dict_size += 1
+    except StopIteration:
+      self._epoch += 1
+    finally:
+      feed_dict = {key : np.asarray(list_dict[key]) for key in list_dict.keys()}
+      return feed_dict
 
 
 class _OrderedDictNumpyFeedFn(object):
@@ -97,7 +142,7 @@ class _OrderedDictNumpyFeedFn(object):
                num_epochs=None):
     if len(placeholders) != len(ordered_dict_of_arrays) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
-          len(ordered_dict_of_arrays), len(placeholders)))
+        len(ordered_dict_of_arrays), len(placeholders)))
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._ordered_dict_of_arrays = ordered_dict_of_arrays
@@ -118,8 +163,8 @@ class _OrderedDictNumpyFeedFn(object):
                                    "Already emitted %s epochs." % self._epoch)
 
     integer_indexes = [
-        j % self._max for j in range(self._trav, self._trav + self._batch_size)
-    ]
+      j % self._max for j in range(self._trav, self._trav + self._batch_size)
+      ]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly
@@ -129,9 +174,9 @@ class _OrderedDictNumpyFeedFn(object):
     self._trav = (integer_indexes[-1] + 1) % self._max
     feed_dict = {self._index_placeholder: integer_indexes}
     cols = [
-        column[integer_indexes]
-        for column in self._ordered_dict_of_arrays.values()
-    ]
+      column[integer_indexes]
+      for column in self._ordered_dict_of_arrays.values()
+      ]
     feed_dict.update(dict(zip(self._col_placeholders, cols)))
     return feed_dict
 
@@ -148,7 +193,7 @@ class _PandasFeedFn(object):
                num_epochs=None):
     if len(placeholders) != len(dataframe.columns) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
-          len(dataframe.columns), len(placeholders)))
+        len(dataframe.columns), len(placeholders)))
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._dataframe = dataframe
@@ -166,8 +211,8 @@ class _PandasFeedFn(object):
                                    "Already emitted %s epochs." % self._epoch)
 
     integer_indexes = [
-        j % self._max for j in range(self._trav, self._trav + self._batch_size)
-    ]
+      j % self._max for j in range(self._trav, self._trav + self._batch_size)
+      ]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly
@@ -231,57 +276,65 @@ def enqueue_data(data,
       get_feed_fn = _ArrayFeedFn
     elif isinstance(data, collections.OrderedDict):
       types = [dtypes.int64] + [
-          dtypes.as_dtype(col.dtype) for col in data.values()
-      ]
+        dtypes.as_dtype(col.dtype) for col in data.values()
+        ]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
+    elif isinstance(data, collections.Generator):
+      x_first_el = six.next(data)
+      data = itertools.chain([x_first_el], data)
+      types = [dtypes.int64] + [
+        dtypes.as_dtype(col.dtype) for col in x_first_el.values()
+        ]
+      queue_shapes = [()] + [col.shape for col in data.values()]
+      get_feed_fn = _GeneratorFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):
       types = [
-          dtypes.as_dtype(dt) for dt in [data.index.dtype] + list(data.dtypes)
-      ]
+        dtypes.as_dtype(dt) for dt in [data.index.dtype] + list(data.dtypes)
+        ]
       queue_shapes = [() for _ in types]
       get_feed_fn = _PandasFeedFn
     else:
       raise TypeError(
-          "data must be either a numpy array or pandas DataFrame if pandas is "
-          "installed; got {}".format(type(data).__name__))
+        "data must be either a numpy array or pandas DataFrame if pandas is "
+        "installed; got {}".format(type(data).__name__))
 
     # TODO(jamieas): TensorBoard warnings for all warnings below once available.
 
     if num_threads > 1 and num_epochs is not None:
       logging.warning(
-          "enqueue_data was called with num_epochs and num_threads > 1. "
-          "num_epochs is applied per thread, so this will produce more "
-          "epochs than you probably intend. "
-          "If you want to limit epochs, use one thread.")
+        "enqueue_data was called with num_epochs and num_threads > 1. "
+        "num_epochs is applied per thread, so this will produce more "
+        "epochs than you probably intend. "
+        "If you want to limit epochs, use one thread.")
 
     if shuffle and num_threads > 1 and num_epochs is not None:
       logging.warning(
-          "enqueue_data was called with shuffle=True, num_threads > 1, and "
-          "num_epochs. This will create multiple threads, all reading the "
-          "array/dataframe in order adding to the same shuffling queue; the "
-          "results will likely not be sufficiently shuffled.")
+        "enqueue_data was called with shuffle=True, num_threads > 1, and "
+        "num_epochs. This will create multiple threads, all reading the "
+        "array/dataframe in order adding to the same shuffling queue; the "
+        "results will likely not be sufficiently shuffled.")
 
     if not shuffle and num_threads > 1:
       logging.warning(
-          "enqueue_data was called with shuffle=False and num_threads > 1. "
-          "This will create multiple threads, all reading the "
-          "array/dataframe in order. If you want examples read in order, use"
-          " one thread; if you want multiple threads, enable shuffling.")
+        "enqueue_data was called with shuffle=False and num_threads > 1. "
+        "This will create multiple threads, all reading the "
+        "array/dataframe in order. If you want examples read in order, use"
+        " one thread; if you want multiple threads, enable shuffling.")
 
     if shuffle:
       min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
                               min_after_dequeue)
       queue = data_flow_ops.RandomShuffleQueue(
-          capacity,
-          min_after_dequeue,
-          dtypes=types,
-          shapes=queue_shapes,
-          seed=seed)
+        capacity,
+        min_after_dequeue,
+        dtypes=types,
+        shapes=queue_shapes,
+        seed=seed)
     else:
       min_after_dequeue = 0  # just for the summary text
       queue = data_flow_ops.FIFOQueue(
-          capacity, dtypes=types, shapes=queue_shapes)
+        capacity, dtypes=types, shapes=queue_shapes)
 
     enqueue_ops = []
     feed_fns = []
@@ -294,21 +347,21 @@ def enqueue_data(data,
       enqueue_ops.append(queue.enqueue_many(placeholders))
       seed_i = None if seed is None else (i + 1) * seed
       feed_fns.append(
-          get_feed_fn(
-              placeholders,
-              data,
-              enqueue_size,
-              random_start=shuffle,
-              seed=seed_i,
-              num_epochs=num_epochs))
+        get_feed_fn(
+          placeholders,
+          data,
+          enqueue_size,
+          random_start=shuffle,
+          seed=seed_i,
+          num_epochs=num_epochs))
 
     runner = fqr.FeedingQueueRunner(
-        queue=queue, enqueue_ops=enqueue_ops, feed_fns=feed_fns)
+      queue=queue, enqueue_ops=enqueue_ops, feed_fns=feed_fns)
     queue_runner.add_queue_runner(runner)
 
     full = (math_ops.cast(
-        math_ops.maximum(0, queue.size() - min_after_dequeue),
-        dtypes.float32) * (1. / (capacity - min_after_dequeue)))
+      math_ops.maximum(0, queue.size() - min_after_dequeue),
+      dtypes.float32) * (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = ("queue/%sfraction_over_%d_of_%d_full" %

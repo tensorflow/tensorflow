@@ -80,9 +80,9 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 
-RUN git clone https://github.com/tensorflow/tensorflow.git && \
+RUN git clone https://github.com/abhitopia/tensorflow.git && \
     cd tensorflow && \
-    git checkout r0.12
+    git checkout add_dict_iter_input_fn_in_learn_io
 WORKDIR /tensorflow
 
 # TODO(craigcitro): Don't install the pip package, since it makes it
