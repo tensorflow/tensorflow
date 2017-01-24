@@ -850,7 +850,7 @@ class BaseEstimator(
     for mode in list(self._features_info.keys()):
       if tensor_signature.tensors_compatible(features, self._features_info[mode]):
         self._features_info[model_fn_lib.ModeKeys.INFER] = self._features_info[mode]
-        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info[mode]
+        self._labels_info[model_fn_lib.ModeKeys.INFER] = self._labels_info.get(mode, {})
         break
 
     if model_fn_lib.ModeKeys.INFER not in self._features_info:
