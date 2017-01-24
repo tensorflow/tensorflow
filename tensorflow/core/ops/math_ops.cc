@@ -1751,12 +1751,12 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
   if (start > limit && delta > 0) {
-    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
-                                   start, "/", limit);
+    return errors::InvalidArgument(
+        "Requires start <= limit when delta > 0: ", start, "/", limit);
   }
   if (start < limit && delta < 0) {
-    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
-                                   start, "/", limit);
+    return errors::InvalidArgument(
+        "Requires start >= limit when delta < 0: ", start, "/", limit);
   }
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0");
@@ -2225,6 +2225,35 @@ max_out: The float value that the highest quantized output value represents.
 Tactivation: The type of output produced by activation function
     following this operation.
 
+)doc");
+
+REGISTER_OP("QuantizedMul")
+    .Input("x: T1")
+    .Input("y: T2")
+    .Input("min_x: float")
+    .Input("max_x: float")
+    .Input("min_y: float")
+    .Input("max_y: float")
+    .Output("z: Toutput")
+    .Output("min_z: float")
+    .Output("max_z: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .SetIsCommutative()
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Returns x * y element-wise, working on quantized buffers.
+
+min_x: The float value that the lowest quantized `x` value represents.
+max_x: The float value that the highest quantized `x` value represents.
+min_y: The float value that the lowest quantized `y` value represents.
+max_y: The float value that the highest quantized `y` value represents.
+min_z: The float value that the lowest quantized output value represents.
+max_z: The float value that the highest quantized output value represents.
+
+*NOTE*: `QuantizedMul` supports limited forms of broadcasting. More about
+broadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("QuantizeDownAndShrinkRange")

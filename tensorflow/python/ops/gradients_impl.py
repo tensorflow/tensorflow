@@ -222,6 +222,10 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     grad_y = grad_ys[i]
     y = ys[i]
     if grad_y is None:
+      if y.dtype.is_complex:
+        raise TypeError(
+            "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
+            y.dtype)
       with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y), constant_op.constant(

@@ -119,7 +119,7 @@ class _Logistic(distribution.Distribution):
     super(_Logistic, self).__init__(
         dtype=self._scale.dtype,
         is_continuous=True,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -195,10 +195,7 @@ class _Logistic(distribution.Distribution):
   def _mean(self):
     return self.loc * array_ops.ones_like(self.scale)
 
-  def _variance(self):
-    return math_ops.square(self.std())
-
-  def _std(self):
+  def _stddev(self):
     return self.scale * array_ops.ones_like(self.loc) * math.pi / math.sqrt(3)
 
   def _mode(self):

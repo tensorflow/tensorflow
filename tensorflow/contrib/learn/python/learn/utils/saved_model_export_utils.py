@@ -223,6 +223,33 @@ def get_timestamped_export_dir(export_dir_base):
   return export_dir
 
 
+# create a simple parser that pulls the export_version from the directory.
+def _export_version_parser(path):
+  filename = os.path.basename(path.path)
+  if not (len(filename) == 10 and filename.isdigit()):
+    return None
+  return path._replace(export_version=int(filename))
+
+
+def get_most_recent_export(export_dir_base):
+  """Locate the most recent SavedModel export in a directory of many exports.
+
+  This method assumes that SavedModel subdirectories are named as a timestamp
+  (seconds from epoch), as produced by get_timestamped_export_dir().
+
+  Args:
+    export_dir_base: A base directory containing multiple timestamped
+                     directories.
+
+  Returns:
+    A gc.Path, whith is just a namedtuple of (path, export_version).
+  """
+  select_filter = gc.largest_export_versions(1)
+  results = select_filter(gc.get_paths(export_dir_base,
+                                       parser=_export_version_parser))
+  return next(iter(results or []), None)
+
+
 def garbage_collect_exports(export_dir_base, exports_to_keep):
   """Deletes older exports, retaining only a given number of the most recent.
 
@@ -239,15 +266,8 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
   keep_filter = gc.largest_export_versions(exports_to_keep)
   delete_filter = gc.negation(keep_filter)
-
-  # create a simple parser that pulls the export_version from the directory.
-  def parser(path):
-    filename = os.path.basename(path.path)
-    if not (len(filename) == 10 and filename.isdigit()):
-      return None
-    return path._replace(export_version=int(filename))
-
-  for p in delete_filter(gc.get_paths(export_dir_base, parser=parser)):
+  for p in delete_filter(gc.get_paths(export_dir_base,
+                                      parser=_export_version_parser)):
     gfile.DeleteRecursively(p.path)
 
 

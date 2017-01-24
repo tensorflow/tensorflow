@@ -38,6 +38,7 @@ To apply a `Bijector`, use `distributions.TransformedDistribution`.
 @@Identity
 @@Inline
 @@Invert
+@@PowerTransform
 @@SigmoidCentered
 @@SoftmaxCentered
 @@Softplus
@@ -799,7 +800,8 @@ class Bijector(object):
       except NotImplementedError as original_error:
         try:
           # We want this same try/except to catch either NotImplementedError.
-          y = self.inverse(x, **condition_kwargs) if y is None else y
+          # TODO(langmore) Add test that covers this branch.
+          y = self.forward(x, **condition_kwargs) if y is None else y
           ildj = self.inverse_log_det_jacobian(y, **condition_kwargs)
         except NotImplementedError:
           raise original_error

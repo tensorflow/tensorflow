@@ -24,6 +24,7 @@ from tensorflow.contrib.training.python.training import bucket_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -63,6 +64,10 @@ class BucketTest(test.TestCase):
     self.scalar_int_feed = array_ops.placeholder(dtypes_lib.int32, ())
     self.unk_int64_feed = array_ops.placeholder(dtypes_lib.int64, (None,))
     self.vec3_str_feed = array_ops.placeholder(dtypes_lib.string, (3,))
+    self.sparse_c = sparse_tensor.SparseTensor(
+        indices=[[0]],
+        values=[1.0],
+        dense_shape=[1])
 
     self._coord = coordinator.Coordinator()
     # Make capacity very large so we can feed all the inputs in the
@@ -96,7 +101,7 @@ class BucketTest(test.TestCase):
 
   def testSingleBucket(self):
     bucketed_dynamic = bucket_ops.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
         which_bucket=constant_op.constant(0),
         num_buckets=2,
         batch_size=32,
@@ -104,7 +109,7 @@ class BucketTest(test.TestCase):
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[32], [32, None], [32, 3]],
+        [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
     with self.test_session() as sess:
       for v in range(32):
@@ -122,7 +127,7 @@ class BucketTest(test.TestCase):
       self.assertEqual(2, len(bucketed_values))
 
       # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values[1]))
+      self.assertEqual(4, len(bucketed_values[1]))
 
       # Ensure bucket 0 was used for all minibatch entries.
       self.assertAllEqual(0, bucketed_values[0])
@@ -146,7 +151,7 @@ class BucketTest(test.TestCase):
                                          lambda: constant_op.constant(1))
     batch_sizes = [5, 10]
     bucketed_dynamic = bucket_ops.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
         which_bucket=which_bucket,
         num_buckets=2,
         batch_size=batch_sizes,
@@ -154,7 +159,7 @@ class BucketTest(test.TestCase):
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[None], [None, None], [None, 3]],
+        [[None], [None, None], [None, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
     with self.test_session() as sess:
       for v in range(15):
@@ -188,7 +193,7 @@ class BucketTest(test.TestCase):
   def testEvenOddBuckets(self):
     which_bucket = (self.scalar_int % 2)
     bucketed_dynamic = bucket_ops.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
         which_bucket=which_bucket,
         num_buckets=2,
         batch_size=32,
@@ -196,7 +201,7 @@ class BucketTest(test.TestCase):
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[32], [32, None], [32, 3]],
+        [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
     with self.test_session() as sess:
       for v in range(64):
@@ -216,8 +221,8 @@ class BucketTest(test.TestCase):
       self.assertEqual(2, len(bucketed_values_1))
 
       # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values_0[1]))
-      self.assertEqual(3, len(bucketed_values_1[1]))
+      self.assertEqual(4, len(bucketed_values_0[1]))
+      self.assertEqual(4, len(bucketed_values_1[1]))
 
       # Figure out which output has the even values (there's
       # randomness due to the multithreaded nature of bucketing)

@@ -152,7 +152,7 @@ class Dirichlet(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         is_continuous=True,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._alpha, self._alpha_sum],
         name=ns)
@@ -223,9 +223,6 @@ class Dirichlet(distribution.Distribution):
             alpha, dim=-2))  # row
     return array_ops.matrix_set_diag(outer_prod,
                                      alpha * (self.alpha_sum / scale - alpha))
-
-  def _std(self):
-    return math_ops.sqrt(self._variance())
 
   @distribution_util.AppendDocstring(
       """Note that the mode for the Dirichlet distribution is only defined
