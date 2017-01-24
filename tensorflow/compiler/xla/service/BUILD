@@ -557,6 +557,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_query",
+        ":shape_inference",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
