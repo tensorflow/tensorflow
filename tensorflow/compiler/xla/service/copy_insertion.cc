@@ -323,7 +323,7 @@ HloInstruction* InstructionCopier::Copy() {
   for (HloInstruction* user : copy_users_) {
     VLOG(2) << "Adding copy between instruction: " << instruction_->name()
             << " and user: " << user->name();
-    instruction_->ReplaceUseWith(user, copy);
+    TF_CHECK_OK(instruction_->ReplaceUseWith(user, copy));
   }
   return copy;
 }

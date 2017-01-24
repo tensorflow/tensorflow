@@ -148,7 +148,7 @@ class _OneHotCategorical(distribution.Distribution):
     super(_OneHotCategorical, self).__init__(
         dtype=dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,

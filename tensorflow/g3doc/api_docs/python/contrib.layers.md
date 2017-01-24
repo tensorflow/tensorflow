@@ -1641,8 +1641,16 @@ output_id = Hash(input_feature_string) % bucket_size
 
 Creates an integerized _SparseColumn.
 
-Use this when your features are already pre-integerized into int64 IDs.
-output_id = input_feature
+Use this when your features are already pre-integerized into int64 IDs, that
+is, when the set of values to output is already coming in as what's desired in
+the output. Integerized means we can use the feature value itself as id.
+
+Typically this is used for reading contiguous ranges of integers indexes, but
+it doesn't have to be. The output value is simply copied from the
+input_feature, whatever it is. Just be aware, however, that if you have large
+gaps of unused integers it might affect what you feed those in (for instance,
+if you make up a one-hot tensor from these, the unused integers will appear as
+values in the tensor which are always zero.)
 
 ##### Args:
 

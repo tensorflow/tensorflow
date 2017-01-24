@@ -145,9 +145,9 @@ class LaplaceTest(test.TestCase):
       loc_v = np.array([1.0, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
       laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
-      expected_std = stats.laplace.std(loc_v, scale=scale_v)
-      self.assertEqual(laplace.std().get_shape(), (3,))
-      self.assertAllClose(laplace.std().eval(), expected_std)
+      expected_stddev = stats.laplace.std(loc_v, scale=scale_v)
+      self.assertEqual(laplace.stddev().get_shape(), (3,))
+      self.assertAllClose(laplace.stddev().eval(), expected_stddev)
 
   def testLaplaceEntropy(self):
     with self.test_session():

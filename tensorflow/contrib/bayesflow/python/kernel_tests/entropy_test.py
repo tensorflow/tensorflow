@@ -90,10 +90,10 @@ class ElboRatioTest(test.TestCase):
     with self.test_session():
       q = distributions.MultivariateNormalDiag(
           mu=self._rng.rand(*vector_shape),
-          diag_stdev=self._rng.rand(*vector_shape))
+          diag_stddev=self._rng.rand(*vector_shape))
       p = distributions.MultivariateNormalDiag(
           mu=self._rng.rand(*vector_shape),
-          diag_stdev=self._rng.rand(*vector_shape))
+          diag_stddev=self._rng.rand(*vector_shape))
 
       # In this case, the log_ratio is the KL.
       sample_kl = -1 * entropy.elbo_ratio(
@@ -118,10 +118,10 @@ class ElboRatioTest(test.TestCase):
     with self.test_session():
       q = distributions.MultivariateNormalDiag(
           mu=self._rng.rand(*vector_shape),
-          diag_stdev=self._rng.rand(*vector_shape))
+          diag_stddev=self._rng.rand(*vector_shape))
       p = distributions.MultivariateNormalDiag(
           mu=self._rng.rand(*vector_shape),
-          diag_stdev=self._rng.rand(*vector_shape))
+          diag_stddev=self._rng.rand(*vector_shape))
 
       # In this case, the log_ratio is the KL.
       sample_kl = -1 * entropy.elbo_ratio(
@@ -144,7 +144,7 @@ class ElboRatioTest(test.TestCase):
     with self.test_session():
       q = distributions.MultivariateNormalDiag(
           mu=self._rng.rand(*vector_shape),
-          diag_stdev=self._rng.rand(*vector_shape))
+          diag_stddev=self._rng.rand(*vector_shape))
 
       # In this case, the log_ratio is the KL.
       sample_kl = -1 * entropy.elbo_ratio(
@@ -269,7 +269,7 @@ class RenyiRatioTest(test.TestCase):
     with self.test_session():
       q = distributions.MultivariateNormalDiag(
           mu=self._rng.rand(*vector_shape),
-          diag_stdev=self._rng.rand(*vector_shape))
+          diag_stddev=self._rng.rand(*vector_shape))
       for alpha in [0.25, 0.75]:
 
         negative_renyi_divergence = entropy.renyi_ratio(

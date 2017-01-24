@@ -70,7 +70,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",

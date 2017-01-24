@@ -135,7 +135,7 @@ class DistributionTest(test.TestCase):
         super(_FakeDistribution, self).__init__(
             dtype=dtypes.float32,
             is_continuous=False,
-            is_reparameterized=False,
+            reparameterization_type=distributions.NOT_REPARAMETERIZED,
             validate_args=True,
             allow_nan_stats=True,
             name="DummyDistribution")

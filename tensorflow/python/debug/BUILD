@@ -579,6 +579,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_shared",
         ":debugger_cli_common",
         ":local_cli_wrapper",
         "//tensorflow/python:array_ops",

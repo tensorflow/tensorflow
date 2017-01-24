@@ -141,14 +141,14 @@ class BundleShimTest(test.TestCase):
     del signature_def.outputs["bar-key"]
     self.assertProtoEquals(signature_def, signature_def_compare)
 
-  def testConvertDefaultSignatureBadTypeToSignatureDef(self):
+  def testConvertDefaultSignatureGenericToSignatureDef(self):
     signatures_proto = manifest_pb2.Signatures()
     generic_signature = manifest_pb2.GenericSignature()
     signatures_proto.default_signature.generic_signature.CopyFrom(
         generic_signature)
-    with self.assertRaises(RuntimeError) as cm:
-      _ = bundle_shim._convert_default_signature_to_signature_def(
-          signatures_proto)
+    signature_def = bundle_shim._convert_default_signature_to_signature_def(
+        signatures_proto)
+    self.assertEquals(signature_def, None)
 
   def testConvertDefaultSignatureRegressionToSignatureDef(self):
     signatures_proto = manifest_pb2.Signatures()
