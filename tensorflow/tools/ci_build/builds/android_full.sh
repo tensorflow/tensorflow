@@ -66,7 +66,6 @@ echo "Copying demo and Jar to ${OUT_DIR}"
 cp bazel-bin/tensorflow/examples/android/tensorflow_demo.apk \
     bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar ${OUT_DIR}
 
-echo "========== Makefile Build Test =========="
 # Test Makefile build just to make sure it still works.
 if [ -z "$NDK_ROOT" ]; then
    export NDK_ROOT=${ANDROID_NDK_HOME}
