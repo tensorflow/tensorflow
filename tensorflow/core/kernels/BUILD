@@ -256,7 +256,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "stage_op",
     srcs = ["stage_op.cc"],
     deps = [
@@ -3546,6 +3546,7 @@ filegroup(
         "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",
+        "spacetobatch_functor.h",
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
@@ -3627,6 +3628,7 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
+        "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
@@ -3664,6 +3666,8 @@ filegroup(
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
+        "spacetobatch_functor.cc",
+        "spacetobatch_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
         "summary_op.cc",

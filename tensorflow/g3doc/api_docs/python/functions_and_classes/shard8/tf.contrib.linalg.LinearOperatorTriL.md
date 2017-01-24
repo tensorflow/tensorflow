@@ -218,6 +218,11 @@ Determinant for every batch member.
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
 
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
 
 - - -
 
@@ -291,6 +296,13 @@ List of graph dependencies of this `LinearOperator`.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorTriL.is_square` {#LinearOperatorTriL.is_square}
+
+Return `True/False` depending on if this operator is square.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorTriL.log_abs_determinant(name='log_abs_det')` {#LinearOperatorTriL.log_abs_determinant}
 
 Log absolute value of determinant for every batch member.
@@ -303,6 +315,11 @@ Log absolute value of determinant for every batch member.
 ##### Returns:
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
+
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
 
 
 - - -
@@ -421,7 +438,7 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If self.is_non_singular is False.
+*  <b>`NotImplementedError`</b>: If `self.is_non_singular` or `is_square` is False.
 
 
 - - -

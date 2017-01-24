@@ -444,6 +444,17 @@ class FilterDescriptor {
   FilterLayout layout_;
 };
 
+// Describes how padding should be aligned when the total number of pad
+// elements is odd.
+enum class PadAlignment : int64 {
+  kDefault = 0,        // default padding for the device.
+  kCudnnPadding,       // cuDNN padding - prefer to pad at the start.
+  kTensorFlowPadding,  // TensorFlow padding - prefer to pad at the end.
+};
+
+// Returns a string representation of the given padding alignment.
+string PadAlignmentString(PadAlignment alignment);
+
 // Describes a convolution.
 //
 // Uses the named argument construction form:
@@ -500,7 +511,10 @@ class ConvolutionDescriptor {
     SetDim(&filter_strides_, dim, value);
     return *this;
   }
-
+  ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
+    pad_alignment_ = pad_alignment;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -516,6 +530,7 @@ class ConvolutionDescriptor {
 
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
+  PadAlignment pad_alignment() const { return pad_alignment_; }
   int ndims() const { return ndims_; }
 
   std::vector<int64> strides() const { return filter_strides_; }
@@ -525,6 +540,7 @@ class ConvolutionDescriptor {
   // Stored as: .. y, x.
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
+  PadAlignment pad_alignment_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
@@ -952,6 +968,32 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
+
+  // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
+  // coefficient_scales specifies the scaling of each column of coefficients:
+  // original float coefficient[row * num_columns + column] =
+  //     quantized coefficient[row * num_columns + column] *
+  //     coefficient_scales[column].
+  virtual bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) = 0;
+
+  // Same as DoConvolveQuantized above, but int8 filter coefficients.
+  virtual bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int16>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.

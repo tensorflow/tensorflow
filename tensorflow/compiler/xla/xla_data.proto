@@ -380,6 +380,9 @@ message ConvolveRequest {
 message InfeedRequest {
   // The shape of the data returned by reading the device's infeed buffer.
   Shape shape = 2;
+
+  // Additional infeed configuration for the backend.
+  string config = 3;
 }
 
 message CallRequest {

@@ -377,13 +377,13 @@ class StudentTTest(test.TestCase):
       sigma = [5., 4., 3., 2., 1.]
       student = ds.StudentT(df=df, mu=mu, sigma=sigma)
       # Test broadcast of mu across shape of df/sigma
-      std = student.std().eval()
+      stddev = student.stddev().eval()
       mu *= len(df)
 
-      expected_std = [
+      expected_stddev = [
           stats.t.std(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)
       ]
-      self.assertAllClose(expected_std, std)
+      self.assertAllClose(expected_stddev, stddev)
 
   def testMode(self):
     with self.test_session():

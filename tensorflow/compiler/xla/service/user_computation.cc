@@ -1157,6 +1157,16 @@ void ConstantVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kSendRequest: {
+      *is_constant = false;
+      break;
+    }
+
+    case OpRequest::kRecvRequest: {
+      *is_constant = false;
+      break;
+    }
+
     case OpRequest::kMapRequest: {
       const MapRequest& map_request = request.request().map_request();
       for (const ComputationDataHandle& handle : map_request.operands()) {
@@ -1657,9 +1667,8 @@ std::unique_ptr<HloComputation> ComputationLowerer::Lower(
   for (const auto& send_request : session_computation_.send_requests()) {
     Visit(send_request.operand(), &visited);
     HloInstruction* operand = visited[send_request.operand().handle()];
-    HloInstruction* send_instruction =
-        hlo_builder_.AddInstruction(HloInstruction::CreateSend(operand));
-    send_instruction->set_channel_id(send_request.channel_handle().handle());
+    hlo_builder_.AddInstruction(HloInstruction::CreateSend(
+        operand, send_request.channel_handle().handle()));
   }
 
   return hlo_builder_.Build(hlo_root);
@@ -1793,8 +1802,10 @@ HloInstruction* ComputationLowerer::Visit(
     }
 
     case OpRequest::kInfeedRequest: {
-      hlo_instruction = hlo_builder_.AddInstruction(
-          HloInstruction::CreateInfeed(request.output_shape()));
+      const InfeedRequest& infeed_request = request.request().infeed_request();
+      hlo_instruction =
+          hlo_builder_.AddInstruction(HloInstruction::CreateInfeed(
+              request.output_shape(), infeed_request.config()));
       break;
     }
 
@@ -1938,9 +1949,8 @@ HloInstruction* ComputationLowerer::Visit(
 
     case OpRequest::kRecvRequest: {
       const RecvRequest& recv_request = request.request().recv_request();
-      hlo_instruction = hlo_builder_.AddInstruction(
-          HloInstruction::CreateRecv(request.output_shape()));
-      hlo_instruction->set_channel_id(recv_request.channel_handle().handle());
+      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateRecv(
+          request.output_shape(), recv_request.channel_handle().handle()));
       break;
     }
 

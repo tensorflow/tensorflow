@@ -213,3 +213,7 @@ tensorflow/core/ops/control_flow_ops.cc
 tensorflow/core/ops/candidate_sampling_ops.cc
 tensorflow/core/ops/array_ops.cc
 tensorflow/core/ops/array_grad.cc
+tensorflow/core/kernels/spacetobatch_functor.cc
+tensorflow/core/kernels/spacetobatch_op.cc
+tensorflow/core/kernels/batchtospace_op.cc
+

@@ -287,8 +287,8 @@ class NormalTest(test.TestCase):
 
       normal = normal_lib.Normal(mu=mu, sigma=sigma)
 
-      self.assertAllEqual((3,), normal.std().get_shape())
-      self.assertAllEqual([7., 7, 7], normal.std().eval())
+      self.assertAllEqual((3,), normal.stddev().get_shape())
+      self.assertAllEqual([7., 7, 7], normal.stddev().eval())
 
   def testNormalSample(self):
     with self.test_session():

@@ -182,6 +182,11 @@ class SharedDeviceMemory final : public DeviceMemoryBase {
 template <typename ElemT>
 class ScopedDeviceMemory {
  public:
+  // Default construction initializes the internal state to nullptr.  This
+  // mirrors the std::unique_ptr<> functionality, where default construction
+  // produces a nullptr unique_ptr, which can be assigned later.
+  ScopedDeviceMemory();
+
   // Parameters:
   //  parent: Executor used to deallocate memory when this instance goes
   //          out of scope.

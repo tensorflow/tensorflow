@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)
@@ -23,6 +24,7 @@ limitations under the License.
 #endif
 
 #include <stdlib.h>
+#include <time.h>
 
 namespace tensorflow {
 namespace internal {
@@ -74,10 +76,15 @@ void LogMessage::GenerateLogMessage() {
 #else
 
 void LogMessage::GenerateLogMessage() {
-  // TODO(jeff,sanjay): For open source version, replace this with something
-  // that logs through the env or something and fill in appropriate time info.
-  fprintf(stderr, "%c %s:%d] %s\n", "IWEF"[severity_], fname_, line_,
-          str().c_str());
+  static EnvTime* env_time = tensorflow::EnvTime::Default();
+  time_t now = static_cast<time_t>(env_time->NowSeconds());
+  const size_t time_buffer_size = 30;
+  char time_buffer[time_buffer_size];
+  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+  // TODO(jeff,sanjay): Replace this with something that logs through the env.
+  fprintf(stderr, "%s: %c %s:%d] %s\n", time_buffer, "IWEF"[severity_], fname_,
+          line_, str().c_str());
 }
 #endif
 
