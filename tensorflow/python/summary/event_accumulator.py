@@ -100,7 +100,19 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
 
 
 def IsTensorFlowEventsFile(path):
-  """Check the path name to see if it is probably a TF Events file."""
+  """Check the path name to see if it is probably a TF Events file.
+
+  Args:
+    path: A file path to check if it is an event file.
+
+  Raises:
+    ValueError: If the path is an empty string.
+
+  Returns:
+    If path is formatted like a TensorFlowEventsFile.
+  """
+  if not path:
+    raise ValueError('Path must be a nonempty string')
   return 'tfevents' in compat.as_str_any(os.path.basename(path))
 
 
@@ -662,6 +674,8 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
+  if not path:
+    raise ValueError('path must be a valid string')
   if IsTensorFlowEventsFile(path):
     return event_file_loader.EventFileLoader(path)
   else:

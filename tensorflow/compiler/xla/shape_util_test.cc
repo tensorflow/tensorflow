@@ -338,13 +338,12 @@ TEST(ShapeUtilTest, HumanString) {
 
   EXPECT_EQ("opaque[]", ShapeUtil::HumanStringWithLayout(opaque));
   EXPECT_EQ("f32[]", ShapeUtil::HumanStringWithLayout(scalar));
-  EXPECT_EQ("u32[1,2] {1,0}", ShapeUtil::HumanStringWithLayout(matrix));
-  EXPECT_EQ("s32[3,4] {0,1}", ShapeUtil::HumanStringWithLayout(matrix2));
-  EXPECT_EQ("(opaque[], f32[], u32[1,2] {1,0}, s32[3,4] {0,1})",
+  EXPECT_EQ("u32[1,2]{1,0}", ShapeUtil::HumanStringWithLayout(matrix));
+  EXPECT_EQ("s32[3,4]{0,1}", ShapeUtil::HumanStringWithLayout(matrix2));
+  EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
             ShapeUtil::HumanStringWithLayout(tuple));
-  EXPECT_EQ(
-      "((opaque[], f32[], u32[1,2] {1,0}, s32[3,4] {0,1}), u32[1,2] {1,0})",
-      ShapeUtil::HumanStringWithLayout(nested_tuple));
+  EXPECT_EQ("((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0})",
+            ShapeUtil::HumanStringWithLayout(nested_tuple));
 
   ProgramShape prog = ShapeUtil::MakeProgramShape(
       {opaque, scalar, matrix, matrix2, tuple, nested_tuple}, nested_tuple);

@@ -145,6 +145,23 @@ def tf_additional_proto_srcs():
       "platform/default/protobuf.cc",
   ]
 
+def tf_env_time_hdrs():
+  return [
+      "platform/env_time.h",
+  ]
+
+def tf_env_time_srcs():
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/windows/env_time.cc",
+        "platform/env_time.cc",
+      ], exclude = []),
+    "//conditions:default" : native.glob([
+        "platform/posix/env_time.cc",
+        "platform/env_time.cc",
+      ], exclude = []),
+  })
+
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]
 

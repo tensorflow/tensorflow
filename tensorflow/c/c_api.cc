@@ -76,6 +76,7 @@ using tensorflow::SessionOptions;
 using tensorflow::Status;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
+using tensorflow::TensorId;
 using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
 
@@ -1667,30 +1668,86 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
   opts->opts.prefix = prefix;
 }
 
+namespace {
+
+TensorId ToTensorId(const TF_Output& output) {
+  return TensorId(output.oper->node.name(), output.index);
+}
+
+}  // namespace
+
+void TF_ImportGraphDefOptionsAddInputMapping(TF_ImportGraphDefOptions* opts,
+                                             const char* src_name,
+                                             int src_index, TF_Output dst) {
+  opts->opts.input_map[TensorId(src_name, src_index)] = ToTensorId(dst);
+}
+
+extern void TF_ImportGraphDefOptionsAddControlDependency(
+    TF_ImportGraphDefOptions* opts, TF_Operation* oper) {
+  opts->opts.control_dependencies.push_back(oper->node.name());
+}
+
+void TF_ImportGraphDefOptionsAddReturnOutput(TF_ImportGraphDefOptions* opts,
+                                             const char* oper_name, int index) {
+  opts->opts.return_tensors.push_back({oper_name, index});
+}
+
+int TF_ImportGraphDefOptionsNumReturnOutputs(
+    const TF_ImportGraphDefOptions* opts) {
+  return opts->opts.return_tensors.size();
+}
+
 static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
                                       const TF_ImportGraphDefOptions* opts,
-                                      TF_Status* status)
+                                      TF_Output* return_outputs,
+                                      int num_return_outputs, TF_Status* status)
     EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+  if (num_return_outputs != opts->opts.return_tensors.size()) {
+    status->status = InvalidArgument("Expected 'num_return_outputs' to be ",
+                                     opts->opts.return_tensors.size(), ", got ",
+                                     num_return_outputs);
+    return;
+  }
+  if (num_return_outputs > 0 && return_outputs == nullptr) {
+    status->status = InvalidArgument(
+        "'return_outputs' must be preallocated to length ", num_return_outputs);
+    return;
+  }
   const int last_node_id = graph->graph.num_node_ids();
-  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
-                                              &graph->refiner);
+  std::vector<std::pair<Node*, int>> return_outputs_vec;
+  status->status = tensorflow::ImportGraphDef(
+      opts->opts, def, &graph->graph, &graph->refiner, &return_outputs_vec);
   if (!status->status.ok()) return;
   for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
     auto* node = graph->graph.FindNodeId(i);
     if (node != nullptr) graph->name_map[node->name()] = node;
   }
+  DCHECK_EQ(return_outputs_vec.size(), num_return_outputs);
+  for (int i = 0; i < num_return_outputs; ++i) {
+    return_outputs[i].oper = ToOperation(return_outputs_vec[i].first);
+    return_outputs[i].index = return_outputs_vec[i].second;
+  }
 }
 
-void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
-                            const TF_ImportGraphDefOptions* opts,
-                            TF_Status* status) {
+void TF_GraphImportGraphDefWithReturnOutputs(
+    TF_Graph* graph, const TF_Buffer* graph_def,
+    const TF_ImportGraphDefOptions* opts, TF_Output* return_outputs,
+    int num_return_outputs, TF_Status* status) {
   GraphDef def;
   if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return;
   }
   mutex_lock l(graph->mu);
-  GraphImportGraphDefLocked(graph, def, opts, status);
+  GraphImportGraphDefLocked(graph, def, opts, return_outputs,
+                            num_return_outputs, status);
+}
+
+void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
+                            const TF_ImportGraphDefOptions* options,
+                            TF_Status* status) {
+  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, options, nullptr, 0,
+                                          status);
 }
 
 // TF_Session functions ----------------------------------------------
@@ -1750,7 +1807,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
   // GraphDefs, return the Graph generated in LoadSavedModel().
   TF_ImportGraphDefOptions* import_opts = TF_NewImportGraphDefOptions();
   GraphImportGraphDefLocked(graph, bundle.meta_graph_def.graph_def(),
-                            import_opts, status);
+                            import_opts, nullptr, 0, status);
   TF_DeleteImportGraphDefOptions(import_opts);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 

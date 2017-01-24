@@ -23,7 +23,8 @@ from __future__ import unicode_literals
 import gzip
 
 import six
-
+from werkzeug import test as wtest
+from werkzeug import wrappers
 from tensorflow.python.platform import test
 from tensorflow.tensorboard.lib.python import http
 
@@ -31,67 +32,64 @@ from tensorflow.tensorboard.lib.python import http
 class RespondTest(test.TestCase):
 
   def testHelloWorld(self):
-    hand = _create_mocked_handler()
-    http.Respond(hand, '<b>hello world</b>', 'text/html')
-    hand.send_response.assert_called_with(200)
-    hand.wfile.write.assert_called_with(b'<b>hello world</b>')
-    hand.wfile.flush.assert_called_with()
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, '<b>hello world</b>', 'text/html')
+    self.assertEqual(r.status_code, 200)
+    self.assertEqual(r.response[0], six.b('<b>hello world</b>'))
 
   def testHeadRequest_doesNotWrite(self):
-    hand = _create_mocked_handler()
-    hand.command = 'HEAD'
-    http.Respond(hand, '<b>hello world</b>', 'text/html')
-    hand.send_response.assert_called_with(200)
-    hand.wfile.write.assert_not_called()
-    hand.wfile.flush.assert_called_with()
+    builder = wtest.EnvironBuilder(method='HEAD')
+    env = builder.get_environ()
+    request = wrappers.Request(env)
+    r = http.Respond(request, '<b>hello world</b>', 'text/html')
+    self.assertEqual(r.status_code, 200)
+    self.assertEqual(r.response[0], six.b(''))
 
   def testPlainText_appendsUtf8ToContentType(self):
-    hand = _create_mocked_handler()
-    http.Respond(hand, 'hello', 'text/plain')
-    hand.send_header.assert_any_call(
-        'Content-Type', 'text/plain; charset=utf-8')
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, 'hello', 'text/plain')
+    h = r.headers
+    self.assertEqual(h.get('Content-Type'), 'text/plain; charset=utf-8')
 
   def testContentLength_isInBytes(self):
-    hand = _create_mocked_handler()
-    http.Respond(hand, '爱', 'text/plain')
-    hand.send_header.assert_any_call('Content-Length', '3')
-    hand = _create_mocked_handler()
-    http.Respond(hand, '爱'.encode('utf-8'), 'text/plain')
-    hand.send_header.assert_any_call('Content-Length', '3')
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, '爱', 'text/plain')
+    self.assertEqual(r.headers.get('Content-Length'), '3')
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, '爱'.encode('utf-8'), 'text/plain')
+    self.assertEqual(r.headers.get('Content-Length'), '3')
 
   def testResponseCharsetTranscoding(self):
     bean = '要依法治国是赞美那些谁是公义的和惩罚恶人。 - 韩非'
 
     # input is unicode string, output is gbk string
-    hand = _create_mocked_handler()
-    http.Respond(hand, bean, 'text/plain; charset=gbk')
-    hand.wfile.write.assert_called_with(bean.encode('gbk'))
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, bean, 'text/plain; charset=gbk')
+    self.assertEqual(r.response[0], bean.encode('gbk'))
 
     # input is utf-8 string, output is gbk string
-    hand = _create_mocked_handler()
-    http.Respond(hand, bean.encode('utf-8'), 'text/plain; charset=gbk')
-    hand.wfile.write.assert_called_with(bean.encode('gbk'))
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, bean.encode('utf-8'), 'text/plain; charset=gbk')
+    self.assertEqual(r.response[0], bean.encode('gbk'))
 
     # input is object with unicode strings, output is gbk json
-    hand = _create_mocked_handler()
-    http.Respond(hand, {'red': bean}, 'application/json; charset=gbk')
-    hand.wfile.write.assert_called_with(
-        b'{"red": "' + bean.encode('gbk') + b'"}')
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, {'red': bean}, 'application/json; charset=gbk')
+    self.assertEqual(r.response[0], b'{"red": "' + bean.encode('gbk') + b'"}')
 
     # input is object with utf-8 strings, output is gbk json
-    hand = _create_mocked_handler()
-    http.Respond(
-        hand, {'red': bean.encode('utf-8')}, 'application/json; charset=gbk')
-    hand.wfile.write.assert_called_with(
-        b'{"red": "' + bean.encode('gbk') + b'"}')
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, {'red': bean.encode('utf-8')},
+                     'application/json; charset=gbk')
+    self.assertEqual(r.response[0], b'{"red": "' + bean.encode('gbk') + b'"}')
 
     # input is object with gbk strings, output is gbk json
-    hand = _create_mocked_handler()
-    http.Respond(
-        hand, {'red': bean.encode('gbk')}, 'application/json; charset=gbk',
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(
+        q, {'red': bean.encode('gbk')},
+        'application/json; charset=gbk',
         encoding='gbk')
-    hand.wfile.write.assert_called_with(
-        b'{"red": "' + bean.encode('gbk') + b'"}')
+    self.assertEqual(r.response[0], b'{"red": "' + bean.encode('gbk') + b'"}')
 
   def testAcceptGzip_compressesResponse(self):
     fall_of_hyperion_canto1_stanza1 = "\n".join([
@@ -115,40 +113,38 @@ class RespondTest(test.TestCase):
         "When this warm scribe my hand is in the grave.",
     ])
 
-    hand = _create_mocked_handler(headers={'Accept-Encoding': '*'})
-    http.Respond(hand, fall_of_hyperion_canto1_stanza1, 'text/plain')
-    hand.send_header.assert_any_call('Content-Encoding', 'gzip')
-    self.assertEqual(_gunzip(hand.wfile.write.call_args[0][0]),
-                     fall_of_hyperion_canto1_stanza1.encode('utf-8'))
+    e1 = wtest.EnvironBuilder(headers={'Accept-Encoding': '*'}).get_environ()
+    any_encoding = wrappers.Request(e1)
 
-    hand = _create_mocked_handler(headers={'Accept-Encoding': 'gzip'})
-    http.Respond(hand, fall_of_hyperion_canto1_stanza1, 'text/plain')
-    hand.send_header.assert_any_call('Content-Encoding', 'gzip')
-    self.assertEqual(_gunzip(hand.wfile.write.call_args[0][0]),
-                     fall_of_hyperion_canto1_stanza1.encode('utf-8'))
+    r = http.Respond(any_encoding, fall_of_hyperion_canto1_stanza1,
+                     'text/plain')
+    self.assertEqual(r.headers.get('Content-Encoding'), 'gzip')
 
-    hand = _create_mocked_handler(headers={'Accept-Encoding': '*'})
-    http.Respond(hand, fall_of_hyperion_canto1_stanza1, 'image/png')
-    hand.wfile.write.assert_any_call(
-        fall_of_hyperion_canto1_stanza1.encode('utf-8'))
+    self.assertEqual(
+        _gunzip(r.response[0]), fall_of_hyperion_canto1_stanza1.encode('utf-8'))
+
+    e2 = wtest.EnvironBuilder(headers={'Accept-Encoding': 'gzip'}).get_environ()
+    gzip_encoding = wrappers.Request(e2)
+
+    r = http.Respond(gzip_encoding, fall_of_hyperion_canto1_stanza1,
+                     'text/plain')
+    self.assertEqual(r.headers.get('Content-Encoding'), 'gzip')
+    self.assertEqual(
+        _gunzip(r.response[0]), fall_of_hyperion_canto1_stanza1.encode('utf-8'))
+
+    r = http.Respond(any_encoding, fall_of_hyperion_canto1_stanza1, 'image/png')
+    self.assertEqual(r.response[0],
+                     fall_of_hyperion_canto1_stanza1.encode('utf-8'))
 
   def testJson_getsAutoSerialized(self):
-    hand = _create_mocked_handler()
-    http.Respond(hand, [1, 2, 3], 'application/json')
-    hand.wfile.write.assert_called_with(b'[1, 2, 3]')
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, [1, 2, 3], 'application/json')
+    self.assertEqual(r.response[0], b'[1, 2, 3]')
 
   def testExpires_setsCruiseControl(self):
-    hand = _create_mocked_handler()
-    http.Respond(hand, '<b>hello world</b>', 'text/html', expires=60)
-    hand.send_header.assert_any_call('Cache-Control', 'private, max-age=60')
-
-
-def _create_mocked_handler(path='', headers=None):
-  hand = test.mock.Mock()
-  hand.wfile = test.mock.Mock()
-  hand.path = path
-  hand.headers = headers or {}
-  return hand
+    q = wrappers.Request(wtest.EnvironBuilder().get_environ())
+    r = http.Respond(q, '<b>hello world</b>', 'text/html', expires=60)
+    self.assertEqual(r.headers.get('Cache-Control'), 'private, max-age=60')
 
 
 def _gunzip(bs):

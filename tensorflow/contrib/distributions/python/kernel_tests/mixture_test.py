@@ -94,7 +94,7 @@ def make_multivariate_mixture(batch_shape, num_components, event_shape):
   components = [
       distributions_py.MultivariateNormalDiag(
           mu=np.float32(np.random.randn(*list(batch_shape + event_shape))),
-          diag_stdev=np.float32(10 * np.random.rand(
+          diag_stddev=np.float32(10 * np.random.rand(
               *list(batch_shape + event_shape)))) for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
@@ -531,7 +531,7 @@ class MixtureBenchmark(test.Benchmark):
       ]
       components = list(
           distributions_py.MultivariateNormalDiag(
-              mu=mu, diag_stdev=sigma) for (mu, sigma) in zip(mus, sigmas))
+              mu=mu, diag_stddev=sigma) for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:

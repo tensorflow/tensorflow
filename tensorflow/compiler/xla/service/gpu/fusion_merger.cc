@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -149,6 +150,7 @@ class FusionInstructionMerger {
   int num_fail_no_users_ = 0;
   int num_fail_not_loop_fusion_ = 0;
   int num_fail_merge_all_users_ = 0;
+  int num_fail_expensive_fused_instruction_ = 0;
   int num_fail_flops_to_byte_ratio_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
 
@@ -169,6 +171,7 @@ Status FusionInstructionMerger::Run() {
           << " no_users: " << num_fail_no_users_
           << " not_loop_fusion: " << num_fail_not_loop_fusion_
           << " merge_all_users: " << num_fail_merge_all_users_
+          << " expensive_instruction: " << num_fail_expensive_fused_instruction_
           << " flops_to_byte_ratio: " << num_fail_flops_to_byte_ratio_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
           << " }";
@@ -205,6 +208,26 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     ++num_fail_merge_all_users_;
     return Status::OK();
   }
+
+  // Skip 'fusion' instruction if any of its fused instructions are expensive.
+  // This is done to avoid the duplication of expensive instructions, which
+  // would occur if 'fusion' were merged into multiple users.
+  // If 'fusion' has just one user, then an earlier fusion pass chose not to
+  // fuse this producer/comsumer pair (likely because of expensive instruction
+  // re-use by the consumer), and so we honor that choice here as well.
+  if (!std::all_of(fusion->fused_instructions().begin(),
+                   fusion->fused_instructions().end(),
+                   [](const std::unique_ptr<HloInstruction>& instruction) {
+                     if (instruction->opcode() != HloOpcode::kParameter &&
+                         IsExpensive(*instruction)) {
+                       return false;
+                     }
+                     return true;
+                   })) {
+    ++num_fail_expensive_fused_instruction_;
+    return Status::OK();
+  }
+
   // Skip 'fusion' instruction if its flops to bytes transferred ratio
   // exceeds the threshold value.
   if (CalculateFlopsToBytesRatio(fusion) >
@@ -243,8 +266,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " }";
   // Remove 'fusion' instruction.
   CHECK_EQ(0, fusion->user_count());
-  computation_->RemoveInstruction(fusion);
-  return Status::OK();
+  return computation_->RemoveInstruction(fusion);
 }
 
 StatusOr<bool> FusionMerger::Run(HloModule* module) {
