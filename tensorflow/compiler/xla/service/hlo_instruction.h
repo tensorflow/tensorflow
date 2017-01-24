@@ -439,7 +439,7 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString() const;
+  string ToString(bool compact_operands = false) const;
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
