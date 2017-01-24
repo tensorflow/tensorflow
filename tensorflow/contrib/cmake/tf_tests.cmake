@@ -120,6 +120,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
+    # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
   )
 
   # exclude the onces we don't want
@@ -163,6 +166,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Broken TensorBoard tests due to different paths in windows
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/application_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/lib/python/http_test.py"
+      # tensor_forest tests (also note that we exclude the hybrid tests for now)
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/count_extremely_random_stats_op_test.py"  # Results in wrong order.
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

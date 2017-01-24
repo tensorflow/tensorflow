@@ -1412,7 +1412,7 @@ class PinnedToCurrentCPU {
     int ret = 0;
     ret = sched_getaffinity(0, sizeof(cpu_set_t), &old_cpu_set);
     if (ret != 0) {
-      PLOG(WARNING) << "sched_getaffinity";
+      VLOG(WARNING) << "sched_getaffinity";
       return;
     }
     valid = true;
@@ -1421,7 +1421,7 @@ class PinnedToCurrentCPU {
     CPU_SET(sched_getcpu(), &new_cpu_set);
     ret = sched_setaffinity(0, sizeof(cpu_set_t), &new_cpu_set);
     if (ret != 0) {
-      PLOG(WARNING) << "sched_setaffinity";
+      VLOG(WARNING) << "sched_setaffinity";
     }
   }
   ~PinnedToCurrentCPU() {
