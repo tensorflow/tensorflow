@@ -888,6 +888,57 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   EXPECT_EQ(1, computation->instruction_count());
 }
 
+TEST_F(AlgebraicSimplifierTest, NegativePadding) {
+  // Verify that a pad instruction with negative padding is replaced with a
+  // pad with non-negative padding followed by a slice.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {10, 10}), "param"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  PaddingConfig padding;
+  int64 low_padding[2] = {-1, -2};
+  int64 high_padding[2] = {2, -3};
+  for (auto i = 0; i < 2; ++i) {
+    auto dimension = padding.add_dimensions();
+    dimension->set_edge_padding_low(low_padding[i]);
+    dimension->set_edge_padding_high(high_padding[i]);
+    dimension->set_interior_padding(0);
+  }
+  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {11, 5}), param, zero, padding));
+
+  HloModule module(TestName());
+  HloComputation* computation = module.AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+
+  auto has_negative_padding = [](const HloInstruction* pad) {
+    for (auto& padding_dimension : pad->padding_config().dimensions()) {
+      if (padding_dimension.edge_padding_low() < 0 ||
+          padding_dimension.edge_padding_high() < 0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(computation->root_instruction(), pad);
+  EXPECT_TRUE(has_negative_padding(pad));
+
+  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+  EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kSlice);
+  const HloInstruction* root_operand =
+      computation->root_instruction()->operand(0);
+  EXPECT_EQ(root_operand->opcode(), HloOpcode::kPad);
+  EXPECT_FALSE(has_negative_padding(root_operand));
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
