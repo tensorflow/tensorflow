@@ -18,7 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import types
+from types import FunctionType, GeneratorType
+
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
 
 # Key name to pack the target into dict of `features`. See
@@ -87,8 +88,10 @@ def generator_input_fn(x,
   
   def input_fn():
     """generator input function."""
-    if not isinstance(x, types.GeneratorType):
-      raise TypeError('x must be generator ; got {}'.format(type(x).__name__))
+    if not isinstance(x, FunctionType):
+      raise TypeError('x must be a function to a generator ; got {}'.format(type(x).__name__))
+    if not isinstance(x(),GeneratorType):
+      raise TypeError('x() must be a generator ; got {}'.format(type(x()).__name__))
     if target_key is not None and not isinstance(target_key, str):
       raise TypeError('target_key must be string ; got {}'.format(type(target_key).__name__))
     
@@ -103,12 +106,12 @@ def generator_input_fn(x,
     features = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
     
-    input_keys = next(x).keys()
+    input_keys = next(x()).keys()
     # Remove the first `Tensor` in `features`, which is the row number.
     if len(features) > 0:
       features.pop(0)
     
-    features = dict(zip(input_keys.keys(), features))
+    features = dict(zip(input_keys, features))
     if target_key is not None:
       target = features.pop(target_key)
       return features, target

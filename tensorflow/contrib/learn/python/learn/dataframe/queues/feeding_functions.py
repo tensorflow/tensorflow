@@ -19,12 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import types
 import random
 
 import itertools
 import numpy as np
 import six
+
+from types import FunctionType
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
@@ -99,13 +100,14 @@ class _GeneratorFeedFn(object):
                random_start=False,
                seed=None,
                num_epochs=None):
-    first_sample = next(generator)
+    first_sample = next(generator())
     if len(placeholders) != len(first_sample) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
         len(first_sample), len(placeholders)))
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
-    self._iterator = generator
+    self._generator_function = generator
+    self._iterator = generator()
     self._batch_size = batch_size
     self._num_epochs = num_epochs
     self._epoch = 0
@@ -126,6 +128,7 @@ class _GeneratorFeedFn(object):
         list_dict_size += 1
     except StopIteration:
       self._epoch += 1
+      self._iterator = self._generator_function()
     finally:
       feed_dict = {key : np.asarray(list_dict[key]) for key in list_dict.keys()}
       return feed_dict
@@ -281,13 +284,12 @@ def enqueue_data(data,
         ]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
-    elif isinstance(data, types.GeneratorType):
-      x_first_el = six.next(data)
-      data = itertools.chain([x_first_el], data)
+    elif isinstance(data, FunctionType):
+      x_first_el = six.next(data())
       types = [dtypes.int64] + [
         dtypes.as_dtype(col.dtype) for col in x_first_el.values()
         ]
-      queue_shapes = [()] + [col.shape for col in data.values()]
+      queue_shapes = [()] + [col.shape for col in x_first_el.values()]
       get_feed_fn = _GeneratorFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):
       types = [

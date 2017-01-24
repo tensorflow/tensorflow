@@ -70,7 +70,7 @@ class GeneratorIoTest(test.TestCase):
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-          generator(), target_key="label", batch_size=2, shuffle=False, num_epochs=1)
+          generator, target_key="label", batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
       coord = coordinator.Coordinator()
@@ -100,7 +100,7 @@ class GeneratorIoTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, 'target_key must be string'):
         failing_input_fn = generator_io.generator_input_fn(
-          generator(), target_key=y, batch_size=2, shuffle=False, num_epochs=1)
+          generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
         
   def testGeneratorInputFnWithNoTargetKey(self):
