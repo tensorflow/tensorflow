@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -562,9 +563,90 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert,
 }
 
 Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
-  // The pad instruction does nothing if the output shape is the same as the
-  // input shape, i.e, all paddings are zero.
-  ReplaceInstructionIfSameShape(pad, pad->mutable_operand(0));
+  // Eliminate nop pads (padding all zero), and replace a pad with negative
+  // padding with a pad with non-negative padding followed by a slice.
+  bool all_zero = true;
+  bool has_negative = false;
+  for (auto& padding_dimension : pad->padding_config().dimensions()) {
+    if (padding_dimension.edge_padding_low() < 0 ||
+        padding_dimension.edge_padding_high() < 0) {
+      has_negative = true;
+    }
+    if (padding_dimension.edge_padding_low() != 0 ||
+        padding_dimension.edge_padding_high() != 0) {
+      all_zero = false;
+    }
+  }
+
+  if (all_zero) {
+    ReplaceInstructionIfSameShape(pad, pad->mutable_operand(0));
+    return Status::OK();
+  }
+
+  if (has_negative) {
+    // Pad has negative padding. Replace with a pad with the non-negative
+    // padding followed by a slice which effectively performs the negative
+    // padding.
+    // TODO(b/34628603): Add support for negative padding in the backends, or
+    // change kPad semantics to disallow negative padding and use slice
+    // instead.
+
+    // First construct the padding config with non-negative entries and the
+    // compute the shape of this new pad instruction.
+    PaddingConfig nonzero_padding = pad->padding_config();
+    for (int i = 0; i < pad->padding_config().dimensions_size(); ++i) {
+      PaddingConfig::PaddingConfigDimension* padding_dimension =
+          nonzero_padding.mutable_dimensions(i);
+      // Set negative padding to zero.
+      if (padding_dimension->edge_padding_low() < 0) {
+        padding_dimension->set_edge_padding_low(0);
+      }
+      if (padding_dimension->edge_padding_high() < 0) {
+        padding_dimension->set_edge_padding_high(0);
+      }
+    }
+    TF_ASSIGN_OR_RETURN(Shape nonzero_pad_shape,
+                        ShapeInference::InferPadShape(pad->operand(0)->shape(),
+                                                      pad->operand(1)->shape(),
+                                                      nonzero_padding));
+    // Copy the layout from the original pad instructions. The new pad and the
+    // slice instruction should all have the same layout.
+    TF_RETURN_IF_ERROR(
+        LayoutUtil::CopyLayoutBetweenShapes(pad->shape(), &nonzero_pad_shape));
+    HloInstruction* nonzero_pad = computation_->AddInstruction(
+        HloInstruction::CreatePad(nonzero_pad_shape, pad->mutable_operand(0),
+                                  pad->mutable_operand(1), nonzero_padding));
+
+    // Second, construct the slice instruction to perform the negative padding.
+    std::vector<int64> start_indices;
+    std::vector<int64> end_indices;
+    for (int64 i = 0; i < pad->padding_config().dimensions_size(); ++i) {
+      const PaddingConfig::PaddingConfigDimension& padding_dimension =
+          pad->padding_config().dimensions(i);
+      int64 start = 0;
+      if (padding_dimension.edge_padding_low() < 0) {
+        start = -1 * padding_dimension.edge_padding_low();
+      }
+      int64 end = nonzero_pad_shape.dimensions(i);
+      if (padding_dimension.edge_padding_high() < 0) {
+        end += padding_dimension.edge_padding_high();
+      }
+      start_indices.push_back(start);
+      end_indices.push_back(end);
+    }
+
+    // Verify that the slice shape matches the pad shape.
+    TF_ASSIGN_OR_RETURN(Shape inferred_slice_shape,
+                        ShapeInference::InferSliceShape(
+                            nonzero_pad_shape, start_indices, end_indices));
+    TF_RET_CHECK(ShapeUtil::Compatible(inferred_slice_shape, pad->shape()));
+
+    std::unique_ptr<HloInstruction> slice = HloInstruction::CreateSlice(
+        pad->shape(), nonzero_pad, start_indices, end_indices);
+    changed_ = true;
+    return computation_->ReplaceWithNewInstruction(pad, std::move(slice));
+  }
+
   return Status::OK();
 }
 
