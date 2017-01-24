@@ -39,8 +39,11 @@ public final class Operation {
 
   /** Returns the full name of the Operation. */
   public String name() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       return name(unsafeNativeHandle);
+    } finally {
+      r.close();
     }
   }
 
@@ -49,15 +52,21 @@ public final class Operation {
    * operation.
    */
   public String type() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       return type(unsafeNativeHandle);
+    } finally {
+      r.close();
     }
   }
 
   /** Returns the number of tensors produced by this operation. */
   public int numOutputs() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       return numOutputs(unsafeNativeHandle);
+    } finally {
+      r.close();
     }
   }
 

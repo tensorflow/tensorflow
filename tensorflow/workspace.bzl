@@ -76,11 +76,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.6.5.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.6.5.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.6.6.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.6.6.tar.gz",
       ],
-      sha256 = "5231419a8e13e7a6d286cf25d32a3aa75c443a625e5ea57024d36468bc3d5936",
-      strip_prefix = "libxsmm-1.6.5",
+      sha256 = "7c048a48e17f7f14a475be7b83e6e941289e03debb42ce9e02a06353412f9f2a",
+      strip_prefix = "libxsmm-1.6.6",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
@@ -193,7 +193,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
-      name = "werkzeug",
+      name = "org_pocoo_werkzeug",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
           "https://pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
@@ -329,11 +329,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/d78f00a4d1a7031f5b52d7907a054f2be16f38d5.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/d78f00a4d1a7031f5b52d7907a054f2be16f38d5.tar.gz",
       ],
-      sha256 = "ec67c57dfd85c2bb857fd13011c5c2aa3f1dc9f40c0a5bac13e78e76d6b61aa6",
-      strip_prefix = "llvm-4e9e4f277ad254e02a0cff33c61cd827e600da62",
+      sha256 = "99d4095ba83b696372700eaef2051fed5ea26903d64b4d364e63cc1848b24bd1",
+      strip_prefix = "llvm-d78f00a4d1a7031f5b52d7907a054f2be16f38d5",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )

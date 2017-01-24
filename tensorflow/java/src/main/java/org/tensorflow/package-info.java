@@ -28,12 +28,11 @@ limitations under the License.
  * It demonstrates:
  *
  * <ul>
- *   <li>{@link Graph} construction: using the {@link OperationBuilder} class to construct a graph
- *       to decode, resize and normalize a JPEG image.
- *   <li>Model loading: Using {@link Graph#importGraphDef(byte[])} to load a pre-trained Inception
- *       model.
- *   <li>Graph execution: Using a {@link Session} to execute the graphs and find the best label for
- *       an image.
+ *   <li>Graph construction: using the OperationBuilder class to construct a graph to decode, resize
+ *       and normalize a JPEG image.
+ *   <li>Model loading: Using Graph.importGraphDef() to load a pre-trained Inception model.
+ *   <li>Graph execution: Using a Session to execute the graphs and find the best label for an
+ *       image.
  * </ul>
  */
 package org.tensorflow;

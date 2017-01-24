@@ -231,7 +231,7 @@ class QuantizedDistributionTest(test.TestCase):
           distribution=distributions.Exponential(lam=0.2))
       # Standard error should be less than 1 / (2 * sqrt(n_samples))
       n_samples = 10000
-      std_err_bound = 1 / (2 * np.sqrt(n_samples))
+      stddev_err_bound = 1 / (2 * np.sqrt(n_samples))
       samps = qdist.sample((n_samples,), seed=42).eval()
       # The smallest value the samples can take on is 1, which corresponds to
       # the interval (0, 1].  Recall we use ceiling in the sampling definition.
@@ -240,7 +240,7 @@ class QuantizedDistributionTest(test.TestCase):
       pmf_vals = qdist.pmf(x_vals).eval()
       for ii in range(10):
         self.assertAllClose(
-            pmf_vals[ii], (samps == x_vals[ii]).mean(), atol=std_err_bound)
+            pmf_vals[ii], (samps == x_vals[ii]).mean(), atol=stddev_err_bound)
 
   def testNormalCdfAndSurvivalFunction(self):
     # At integer values, the result should be the same as the standard normal.

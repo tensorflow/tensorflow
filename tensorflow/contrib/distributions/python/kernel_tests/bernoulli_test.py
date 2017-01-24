@@ -99,7 +99,7 @@ class BernoulliTest(test.TestCase):
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.p.dtype, dist.mean().dtype)
     self.assertEqual(dist.p.dtype, dist.variance().dtype)
-    self.assertEqual(dist.p.dtype, dist.std().dtype)
+    self.assertEqual(dist.p.dtype, dist.stddev().dtype)
     self.assertEqual(dist.p.dtype, dist.entropy().dtype)
     self.assertEqual(dist.p.dtype, dist.pmf(0).dtype)
     self.assertEqual(dist.p.dtype, dist.log_pmf(0).dtype)
@@ -256,7 +256,7 @@ class BernoulliTest(test.TestCase):
           np.array(
               [[var(0.2), var(0.7)], [var(0.5), var(0.4)]], dtype=np.float32))
       self.assertAllClose(
-          dist.std().eval(),
+          dist.stddev().eval(),
           np.array(
               [[np.sqrt(var(0.2)), np.sqrt(var(0.7))],
                [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],

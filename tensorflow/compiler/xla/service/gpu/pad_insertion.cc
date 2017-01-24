@@ -161,10 +161,10 @@ bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
     dim->set_base_dilation(1);
     dim->set_window_dilation(1);
   }
-  conv->parent()->ReplaceWithNewInstruction(
+  TF_CHECK_OK(conv->parent()->ReplaceWithNewInstruction(
       conv, HloInstruction::CreateConvolve(
                 conv->shape(), new_input, new_kernel, new_conv_window,
-                conv->convolution_dimension_numbers()));
+                conv->convolution_dimension_numbers())));
   return true;
 }
 
@@ -273,7 +273,8 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
           {new_transpose, new_forward_conv},
           HloInstruction::FusionKind::kConvBackwardFilter,
           new_backward_conv_window, backward_conv_dnums);
-  computation->ReplaceInstruction(backward_conv, new_backward_conv);
+  TF_CHECK_OK(
+      computation->ReplaceInstruction(backward_conv, new_backward_conv));
   return true;
 }
 
@@ -375,10 +376,10 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
                                       limit_indices)
           .ConsumeValueOrDie(),
       backward_conv->shape()));
-  computation->ReplaceWithNewInstruction(
+  TF_CHECK_OK(computation->ReplaceWithNewInstruction(
       backward_conv,
       HloInstruction::CreateSlice(backward_conv->shape(), new_backward_conv,
-                                  start_indices, limit_indices));
+                                  start_indices, limit_indices)));
   return true;
 }
 

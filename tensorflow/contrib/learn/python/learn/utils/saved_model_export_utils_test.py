@@ -44,6 +44,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.util import compat
 
 
 class SavedModelExportUtilsTest(test.TestCase):
@@ -280,6 +281,24 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertFalse(gfile.Exists(export_dir_2))
     self.assertTrue(gfile.Exists(export_dir_3))
     self.assertTrue(gfile.Exists(export_dir_4))
+
+  def test_get_most_recent_export(self):
+    export_dir_base = tempfile.mkdtemp() + "export/"
+    gfile.MkDir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    export_dir_4 = _create_test_export_dir(export_dir_base)
+
+    (most_recent_export_dir, most_recent_export_version) = (
+        saved_model_export_utils.get_most_recent_export(export_dir_base))
+
+    self.assertEqual(compat.as_bytes(export_dir_4),
+                     compat.as_bytes(most_recent_export_dir))
+    self.assertEqual(compat.as_bytes(export_dir_4),
+                     os.path.join(compat.as_bytes(export_dir_base),
+                                  compat.as_bytes(
+                                      str(most_recent_export_version))))
 
   def test_make_export_strategy(self):
     """Only tests that an ExportStrategy instance is created."""

@@ -29,8 +29,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
-        "//tensorflow/tensorboard/backend:server",
-        "@werkzeug",
+        "//tensorflow/tensorboard/backend:application",
+        "@org_pocoo_werkzeug//:werkzeug",
     ],
 )
 

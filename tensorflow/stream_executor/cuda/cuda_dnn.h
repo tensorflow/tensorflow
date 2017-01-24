@@ -164,6 +164,32 @@ class CudnnSupport : public dnn::DnnSupport {
                   const dnn::AlgorithmConfig& algorithm_config,
                   dnn::ProfileResult* output_profile_result) override;
 
+  bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) override {
+    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
+    return false;
+  }
+
+  bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int16>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) override {
+    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
+    return false;
+  }
+
   bool DoSeparableConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
       const DeviceMemory<float>& input_data,
