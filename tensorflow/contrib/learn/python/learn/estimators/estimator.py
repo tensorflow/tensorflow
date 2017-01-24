@@ -52,6 +52,7 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -832,7 +833,8 @@ class BaseEstimator(
           master=self._config.evaluation_master,
           eval_ops=update_op,
           final_ops=eval_dict,
-          hooks=hooks)
+          hooks=hooks,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -865,7 +867,8 @@ class BaseEstimator(
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
-              checkpoint_filename_with_path=checkpoint_path))
+              checkpoint_filename_with_path=checkpoint_path,
+              config=config_pb2.ConfigProto(allow_soft_placement=True)))
       if not as_iterable:
         with mon_sess:
           if not mon_sess.should_stop():
@@ -977,7 +980,8 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=None) as mon_sess:
+          config=config_pb2.ConfigProto(allow_soft_placement=True)
+      ) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
