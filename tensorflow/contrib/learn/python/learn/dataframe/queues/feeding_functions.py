@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import types
 import random
 
 import itertools
@@ -280,7 +281,7 @@ def enqueue_data(data,
         ]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
-    elif isinstance(data, collections.Generator):
+    elif isinstance(data, types.GeneratorType):
       x_first_el = six.next(data)
       data = itertools.chain([x_first_el], data)
       types = [dtypes.int64] + [

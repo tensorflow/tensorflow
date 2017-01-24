@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import types
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
 
 # Key name to pack the target into dict of `features`. See
@@ -87,7 +87,7 @@ def generator_input_fn(x,
   
   def input_fn():
     """generator input function."""
-    if not isinstance(x, collections.Generator):
+    if not isinstance(x, types.GeneratorType):
       raise TypeError('x must be generator ; got {}'.format(type(x).__name__))
     if target_key is not None and not isinstance(target_key, str):
       raise TypeError('target_key must be string ; got {}'.format(type(target_key).__name__))
