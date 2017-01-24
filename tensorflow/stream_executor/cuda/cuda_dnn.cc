@@ -2992,7 +2992,8 @@ bool CudnnSupport::DoActivate(Stream* stream,
                               dnn::ActivationMode activation_mode,
                               const dnn::BatchDescriptor& dimensions,
                               const DeviceMemory<float>& input_data,
-                              DeviceMemory<float>* output_data) {
+                              DeviceMemory<float>* output_data,
+                              uint64 options) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));

@@ -303,7 +303,7 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoActivate(Stream* stream, dnn::ActivationMode activation_mode,
                   const dnn::BatchDescriptor& dimensions,
                   const DeviceMemory<float>& input_data,
-                  DeviceMemory<float>* output_data) override;
+                  DeviceMemory<float>* output_data, uint64 options) override;
 
   bool DoPoolForward(Stream* stream,
                      const dnn::PoolingDescriptor& pooling_dimensions,

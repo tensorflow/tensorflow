@@ -64,6 +64,8 @@ string ActivationModeString(ActivationMode mode) {
       return "reluX";
     case ActivationMode::kTanh:
       return "tanh";
+    case ActivationMode::kBandPass:
+      return "bandpass";
     default:
       LOG(FATAL) << "Unknown activation_mode " << static_cast<int32>(mode);
   }

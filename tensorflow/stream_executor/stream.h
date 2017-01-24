@@ -514,6 +514,14 @@ class Stream {
                        const DeviceMemory<float> &input_data,
                        DeviceMemory<float> *output_data);
 
+  // Same as ThenActivate, but also takes an options argument that can be used
+  // for platform-specific option flags.
+  Stream &ThenActivateWithOptions(dnn::ActivationMode activation_mode,
+                                  const dnn::BatchDescriptor &dimensions,
+                                  const DeviceMemory<float> &input_data,
+                                  DeviceMemory<float> *output_data,
+                                  uint64 options);
+
   Stream &ThenDepthConcatenate(
       port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
       port::ArraySlice<const DeviceMemory<float> *> input_data,

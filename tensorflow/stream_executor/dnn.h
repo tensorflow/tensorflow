@@ -1357,7 +1357,9 @@ class DnnSupport {
   virtual bool DoActivate(Stream* stream, ActivationMode activation_mode,
                           const BatchDescriptor& dimensions,
                           const DeviceMemory<float>& input_data,
-                          DeviceMemory<float>* output_data) = 0;
+                          DeviceMemory<float>* output_data, uint64 options) {
+    return false;
+  }
 
   // Concatenates several layers into one, by concatenating the depth of each
   // layer at matching x and y coordinates.

@@ -1106,13 +1106,22 @@ Stream &Stream::ThenActivate(dnn::ActivationMode activation_mode,
                              const dnn::BatchDescriptor &dimensions,
                              const DeviceMemory<float> &input_data,
                              DeviceMemory<float> *output_data) {
+  return ThenActivateWithOptions(activation_mode, dimensions, input_data,
+                                 output_data, /*options=*/0);
+}
+
+Stream &Stream::ThenActivateWithOptions(dnn::ActivationMode activation_mode,
+                                        const dnn::BatchDescriptor &dimensions,
+                                        const DeviceMemory<float> &input_data,
+                                        DeviceMemory<float> *output_data,
+                                        uint64 options) {
   VLOG_CALL(PARAM(activation_mode), PARAM(dimensions), PARAM(input_data),
-            PARAM(output_data));
+            PARAM(output_data), PARAM(options));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoActivate(this, activation_mode, dimensions, input_data,
-                                 output_data));
+                                 output_data, options));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
