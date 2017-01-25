@@ -103,7 +103,7 @@ Construct a new MovingAverageOptimizer.
 
 - - -
 
-#### `tf.contrib.opt.MovingAverageOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#MovingAverageOptimizer.compute_gradients}
+#### `tf.contrib.opt.MovingAverageOptimizer.compute_gradients(loss, var_list=None, gate_gradients=GATE_OP, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#MovingAverageOptimizer.compute_gradients}
 
 Compute gradients of `loss` for the variables in `var_list`.
 
@@ -186,7 +186,7 @@ See `get_slot()`.
 
 - - -
 
-#### `tf.contrib.opt.MovingAverageOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#MovingAverageOptimizer.minimize}
+#### `tf.contrib.opt.MovingAverageOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=GATE_OP, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#MovingAverageOptimizer.minimize}
 
 Add operations to minimize `loss` by updating `var_list`.
 
@@ -416,8 +416,3 @@ Construct a new clip-norm optimizer.
 - - -
 
 #### `tf.contrib.opt.VariableClippingOptimizer.get_slot_names(*args, **kwargs)` {#VariableClippingOptimizer.get_slot_names}
-
-
-
-
-
