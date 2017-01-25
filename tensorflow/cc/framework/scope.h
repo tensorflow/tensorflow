@@ -113,10 +113,10 @@ class Scope {
   /// control dependencies the union of operations in the control_deps vector
   /// and the control dependencies of the current scope.
   Scope WithControlDependencies(
-      const gtl::ArraySlice<ops::Operation>& control_deps) const;
+      const gtl::ArraySlice<Operation>& control_deps) const;
   /// Same as above, but convenient to add control dependency on the operation
   /// producing the control_dep output.
-  Scope WithControlDependencies(const ops::Output& control_dep) const;
+  Scope WithControlDependencies(const Output& control_dep) const;
 
   /// Return a new scope. All ops created within the returned scope will have no
   /// control dependencies on other operations.
@@ -131,11 +131,9 @@ class Scope {
   /// NOTE: This function is intended to be use internal libraries only for
   /// controlling placement of ops on to devices. Public use is not encouraged
   /// because the implementation of device placement is subject to change.
-  Scope ColocateWith(const ops::Operation& op) const;
+  Scope ColocateWith(const Operation& op) const;
   /// Convenience function for above.
-  Scope ColocateWith(const ops::Output& out) const {
-    return ColocateWith(out.op());
-  }
+  Scope ColocateWith(const Output& out) const { return ColocateWith(out.op()); }
   /// Clear all colocation constraints.
   Scope ClearColocation() const;
 
@@ -195,9 +193,7 @@ class Scope {
   Status ToGraph(Graph* g) const;
   // END_SKIP_DOXYGEN
 
-  const std::vector<ops::Operation>& control_deps() const {
-    return control_deps_;
-  }
+  const std::vector<Operation>& control_deps() const { return control_deps_; }
 
  private:
   // Tag types to choose the constructor to dispatch.
@@ -226,16 +222,16 @@ class Scope {
   Scope(const Scope& other, Tags::OpName, const string& name,
         const string& op_name);
   Scope(const Scope& other, Tags::ControlDeps,
-        std::vector<ops::Operation> control_deps, bool clear_control_deps);
+        std::vector<Operation> control_deps, bool clear_control_deps);
   Scope(const Scope& other, Tags::Device, const string& device);
   Scope(const Scope& other, Tags::SingleUseScope, const string& op_name);
   Scope(const Scope& other, Tags::ExitOnError);
   Scope(const Scope& other, Tags::KernelLabel, const string& kernel_label);
-  Scope(const Scope& other, Tags::Colocate,
-        const ops::Operation& colocate_with_op, bool clear_colocations);
+  Scope(const Scope& other, Tags::Colocate, const Operation& colocate_with_op,
+        bool clear_colocations);
 
   std::unordered_set<string> GetColocationConstraints(
-      const ops::Operation& colocate_with_op) const;
+      const Operation& colocate_with_op) const;
 
   // Helper functions to get a unique names.
   string GetUniqueName(const string& prefix, bool check_single_use) const;
@@ -257,7 +253,7 @@ class Scope {
   // GetUniqueNameForOp will cause an error status to be set on this scope.
   std::shared_ptr<bool> scope_used_ = nullptr;
 
-  const std::vector<ops::Operation> control_deps_;
+  const std::vector<Operation> control_deps_;
 
   const string name_ = "";
   const string op_name_ = "";
