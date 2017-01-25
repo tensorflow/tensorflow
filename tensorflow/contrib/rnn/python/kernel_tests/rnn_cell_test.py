@@ -106,7 +106,7 @@ class RNNCellTest(test.TestCase):
                           [2., 2., 2., 2.],
                           [3., 3., 3., 3.]]),
             m.name:
-                0.1 * np.ones((batch_size, state_size * (num_shifts)))
+                0.1 * np.ones((batch_size, int(state_size * (num_shifts))))
         })
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
