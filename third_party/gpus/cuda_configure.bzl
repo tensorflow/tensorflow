@@ -700,6 +700,7 @@ def _create_dummy_repository(repository_ctx):
            "%{cuda_compute_capabilities}": ",".join([
                "CudaVersion(\"%s\")" % c
                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES]),
+           "%{cuda_toolkit_path}": _DEFAULT_CUDA_TOOLKIT_PATH,
        })
 
   # If cuda_configure is not configured to build with GPU support, and the user
@@ -802,6 +803,7 @@ def _create_cuda_repository(repository_ctx):
            "%{cuda_compute_capabilities}": ",".join(
                ["CudaVersion(\"%s\")" % c
                 for c in cuda_config.compute_capabilities]),
+               "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
        })
 
 

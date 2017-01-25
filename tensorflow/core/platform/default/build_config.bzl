@@ -169,10 +169,10 @@ def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
 def tf_additional_libdevice_data():
-  return ["@local_config_cuda//cuda:libdevice_root"]
+  return []
 
 def tf_additional_libdevice_deps():
-  return []
+  return ["@local_config_cuda//cuda:cuda_headers"]
 
 def tf_additional_libdevice_srcs():
   return ["platform/default/cuda_libdevice_path.cc"]
