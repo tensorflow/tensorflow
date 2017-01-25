@@ -100,7 +100,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       return np.arange(32, 36)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, 'x() must be generator'):
+      with self.assertRaisesRegexp(TypeError, "x\(\) must be generator"):
         failing_input_fn = generator_io.generator_input_fn(
           generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -109,7 +109,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       yield np.arange(32, 36)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, 'x() must yield OrderedDict'):
+      with self.assertRaisesRegexp(TypeError, "x\(\) must yield OrderedDict"):
         failing_input_fn = generator_io.generator_input_fn(
           generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -170,12 +170,11 @@ class GeneratorIoTest(test.TestCase):
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(session, coord=coord)
       
-      res = session.run([features])
-      self.assertAllEqual(res['a'], np.asarray([0, 1]).reshape(-1,1))
-      self.assertAllEqual(res['b'], np.asarray([32, 33]).reshape(-1,1))
-      self.assertAllEqual(res['label'], np.asarray([-32, -31]).reshape(-1,1))
+      res = session.run(features)
+      self.assertAllEqual(res['a'], np.asarray([0, 1, 0, 1]).reshape(-1,1))
+      self.assertAllEqual(res['b'], np.asarray([32, 33, 32, 33]).reshape(-1,1))
+      self.assertAllEqual(res['label'], np.asarray([-32, -31 ,-32, -31]).reshape(-1,1))
       
-      session.run([features])
       with self.assertRaises(errors.OutOfRangeError):
         session.run([features])
       
