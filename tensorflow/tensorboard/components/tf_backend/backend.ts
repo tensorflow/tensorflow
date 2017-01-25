@@ -350,6 +350,11 @@ module TF.Backend {
       throw(new Error('Edges and counts are of different lengths.'));
     }
 
+    if (max === min) {
+      // Create bins even if all the data has a single value.
+      max = min * 1.1 + 1;
+      min = min / 1.1 - 1;
+    }
     let binWidth = (max - min) / numBins;
     let bucketLeft = min;  // Use the min as the starting point for the bins.
     let bucketPos = 0;
