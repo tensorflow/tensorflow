@@ -12,35 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Methods to allow generator of dicts."""
+"""Methods to allow generator of dict with numpy arrays."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from types import FunctionType, GeneratorType
+from collections import OrderedDict
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
-
-# Key name to pack the target into dict of `features`. See
-# `_get_unique_target_key` for details.
-_TARGET_KEY = '__target_key__'
-
-
-def _get_unique_target_key(features):
-  """Returns a key not existed in the input dict `features`.
-
-  Caller of `input_fn` usually provides `features` (dict of numpy arrays) and
-  `target`, but the underlying feeding module expects a single dict of numpy
-  arrays as input. So, the `target` needs to be packed into the `features`
-  temporarily and unpacked after calling the feeding function. Toward this goal,
-  this function returns a key not existed in the `features` to pack the
-  `target`.
-  """
-  target_key = _TARGET_KEY
-  while target_key in features:
-    target_key += '_n'
-  return target_key
 
 
 def generator_input_fn(x,
@@ -51,7 +32,8 @@ def generator_input_fn(x,
                        queue_capacity=1000,
                        num_threads=1):
   """Returns input function that would feed a generator that yields dictionary
-  of numpy arrays into the model.
+  of numpy arrays into the model. It is assumed that every dict yielded from
+  the dictionary represents a single sample for every feature
 
   This returns a function outputting `features` and `target` based on the dict
   of numpy arrays. The dict `features` has the same keys as an element yielded
@@ -61,17 +43,17 @@ def generator_input_fn(x,
     ```python
     def generator():
       for index in range(10):
-        yield {height: np.random.randint(32,36), 'age':np.random.randint(18,80),
-              "label":np.ones(1)}
-    x = generator
+        yield collections.OrderedDict({height: np.random.randint(32,36), 'age':np.random.randint(18,80),
+              "label":np.ones(1)})
+
     with tf.Session() as session:
       input_fn = generator_io.generator_input_fn(
-          generator(), target_key="label", batch_size=2, shuffle=False,
+          generator, target_key="label", batch_size=2, shuffle=False,
           num_epochs=1)
     ```
 
   Args:
-    x: generator returning dictionaries of numpy arrays.
+    x: Generator Function, returns a generator  that will yield the data
     target_key: String, the key of the numpy array in x dictionaries to use as
       target.
     batch_size: Integer, size of batches to return.
@@ -87,9 +69,10 @@ def generator_input_fn(x,
 
   Raises:
     TypeError: `x` is not `FunctionType`.
-    TypeError: `x` is not `GeneratorType`.
+    TypeError: `x()` is not `GeneratorType`.
+    TypeError: `next(x())` is not `dict`.
     TypeError: `target_key` is not `str`.
-    KeyError:  `target_key` not a key in next(`x`)
+    KeyError:  `target_key` not a key in next(`x()`)
   """
   
   def input_fn():
@@ -100,13 +83,13 @@ def generator_input_fn(x,
     if not isinstance(generator, GeneratorType):
       raise TypeError('x() must be generator ; got {}'.format(type(generator).__name__))
     data = next(generator)
-    if not isinstance(data, dict):
-      raise TypeError('x() must yield dict; got {}'.format(type(data).__name__))
+    if not isinstance(data, OrderedDict):
+      raise TypeError('x() must yield OrderedDict ; got {}'.format(type(data).__name__))
     if target_key is not None and not isinstance(target_key, str):
       raise TypeError('target_key must be string ; got {}'.format(type(target_key).__name__))
 
     input_keys = next(x()).keys()
-    if target_key not in input_keys:
+    if target_key is not None and target_key not in input_keys:
       raise KeyError('target_key must be present in the yielded dictionary')
 
     queue = feeding_functions.enqueue_data(

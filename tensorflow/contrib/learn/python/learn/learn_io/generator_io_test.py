@@ -27,7 +27,7 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
-
+from collections import OrderedDict
 from tensorflow.contrib.learn.python.learn.learn_io import generator_io
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -40,7 +40,9 @@ class GeneratorIoTest(test.TestCase):
     
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index, 'b': np.ones(1) * index + 32, 'label': np.ones(1) * index - 32}
+        yield OrderedDict({'a': np.ones(1) * index,
+                           'b': np.ones(1) * index + 32,
+                           'label': np.ones(1) * index - 32})
     
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
@@ -66,7 +68,9 @@ class GeneratorIoTest(test.TestCase):
     
     def generator():
       for index in range(100):
-        yield {'a': np.ones((10, 10)) * index, 'b': np.ones((5, 5)) * index + 32, 'label': np.ones((3, 3)) * index - 32}
+        yield OrderedDict({'a': np.ones((10, 10)) * index,
+                           'b': np.ones((5, 5)) * index + 32,
+                           'label': np.ones((3, 3)) * index - 32})
     
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
@@ -96,7 +100,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       return np.arange(32, 36)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, 'x must be generator'):
+      with self.assertRaisesRegexp(TypeError, 'x() must be generator'):
         failing_input_fn = generator_io.generator_input_fn(
           generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -105,7 +109,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       yield np.arange(32, 36)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, 'x() must yield dict'):
+      with self.assertRaisesRegexp(TypeError, 'x() must yield OrderedDict'):
         failing_input_fn = generator_io.generator_input_fn(
           generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -113,7 +117,9 @@ class GeneratorIoTest(test.TestCase):
   def testGeneratorInputFNWithTargetLabelNotString(self):
     def generator():
       for index in range(2):
-        yield {'a': np.ones((10, 10)) * index, 'b': np.ones((5, 5)) * index + 32, 'label': np.ones((3, 3)) * index - 32}
+        yield OrderedDict({'a': np.ones((10, 10)) * index,
+                           'b': np.ones((5, 5)) * index + 32,
+                           'label': np.ones((3, 3)) * index - 32})
     
     y = np.arange(32, 36)
     with self.test_session():
@@ -125,7 +131,9 @@ class GeneratorIoTest(test.TestCase):
   def testGeneratorInputFnWithNoTargetKey(self):
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index, 'b': np.ones(1) * index + 32, 'label': np.ones(1) * index - 32}
+        yield OrderedDict({'a': np.ones(1) * index,
+                           'b': np.ones(1) * index + 32,
+                           'label': np.ones(1) * index - 32})
     
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
@@ -150,8 +158,10 @@ class GeneratorIoTest(test.TestCase):
   def testGeneratorInputFnWithBatchLargerthanData(self):
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index, 'b': np.ones(1) * index + 32, 'label': np.ones(1) * index - 32}
-    
+        yield OrderedDict({'a': np.ones(1) * index,
+                           'b': np.ones(1) * index + 32,
+                           'label': np.ones(1) * index - 32})
+        
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
         generator, target_key=None, batch_size=4, shuffle=False, num_epochs=1)

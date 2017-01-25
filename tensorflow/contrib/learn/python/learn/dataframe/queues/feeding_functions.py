@@ -127,7 +127,7 @@ class _GeneratorFeedFn(object):
         self._iterator = self._generator_function()
         self._index = 0
         data_row = next(self._iterator)
-      for index,key in enumerate(data_row.keys()):
+      for index, key in enumerate(data_row.keys()):
         list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])
       list_dict_size += 1
     feed_dict = {key: np.asarray(item) for key, item in list(list_dict.items())}
@@ -244,16 +244,17 @@ def enqueue_data(data,
                  name="enqueue_input",
                  enqueue_size=1,
                  num_epochs=None):
-  """Creates a queue filled from a numpy array or pandas `DataFrame`.
+  """Creates a queue filled from a numpy array or pandas `DataFrame` or a `Generator` yield dicts of numpy arrays.
 
     Returns a queue filled with the rows of the given (`OrderedDict` of) array
     or `DataFrame`. In the case of a pandas `DataFrame`, the first enqueued
     `Tensor` corresponds to the index of the `DataFrame`. For (`OrderedDict` of)
-    numpy arrays, the first enqueued `Tensor` contains the row number.
+    numpy arrays or ('Generator` of) `(OrderedDict` of) numpy arrays,
+     the first enqueued `Tensor` contains the row number.
 
   Args:
-    data: a numpy `ndarray`, `OrderedDict` of numpy arrays, or pandas
-      `DataFrame` that will be read into the queue.
+    data: a numpy `ndarray`, `OrderedDict` of numpy arrays, 'Generator Function`
+       of `OrderedDict` of numpy arrays or pandas `DataFrame` that will be read into the queue.
     capacity: the capacity of the queue.
     shuffle: whether or not to shuffle the rows of the array.
     min_after_dequeue: minimum number of elements that can remain in the queue
