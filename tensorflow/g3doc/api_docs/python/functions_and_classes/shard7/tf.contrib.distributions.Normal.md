@@ -113,7 +113,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.cdf(value, name='cdf', **condition_kwargs)` {#Normal.cdf}
+#### `tf.contrib.distributions.Normal.cdf(value, name='cdf')` {#Normal.cdf}
 
 Cumulative distribution function.
 
@@ -128,7 +128,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -262,7 +261,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Normal.log_cdf}
+#### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf')` {#Normal.log_cdf}
 
 Log cumulative distribution function.
 
@@ -281,7 +280,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -292,7 +290,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Normal.log_pdf}
+#### `tf.contrib.distributions.Normal.log_pdf(value, name='log_pdf')` {#Normal.log_pdf}
 
 Log probability density function.
 
@@ -301,7 +299,6 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -317,7 +314,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Normal.log_pmf}
+#### `tf.contrib.distributions.Normal.log_pmf(value, name='log_pmf')` {#Normal.log_pmf}
 
 Log probability mass function.
 
@@ -326,7 +323,6 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -342,7 +338,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_prob(value, name='log_prob', **condition_kwargs)` {#Normal.log_prob}
+#### `tf.contrib.distributions.Normal.log_prob(value, name='log_prob')` {#Normal.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -351,7 +347,6 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -362,7 +357,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Normal.log_survival_function}
+#### `tf.contrib.distributions.Normal.log_survival_function(value, name='log_survival_function')` {#Normal.log_survival_function}
 
 Log survival function.
 
@@ -382,7 +377,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -481,7 +475,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.pdf(value, name='pdf', **condition_kwargs)` {#Normal.pdf}
+#### `tf.contrib.distributions.Normal.pdf(value, name='pdf')` {#Normal.pdf}
 
 Probability density function.
 
@@ -490,7 +484,6 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -506,7 +499,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.pmf(value, name='pmf', **condition_kwargs)` {#Normal.pmf}
+#### `tf.contrib.distributions.Normal.pmf(value, name='pmf')` {#Normal.pmf}
 
 Probability mass function.
 
@@ -515,7 +508,6 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -531,7 +523,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.prob(value, name='prob', **condition_kwargs)` {#Normal.prob}
+#### `tf.contrib.distributions.Normal.prob(value, name='prob')` {#Normal.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -540,7 +532,6 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -566,7 +557,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Normal.sample}
+#### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample')` {#Normal.sample}
 
 Generate samples of the specified shape.
 
@@ -579,7 +570,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -603,7 +593,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.survival_function(value, name='survival_function', **condition_kwargs)` {#Normal.survival_function}
+#### `tf.contrib.distributions.Normal.survival_function(value, name='survival_function')` {#Normal.survival_function}
 
 Survival function.
 
@@ -620,7 +610,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

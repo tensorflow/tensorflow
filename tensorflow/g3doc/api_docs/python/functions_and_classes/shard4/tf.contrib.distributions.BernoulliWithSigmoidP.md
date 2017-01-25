@@ -49,7 +49,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.cdf(value, name='cdf', **condition_kwargs)` {#BernoulliWithSigmoidP.cdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.cdf(value, name='cdf')` {#BernoulliWithSigmoidP.cdf}
 
 Cumulative distribution function.
 
@@ -64,7 +64,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -198,7 +197,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_cdf(value, name='log_cdf', **condition_kwargs)` {#BernoulliWithSigmoidP.log_cdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_cdf(value, name='log_cdf')` {#BernoulliWithSigmoidP.log_cdf}
 
 Log cumulative distribution function.
 
@@ -217,7 +216,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -228,7 +226,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_pdf(value, name='log_pdf', **condition_kwargs)` {#BernoulliWithSigmoidP.log_pdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_pdf(value, name='log_pdf')` {#BernoulliWithSigmoidP.log_pdf}
 
 Log probability density function.
 
@@ -237,7 +235,6 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -253,7 +250,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_pmf(value, name='log_pmf', **condition_kwargs)` {#BernoulliWithSigmoidP.log_pmf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_pmf(value, name='log_pmf')` {#BernoulliWithSigmoidP.log_pmf}
 
 Log probability mass function.
 
@@ -262,7 +259,6 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -278,7 +274,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_prob(value, name='log_prob', **condition_kwargs)` {#BernoulliWithSigmoidP.log_prob}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_prob(value, name='log_prob')` {#BernoulliWithSigmoidP.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -287,7 +283,6 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -298,7 +293,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#BernoulliWithSigmoidP.log_survival_function}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_survival_function(value, name='log_survival_function')` {#BernoulliWithSigmoidP.log_survival_function}
 
 Log survival function.
 
@@ -318,7 +313,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -428,7 +422,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.pdf(value, name='pdf', **condition_kwargs)` {#BernoulliWithSigmoidP.pdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.pdf(value, name='pdf')` {#BernoulliWithSigmoidP.pdf}
 
 Probability density function.
 
@@ -437,7 +431,6 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -453,7 +446,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.pmf(value, name='pmf', **condition_kwargs)` {#BernoulliWithSigmoidP.pmf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.pmf(value, name='pmf')` {#BernoulliWithSigmoidP.pmf}
 
 Probability mass function.
 
@@ -462,7 +455,6 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -478,7 +470,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.prob(value, name='prob', **condition_kwargs)` {#BernoulliWithSigmoidP.prob}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.prob(value, name='prob')` {#BernoulliWithSigmoidP.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -487,7 +479,6 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -520,7 +511,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#BernoulliWithSigmoidP.sample}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.sample(sample_shape=(), seed=None, name='sample')` {#BernoulliWithSigmoidP.sample}
 
 Generate samples of the specified shape.
 
@@ -533,7 +524,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -550,7 +540,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.survival_function(value, name='survival_function', **condition_kwargs)` {#BernoulliWithSigmoidP.survival_function}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.survival_function(value, name='survival_function')` {#BernoulliWithSigmoidP.survival_function}
 
 Survival function.
 
@@ -567,7 +557,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

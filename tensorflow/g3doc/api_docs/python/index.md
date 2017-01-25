@@ -745,6 +745,8 @@
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
   * [`Chi2WithAbsDf`](../../api_docs/python/contrib.distributions.md#Chi2WithAbsDf)
+  * [`ConditionalDistribution`](../../api_docs/python/contrib.distributions.md#ConditionalDistribution)
+  * [`ConditionalTransformedDistribution`](../../api_docs/python/contrib.distributions.md#ConditionalTransformedDistribution)
   * [`Dirichlet`](../../api_docs/python/contrib.distributions.md#Dirichlet)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
   * [`Distribution`](../../api_docs/python/contrib.distributions.md#Distribution)
