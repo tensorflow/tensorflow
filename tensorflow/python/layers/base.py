@@ -121,6 +121,14 @@ class _Layer(object):
     return self._non_trainable_variables if self.trainable else self.variables
 
   @property
+  def trainable_weights(self):
+    return self.trainable_variables
+
+  @property
+  def non_trainable_weights(self):
+    return self.non_trainable_variables
+
+  @property
   def variables(self):
     """Returns the list of all layer variables/weights.
 

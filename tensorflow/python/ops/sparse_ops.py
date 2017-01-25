@@ -1242,9 +1242,10 @@ def sparse_tensor_dense_matmul(sp_a,
   GPU: NVidia Tesla k40c
 
   Compiled with:
-  -c opt --config=cuda --copt=-mavx
+  `-c opt --config=cuda --copt=-mavx`
 
-  ```tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
+  ```
+  tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
   A sparse [m, k] with % nonzero values between 1% and 80%
   B dense [k, n]
 

@@ -253,7 +253,7 @@ class QuantizedDistribution(distributions.Distribution):
     super(QuantizedDistribution, self).__init__(
         dtype=self._dist.dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distributions.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=self._dist.allow_nan_stats,
         parameters=parameters,

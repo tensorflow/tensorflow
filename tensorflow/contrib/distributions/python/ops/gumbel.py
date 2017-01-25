@@ -120,7 +120,7 @@ class _Gumbel(distribution.Distribution):
     super(_Gumbel, self).__init__(
         dtype=self._scale.dtype,
         is_continuous=True,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -190,10 +190,7 @@ class _Gumbel(distribution.Distribution):
   def _mean(self):
     return self.loc + self.scale * np.euler_gamma
 
-  def _variance(self):
-    return math_ops.square(self.std())
-
-  def _std(self):
+  def _stddev(self):
     return self.scale * array_ops.ones_like(self.loc) * math.pi / math.sqrt(6)
 
   def _mode(self):

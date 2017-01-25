@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ from six import BytesIO
 from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from werkzeug import serving
 from google.protobuf import text_format
 
 from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
@@ -52,10 +53,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
-from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.tensorboard.backend import server
+from tensorflow.tensorboard.backend import application
+from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
 
 class TensorboardServerTest(test.TestCase):
@@ -65,13 +66,12 @@ class TensorboardServerTest(test.TestCase):
   _SCALAR_COUNT = 99
 
   def setUp(self):
-    temp_dir = self._GenerateTestData()
-    self._multiplexer = event_multiplexer.EventMultiplexer(
-        size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
-    server.ReloadMultiplexer(self._multiplexer, {temp_dir: None})
+    self.temp_dir = self._GenerateTestData()
+    plugins = {'projector': projector_plugin.ProjectorPlugin()}
+    app = application.TensorBoardWSGIApp(
+        self.temp_dir, plugins, reload_interval=0)
+    self._server = serving.BaseWSGIServer('localhost', 0, app)
     # 0 to pick an unused port.
-    self._server = server.BuildServer(self._multiplexer, 'localhost', 0,
-                                      '/foo/logdir/argument')
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
@@ -83,8 +83,10 @@ class TensorboardServerTest(test.TestCase):
     self._server.shutdown()
     self._server.server_close()
 
-  def _get(self, path, headers={}):
+  def _get(self, path, headers=None):
     """Perform a GET request for the given path."""
+    if headers is None:
+      headers = {}
     self._connection.request('GET', path, None, headers)
     return self._connection.getresponse()
 
@@ -120,7 +122,7 @@ class TensorboardServerTest(test.TestCase):
   def testLogdir(self):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
-    self.assertEqual(parsed_object, {'logdir': '/foo/logdir/argument'})
+    self.assertEqual(parsed_object, {'logdir': self.temp_dir})
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
@@ -139,7 +141,7 @@ class TensorboardServerTest(test.TestCase):
                 'histograms': ['histogram'],
                 'images': ['image'],
                 'audio': ['audio'],
-                # if only_use_meta_graph, the graph is extracted from the metagraph
+                # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
                 'run_metadata': ['test run']
@@ -183,23 +185,6 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(
         self._getJson('/data/histograms?tag=histogram&run=run1'),
         [[0, 0, [0, 2.0, 3.0, 6.0, 5.0, [0.0, 1.0, 2.0], [1.0, 1.0, 1.0]]]])
-
-  def testSampleScalars(self):
-    """Test the sample_count parameter of /data/scalars."""
-    for i in xrange(10, self._SCALAR_COUNT, 10):
-      samples = self._getJson('/data/scalars?sample_count=%d' % i)
-      values = samples['run1']['simple_values']
-      # Verify that we got the right amount of values and that we got the
-      # endpoints.
-      self.assertEqual(len(values), i)
-      self.assertEqual(values[0], [100, 10, 1])
-      self.assertEqual(values[-1], [9900, 990, 99])
-
-  def testSampleScalarsWithLargeSampleCount(self):
-    """Test using a large sample_count."""
-    samples = self._getJson('/data/scalars?sample_count=999999')
-    values = samples['run1']['simple_values']
-    self.assertEqual(len(values), self._SCALAR_COUNT)
 
   def testImages(self):
     """Test listing images and retrieving an individual image."""
@@ -397,8 +382,8 @@ class TensorboardServerTest(test.TestCase):
     for i in xrange(1, self._SCALAR_COUNT + 1):
       writer.add_event(
           event_pb2.Event(
-              # We use different values for wall time, step, and the value so we can
-              # tell them apart.
+              # We use different values for wall time, step, and the value so we
+              # can tell them apart.
               wall_time=100 * i,
               step=10 * i,
               summary=summary_pb2.Summary(value=[
@@ -445,54 +430,54 @@ class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
 class ParseEventFilesSpecTest(test.TestCase):
 
   def testRunName(self):
-    logdir_string = 'lol:/cat'
+    logdir = 'lol:/cat'
     expected = {'/cat': 'lol'}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testPathWithColonThatComesAfterASlash_isNotConsideredARunName(self):
-    logdir_string = '/lol:/cat'
+    logdir = '/lol:/cat'
     expected = {'/lol:/cat': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testMultipleDirectories(self):
-    logdir_string = '/a,/b'
+    logdir = '/a,/b'
     expected = {'/a': None, '/b': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testNormalizesPaths(self):
-    logdir_string = '/lol/.//cat/../cat'
+    logdir = '/lol/.//cat/../cat'
     expected = {'/lol/cat': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testAbsolutifies(self):
-    logdir_string = 'lol/cat'
+    logdir = 'lol/cat'
     expected = {os.path.realpath('lol/cat'): None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testRespectsGCSPath(self):
-    logdir_string = 'gs://foo/path'
+    logdir = 'gs://foo/path'
     expected = {'gs://foo/path': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testRespectsHDFSPath(self):
-    logdir_string = 'hdfs://foo/path'
+    logdir = 'hdfs://foo/path'
     expected = {'hdfs://foo/path': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testDoesNotExpandUserInGCSPath(self):
-    logdir_string = 'gs://~/foo/path'
+    logdir = 'gs://~/foo/path'
     expected = {'gs://~/foo/path': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testDoesNotNormalizeGCSPath(self):
-    logdir_string = 'gs://foo/./path//..'
+    logdir = 'gs://foo/./path//..'
     expected = {'gs://foo/./path//..': None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
   def testRunNameWithGCSPath(self):
-    logdir_string = 'lol:gs://foo/path'
+    logdir = 'lol:gs://foo/path'
     expected = {'gs://foo/path': 'lol'}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+    self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
 
 class TensorBoardAssetsTest(test.TestCase):

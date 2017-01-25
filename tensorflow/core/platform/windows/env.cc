@@ -75,35 +75,6 @@ class WindowsEnv : public Env {
     return PathMatchSpec(path.c_str(), pattern.c_str()) == TRUE;
   }
 
-  uint64 NowMicros() override {
-    if (GetSystemTimePreciseAsFileTime_ != NULL) {
-      // GetSystemTimePreciseAsFileTime function is only available in latest
-      // versions of Windows, so we need to check for its existence here.
-      // All std::chrono clocks on Windows proved to return
-      // values that may repeat, which is not good enough for some uses.
-      constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
-      constexpr int64_t kFtToMicroSec = 10;
-
-      // This interface needs to return system time and not
-      // just any microseconds because it is often used as an argument
-      // to TimedWait() on condition variable
-      FILETIME system_time;
-      GetSystemTimePreciseAsFileTime_(&system_time);
-
-      LARGE_INTEGER li;
-      li.LowPart = system_time.dwLowDateTime;
-      li.HighPart = system_time.dwHighDateTime;
-      // Subtract unix epoch start
-      li.QuadPart -= kUnixEpochStartTicks;
-      // Convert to microsecs
-      li.QuadPart /= kFtToMicroSec;
-      return li.QuadPart;
-    }
-    using namespace std::chrono;
-    return duration_cast<microseconds>(
-        system_clock::now().time_since_epoch()).count();
-  }
-
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,

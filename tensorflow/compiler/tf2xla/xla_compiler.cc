@@ -37,13 +37,6 @@ namespace tensorflow {
 
 namespace {
 
-bool HasRetval(const Graph& graph) {
-  for (const Node* n : graph.nodes()) {
-    if (n->type_string() == "_Retval") return true;
-  }
-  return false;
-}
-
 Status CheckSignature(const DataTypeVector& tf_types,
                       const xla::Shape& xla_shape) {
   if (xla::ShapeUtil::IsTuple(xla_shape)) {
@@ -176,14 +169,9 @@ Status XlaCompiler::CompileFunctionBody(
         strings::StrCat("xla_jit_raw_input_", function_id), *graph);
   }
 
-  if (!HasRetval(*graph)) {
-    VLOG(1) << "Graph has no retvals. Skipping compilation.";
-    return Status::OK();
-  }
-
-  // Optimize the graph to before running throught the translator.
-  // TODO(pbar) The constant folder currently does not simplify int32 operations
-  // for devices other than CPU.
+  // Optimize the graph before running the compiler.
+  // TODO(pbar): The constant folder currently does not simplify int32
+  // operations for devices other than CPU.
   OptimizerOptions opts;
   GraphOptimizer optimizer(opts);
   OptimizeGraph(flr, &graph);
@@ -330,6 +318,8 @@ Status XlaCompiler::CompileGraph(string const& name,
       &result->computation, &result->requires_runtime_context,
       &compile_time_constants, &num_nonconst_outputs));
 
+  VLOG(2) << "Outputs: constant: " << compile_time_constants.size()
+          << " nonconstant: " << num_nonconst_outputs;
   result->outputs.resize(compile_time_constants.size() + num_nonconst_outputs);
   for (const auto& c : compile_time_constants) {
     if (!c.status.ok()) {
@@ -408,6 +398,7 @@ Status XlaCompiler::GetChannelHandle(const string& key,
     TF_ASSIGN_OR_RETURN(result.first->second, client_->CreateChannelHandle());
   }
   *channel = result.first->second;
+  VLOG(1) << "Channel: " << key << " " << channel->DebugString();
   return Status::OK();
 }
 

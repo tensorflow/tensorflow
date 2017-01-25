@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import re
 import time
 
 from tensorflow.contrib.learn.python.learn import export_strategy
@@ -208,7 +207,7 @@ def get_timestamped_export_dir(export_dir_base):
   Each export is written into a new subdirectory named using the
   current time.  This guarantees monotonically increasing version
   numbers even across multiple runs of the pipeline.
-  The timestamp used is the number of milliseconds since epoch UTC.
+  The timestamp used is the number of seconds since epoch UTC.
 
   Args:
     export_dir_base: A string containing a directory to write the exported
@@ -216,12 +215,39 @@ def get_timestamped_export_dir(export_dir_base):
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
   """
-  export_timestamp = int(time.time() * 1e3)
+  export_timestamp = int(time.time())
 
   export_dir = os.path.join(
       compat.as_bytes(export_dir_base),
       compat.as_bytes(str(export_timestamp)))
   return export_dir
+
+
+# create a simple parser that pulls the export_version from the directory.
+def _export_version_parser(path):
+  filename = os.path.basename(path.path)
+  if not (len(filename) == 10 and filename.isdigit()):
+    return None
+  return path._replace(export_version=int(filename))
+
+
+def get_most_recent_export(export_dir_base):
+  """Locate the most recent SavedModel export in a directory of many exports.
+
+  This method assumes that SavedModel subdirectories are named as a timestamp
+  (seconds from epoch), as produced by get_timestamped_export_dir().
+
+  Args:
+    export_dir_base: A base directory containing multiple timestamped
+                     directories.
+
+  Returns:
+    A gc.Path, whith is just a namedtuple of (path, export_version).
+  """
+  select_filter = gc.largest_export_versions(1)
+  results = select_filter(gc.get_paths(export_dir_base,
+                                       parser=_export_version_parser))
+  return next(iter(results or []), None)
 
 
 def garbage_collect_exports(export_dir_base, exports_to_keep):
@@ -240,38 +266,57 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
   keep_filter = gc.largest_export_versions(exports_to_keep)
   delete_filter = gc.negation(keep_filter)
-
-  # Export dir must not end with / or it will break the re match below.
-  if export_dir_base.endswith('/'):
-    export_dir_base = export_dir_base[:-1]
-
-  # create a simple parser that pulls the export_version from the directory.
-  def parser(path):
-    match = re.match('^' + export_dir_base + '/(\\d{13})$', path.path)
-    if not match:
-      return None
-    return path._replace(export_version=int(match.group(1)))
-
-  for p in delete_filter(gc.get_paths(export_dir_base, parser=parser)):
+  for p in delete_filter(gc.get_paths(export_dir_base,
+                                      parser=_export_version_parser)):
     gfile.DeleteRecursively(p.path)
 
 
-def make_export_strategy(export_input_fn,
+def make_export_strategy(serving_input_fn,
                          default_output_alternative_key='default',
                          assets_extra=None,
                          as_text=False,
-                         exports_to_keep=None):
-  """Create an ExportStrategy for use with Experiment."""
+                         exports_to_keep=5):
+  """Create an ExportStrategy for use with Experiment.
+
+  Args:
+    serving_input_fn: A function that takes no arguments and returns an
+      `InputFnOps`.
+    default_output_alternative_key: the name of the head to serve when an
+      incoming serving request does not explicitly request a specific head.
+      Not needed for single-headed models.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel.  Each key should give the destination
+      path (including the filename) relative to the assets.extra directory.
+      The corresponding value gives the full path of the source file to be
+      copied.  For example, the simple case of copying a single file without
+      renaming it is specified as
+      `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+    as_text: whether to write the SavedModel proto in text format.
+    exports_to_keep: Number of exports to keep.  Older exports will be
+      garbage-collected.  Defaults to 5.  Set to None to disable garbage
+      collection.
+
+  Returns:
+    an ExportStrategy that can be passed to the Experiment constructor.
+  """
 
   def export_fn(estimator, export_dir_base):
-    """Exports the given Estimator as a SavedModel."""
+    """Exports the given Estimator as a SavedModel.
+
+    Args:
+      estimator: the Estimator to export.
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+
+    Returns:
+      The string path to the exported directory.
+    """
     export_result = estimator.export_savedmodel(
         export_dir_base,
-        export_input_fn,
+        serving_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        as_text=as_text,
-        exports_to_keep=exports_to_keep)
+        as_text=as_text)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result

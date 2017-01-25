@@ -175,7 +175,8 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
             parameter_count, old_operand->shape(), ""));
         ++parameter_count;
       }
-      outlined_instruction->ReplaceOperandWith(operand_num, *operand_slot);
+      TF_CHECK_OK(
+          outlined_instruction->ReplaceOperandWith(operand_num, *operand_slot));
     }
 
     // Insert the new instruction into the outlined_instructions map.
@@ -215,10 +216,10 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  computation->ReplaceUsesOfInstruction(output, call);
+  TF_CHECK_OK(computation->ReplaceUsesOfInstruction(output, call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
-    computation->RemoveInstruction(*i);
+    TF_CHECK_OK(computation->RemoveInstruction(*i));
   }
 
   return call;

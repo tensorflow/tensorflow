@@ -170,7 +170,7 @@ class Mixture(distribution.Distribution):
 
     super(Mixture, self).__init__(
         dtype=dtype,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         is_continuous=is_continuous,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,

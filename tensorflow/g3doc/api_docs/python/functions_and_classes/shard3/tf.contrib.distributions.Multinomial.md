@@ -260,13 +260,6 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.is_reparameterized` {#Multinomial.is_reparameterized}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.Multinomial.is_scalar_batch(name='is_scalar_batch')` {#Multinomial.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
@@ -494,7 +487,11 @@ Each element is the probability of drawing that coordinate.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -512,7 +509,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Multinomial.param_static_shapes(cls, sample_shape)` {#Multinomial.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -624,6 +629,21 @@ if it sums up to `n` and its components are equal to integer values.
 
 - - -
 
+#### `tf.contrib.distributions.Multinomial.reparameterization_type` {#Multinomial.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Multinomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Multinomial.sample}
 
 Generate samples of the specified shape.
@@ -647,7 +667,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.std(name='std')` {#Multinomial.std}
+#### `tf.contrib.distributions.Multinomial.stddev(name='stddev')` {#Multinomial.stddev}
 
 Standard deviation.
 
@@ -675,7 +695,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 

@@ -76,7 +76,7 @@ class Exponential(gamma.Gamma):
         name=ns)
     # While the Gamma distribution is not re-parameterizable, the
     # exponential distribution is.
-    self._is_reparameterized = True
+    self._reparameterization_type = True
     self._parameters = parameters
     self._graph_parents += [self._lam]
 

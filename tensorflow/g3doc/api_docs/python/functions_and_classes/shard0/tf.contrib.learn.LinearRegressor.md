@@ -63,7 +63,9 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
   _joint_weights: If True use a single (possibly partitioned) variable to
     store the weights. It's faster, but requires all feature columns are
     sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
@@ -137,22 +139,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export_savedmodel(*args, **kwargs)` {#LinearRegressor.export_savedmodel}
+#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearRegressor.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -161,7 +160,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 

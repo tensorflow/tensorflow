@@ -44,6 +44,28 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
 
     self._ui_type = ui_type
     self._wrapper_initialized = False
+    self._pending_tensor_filters = {}
+
+  def add_tensor_filter(self, filter_name, tensor_filter):
+    """Add a tensor filter.
+
+    See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+    Override default behavior to accomodate the possibility of this method being
+    called prior to the initialization of the underlying
+    `LocalCLIDebugWrapperSession` object.
+
+    Args:
+      filter_name: See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()`
+        for details.
+      tensor_filter: See doc of
+        `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+    """
+
+    if self._wrapper_initialized:
+      local_cli_wrapper.LocalCLIDebugWrapperSession.add_tensor_filter(
+          self, filter_name, tensor_filter)
+    else:
+      self._pending_tensor_filters[filter_name] = tensor_filter
 
   def begin(self):
     pass
@@ -52,6 +74,13 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     if not self._wrapper_initialized:
       local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
           self, run_context.session, ui_type=self._ui_type)
+
+      # Actually register tensor filters registered prior to the construction
+      # of the underlying LocalCLIDebugWrapperSession object.
+      for filter_name in self._pending_tensor_filters:
+        local_cli_wrapper.LocalCLIDebugWrapperSession.add_tensor_filter(
+            self, filter_name, self._pending_tensor_filters[filter_name])
+
       self._wrapper_initialized = True
 
     # Increment run call counter.

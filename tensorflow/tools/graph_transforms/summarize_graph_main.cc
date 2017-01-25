@@ -65,7 +65,8 @@ Status SummarizeGraph(const GraphDef& graph) {
   MapNodesToOutputs(graph, &output_map);
   std::vector<const NodeDef*> outputs;
   for (const NodeDef& node : graph.node()) {
-    if (output_map.count(node.name()) == 0) {
+    if ((output_map.count(node.name()) == 0) && (node.op() != "Const") &&
+        (node.op() != "Assign")) {
       outputs.push_back(&node);
     }
   }

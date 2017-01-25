@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
-#include <queue>
-
 #ifdef USE_HEXAGON_LIBS
 #include "tensorflow/core/platform/hexagon/soc_interface.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#include "tensorflow/core/platform/types.h"
 #endif
 
 namespace tensorflow {
@@ -28,7 +25,6 @@ namespace tensorflow {
 const bool SHOW_DBG_IN_SOC = false;
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
-const bool DBG_SHOW_RESULT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
 
 #ifdef USE_HEXAGON_LIBS
@@ -145,18 +141,15 @@ bool HexagonControlWrapper::SetupGraph(
       output_count = std::get<1>(output_ptr_and_count);
       CHECK(output_count > 0);
     }
-
-    // TODO(satok): Do not use string. Use enum instead.
-    const string padding = params.padding;
     int padding_id = -1;
-    if (padding == "NN_PAD_NA") {
+    if (params.padding == 0) {
       padding_id = 0;
-    } else if (padding == "NN_PAD_SAME") {
+    } else if (params.padding == Padding::SAME) {
       padding_id = 1;
-    } else if (padding == "NN_PAD_VALID") {
+    } else if (params.padding == Padding::VALID) {
       padding_id = 2;
     } else {
-      CHECK(false) << "Unsupported padding " << padding;
+      CHECK(false);
     }
     soc_interface_AppendNode(params.name.c_str(), node_id + NODE_ID_OFFSET,
                              op_id, padding_id, input_ptr, input_count,
@@ -213,12 +206,6 @@ bool HexagonControlWrapper::ReadOutputNode(
   // TODO: Accept all results
   std::get<2>(output) = DT_FLOAT;
   outputs->emplace_back(output);
-  if (DBG_SHOW_RESULT) {
-    const int byte_size = std::get<1>(output);
-    const int element_count = byte_size / sizeof(float);
-    const float* float_array = reinterpret_cast<float*>(std::get<0>(output));
-    DumpTopNFloatResults(float_array, element_count, 10 /* top_n */);
-  }
   return true;
 }
 
@@ -239,20 +226,5 @@ bool HexagonControlWrapper::ReadOutputNode(const string,
   return false;
 }
 #endif
-
-void HexagonControlWrapper::DumpTopNFloatResults(const float* data,
-                                                 const float element_count,
-                                                 const int top_n) {
-  std::priority_queue<std::tuple<float, int>> queue;
-  for (int i = 0; i < element_count; ++i) {
-    queue.emplace(data[i], i);
-  }
-  LOG(INFO) << "=== Dump ranking ===";
-  for (int i = 0; i < top_n; ++i) {
-    const std::tuple<float, int>& entry = queue.top();
-    LOG(INFO) << i << ": " << std::get<1>(entry) << ", " << std::get<0>(entry);
-    queue.pop();
-  }
-}
 
 }  // namespace tensorflow

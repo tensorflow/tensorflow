@@ -162,6 +162,8 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
     desc.S = filter_cols;
     desc.u = row_stride;
     desc.v = col_stride;
+    desc.pad_h = 0;
+    desc.pad_w = 0;
     desc.pad_h_in = 0;  // pad_rows;  // ignored by libxsmm for now.
     desc.pad_w_in = 0;  // pad_cols;  // ignored by libxsmm for now.
     desc.pad_h_out = 0;
@@ -169,7 +171,7 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
     desc.threads = num_threads;
     desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
     desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_RSCK;
+    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;//LIBXSMM_DNN_CONV_FORMAT_RSCK;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
     desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;

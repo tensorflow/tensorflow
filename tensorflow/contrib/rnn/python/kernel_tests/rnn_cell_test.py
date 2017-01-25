@@ -106,7 +106,7 @@ class RNNCellTest(test.TestCase):
                           [2., 2., 2., 2.],
                           [3., 3., 3., 3.]]),
             m.name:
-                0.1 * np.ones((batch_size, state_size * (num_shifts)))
+                0.1 * np.ones((batch_size, int(state_size * (num_shifts))))
         })
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
@@ -647,8 +647,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         h1 = array_ops.zeros([1, 2])
         state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
         state = (state0, state1)
-        cell = rnn_cell.LayerNormBasicLSTMCell(2)
-        cell = core_rnn_cell_impl.MultiRNNCell([cell] * 2)
+        single_cell = lambda: rnn_cell.LayerNormBasicLSTMCell(2)
+        cell = core_rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(2)])
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
@@ -711,8 +711,11 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
         state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
-        cell = rnn_cell.LayerNormBasicLSTMCell(2)
-        cell = core_rnn_cell_impl.MultiRNNCell([cell] * 2)
+        def single_cell():
+          return rnn_cell.LayerNormBasicLSTMCell(2)
+
+        cell = core_rnn_cell_impl.MultiRNNCell(
+            [single_cell() for _ in range(2)])
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([h, s0, s1], {

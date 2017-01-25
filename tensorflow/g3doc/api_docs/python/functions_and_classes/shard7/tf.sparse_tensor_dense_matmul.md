@@ -39,9 +39,10 @@ CPU: Intel Ivybridge with HyperThreading (6 cores) dL1:32KB dL2:256KB dL3:12MB
 GPU: NVidia Tesla k40c
 
 Compiled with:
--c opt --config=cuda --copt=-mavx
+`-c opt --config=cuda --copt=-mavx`
 
-```tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
+```
+tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
 A sparse [m, k] with % nonzero values between 1% and 80%
 B dense [k, n]
 

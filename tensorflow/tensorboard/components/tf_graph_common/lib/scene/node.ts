@@ -269,7 +269,9 @@ function addInteraction(selection, d: render.RenderNodeInfo,
  */
 export function getContextMenu(node: Node, sceneElement) {
   let menu = [{
-    title: d => { return getIncludeNodeButtonString(node.include); },
+    title: (d): string => {
+      return getIncludeNodeButtonString(node.include);
+    },
     action: (elm, d, i) => {
       sceneElement.fire('node-toggle-extract', {name: node.name});
     }

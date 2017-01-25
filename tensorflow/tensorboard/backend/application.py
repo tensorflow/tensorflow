@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorBoard server handler logic.
+"""TensorBoard WSGI Application Logic.
 
-TensorboardHandler contains all the logic for serving static files off of disk
-and for handling the API calls to endpoints like /tags that require information
-about loaded events.
+TensorBoardApplication constructs TensorBoard as a WSGI application.
+It handles serving static assets, and implements TensorBoard data APIs.
 """
 
 from __future__ import absolute_import
@@ -24,22 +23,27 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import functools
 import imghdr
 import mimetypes
 import os
+import re
+import threading
+import time
 
+import six
 from six import StringIO
-from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
+from werkzeug import wrappers
 
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import process_graph
-from tensorflow.tensorboard.lib.python import http
+from tensorflow.tensorboard.lib.python import http_util
+
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
@@ -65,6 +69,15 @@ _IMGHDR_TO_MIMETYPE = {
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
 
 
+TENSORBOARD_SIZE_GUIDANCE = {
+    event_accumulator.COMPRESSED_HISTOGRAMS: 500,
+    event_accumulator.IMAGES: 4,
+    event_accumulator.AUDIO: 4,
+    event_accumulator.SCALARS: 1000,
+    event_accumulator.HISTOGRAMS: 50,
+}
+
+
 def _content_type_for_image(encoded_image_string):
   image_type = imghdr.what(None, encoded_image_string)
   return _IMGHDR_TO_MIMETYPE.get(image_type, _DEFAULT_IMAGE_MIMETYPE)
@@ -80,12 +93,8 @@ class _OutputFormat(object):
   CSV = 'csv'
 
 
-class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-  """Handler class for use with BaseHTTPServer.HTTPServer.
-
-  This is essentially a thin wrapper around calls to an EventMultiplexer object
-  as well as serving files off disk.
-  """
+class TensorBoardWSGIApp(object):
+  """The TensorBoard application, conforming to WSGI spec."""
 
   # How many samples to include in sampling API calls by default.
   DEFAULT_SAMPLE_COUNT = 10
@@ -94,28 +103,72 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   #                      responses using send_header.
   protocol_version = 'HTTP/1.1'
 
-  def __init__(self, multiplexer, name_to_plugin_dict, logdir, *args):
-    self._multiplexer = multiplexer
-    self._registered_plugins = name_to_plugin_dict
-    self._logdir = logdir
-    self._setup_data_handlers()
-    BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
+  def __init__(self,
+               logdir,
+               plugins,
+               size_guidance=None,
+               purge_orphaned_data=True,
+               reload_interval=60):
+    """Constructs the TensorBoard application.
 
-  def _setup_data_handlers(self):
-    self.data_handlers = {
-        DATA_PREFIX + LOGDIR_ROUTE: self._serve_logdir,
-        DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
-        DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
-        DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
-        DATA_PREFIX + HISTOGRAMS_ROUTE: self._serve_histograms,
+    Args:
+      logdir: the logdir spec that describes where data will be loaded.
+        may be a directory, or comma,separated list of directories, or colons
+        can be used to provide named directories
+      plugins: Map from plugin name to plugin application.
+      size_guidance: Controls how much data of every kind is loaded into memory.
+      purge_orphaned_data: "orphaned" data may be left behind due to a
+        TF restart or out-of-order execution. If true, purge it when detected.
+      reload_interval: How often (in seconds) to reload the Multiplexer
+
+    Returns:
+      A WSGI application that implements the TensorBoard backend.
+    """
+    if size_guidance is None:
+      size_guidance = TENSORBOARD_SIZE_GUIDANCE
+    self._registered_plugins = plugins
+    self._logdir = logdir
+    self._size = size_guidance
+    self._purge = purge_orphaned_data
+    self._reload = reload_interval
+    self.initialize()
+
+  def initialize(self):
+    """Setup the TensorBoard application."""
+    path_to_run = parse_event_files_spec(self._logdir)
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=self._size, purge_orphaned_data=self._purge)
+    if self._reload:
+      start_reloading_multiplexer(multiplexer, path_to_run, self._reload)
+    else:
+      reload_multiplexer(multiplexer, path_to_run)
+    self._multiplexer = multiplexer
+
+    self.data_applications = {
+        DATA_PREFIX + LOGDIR_ROUTE:
+            self._serve_logdir,
+        DATA_PREFIX + SCALARS_ROUTE:
+            self._serve_scalars,
+        DATA_PREFIX + GRAPH_ROUTE:
+            self._serve_graph,
+        DATA_PREFIX + RUN_METADATA_ROUTE:
+            self._serve_run_metadata,
+        DATA_PREFIX + HISTOGRAMS_ROUTE:
+            self._serve_histograms,
         DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
             self._serve_compressed_histograms,
-        DATA_PREFIX + IMAGES_ROUTE: self._serve_images,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE: self._serve_image,
-        DATA_PREFIX + AUDIO_ROUTE: self._serve_audio,
-        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE: self._serve_individual_audio,
-        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
-        '/app.js': self._serve_js
+        DATA_PREFIX + IMAGES_ROUTE:
+            self._serve_images,
+        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
+            self._serve_image,
+        DATA_PREFIX + AUDIO_ROUTE:
+            self._serve_audio,
+        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
+            self._serve_individual_audio,
+        DATA_PREFIX + RUNS_ROUTE:
+            self._serve_runs,
+        '/app.js':
+            self._serve_js
     }
 
     # Serve the routes from the registered plugins using their name as the route
@@ -124,18 +177,14 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     for name in self._registered_plugins:
       try:
         plugin = self._registered_plugins[name]
-        plugin_handlers = plugin.get_plugin_handlers(
-            self._multiplexer.RunPaths(), self._logdir)
+        plugin_apps = plugin.get_plugin_apps(self._multiplexer.RunPaths(),
+                                             self._logdir)
       except Exception as e:  # pylint: disable=broad-except
         logging.warning('Plugin %s failed. Exception: %s', name, str(e))
         continue
-      for route, handler in plugin_handlers.items():
+      for route, app in plugin_apps.items():
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
-        self.data_handlers[path] = functools.partial(handler, self)
-
-  def respond(self, *args, **kwargs):
-    """Delegates to http.Respond."""
-    http.Respond(self, *args, **kwargs)
+        self.data_applications[path] = app
 
   # We use underscore_names for consistency with inherited methods.
 
@@ -204,113 +253,93 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     prefix = os.path.commonprefix([base, absolute_path])
     return prefix == base
 
-  def _serve_logdir(self, unused_query_params):
-    """Writes out the logdir argument with which this tensorboard was started.
-    """
-    self.respond({'logdir': self._logdir}, 'application/json')
+  @wrappers.Request.application
+  def _serve_logdir(self, request):
+    """Respond with a JSON object containing this TensorBoard's logdir."""
+    return http_util.Respond(
+        request, {'logdir': self._logdir}, 'application/json')
 
-  def _serve_scalars(self, query_params):
-    """Given a tag and single run, return array of ScalarEvents.
-
-    Alternately, if both the tag and the run are omitted, returns JSON object
-    where obj[run][tag] contains sample values for the given tag in the given
-    run.
-
-    Args:
-      query_params: The query parameters as a dict.
-    """
+  @wrappers.Request.application
+  def _serve_scalars(self, request):
+    """Given a tag and single run, return array of ScalarEvents."""
     # TODO(cassandrax): return HTTP status code for malformed requests
-    tag = query_params.get('tag')
-    run = query_params.get('run')
-    if tag is None and run is None:
-      if query_params.get('format') == _OutputFormat.CSV:
-        self.respond('Scalar sample values only supports JSON output',
-                     'text/plain', 400)
-        return
+    tag = request.args.get('tag')
+    run = request.args.get('run')
+    values = self._multiplexer.Scalars(run, tag)
 
-      sample_count = int(query_params.get('sample_count',
-                                          self.DEFAULT_SAMPLE_COUNT))
-      values = {}
-      for run_name, tags in self._multiplexer.Runs().items():
-        values[run_name] = {
-            tag: _uniform_sample(
-                self._multiplexer.Scalars(run_name, tag), sample_count)
-            for tag in tags['scalars']
-        }
-    else:
-      values = self._multiplexer.Scalars(run, tag)
-
-    if query_params.get('format') == _OutputFormat.CSV:
+    if request.args.get('format') == _OutputFormat.CSV:
       string_io = StringIO()
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
-      self.respond(string_io.getvalue(), 'text/csv')
+      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
     else:
-      self.respond(values, 'application/json')
+      return http_util.Respond(request, values, 'application/json')
 
-  def _serve_graph(self, query_params):
+  @wrappers.Request.application
+  def _serve_graph(self, request):
     """Given a single run, return the graph definition in json format."""
-    run = query_params.get('run', None)
+    run = request.args.get('run', None)
     if run is None:
-      self.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return http_util.Respond(
+          request, 'query parameter "run" is required', 'text/plain', 400)
 
     try:
       graph = self._multiplexer.Graph(run)
     except ValueError:
-      self.send_response(404)
-      return
+      return http_util.Respond(request, '404 Not Found', code=404)
 
-    limit_attr_size = query_params.get('limit_attr_size', None)
+    limit_attr_size = request.args.get('limit_attr_size', None)
     if limit_attr_size is not None:
       try:
         limit_attr_size = int(limit_attr_size)
       except ValueError:
-        self.respond('query parameter `limit_attr_size` must be integer',
-                     'text/plain', 400)
-        return
+        return http_util.Respond(
+            request, 'query parameter `limit_attr_size` must be integer',
+            'text/plain', 400)
 
-    large_attrs_key = query_params.get('large_attrs_key', None)
+    large_attrs_key = request.args.get('large_attrs_key', None)
     try:
       process_graph.prepare_graph_for_ui(graph, limit_attr_size,
                                          large_attrs_key)
     except ValueError as e:
-      self.respond(e.message, 'text/plain', 400)
-      return
+      return http_util.Respond(request, e.message, 'text/plain', 400)
 
-    self.respond(str(graph), 'text/x-protobuf')  # pbtxt
+    return http_util.Respond(request, str(graph), 'text/x-protobuf')  # pbtxt
 
-  def _serve_run_metadata(self, query_params):
+  @wrappers.Request.application
+  def _serve_run_metadata(self, request):
     """Given a tag and a TensorFlow run, return the session.run() metadata."""
-    tag = query_params.get('tag', None)
-    run = query_params.get('run', None)
+    tag = request.args.get('tag', None)
+    run = request.args.get('run', None)
     if tag is None:
-      self.respond('query parameter "tag" is required', 'text/plain', 400)
-      return
+      return http_util.Respond(
+          request, 'query parameter "tag" is required', 'text/plain', 400)
     if run is None:
-      self.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return http_util.Respond(
+          request, 'query parameter "run" is required', 'text/plain', 400)
     try:
       run_metadata = self._multiplexer.RunMetadata(run, tag)
     except ValueError:
-      self.send_response(404)
-      return
-    self.respond(str(run_metadata), 'text/x-protobuf')  # pbtxt
+      return http_util.Respond(request, '404 Not Found', code=404)
+    return http_util.Respond(
+        request, str(run_metadata), 'text/x-protobuf')  # pbtxt
 
-  def _serve_histograms(self, query_params):
+  @wrappers.Request.application
+  def _serve_histograms(self, request):
     """Given a tag and single run, return an array of histogram values."""
-    tag = query_params.get('tag')
-    run = query_params.get('run')
+    tag = request.args.get('tag')
+    run = request.args.get('run')
     values = self._multiplexer.Histograms(run, tag)
-    self.respond(values, 'application/json')
+    return http_util.Respond(request, values, 'application/json')
 
-  def _serve_compressed_histograms(self, query_params):
+  @wrappers.Request.application
+  def _serve_compressed_histograms(self, request):
     """Given a tag and single run, return an array of compressed histograms."""
-    tag = query_params.get('tag')
-    run = query_params.get('run')
+    tag = request.args.get('tag')
+    run = request.args.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
-    if query_params.get('format') == _OutputFormat.CSV:
+    if request.args.get('format') == _OutputFormat.CSV:
       string_io = StringIO()
       writer = csv.writer(string_io)
 
@@ -328,11 +357,13 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for value in compressed_histogram.compressed_histogram_values:
           row += [value.rank_in_bps, value.value]
         writer.writerow(row)
-      self.respond(string_io.getvalue(), 'text/csv')
+      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
     else:
-      self.respond(compressed_histograms, 'application/json')
+      return http_util.Respond(
+          request, compressed_histograms, 'application/json')
 
-  def _serve_images(self, query_params):
+  @wrappers.Request.application
+  def _serve_images(self, request):
     """Given a tag and list of runs, serve a list of images.
 
     Note that the images themselves are not sent; instead, we respond with URLs
@@ -341,24 +372,28 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     may change.
 
     Args:
-      query_params: The query parameters as a dict.
+      request: A werkzeug.wrappers.Request object.
+
+    Returns:
+      A werkzeug.Response application.
     """
-    tag = query_params.get('tag')
-    run = query_params.get('run')
+    tag = request.args.get('tag')
+    run = request.args.get('run')
 
     images = self._multiplexer.Images(run, tag)
     response = self._image_response_for_run(images, run, tag)
-    self.respond(response, 'application/json')
+    return http_util.Respond(request, response, 'application/json')
 
-  def _serve_image(self, query_params):
+  @wrappers.Request.application
+  def _serve_image(self, request):
     """Serves an individual image."""
-    tag = query_params.get('tag')
-    run = query_params.get('run')
-    index = int(query_params.get('index'))
+    tag = request.args.get('tag')
+    run = request.args.get('run')
+    index = int(request.args.get('index'))
     image = self._multiplexer.Images(run, tag)[index]
     encoded_image_string = image.encoded_image_string
     content_type = _content_type_for_image(encoded_image_string)
-    self.respond(encoded_image_string, content_type)
+    return http_util.Respond(request, encoded_image_string, content_type)
 
   def _query_for_individual_image(self, run, tag, index):
     """Builds a URL for accessing the specified image.
@@ -383,7 +418,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     })
     return query_string
 
-  def _serve_audio(self, query_params):
+  @wrappers.Request.application
+  def _serve_audio(self, request):
     """Given a tag and list of runs, serve a list of audio.
 
     Note that the audio clips themselves are not sent; instead, we respond with
@@ -392,23 +428,27 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     format may change.
 
     Args:
-      query_params: The query parameters as a dict.
+      request: A werkzeug.wrappers.Request object.
 
+    Returns:
+      A werkzeug.Response application.
     """
-    tag = query_params.get('tag')
-    run = query_params.get('run')
+    tag = request.args.get('tag')
+    run = request.args.get('run')
 
     audio_list = self._multiplexer.Audio(run, tag)
     response = self._audio_response_for_run(audio_list, run, tag)
-    self.respond(response, 'application/json')
+    return http_util.Respond(request, response, 'application/json')
 
-  def _serve_individual_audio(self, query_params):
+  @wrappers.Request.application
+  def _serve_individual_audio(self, request):
     """Serves an individual audio clip."""
-    tag = query_params.get('tag')
-    run = query_params.get('run')
-    index = int(query_params.get('index'))
+    tag = request.args.get('tag')
+    run = request.args.get('run')
+    index = int(request.args.get('index'))
     audio = self._multiplexer.Audio(run, tag)[index]
-    self.respond(audio.encoded_audio_string, audio.content_type)
+    return http_util.Respond(
+        request, audio.encoded_audio_string, audio.content_type)
 
   def _query_for_individual_audio(self, run, tag, index):
     """Builds a URL for accessing the specified audio.
@@ -433,12 +473,17 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     })
     return query_string
 
-  def _serve_runs(self, unused_query_params):
-    """Return a JSON object about runs and tags.
+  @wrappers.Request.application
+  def _serve_runs(self, request):
+    """WSGI app serving a JSON object about runs and tags.
 
     Returns a mapping from runs to tagType to list of tags for that run.
 
+    Args:
+      request: A werkzeug request
+
     Returns:
+      A werkzeug Response with the following content:
       {runName: {images: [tag1, tag2, tag3],
                  audio: [tag4, tag5, tag6],
                  scalars: [tagA, tagB, tagC],
@@ -454,29 +499,34 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.warning('Unable to get first event timestamp for run %s',
                         run_name)
         run_data['firstEventTimestamp'] = None
-    self.respond(runs, 'application/json')
+    return http_util.Respond(request, runs, 'application/json')
 
-  def _serve_index(self, unused_query_params):
+  @wrappers.Request.application
+  def _serve_index(self, request):
     """Serves the index page (i.e., the tensorboard app itself)."""
-    self._serve_static_file('/dist/index.html')
+    return self._serve_static_file(request, '/dist/index.html')
 
-  def _serve_js(self, unused_query_params):
+  @wrappers.Request.application
+  def _serve_js(self, request):
     """Serves the JavaScript for the index page."""
-    self._serve_static_file('/dist/app.js')
+    return self._serve_static_file(request, '/dist/app.js')
 
-  def _serve_static_file(self, path):
+  def _serve_static_file(self, request, path):
     """Serves the static file located at the given path.
 
     Args:
+      request: A werkzeug Request
       path: The path of the static file, relative to the tensorboard/ directory.
+
+    Returns:
+      A werkzeug.Response application.
     """
     # Strip off the leading forward slash.
     orig_path = path.lstrip('/')
     if not self._path_is_safe(orig_path):
       logging.warning('path not safe: %s', orig_path)
-      self.respond('Naughty naughty!', 'text/plain', 400)
-      return
-    # Resource loader wants a path relative to //WORKSPACE/tensorflow.
+      return http_util.Respond(request, 'Naughty naughty!', 'text/plain', 400)
+      # Resource loader wants a path relative to //WORKSPACE/tensorflow.
     path = os.path.join('tensorboard', orig_path)
     # Open the file and read it.
     try:
@@ -498,81 +548,134 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         contents = resource_loader.load_resource(path)
       except IOError:
         logging.info('path %s not found, sending 404', path)
-        self.respond('Not found', 'text/plain', 404)
-        return
+        return http_util.Respond(request, 'Not found', 'text/plain', code=404)
     mimetype, content_encoding = mimetypes.guess_type(path)
     mimetype = mimetype or 'application/octet-stream'
-    self.respond(contents, mimetype, expires=3600,
-                 content_encoding=content_encoding)
+    return http_util.Respond(
+        request,
+        contents,
+        mimetype,
+        expires=3600,
+        content_encoding=content_encoding)
 
-  def do_GET(self):  # pylint: disable=invalid-name
-    """Handler for all get requests."""
-    parsed_url = urlparse.urlparse(self.path)
+  def __call__(self, environ, start_response):  # pylint: disable=invalid-name
+    """Central entry point for the TensorBoard application.
+
+    This method handles routing to sub-applications. It does simple routing
+    using regular expression matching.
+
+    This __call__ method conforms to the WSGI spec, so that instances of this
+    class are WSGI applications.
+
+    Args:
+      environ: See WSGI spec.
+      start_response: See WSGI spec.
+
+    Returns:
+      A werkzeug Response.
+    """
+    request = wrappers.Request(environ)
+    parsed_url = urlparse.urlparse(request.path)
 
     # Remove a trailing slash, if present.
     clean_path = parsed_url.path
     if clean_path.endswith('/'):
       clean_path = clean_path[:-1]
-
-    query_params = urlparse.parse_qs(parsed_url.query)
-    # parse_qs returns a list of values for each key; we're only interested in
-    # the first.
-    for key in query_params:
-      value_count = len(query_params[key])
-      if value_count != 1:
-        self.respond(
-            'query parameter %s should have exactly one value, had %d' %
-            (key, value_count), 'text/plain', 400)
-        return
-      query_params[key] = query_params[key][0]
-
-    if clean_path in self.data_handlers:
-      self.data_handlers[clean_path](query_params)
+    # pylint: disable=too-many-function-args
+    if clean_path in self.data_applications:
+      return self.data_applications[clean_path](environ, start_response)
     elif clean_path in TAB_ROUTES:
-      self._serve_index(query_params)
+      return self._serve_index(environ, start_response)
     else:
-      self._serve_static_file(clean_path)
-
-  # @Override
-  def log_message(self, *args):
-    """Logs message."""
-    # By default, BaseHTTPRequestHandler logs to stderr.
-    logging.info(*args)
-
-  # @Override
-  def log_request(self, *args):
-    """Does nothing."""
-    # This is called by BaseHTTPRequestHandler.send_response() which causes it
-    # to log every request. We've configured http.Respond() to only log
-    # requests with >=400 status code.
-    pass
+      return self._serve_static_file(request, clean_path)(environ,
+                                                          start_response)
+    # pylint: enable=too-many-function-args
 
 
-def _uniform_sample(values, count):
-  """Samples `count` values uniformly from `values`.
+def parse_event_files_spec(logdir):
+  """Parses `logdir` into a map from paths to run group names.
+
+  The events files flag format is a comma-separated list of path specifications.
+  A path specification either looks like 'group_name:/path/to/directory' or
+  '/path/to/directory'; in the latter case, the group is unnamed. Group names
+  cannot start with a forward slash: /foo:bar/baz will be interpreted as a
+  spec with no name and path '/foo:bar/baz'.
+
+  Globs are not supported.
 
   Args:
-    values: The values to sample from.
-    count: The number of values to sample. Must be at least 2.
+    logdir: A comma-separated list of run specifications.
+  Returns:
+    A dict mapping directory paths to names like {'/path/to/directory': 'name'}.
+    Groups without an explicit name are named after their path. If logdir is
+    None, returns an empty dict, which is helpful for testing things that don't
+    require any valid runs.
+  """
+  files = {}
+  if logdir is None:
+    return files
+  # Make sure keeping consistent with ParseURI in core/lib/io/path.cc
+  uri_pattern = re.compile('[a-zA-Z][0-9a-zA-Z.]*://.*')
+  for specification in logdir.split(','):
+    # Check if the spec contains group. A spec start with xyz:// is regarded as
+    # URI path spec instead of group spec. If the spec looks like /foo:bar/baz,
+    # then we assume it's a path with a colon.
+    if (uri_pattern.match(specification) is None and ':' in specification and
+        specification[0] != '/'):
+      # We split at most once so run_name:/path:with/a/colon will work.
+      run_name, _, path = specification.partition(':')
+    else:
+      run_name = None
+      path = specification
+    if uri_pattern.match(path) is None:
+      path = os.path.realpath(path)
+    files[path] = run_name
+  return files
 
-  Raises:
-    ValueError: If `count` is not at least 2.
-    TypeError: If `type(count) != int`.
+
+def reload_multiplexer(multiplexer, path_to_run):
+  """Loads all runs into the multiplexer.
+
+  Args:
+    multiplexer: The `EventMultiplexer` to add runs to and reload.
+    path_to_run: A dict mapping from paths to run names, where `None` as the run
+      name is interpreted as a run name equal to the path.
+  """
+  start = time.time()
+  logging.info('TensorBoard reload process beginning')
+  for (path, name) in six.iteritems(path_to_run):
+    multiplexer.AddRunsFromDirectory(path, name)
+  logging.info('TensorBoard reload process: Reload the whole Multiplexer')
+  multiplexer.Reload()
+  duration = time.time() - start
+  logging.info('TensorBoard done reloading. Load took %0.3f secs', duration)
+
+
+def start_reloading_multiplexer(multiplexer, path_to_run, load_interval):
+  """Starts a thread to automatically reload the given multiplexer.
+
+  The thread will reload the multiplexer by calling `ReloadMultiplexer` every
+  `load_interval` seconds, starting immediately.
+
+  Args:
+    multiplexer: The `EventMultiplexer` to add runs to and reload.
+    path_to_run: A dict mapping from paths to run names, where `None` as the run
+      name is interpreted as a run name equal to the path.
+    load_interval: How many seconds to wait after one load before starting the
+      next load.
 
   Returns:
-    A list of values from `values`. The first and the last element will always
-    be included. If `count > len(values)`, then all values will be returned.
+    A started `threading.Thread` that reloads the multiplexer.
   """
 
-  if count < 2:
-    raise ValueError('Must sample at least 2 elements, %d requested' % count)
+  # We don't call multiplexer.Reload() here because that would make
+  # AddRunsFromDirectory block until the runs have all loaded.
+  def _reload_forever():
+    while True:
+      reload_multiplexer(multiplexer, path_to_run)
+      time.sleep(load_interval)
 
-  if count >= len(values):
-    # Copy the list in case the caller mutates it.
-    return list(values)
-
-  return [
-      # We divide by count - 1 to make sure we always get the first and the last
-      # element.
-      values[(len(values) - 1) * i // (count - 1)] for i in xrange(count)
-  ]
+  thread = threading.Thread(target=_reload_forever)
+  thread.daemon = True
+  thread.start()
+  return thread

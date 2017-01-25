@@ -211,8 +211,8 @@ class NdtrGradientTest(test.TestCase):
       if self._use_log:
         g = np.reshape(grad_eval, [-1])
         half = np.ceil(len(g) / 2)
-        self.assert_all_true(g[:half] > 0.)
-        self.assert_all_true(g[half:] >= 0.)
+        self.assert_all_true(g[:int(half)] > 0.)
+        self.assert_all_true(g[int(half):] >= 0.)
       else:
         # The ndtr gradient will only be non-zero in the range [-14, 14] for
         # float32 and [-38, 38] for float64.
