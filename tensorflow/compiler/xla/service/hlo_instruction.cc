@@ -1158,7 +1158,8 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
       << ShapeUtil::HumanString(new_producer->shape());
   auto user_it = std::find(users_.begin(), users_.end(), user);
   TF_RET_CHECK(user_it != users_.end())
-      << "Instruction " << user << " not a use of instruction " << this;
+      << "Instruction " << user->name() << " not a use of instruction "
+      << name();
   users_.erase(user_it);
 
   VLOG(3) << "Replacing uses of " << name() << " in " << user->name()
@@ -1360,6 +1361,15 @@ string HloInstruction::ToString(bool compact_operands) const {
     tensorflow::strings::StrAppend(&extra, ", padding=",
                                    padding_config_->ShortDebugString());
   }
+  if (!slice_starts_.empty() && !slice_limits_.empty()) {
+    std::vector<string> bounds;
+    for (int i = 0; i < slice_starts_.size(); ++i) {
+      bounds.push_back(tensorflow::strings::StrCat("[", slice_starts_[i], ":",
+                                                   slice_limits_[i], "]"));
+    }
+    tensorflow::strings::StrAppend(
+        &extra, ", slice={", tensorflow::str_util::Join(bounds, ", "), "}");
+  }
   if (convolution_dimension_numbers_ != nullptr) {
     tensorflow::strings::StrAppend(
         &extra,
@@ -1470,7 +1480,7 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
-Status HloInstruction::AcceptInternalVisit(DfsHloVisitor* visitor) {
+Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
@@ -1624,19 +1634,20 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   }
 
   for (auto control_predecessor : control_predecessors_) {
-    VLOG(3) << "Going to visit HLO " << control_predecessor
-            << " as a control predecessor of HLO " << this;
+    VLOG(3) << "Going to visit HLO " << control_predecessor->name()
+            << " as a control predecessor of HLO " << name();
     TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(visitor));
   }
 
   TF_RETURN_IF_ERROR(visitor->Preprocess(this));
-  VLOG(3) << "Visiting HLO " << name();
-  TF_RETURN_IF_ERROR(AcceptInternalVisit(visitor));
+  VLOG(2) << "Visiting HLO " << name();
+  TF_RETURN_IF_ERROR(Visit(visitor));
   visitor->SetVisited(*this);
   return visitor->Postprocess(this);
 }
 
 Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit) {
+  VLOG(2) << "HloInstruction::Accept(" << name() << ")";
   auto status = AcceptInternal(visitor);
   if (!status.ok()) {
     return status;
@@ -1651,14 +1662,13 @@ Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit) {
 
 namespace {
 
-// Returns true if the given order is a topological sort of exactly those
-// instructions rooted at 'root'.
-bool OrderIsTopologicalSort(HloInstruction* root,
-                            const std::vector<const HloInstruction*>& order) {
+// Returns true if the given order is a topological sort of the instructions it
+// contains.
+bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
   // Create a map from instruction to its position in 'order'.
   std::unordered_map<const HloInstruction*, int> order_position;
   for (int i = 0; i < order.size(); i++) {
-    if (!order_position.insert(std::make_pair(order[i], i)).second) {
+    if (!order_position.insert({order[i], i}).second) {
       // Instruction order[i] is duplicated in the order.
       return false;
     }
@@ -1675,26 +1685,6 @@ bool OrderIsTopologicalSort(HloInstruction* root,
     }
   }
 
-  // Create a vector of all instructions in a DFS search starting at
-  // root. 'order' should contain exactly these instructions.
-  std::vector<const HloInstruction*> visited;
-  TF_CHECK_OK(root->Accept([&visited](HloInstruction* instruction) {
-    visited.push_back(instruction);
-    return Status::OK();
-  }));
-
-  if (order_position.size() != visited.size()) {
-    return false;
-  }
-  for (auto* instruction : visited) {
-    if (order_position.count(instruction) == 0) {
-      return false;
-    }
-  }
-  // Given the conditions above, the last element of order should always be the
-  // root.
-  CHECK_EQ(root, order[order.size() - 1]);
-
   return true;
 }
 
@@ -1707,8 +1697,22 @@ Status HloInstruction::Accept(FunctionVisitor::VisitorFunction visitor_func) {
 
 Status HloInstruction::AcceptOrdered(
     DfsHloVisitor* visitor, const std::vector<const HloInstruction*>& order) {
-  DCHECK(OrderIsTopologicalSort(this, order));
+  VLOG(2) << "HloInstruction::AcceptOrdered(" << name() << ")";
+  TF_RET_CHECK(OrderIsTopologicalSort(order));
+
+  // Compute the predecessors of this instruction.
+  std::unordered_set<const HloInstruction*> predecessors;
+  TF_RETURN_IF_ERROR(this->Accept([&predecessors](HloInstruction* instruction) {
+    predecessors.insert(instruction);
+    return Status::OK();
+  }));
+
   for (auto* const_instruction : order) {
+    if (predecessors.count(const_instruction) == 0) {
+      // Instruction is not a predecessors of 'this'.
+      continue;
+    }
+
     // The visitor can mark instructions as visited to skip particular
     // instructions.
     if (visitor->DidVisit(*const_instruction)) {
@@ -1721,8 +1725,8 @@ Status HloInstruction::AcceptOrdered(
         const_cast<HloInstruction*>(const_instruction);
 
     TF_RETURN_IF_ERROR(visitor->Preprocess(instruction));
-    VLOG(3) << "Visiting HLO " << instruction->name();
-    TF_RETURN_IF_ERROR(instruction->AcceptInternalVisit(visitor));
+    VLOG(2) << "Visiting HLO " << instruction->name();
+    TF_RETURN_IF_ERROR(instruction->Visit(visitor));
     visitor->SetVisited(*instruction);
     TF_RETURN_IF_ERROR(visitor->Postprocess(instruction));
   }

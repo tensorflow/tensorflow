@@ -286,10 +286,9 @@ class BufferAssigner {
   // will be colocated in the same allocation (i.e buffers for while result
   // will share an allocation with buffers related to that same while
   // instruction: init operand, condition/body parameter and body result).
-  using BufferSizeFunction = std::function<int64(const LogicalBuffer&)>;
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      BufferSizeFunction buffer_size, bool colocate_related_buffers,
+      LogicalBuffer::SizeFunction buffer_size, bool colocate_related_buffers,
       const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
 
   // Overload of Run which uses ShapeUtil::ByteSizeOf to determine buffer size
@@ -299,7 +298,7 @@ class BufferAssigner {
       int64 pointer_size);
 
  private:
-  explicit BufferAssigner(BufferSizeFunction buffer_size,
+  explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
                           bool colocate_related_buffers)
       : buffer_size_(std::move(buffer_size)),
         colocate_related_buffers_(colocate_related_buffers) {}
@@ -356,7 +355,7 @@ class BufferAssigner {
   const HloModule* module_;
 
   // Function which returns the buffer size for a given shape.
-  BufferSizeFunction buffer_size_;
+  LogicalBuffer::SizeFunction buffer_size_;
 
   // Indicates whether related buffers should share the same buffer allocation.
   const bool colocate_related_buffers_;
