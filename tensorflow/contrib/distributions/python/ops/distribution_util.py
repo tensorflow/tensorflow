@@ -630,36 +630,36 @@ class AppendDocstring(object):
   class TransformedDistribution(Distribution):
     @distribution_util.AppendDocstring(
       additional_note="A special note!",
-      condition_kwargs_dict={"foo": "An extra arg."})
+      kwargs_dict={"foo": "An extra arg."})
     def _prob(self, y, foo=None):
       pass
   ```
 
   In this case, the `AppendDocstring` decorator appends the `additional_note` to
-  the docstring of `prob` (not `_prob`) and adds a new `condition_kwargs`
+  the docstring of `prob` (not `_prob`) and adds a new `kwargs`
   section with each dictionary item as a bullet-point.
 
   For a more detailed example, see `TransformedDistribution`.
   """
 
-  def __init__(self, additional_note="", condition_kwargs_dict=None):
+  def __init__(self, additional_note="", kwargs_dict=None):
     """Initializes the AppendDocstring object.
 
     Args:
       additional_note: Python string added as additional docstring to public
         version of function.
-      condition_kwargs_dict: Python string/string dictionary representing
-        specific kwargs expanded from the **condition_kwargs input.
+      kwargs_dict: Python string/string dictionary representing
+        specific kwargs expanded from the **kwargs input.
 
     Raises:
-      ValueError: if condition_kwargs_dict.key contains whitespace.
-      ValueError: if condition_kwargs_dict.value contains newlines.
+      ValueError: if kwargs_dict.key contains whitespace.
+      ValueError: if kwargs_dict.value contains newlines.
     """
     self._additional_note = additional_note
-    if condition_kwargs_dict:
+    if kwargs_dict:
       bullets = []
-      for key in sorted(condition_kwargs_dict.keys()):
-        value = condition_kwargs_dict[key]
+      for key in sorted(kwargs_dict.keys()):
+        value = kwargs_dict[key]
         if any(x.isspace() for x in key):
           raise ValueError(
               "Parameter name \"%s\" contains whitespace." % key)
@@ -668,7 +668,7 @@ class AppendDocstring(object):
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
         bullets.append("*  `%s`: %s" % (key, value))
-      self._additional_note += ("\n\n##### `condition_kwargs`:\n\n" +
+      self._additional_note += ("\n\n##### `kwargs`:\n\n" +
                                 "\n".join(bullets))
 
   def __call__(self, fn):
