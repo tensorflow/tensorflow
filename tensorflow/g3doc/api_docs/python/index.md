@@ -141,7 +141,6 @@
   * [`broadcast_static_shape`](../../api_docs/python/array_ops.md#broadcast_static_shape)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
-  * [`concat_v2`](../../api_docs/python/array_ops.md#concat_v2)
   * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
   * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
