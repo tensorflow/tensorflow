@@ -141,6 +141,8 @@ StatusOr<bool> HloComputation::RemoveInstructionIfFound(
   if (instruction_iterators_.count(instruction) == 0) {
     return false;
   }
+  VLOG(2) << "Removing instruction " << instruction->name()
+          << " from computation " << name();
   auto inst_it = instruction_iterators_.at(instruction);
   (*inst_it)->set_parent(nullptr);
   instruction->DetachFromOperands();

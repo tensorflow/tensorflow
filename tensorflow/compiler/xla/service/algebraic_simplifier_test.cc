@@ -1370,7 +1370,11 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
                                  non_bitcasting_callback());
+
   ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+  // Running simplification again should not result in any further changes.
+  ASSERT_FALSE(simplifier.Run(&module).ValueOrDie());
 
   root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);

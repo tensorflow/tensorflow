@@ -198,7 +198,7 @@ bool AlgebraicSimplifierVisitor::Run(
     AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback) {
   AlgebraicSimplifierVisitor visitor(computation, is_layout_sensitive,
                                      std::move(valid_bitcast_callback));
-  TF_CHECK_OK(computation->root_instruction()->Accept(&visitor));
+  TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
 
@@ -466,8 +466,14 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // shape of the instruction.
   if (ShapeUtil::IsScalar(operand->shape())) {
     for (HloInstruction* user : broadcast->users()) {
+      // Skip if the broadcast user has no uses itself.
+      if (user->user_count() == 0 && user != computation_->root_instruction()) {
+        continue;
+      }
       if (OutputIsPermutationOfOperandElements(user, broadcast) ||
           OutputIsSubsetOfOperandElements(user, broadcast)) {
+        VLOG(10) << "transform permuting/subset  of a scalar broadcast into "
+                 << "a single broadcast";
         HloInstruction* new_broadcast = computation_->AddInstruction(
             HloInstruction::CreateBroadcast(user->shape(), operand, {}));
         // Use ReplaceUsesOfInstruction instead of ReplaceWithNewInstruction
@@ -987,12 +993,17 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum,
 }
 
 StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
-  return std::any_of(
+  XLA_VLOG_LINES(2,
+                 "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
+  bool changed = std::any_of(
       module->computations().begin(), module->computations().end(),
       [=](const std::unique_ptr<HloComputation>& computation) {
         return AlgebraicSimplifierVisitor::Run(
             computation.get(), is_layout_sensitive_, valid_bitcast_callback_);
       });
+  XLA_VLOG_LINES(2,
+                 "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
+  return changed;
 }
 
 }  // namespace xla
