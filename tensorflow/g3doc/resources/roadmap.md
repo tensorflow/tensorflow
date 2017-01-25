@@ -1,5 +1,5 @@
 # Roadmap
-**Last updated: January 23, 2016**
+**Last updated: January 23, 2017**
 
 TensorFlow is a fast moving project. In order for the community to better
 understand what the near future will bring, this document shares what we are
