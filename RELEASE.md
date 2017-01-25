@@ -63,9 +63,7 @@
   keywords. In particular we now match NumPy order as
   `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
   made `tf.sparse_split` require keyword arguments.
-* Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
-  In the Beta release, we will update `tf.concat` to match argument order of
-  `tf.concat_v2`.
+* `tf.concat` now takes arguments in reversed order and with different keywords. In particular we now match NumPy order as `tf.concat(values, axis, name)`.
 * `tf.image.decode_jpeg` by default uses the faster DCT method, sacrificing
   a little fidelity for improved speed. One can revert to the old
   behavior by specifying the attribute `dct_method='INTEGER_ACCURATE'`.
@@ -118,6 +116,18 @@
 * Android: TF stats now exposed directly in demo and log when debug mode is
   active
 * Android: new/better README.md documentation
+* saved_model is avaliable as `tf.saved_model`.
+* Empty op is now stateful.
+* Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
+* Improve speed of scatter_update on the cpu for ASSIGN operations.
+* Change `reduce_join` to treat `reduction_indices` in the same way as other `reduce_` ops.
+* Move `TensorForestEstimator` to `contrib/tensor_forest`.
+* Enable compiler optimizations by default and allow configuration in configure.
+* Add YOLO object detector support in Android demo.
+* Add new Android image stylization demo based on "A Learned Representation For Artistic Style".
+* `tf.divide` now honors the name field.
+* Make metrics weight broadcasting more strict.
+* Add new queue-like `StagingArea` and new ops: `stage` and `unstage`.
 
 ## Thanks to our Contributors
 
