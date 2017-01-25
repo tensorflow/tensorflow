@@ -172,7 +172,7 @@ class DataSet(object):
     """ Get next batch """ 
     start = self._index_in_epoch
     # Shuffle for the first epoch
-    if self._epoch_completed ==0 and start == 0 and shuffle:
+    if self._epochs_completed ==0 and start == 0 and shuffle:
       perm0 = numpy.arange(self._num_examples)
       numpy.random.shuffle(perm0)
       self._images = self.images[perm0]
