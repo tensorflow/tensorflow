@@ -52,8 +52,12 @@ class BufferAllocation {
   // contiguously and can be used as array indexes.
   using Index = int64;
 
-  BufferAllocation(Index index, int64 size, bool is_thread_local)
-      : index_(index), size_(size), is_thread_local_(is_thread_local) {}
+  BufferAllocation(Index index, int64 size, bool is_thread_local,
+                   bool is_reusable)
+      : index_(index),
+        size_(size),
+        is_thread_local_(is_thread_local),
+        is_reusable_(is_reusable) {}
   ~BufferAllocation() {}
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
@@ -63,6 +67,9 @@ class BufferAllocation {
   // inside of a map or reduce computation. Such allocations need to be thread
   // local.
   bool is_thread_local() const { return is_thread_local_; }
+
+  // Whether this allocation can be used by more than one logical buffer.
+  bool is_reusable() const { return is_reusable_; }
 
   // Whether this allocation holds a LogicalBuffer from a parameter of the entry
   // computation. These buffers have lifetimes which may be longer than the
@@ -137,6 +144,9 @@ class BufferAllocation {
 
   // Whether this buffer needs to be thread-local.
   bool is_thread_local_;
+
+  // Whether this buffer is usable by more than one logical buffer.
+  bool is_reusable_;
 
   // Whether this allocation holds an entry computation parameter. Entry
   // computation parameters are special be cause they have lifetimes which may
@@ -232,10 +242,13 @@ class BufferAssignment {
   // assigned to it. `is_thread_local` indicates whether this buffer needs to be
   // thread-local.
   BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size,
-                                  bool is_thread_local);
+                                  bool is_thread_local, bool is_reusable);
 
-  // Adds a LogicalBuffer to the set assigned to the given allocation.
-  void AddAssignment(const LogicalBuffer& buffer, BufferAllocation* allocation);
+  // Adds a LogicalBuffer to the set assigned to the given allocation. If
+  // colocated_buffer is true, then the logical buffer is an alias of another
+  // buffer assigned to this allocation.
+  void AddAssignment(const LogicalBuffer& buffer, BufferAllocation* allocation,
+                     bool colocated_buffer);
 
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() { return *liveness_; }
@@ -314,6 +327,10 @@ class BufferAssigner {
                          const LogicalBuffer& buffer,
                          BufferAssignment* assignment);
 
+  // Colocated buffers are logical buffers from different computations which
+  // alias. Explicitly handling these colocated buffers is necessary because
+  // points-to analysis is computation level scope and does not recognize
+  // aliasing across computations (b/32491382).
   using ColocatedBufferSet = std::vector<const LogicalBuffer*>;
 
   // Returns a vector of ColocatedBufferSet objects, where each
