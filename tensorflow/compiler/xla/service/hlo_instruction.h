@@ -320,7 +320,6 @@ class HloInstruction {
   // Adds the given instruction to the set of control successors.
   void AddControlSuccessor(HloInstruction* instruction);
 
-  // Returns the set of control successors of this instruction.
   // Returns true if "other" performs the same computation as this instruction.
   // Layout of the instructions' output array is not considered.
   bool Identical(
@@ -364,12 +363,17 @@ class HloInstruction {
   Status Accept(FunctionVisitor::VisitorFunction visitor_func);
 
   // Visits all instructions rooted at this instruction using the given visitor
-  // in the given order. 'order' must contain exactly the set of instructions
+  // in the given order. 'order' must contain at least the set of instructions
   // rooted at this node (ie, those accessible from a DFS traversal from this
-  // instruction). 'order' must also be a valid topological sort of these
-  // instructions (defs appear before uses).
+  // instruction). Instructions contained in 'order' which are not in the set of
+  // instructions rooted at this node are ignored. 'order' must also be a valid
+  // topological sort of these instructions (defs appear before uses) though
+  // need not be a DFS post-order.
   Status AcceptOrdered(DfsHloVisitor* visitor,
                        const std::vector<const HloInstruction*>& order);
+
+  // Visit this instruction and only this instruction with the given visitor.
+  Status Visit(DfsHloVisitor* visitor);
 
   // Returns the literal associated with this instruction.
   //
@@ -692,9 +696,6 @@ class HloInstruction {
   // Inner DFS traversal function -- this function being called (rather than
   // Accept above) allows us to distinguish the root of the traversal.
   Status AcceptInternal(DfsHloVisitor* visitor);
-
-  // Inner DFS traversal function called when visiting this HloInstruction.
-  Status AcceptInternalVisit(DfsHloVisitor* visitor);
 
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;

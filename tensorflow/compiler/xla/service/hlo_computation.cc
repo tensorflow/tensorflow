@@ -524,6 +524,30 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
 }
 
+Status HloComputation::AcceptOrdered(
+    DfsHloVisitor* visitor,
+    const std::vector<const HloInstruction*>& order) const {
+  TF_RET_CHECK(order.size() == instruction_count());
+  std::unordered_set<const HloInstruction*> visited;
+  for (const HloInstruction* instruction : order) {
+    TF_RET_CHECK(instruction_iterators_.count(instruction) == 1)
+        << "Instruction " << instruction->name() << " is not in computation "
+        << name();
+    TF_RET_CHECK(visited.count(instruction) == 0)
+        << "Instruction " << instruction->name()
+        << " appears more than once in order";
+    HloInstruction* mutable_instruction =
+        const_cast<HloInstruction*>(instruction);
+    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    visitor->SetVisited(*mutable_instruction);
+    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    visited.insert(instruction);
+  }
+  TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
+  return Status::OK();
+}
+
 Status HloComputation::Accept(
     const FunctionVisitor::VisitorFunction& visitor_func) const {
   FunctionVisitor visitor(visitor_func);
