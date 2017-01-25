@@ -58,7 +58,7 @@ def _read_tensor_file(fpath):
     tensor = []
     for line in f:
       if line:
-        tensor.append(map(float, line.rstrip('\n').split('\t')))
+        tensor.append(list(map(float, line.rstrip('\n').split('\t'))))
   return np.array(tensor, dtype='float32')
 
 
