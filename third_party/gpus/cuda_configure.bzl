@@ -374,6 +374,13 @@ def _lib_name(lib, cpu_value, version="", static=False):
       if version:
         version = ".%s" % version
       return "lib%s.so%s" % (lib, version)
+  elif cpu_value == "FreeBSD":
+    if static:
+      return "lib%s.a" % lib
+    else:
+      if version:
+        version = ".%s" % version
+      return "lib%s.so%s" % (lib, version)
   elif cpu_value == "Windows":
     return "%s.lib" % lib
   elif cpu_value == "Darwin":
