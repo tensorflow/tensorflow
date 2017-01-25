@@ -197,7 +197,7 @@ class DataSet(object):
       end = self._index_in_epoch
       images_new_part = self.images[start:end]
       labels_new_part = self.labels[start:end]
-      return tf.concat(0,[images_rest_part,images_new_part]), tf.concat(0,[labels_rest_part,labels_new_part])
+      return numpy.concatenate((images_rest_part, images_new_part), axis=0) , numpy.concatenate((labels_rest_part, labels_new_part), axis=0)
     else:
       self._index_in_epoch += batch_size
       end = self._index_in_epoch
