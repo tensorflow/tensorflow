@@ -136,7 +136,8 @@ class RegressionModelHeadTest(test.TestCase):
           mode=model_fn.ModeKeys.TRAIN,
           train_op_fn=_noop_train_op,
           logits_input=((0., 0.), (0., 0.), (0., 0.)))
-      w = ("logits/weights:0", "logits/biases:0")
+      w = ("regression_head/logits/weights:0",
+           "regression_head/logits/biases:0")
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
@@ -211,11 +212,13 @@ class RegressionModelHeadTest(test.TestCase):
       _assert_variables(
           self,
           expected_global=(
-              "centered_bias_weight:0",
-              "centered_bias_weight/Adagrad:0",),
-          expected_trainable=("centered_bias_weight:0",))
+              "regression_head/centered_bias_weight:0",
+              "regression_head/regression_head/centered_bias_weight/Adagrad:0",
+          ),
+          expected_trainable=("regression_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss", "centered_bias/bias_0"])
+      _assert_summary_tags(
+          self, ["loss", "regression_head/centered_bias/bias_0"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionErrorInSparseTensorLabels(self):
@@ -293,7 +296,8 @@ class MultiLabelModelHeadTest(test.TestCase):
       model_fn_ops = head.create_model_fn_ops(
           {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
           logits_input=((0., 0.),))
-      w = ("logits/weights:0", "logits/biases:0")
+      w = ("multi_class_head/logits/weights:0",
+           "multi_class_head/logits/biases:0")
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
@@ -394,13 +398,16 @@ class MultiLabelModelHeadTest(test.TestCase):
       _assert_variables(
           self,
           expected_global=(
-              "centered_bias_weight:0",
-              "centered_bias_weight/Adagrad:0",),
-          expected_trainable=("centered_bias_weight:0",))
+              "multi_class_head/centered_bias_weight:0",
+              ("multi_class_head/multi_class_head/centered_bias_weight/"
+               "Adagrad:0"),),
+          expected_trainable=("multi_class_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
       _assert_summary_tags(self, (
-          "loss", "centered_bias/bias_0", "centered_bias/bias_1",
-          "centered_bias/bias_2"
+          "loss",
+          "multi_class_head/centered_bias/bias_0",
+          "multi_class_head/centered_bias/bias_1",
+          "multi_class_head/centered_bias/bias_2"
       ))
       expected_loss = .89985204
       _assert_metrics(self, expected_loss,
@@ -459,7 +466,8 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       model_fn_ops = head.create_model_fn_ops(
           {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
           logits_input=((0., 0.), (0., 0.)))
-      w = ("logits/weights:0", "logits/biases:0")
+      w = ("binary_logistic_head/logits/weights:0",
+           "binary_logistic_head/logits/biases:0")
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
@@ -598,11 +606,13 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       _assert_variables(
           self,
           expected_global=(
-              "centered_bias_weight:0",
-              "centered_bias_weight/Adagrad:0",),
-          expected_trainable=("centered_bias_weight:0",))
+              "binary_logistic_head/centered_bias_weight:0",
+              ("binary_logistic_head/binary_logistic_head/centered_bias_weight/"
+               "Adagrad:0"),),
+          expected_trainable=("binary_logistic_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss", "centered_bias/bias_0"])
+      _assert_summary_tags(
+          self, ["loss", "binary_logistic_head/centered_bias/bias_0"])
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -670,7 +680,8 @@ class MultiClassModelHeadTest(test.TestCase):
       model_fn_ops = head.create_model_fn_ops(
           {}, self._labels, model_fn.ModeKeys.TRAIN, _noop_train_op,
           logits_input=((0., 0.),))
-      w = ("logits/weights:0", "logits/biases:0")
+      w = ("multi_class_head/logits/weights:0",
+           "multi_class_head/logits/biases:0")
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
@@ -798,7 +809,8 @@ class BinarySvmModelHeadTest(test.TestCase):
           model_fn.ModeKeys.TRAIN,
           _noop_train_op,
           logits_input=((0., 0.), (0., 0.)))
-      w = ("logits/weights:0", "logits/biases:0")
+      w = ("binary_logistic_head/logits/weights:0",
+           "binary_logistic_head/logits/biases:0")
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
@@ -889,11 +901,14 @@ class BinarySvmModelHeadTest(test.TestCase):
       _assert_variables(
           self,
           expected_global=(
-              "centered_bias_weight:0",
-              "centered_bias_weight/Adagrad:0",),
-          expected_trainable=("centered_bias_weight:0",))
+              "binary_logistic_head/centered_bias_weight:0",
+              ("binary_logistic_head/binary_logistic_head/centered_bias_weight/"
+               "Adagrad:0"),
+          ),
+          expected_trainable=("binary_logistic_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss", "centered_bias/bias_0"])
+      _assert_summary_tags(
+          self, ["loss", "binary_logistic_head/centered_bias/bias_0"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,

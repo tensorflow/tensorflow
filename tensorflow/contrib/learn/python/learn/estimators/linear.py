@@ -125,7 +125,9 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       min_slice_size=64 << 20)
 
   with variable_scope.variable_scope(
-      parent_scope, values=features.values(), partitioner=partitioner) as scope:
+      parent_scope,
+      values=tuple(six.itervalues(features)),
+      partitioner=partitioner) as scope:
     if joint_weights:
       logits, _, _ = (
           layers.joint_weighted_sum_from_feature_columns(
@@ -143,16 +145,17 @@ def _linear_model_fn(features, labels, mode, params, config=None):
               weight_collections=[parent_scope],
               scope=scope))
 
-  def _train_op_fn(loss):
-    global_step = contrib_variables.get_global_step()
-    my_vars = ops.get_collection("linear")
-    grads = gradients.gradients(loss, my_vars)
-    if gradient_clip_norm:
-      grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
-    return (_get_optimizer(optimizer).apply_gradients(
-        zip(grads, my_vars), global_step=global_step))
+    def _train_op_fn(loss):
+      global_step = contrib_variables.get_global_step()
+      my_vars = ops.get_collection(parent_scope)
+      grads = gradients.gradients(loss, my_vars)
+      if gradient_clip_norm:
+        grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
+      return (_get_optimizer(optimizer).apply_gradients(
+          zip(grads, my_vars), global_step=global_step))
 
-  return head.create_model_fn_ops(features, labels, mode, _train_op_fn, logits)
+    return head.create_model_fn_ops(
+        features, labels, mode, _train_op_fn, logits)
 
 
 def sdca_model_fn(features, labels, mode, params):

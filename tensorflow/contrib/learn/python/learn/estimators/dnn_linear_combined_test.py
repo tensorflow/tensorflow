@@ -796,10 +796,13 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         enable_centered_bias=True)
 
     classifier.fit(input_fn=_input_fn_train, steps=1000)
+    self.assertIn('binary_logistic_head/centered_bias_weight',
+                  classifier.get_variable_names())
     # logodds(0.75) = 1.09861228867
     self.assertAlmostEqual(
         1.0986,
-        float(classifier.get_variable_value('centered_bias_weight')[0]),
+        float(classifier.get_variable_value(
+            'binary_logistic_head/centered_bias_weight')[0]),
         places=2)
 
   def testDisableCenteredBias(self):

@@ -38,11 +38,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
 
@@ -69,7 +69,8 @@ def _regression_head(label_name=None,
       bias variable for each class. Rest of the model structure learns the
       residual after centered bias.
     head_name: name of the head. If provided, predictions, summary and metrics
-      keys will be prefixed by the head_name and an underscore.
+      keys will be suffixed by `"/" + head_name` and the default variable scope
+      will be `head_name`.
 
   Returns:
     An instance of _Head
@@ -107,7 +108,8 @@ def _multi_class_head(n_classes,
       bias variable for each class. Rest of the model structure learns the
       residual after centered bias.
     head_name: name of the head. If provided, predictions, summary and metrics
-      keys will be prefixed by the head_name and an underscore.
+      keys will be suffixed by `"/" + head_name` and the default variable scope
+      will be `head_name`.
     thresholds: thresholds for eval metrics, defaults to [.5]
     metric_class_ids: List of class IDs for which we should report per-class
       metrics. Must all be in the range `[0, n_classes)`. Invalid if
@@ -164,7 +166,8 @@ def _binary_svm_head(
       bias variable for each class. Rest of the model structure learns the
       residual after centered bias.
     head_name: name of the head. If provided, predictions, summary and metrics
-      keys will be prefixed by the head_name and an underscore.
+      keys will be suffixed by `"/" + head_name` and the default variable scope
+      will be `head_name`.
     thresholds: thresholds for eval metrics, defaults to [.5]
 
   Returns:
@@ -201,7 +204,8 @@ def _multi_label_head(n_classes,
       bias variable for each class. Rest of the model structure learns the
       residual after centered bias.
     head_name: name of the head. If provided, predictions, summary and metrics
-      keys will be prefixed by the head_name and an underscore.
+      keys will be suffixed by `"/" + head_name` and the default variable scope
+      will be `head_name`.
     thresholds: thresholds for eval metrics, defaults to [.5]
     metric_class_ids: List of class IDs for which we should report per-class
       metrics. Must all be in the range `[0, n_classes)`.
@@ -407,8 +411,9 @@ class _RegressionHead(_Head):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      head_name: name of the head. If provided, predictions, summary and metrics
-        keys will be prefixed by the head_name and an underscore.
+      head_name: name of the head. Predictions, summary and metrics keys are
+        suffixed by `"/" + head_name` and the default variable scope is
+        `head_name`.
       loss_fn: Loss function.
     """
     super(_RegressionHead, self).__init__(head_name=head_name)
@@ -434,31 +439,36 @@ class _RegressionHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
-    logits = _logits(logits_input, logits, self._logits_dimension)
 
-    centered_bias = None
-    if self._enable_centered_bias:
-      centered_bias = _centered_bias(self._logits_dimension, self.head_name)
-      logits = nn.bias_add(logits, centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        self.head_name or "regression_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      logits = _logits(logits_input, logits, self._logits_dimension)
+      centered_bias = None
+      if self._enable_centered_bias:
+        centered_bias = _centered_bias(self._logits_dimension, self.head_name)
+        logits = nn.bias_add(logits, centered_bias)
 
-    predictions = self._logits_to_predictions(logits)
-    loss = None
-    train_op = None
-    eval_metric_ops = None
-    if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels_tensor = _to_labels_tensor(labels, self._label_name)
-      loss = _training_loss(
-          features,
-          labels_tensor,
-          logits,
-          loss_fn=self._loss_fn,
-          weight_column_name=self._weight_column_name,
-          head_name=self.head_name)
-      if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
-        train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
-                             self.logits_dimension, self._loss_fn)
-      eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                         labels, predictions)
+      predictions = self._logits_to_predictions(logits)
+      loss = None
+      train_op = None
+      eval_metric_ops = None
+      if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+        labels_tensor = _to_labels_tensor(labels, self._label_name)
+        loss = _training_loss(
+            features,
+            labels_tensor,
+            logits,
+            loss_fn=self._loss_fn,
+            weight_column_name=self._weight_column_name,
+            head_name=self.head_name)
+        if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
+          train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
+                               self.logits_dimension, self._loss_fn)
+        eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
+                                           labels, predictions)
 
     return model_fn.ModelFnOps(
         mode=mode,
@@ -531,8 +541,9 @@ class _BinaryLogisticHead(_Head):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      head_name: name of the head. If provided, predictions, summary and metrics
-        keys will be prefixed by the head_name and an underscore.
+      head_name: name of the head. Predictions, summary, metrics keys are
+        suffixed by `"/" + head_name` and the default variable scope is
+        `head_name`.
       loss_fn: Loss function.
       thresholds: thresholds for eval.
 
@@ -561,31 +572,36 @@ class _BinaryLogisticHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
-    logits = _logits(logits_input, logits, self.logits_dimension)
 
-    centered_bias = None
-    if self._enable_centered_bias:
-      centered_bias = _centered_bias(1, self.head_name)
-      logits = nn.bias_add(logits, centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        self.head_name or "binary_logistic_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      logits = _logits(logits_input, logits, self.logits_dimension)
+      centered_bias = None
+      if self._enable_centered_bias:
+        centered_bias = _centered_bias(1, self.head_name)
+        logits = nn.bias_add(logits, centered_bias)
 
-    predictions = self._logits_to_predictions(logits)
-    loss = None
-    train_op = None
-    eval_metric_ops = None
-    if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels_tensor = _to_labels_tensor(labels, self._label_name)
-      loss = _training_loss(
-          features,
-          labels_tensor,
-          logits,
-          loss_fn=self._loss_fn,
-          weight_column_name=self._weight_column_name,
-          head_name=self.head_name)
-      if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
-        train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
-                             self.logits_dimension, self._loss_fn)
-      eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                         labels, predictions)
+      predictions = self._logits_to_predictions(logits)
+      loss = None
+      train_op = None
+      eval_metric_ops = None
+      if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+        labels_tensor = _to_labels_tensor(labels, self._label_name)
+        loss = _training_loss(
+            features,
+            labels_tensor,
+            logits,
+            loss_fn=self._loss_fn,
+            weight_column_name=self._weight_column_name,
+            head_name=self.head_name)
+        if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
+          train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
+                               self.logits_dimension, self._loss_fn)
+        eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
+                                           labels, predictions)
 
     return model_fn.ModelFnOps(
         mode=mode,
@@ -713,8 +729,9 @@ class _MultiClassHead(_Head):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      head_name: name of the head. If provided, predictions, summary and metrics
-        keys will be prefixed by the head_name and an underscore.
+      head_name: name of the head. If provided, predictions, summary, metrics
+        keys will be suffixed by `"/" + head_name` and the default variable
+        scope will be `head_name`.
       loss_fn: Loss function.
       thresholds: thresholds for eval.
       metric_class_ids: List of class IDs for which we should report per-class
@@ -754,31 +771,36 @@ class _MultiClassHead(_Head):
                           scope=None):
     """See `_Head`."""
     _check_mode_valid(mode)
-    logits = _logits(logits_input, logits, self._logits_dimension)
 
-    centered_bias = None
-    if self._enable_centered_bias:
-      centered_bias = _centered_bias(self._logits_dimension, self.head_name)
-      logits = nn.bias_add(logits, centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        self.head_name or "multi_class_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      logits = _logits(logits_input, logits, self._logits_dimension)
+      centered_bias = None
+      if self._enable_centered_bias:
+        centered_bias = _centered_bias(self._logits_dimension, self.head_name)
+        logits = nn.bias_add(logits, centered_bias)
 
-    predictions = self._logits_to_predictions(logits)
-    loss = None
-    train_op = None
-    eval_metric_ops = None
-    if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels_tensor = _to_labels_tensor(labels, self._label_name)
-      loss = _training_loss(
-          features,
-          labels_tensor,
-          logits,
-          loss_fn=self._loss_fn,
-          weight_column_name=self._weight_column_name,
-          head_name=self.head_name)
-      if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
-        train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
-                             self._logits_dimension, self._loss_fn)
-      eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                         labels, predictions)
+      predictions = self._logits_to_predictions(logits)
+      loss = None
+      train_op = None
+      eval_metric_ops = None
+      if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+        labels_tensor = _to_labels_tensor(labels, self._label_name)
+        loss = _training_loss(
+            features,
+            labels_tensor,
+            logits,
+            loss_fn=self._loss_fn,
+            weight_column_name=self._weight_column_name,
+            head_name=self.head_name)
+        if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
+          train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
+                               self._logits_dimension, self._loss_fn)
+        eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
+                                           labels, predictions)
 
     return model_fn.ModelFnOps(
         mode=mode,
@@ -1145,7 +1167,9 @@ class _MultiHead(_Head):
           this class. This function will split the logits tensor and pass logits
           of proper size to each head.
       logits_input: tensor to build logits from.
-      scope: Optional scope for variable_scope.
+      scope: Optional scope for variable_scope. If provided, will be passed to
+        all heads. Most users will want to set this to `None`, so each head
+        constructs a separate variable_scope according to its `head_name`.
 
     Returns:
       `ModelFnOps`.
@@ -1332,10 +1356,12 @@ def _centered_bias(logits_dimension, head_name=None):
   """
   if (logits_dimension is None) or (logits_dimension < 1):
     raise ValueError("Invalid logits_dimension %s." % logits_dimension)
-  centered_bias = variable_scope.get_variable(
+  # Do not create a variable with variable_scope.get_variable, because that may
+  # create a PartitionedVariable, which does not support indexing, so
+  # summary.scalar will not work.
+  centered_bias = variables.Variable(
       name="centered_bias_weight",
-      shape=(logits_dimension,),
-      initializer=init_ops.zeros_initializer(),
+      initial_value=array_ops.zeros(shape=(logits_dimension,)),
       trainable=True)
   for dim in range(logits_dimension):
     if head_name:
