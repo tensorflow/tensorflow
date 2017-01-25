@@ -1059,19 +1059,6 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
 namespace gpu = ::perftools::gputools;
 
 void initialize_cuda_gpu_executor() {
-  port::StatusOr<void *> status =
-      gpu::internal::CachedDsoLoader::GetLibcudaDsoHandle();
-  if (!status.ok()) {
-    gpu::cuda::Diagnostician::LogDriverVersionInformation();
-    LOG(INFO) << "LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
-    LOG(INFO) << "failed to find libcuda.so on this system: "
-              << status.status();
-  }
-
-  // TODO(b/22689637): Temporary until users are migrated off of PlatformKind.
-  gpu::PluginRegistry::Instance()->MapPlatformKindToId(
-      gpu::PlatformKind::kCuda, gpu::cuda::kCudaPlatformId);
-
   *gpu::internal::MakeCUDAExecutorImplementation() = [](
       const gpu::PluginConfig &config) {
     return new gpu::cuda::CUDAExecutor{config};
