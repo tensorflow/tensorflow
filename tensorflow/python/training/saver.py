@@ -823,7 +823,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
     # many lines of errors from colossus in the logs.
     if file_io.file_exists(coord_checkpoint_filename):
       file_content = file_io.read_file_to_string(
-          coord_checkpoint_filename).decode("utf-8")
+          coord_checkpoint_filename)
       ckpt = CheckpointState()
       text_format.Merge(file_content, ckpt)
       if not ckpt.model_checkpoint_path:

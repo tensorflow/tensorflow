@@ -79,7 +79,7 @@ def gather_cpu_info():
 
   # Gather num_cores_allowed
   try:
-    with gfile.GFile('/proc/self/status') as fh:
+    with gfile.GFile('/proc/self/status', 'rb') as fh:
       nc = re.search(r'(?m)^Cpus_allowed:\s*(.*)$', fh.read())
     if nc:  # e.g. 'ff' => 8, 'fff' => 12
       cpu_info.num_cores_allowed = (

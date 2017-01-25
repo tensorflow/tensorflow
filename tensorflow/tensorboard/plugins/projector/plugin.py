@@ -69,7 +69,7 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
       config = ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
-        file_content = file_io.read_file_to_string(config_fpath).decode('utf-8')
+        file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
     else:
       config = configs[run_name]
@@ -205,7 +205,7 @@ class ProjectorPlugin(TBPlugin):
       config = ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
-        file_content = file_io.read_file_to_string(config_fpath).decode('utf-8')
+        file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
 
       has_tensor_files = False
@@ -415,7 +415,7 @@ class ProjectorPlugin(TBPlugin):
       return Respond(request, '%s is not a file' % fpath, 'text/plain', 400)
 
     bookmarks_json = None
-    with file_io.FileIO(fpath, 'r') as f:
+    with file_io.FileIO(fpath, 'rb') as f:
       bookmarks_json = f.read()
     return Respond(request, bookmarks_json, 'application/json')
 
@@ -447,7 +447,7 @@ class ProjectorPlugin(TBPlugin):
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
       return Respond(request, '%s does not exist or is directory' % fpath,
                      'text/plain', 400)
-    f = file_io.FileIO(fpath, 'r')
+    f = file_io.FileIO(fpath, 'rb')
     encoded_image_string = f.read()
     f.close()
     image_type = imghdr.what(None, encoded_image_string)
