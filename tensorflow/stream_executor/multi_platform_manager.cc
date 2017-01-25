@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
@@ -77,3 +78,12 @@ namespace gputools {
 
 }  // namespace gputools
 }  // namespace perftools
+
+REGISTER_MODULE_INITIALIZER(
+    multi_platform_manager,
+    {
+        // Nothing -- this is just a module initializer
+        // definition to reference for sequencing
+        // purposes from Platform subclasses that register
+        // themselves with the MultiPlatformManager.
+    });

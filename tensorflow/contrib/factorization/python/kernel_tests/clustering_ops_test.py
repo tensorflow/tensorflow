@@ -125,7 +125,7 @@ class NearestCentersLargeTest(test.TestCase):
     # Tile points and expected results to reach requested size (num_points)
     (self._points, self._expected_nearest_neighbor_indices,
      self._expected_nearest_neighbor_squared_distances) = (
-         np.tile(x, (num_points / points_per_tile, 1))
+         np.tile(x, (int(num_points / points_per_tile), 1))
          for x in (points, expected_nearest_neighbor_indices,
                    expected_nearest_neighbor_squared_distances))
 

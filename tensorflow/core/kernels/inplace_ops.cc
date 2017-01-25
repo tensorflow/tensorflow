@@ -29,40 +29,26 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 namespace functor {
 
 template <typename T>
-Status DoInplaceUpdate(const CPUDevice& d, InplaceOpType op,
-                       const Tensor& value, const Tensor& loc, Tensor* output) {
-  auto Tloc = loc.flat<int64>();
+Status DoParallelConcatUpdate(const CPUDevice& d, const Tensor& value,
+                              int32 loc, Tensor* output) {
   auto Tvalue = value.flat_outer_dims<T>();
   auto Toutput = output->flat_outer_dims<T>();
   auto nrows = Toutput.dimension(0);
-  for (int64 j = 0; j < Tloc.size(); ++j) {
-    auto r = (Tloc(j) % nrows + nrows) % nrows;  // Guard index range.
-    switch (op) {
-      case I_UPDATE:
-        Toutput.template chip<0>(r).device(d) = Tvalue.template chip<0>(j);
-        break;
-      case I_ADD:
-        Toutput.template chip<0>(r).device(d) += Tvalue.template chip<0>(j);
-        break;
-      case I_SUB:
-        Toutput.template chip<0>(r).device(d) -= Tvalue.template chip<0>(j);
-        break;
-      default:
-        return errors::InvalidArgument("Unsupported inplace operation", op);
-    }
-  }
+  auto r = (loc % nrows + nrows) % nrows;  // Guard index range.
+  Toutput.template chip<0>(r).device(d) = Tvalue.template chip<0>(0);
   return Status::OK();
 }
 
 template <>
-Status DoInplace(const CPUDevice& d, InplaceOpType op, const Tensor& value,
-                 const Tensor& loc, Tensor* output) {
+Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
+                        Tensor* output) {
   CHECK_EQ(value.dtype(), output->dtype());
   switch (value.dtype()) {
 #define CASE(type)                  \
   case DataTypeToEnum<type>::value: \
-    return DoInplaceUpdate<type>(d, op, value, loc, output);
+    return DoParallelConcatUpdate<type>(d, value, loc, output);
     TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_string(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ", value.dtype());
@@ -73,19 +59,17 @@ Status DoInplace(const CPUDevice& d, InplaceOpType op, const Tensor& value,
 
 namespace {
 
-// TODO(apassos): validate the shapes better.
-class InplaceOpBase : public OpKernel {
+template <typename Device>
+class ParallelConcatUpdate : public OpKernel {
  public:
-  explicit InplaceOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit ParallelConcatUpdate(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("loc", &loc_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     auto value = ctx->input(0);
-    auto loc = ctx->input(1);
-    auto update = ctx->input(2);
+    auto update = ctx->input(1);
 
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(loc.shape()),
-                errors::InvalidArgument("loc must be a vector. ",
-                                        loc.shape().DebugString()));
     OP_REQUIRES(
         ctx, value.dims() == update.dims(),
         errors::InvalidArgument("value and update shape doesn't match: ",
@@ -98,67 +82,39 @@ class InplaceOpBase : public OpKernel {
                                   value.shape().DebugString(), " vs. ",
                                   update.shape().DebugString()));
     }
-    OP_REQUIRES(ctx, loc.dim_size(0) == update.dim_size(0),
-                errors::InvalidArgument("loc and update shape doesn't match: ",
-                                        loc.shape().DebugString(), " vs. ",
+    OP_REQUIRES(ctx, 1 == update.dim_size(0),
+                errors::InvalidArgument("update shape doesn't match: ",
                                         update.shape().DebugString()));
 
     Tensor output = value;  // This creates an alias intentionally.
-    OP_REQUIRES_OK(ctx, DoCompute(ctx, update, loc, &output));
+    const auto& d = ctx->eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, ::tensorflow::functor::DoParallelConcat(d, update, loc_, &output));
     ctx->set_output(0, output);
   }
 
- protected:
-  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& value,
-                           const Tensor& loc, Tensor* output) = 0;
-};
-
-template <typename Device, functor::InplaceOpType op>
-class InplaceOp : public InplaceOpBase {
- public:
-  explicit InplaceOp(OpKernelConstruction* ctx) : InplaceOpBase(ctx) {}
-
- protected:
-  Status DoCompute(OpKernelContext* ctx, const Tensor& value, const Tensor& loc,
-                   Tensor* output) override {
-    const auto& d = ctx->eigen_device<Device>();
-    return ::tensorflow::functor::DoInplace(d, op, value, loc, output);
-  }
+ private:
+  int32 loc_;
 };
 
 template <typename Device, typename T>
-class EmptyOp : public OpKernel {
+class ParallelConcatStart : public OpKernel {
  public:
-  explicit EmptyOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("init", &init_));
+  explicit ParallelConcatStart(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& shape = ctx->input(0);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape.shape()),
-        errors::InvalidArgument("shape must be a vector of int32, got shape ",
-                                shape.shape().DebugString()));
-    auto dims = shape.flat<int32>();
-    TensorShape out_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
-                            reinterpret_cast<const int32*>(dims.data()),
-                            dims.size(), &out_shape));
     Tensor* out = nullptr;
     // We do not know whether the output will be used on GPU. Setting it to be
     // gpu-compatible for now.
     AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out, attr));
-
-    if (init_) {
-      functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),
-                                           out->flat<T>());
-    }
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape_, &out, attr));
   }
 
  private:
-  bool init_;
+  TensorShape shape_;
 };
 
 class FailureKernel : public OpKernel {
@@ -176,16 +132,15 @@ class FailureKernel : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")   \
                               .Device(DEVICE_CPU)         \
                               .TypeConstraint<type>("T"), \
-                          InplaceOp<CPUDevice, functor::I_UPDATE>);
-TF_CALL_NUMBER_TYPES(REGISTER)
+                          ParallelConcatUpdate<CPUDevice>);
+TF_CALL_POD_STRING_TYPES(REGISTER)
 #undef REGISTER
 
 #define REGISTER_EMPTY(type)                                  \
   REGISTER_KERNEL_BUILDER(Name("_ParallelConcatStart")        \
                               .Device(DEVICE_CPU)             \
-                              .HostMemory("shape")            \
                               .TypeConstraint<type>("dtype"), \
-                          EmptyOp<CPUDevice, type>)
+                          ParallelConcatStart<CPUDevice, type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
@@ -204,9 +159,8 @@ typedef Eigen::GpuDevice GPUDevice;
 #define REGISTER_EMPTY(type)                                  \
   REGISTER_KERNEL_BUILDER(Name("_ParallelConcatStart")        \
                               .Device(DEVICE_GPU)             \
-                              .HostMemory("shape")            \
                               .TypeConstraint<type>("dtype"), \
-                          EmptyOp<GPUDevice, type>);
+                          ParallelConcatStart<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_EMPTY)
 #undef REGISTER_EMPTY
 
@@ -221,7 +175,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_CONCAT);
   REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")   \
                               .Device(DEVICE_GPU)         \
                               .TypeConstraint<type>("T"), \
-                          InplaceOp<GPUDevice, functor::I_UPDATE>);
+                          ParallelConcatUpdate<GPUDevice>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER)
 #undef REGISTER
 
@@ -231,11 +185,10 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER)
 REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                             .Device(DEVICE_GPU)
                             .HostMemory("value")
-                            .HostMemory("loc")
                             .HostMemory("update")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
-                        InplaceOp<CPUDevice, functor::I_UPDATE>);
+                        ParallelConcatUpdate<CPUDevice>);
 #endif
 
 }  // end namespace

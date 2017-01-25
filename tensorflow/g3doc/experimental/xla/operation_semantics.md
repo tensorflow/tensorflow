@@ -692,12 +692,15 @@ dimension.
 three fields for each dimension: `edge_padding_low`, `edge_padding_high`, and
 `interior_padding`. `edge_padding_low` and `edge_padding_high` specifies the
 amount of padding added at the low-end (next to index 0) and the high-end (next
-to the highest index) of each dimension respectively. `interior_padding`
-specifies the amount of padding added between any two elements in each
-dimension. This operation is a no-op if the edge padding pairs are all (0, 0)
-and the interior padding values are all 0. Figure below shows examples of
-different `edge_padding` and `interior_padding` values for a two dimensional
-array.
+to the highest index) of each dimension respectively. The amount of edge padding
+can be negative -- the absolute value of negative padding indicates the number
+of elements to remove from the specified dimension. `interior_padding` specifies
+the amount of padding added between any two elements in each dimension. Interior
+padding occurs logically before edge padding, so in the case of negative edge
+padding elements are removed from the interior-padded operand. This operation is
+a no-op if the edge padding pairs are all (0, 0) and the interior padding values
+are all 0. Figure below shows examples of different `edge_padding` and
+`interior_padding` values for a two dimensional array.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="../../images/ops_pad.png">

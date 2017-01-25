@@ -65,14 +65,17 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
-  void ExpectError(const string& gdef_ascii, const ImportGraphDefOptions& opts,
-                   const std::vector<string>& expected_error_strs,
-                   ShapeRefiner* refiner = nullptr) {
+  void ExpectError(
+      const string& gdef_ascii, const ImportGraphDefOptions& opts,
+      const std::vector<string>& expected_error_strs,
+      ShapeRefiner* refiner = nullptr,
+      std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
     // Used to verify that errors don't change graph
     const string original_graph_description = GraphDebugString();
 
     Convert(gdef_ascii);
-    Status status = ImportGraphDef(opts, gdef_, &graph_, refiner);
+    Status status =
+        ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
@@ -90,9 +93,10 @@ class GraphConstructorTest : public ::testing::Test {
   }
 
   void ExpectOK(const string& gdef_ascii, const ImportGraphDefOptions& opts,
-                ShapeRefiner* refiner = nullptr) {
+                ShapeRefiner* refiner = nullptr,
+                std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
     Convert(gdef_ascii);
-    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner);
+    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
     EXPECT_EQ(Status::OK(), s) << s;
   }
 
@@ -979,6 +983,104 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
       opts,
       {"cannot resolve input_map because multiple nodes exist with name 'dup'"},
       &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  ImportGraphDefOptions opts;
+  opts.return_tensors.push_back({"input", 1});
+  opts.return_tensors.push_back({"t1", 0});
+  opts.return_tensors.push_back({"input", 0});
+  std::vector<std::pair<Node*, int>> return_tensors;
+  ExpectOK(
+      "node { name: 'input' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' input: ['input:0', 'input:1'] }",
+      opts, &refiner, &return_tensors);
+
+  // Sanity checks
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 1));
+
+  // Check return tensors
+  ASSERT_EQ(return_tensors.size(), 3);
+  EXPECT_EQ(return_tensors[0].first->name(), "input");
+  EXPECT_EQ(return_tensors[0].second, 1);
+  EXPECT_EQ(return_tensors[1].first->name(), "t1");
+  EXPECT_EQ(return_tensors[1].second, 0);
+  EXPECT_EQ(return_tensors[2].first->name(), "input");
+  EXPECT_EQ(return_tensors[2].second, 0);
+
+  // Test using prefix and returning element from input_map
+  opts.return_tensors.clear();
+  return_tensors.clear();
+  opts.prefix = "import";
+  opts.input_map[{"new_input", 1}] = {"input", 0};
+  opts.return_tensors.push_back({"new_input", 0});
+  opts.return_tensors.push_back({"new_input", 1});
+  ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
+           &return_tensors);
+
+  EXPECT_TRUE(HasNode("import/new_input"));
+
+  ASSERT_EQ(return_tensors.size(), 2);
+  EXPECT_EQ(return_tensors[0].first->name(), "import/new_input");
+  EXPECT_EQ(return_tensors[0].second, 0);
+  EXPECT_EQ(return_tensors[1].first->name(), "input");
+  EXPECT_EQ(return_tensors[1].second, 0);
+
+  // Test returning node remapped to source node
+  opts.prefix.clear();
+  opts.input_map.clear();
+  opts.return_tensors.clear();
+  return_tensors.clear();
+  opts.input_map[{"new_input", 0}] = {"_SOURCE", 0};
+  opts.return_tensors.push_back({"new_input", 0});
+  ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
+           &return_tensors);
+
+  EXPECT_TRUE(HasNode("new_input"));
+
+  ASSERT_EQ(return_tensors.size(), 1);
+  EXPECT_EQ(return_tensors[0].first->name(), "_SOURCE");
+  EXPECT_EQ(return_tensors[0].second, 0);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
+  // Passing in return_tensors with empty opts.return_tensors is OK
+  ImportGraphDefOptions opts;
+  std::vector<std::pair<Node*, int>> return_tensors;
+  ExpectOK("node { name: 'input' op: 'TestInput' }", opts, nullptr,
+           &return_tensors);
+
+  // Null return_tensors with non-empty opts.return_tensors
+  opts.return_tensors.push_back({"new_input", 0});
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"return_tensors argument to ImportNodeDef() must be non-null "
+               "if opts.return_tensors is non-empty"});
+
+  // Non-empty return_tensors
+  return_tensors.push_back({nullptr, 0});
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"return_tensors argument to ImportNodeDef() should be empty "
+               "(has size 1)"},
+              nullptr, &return_tensors);
+
+  // Requesting tensor that isn't in graph def
+  return_tensors.clear();
+  ExpectError("node { name: 'W1' op: 'TestParams' }", opts,
+              {"Requested return node 'new_input' not found in graph def"},
+              nullptr, &return_tensors);
+
+  // Requesting invalid node index
+  opts.return_tensors.clear();
+  opts.return_tensors.push_back({"new_input", 2});
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"Invalid return output 2 of node 'new_input', which has 2 "
+               "outputs"},
+              nullptr, &return_tensors);
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_WithCycle) {

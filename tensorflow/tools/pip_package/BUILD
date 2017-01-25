@@ -95,6 +95,7 @@ filegroup(
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
+        "@org_pocoo_werkzeug//:LICENSE",
         "@zlib_archive//:zlib.h",
     ] + tf_additional_license_deps(),
 )

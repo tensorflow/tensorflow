@@ -44,6 +44,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.util import compat
 
 
 class SavedModelExportUtilsTest(test.TestCase):
@@ -240,21 +241,21 @@ class SavedModelExportUtilsTest(test.TestCase):
     export_dir_base = tempfile.mkdtemp() + "export/"
     export_dir_1 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(0.001)
+    time.sleep(1)
     export_dir_2 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(0.001)
+    time.sleep(1)
     export_dir_3 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
 
-    # Export directories should be named using a timestamp that is milliseconds
-    # since epoch.  Such a timestamp is 13 digits long.
+    # Export directories should be named using a timestamp that is seconds
+    # since epoch.  Such a timestamp is 10 digits long.
     time_1 = os.path.basename(export_dir_1)
-    self.assertEqual(13, len(time_1))
+    self.assertEqual(10, len(time_1))
     time_2 = os.path.basename(export_dir_2)
-    self.assertEqual(13, len(time_2))
+    self.assertEqual(10, len(time_2))
     time_3 = os.path.basename(export_dir_3)
-    self.assertEqual(13, len(time_3))
+    self.assertEqual(10, len(time_3))
 
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
@@ -281,12 +282,30 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertTrue(gfile.Exists(export_dir_3))
     self.assertTrue(gfile.Exists(export_dir_4))
 
+  def test_get_most_recent_export(self):
+    export_dir_base = tempfile.mkdtemp() + "export/"
+    gfile.MkDir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    _create_test_export_dir(export_dir_base)
+    export_dir_4 = _create_test_export_dir(export_dir_base)
+
+    (most_recent_export_dir, most_recent_export_version) = (
+        saved_model_export_utils.get_most_recent_export(export_dir_base))
+
+    self.assertEqual(compat.as_bytes(export_dir_4),
+                     compat.as_bytes(most_recent_export_dir))
+    self.assertEqual(compat.as_bytes(export_dir_4),
+                     os.path.join(compat.as_bytes(export_dir_base),
+                                  compat.as_bytes(
+                                      str(most_recent_export_version))))
+
   def test_make_export_strategy(self):
     """Only tests that an ExportStrategy instance is created."""
-    def _export_input_fn():
+    def _serving_input_fn():
       return array_ops.constant([1]), None
     export_strategy = saved_model_export_utils.make_export_strategy(
-        export_input_fn=_export_input_fn,
+        serving_input_fn=_serving_input_fn,
         default_output_alternative_key="default",
         assets_extra={"from/path": "to/path"},
         as_text=False,
@@ -299,7 +318,7 @@ def _create_test_export_dir(export_dir_base):
   export_dir = saved_model_export_utils.get_timestamped_export_dir(
       export_dir_base)
   gfile.MkDir(export_dir)
-  time.sleep(0.001)
+  time.sleep(1)
   return export_dir
 
 

@@ -260,7 +260,6 @@
   * [`minimum`](../../api_docs/python/math_ops.md#minimum)
   * [`mod`](../../api_docs/python/math_ops.md#mod)
   * [`multiply`](../../api_docs/python/math_ops.md#multiply)
-  * [`neg`](../../api_docs/python/math_ops.md#neg)
   * [`negative`](../../api_docs/python/math_ops.md#negative)
   * [`norm`](../../api_docs/python/math_ops.md#norm)
   * [`polygamma`](../../api_docs/python/math_ops.md#polygamma)
@@ -619,6 +618,8 @@
   * [`do_quantize_training_on_graphdef`](../../api_docs/python/train.md#do_quantize_training_on_graphdef)
   * [`exponential_decay`](../../api_docs/python/train.md#exponential_decay)
   * [`ExponentialMovingAverage`](../../api_docs/python/train.md#ExponentialMovingAverage)
+  * [`FeedFnHook`](../../api_docs/python/train.md#FeedFnHook)
+  * [`FinalOpsHook`](../../api_docs/python/train.md#FinalOpsHook)
   * [`FtrlOptimizer`](../../api_docs/python/train.md#FtrlOptimizer)
   * [`generate_checkpoint_state_proto`](../../api_docs/python/train.md#generate_checkpoint_state_proto)
   * [`get_checkpoint_mtimes`](../../api_docs/python/train.md#get_checkpoint_mtimes)
@@ -771,6 +772,7 @@
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
+  * [`ReparameterizationType`](../../api_docs/python/contrib.distributions.md#ReparameterizationType)
   * [`softplus_inverse`](../../api_docs/python/contrib.distributions.md#softplus_inverse)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`StudentTWithAbsDfSoftplusSigma`](../../api_docs/python/contrib.distributions.md#StudentTWithAbsDfSoftplusSigma)
@@ -1035,6 +1037,7 @@
   * [`LinearOperatorMatrix`](../../api_docs/python/contrib.linalg.md#LinearOperatorMatrix)
   * [`LinearOperatorScaledIdentity`](../../api_docs/python/contrib.linalg.md#LinearOperatorScaledIdentity)
   * [`LinearOperatorTriL`](../../api_docs/python/contrib.linalg.md#LinearOperatorTriL)
+  * [`LinearOperatorUDVHUpdate`](../../api_docs/python/contrib.linalg.md#LinearOperatorUDVHUpdate)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)

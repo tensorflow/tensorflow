@@ -140,28 +140,27 @@ def tf_gen_op_libs(op_lib_names, deps=None):
                       linkstatic=1,)
 
 def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
-                         op_gen="//tensorflow/cc:cc_op_gen_main"):
+                         op_gen="//tensorflow/cc:cc_op_gen_main",
+                         deps=None,
+                         include_internal_ops=0):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
+  if deps == None:
+    deps = [pkg + ":" + name + "_op_lib"]
   native.cc_binary(
       name = tool,
       copts = tf_copts(),
       linkopts = ["-lm"],
       linkstatic = 1,   # Faster to link this one-time-use binary dynamically
-      deps = ([op_gen, pkg + ":" + name + "_op_lib"])
+      deps = [op_gen] + deps
   )
 
-  # Run the op generator.
-  if name == "sendrecv_ops" or name == "function_ops":
-    include_internal = "1"
-  else:
-    include_internal = "0"
   native.genrule(
       name=name + "_genrule",
       outs=[out_ops_file + ".h", out_ops_file + ".cc"],
       tools=[":" + tool],
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
-           "$(location :" + out_ops_file + ".cc) " + include_internal))
+           "$(location :" + out_ops_file + ".cc) " + str(include_internal_ops)))
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate individual C++ .cc and .h
@@ -192,11 +191,14 @@ def tf_gen_op_wrappers_cc(name,
                               "//tensorflow/cc:const_op",
                           ],
                           op_gen="//tensorflow/cc:cc_op_gen_main",
+                          include_internal_ops=0,
                           visibility=None):
   subsrcs = other_srcs
   subhdrs = other_hdrs
   for n in op_lib_names:
-    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg, op_gen=op_gen)
+    tf_gen_op_wrapper_cc(
+        n, "ops/" + n, pkg=pkg, op_gen=op_gen,
+        include_internal_ops=include_internal_ops)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
 

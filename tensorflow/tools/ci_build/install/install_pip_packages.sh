@@ -26,6 +26,10 @@ pip3 install wheel
 pip install --upgrade six==1.10.0
 pip3 install --upgrade six==1.10.0
 
+# Install werkzeug.
+pip install --upgrade werkzeug==0.11.10
+pip3 install --upgrade werkzeug==0.11.10
+
 # Install protobuf.
 pip install --upgrade protobuf==3.0.0
 pip3 install --upgrade protobuf==3.0.0

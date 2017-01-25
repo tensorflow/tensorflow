@@ -261,7 +261,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     batch_shape = tensor_shape.TensorShape(self._batch_shape_static)
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     matrix_shape = array_ops.stack(
         (self._num_rows, self._num_rows), axis=0)
     if self._batch_shape_arg is None:
@@ -307,7 +307,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     # Dynamic broadcast:
     #   Always add to an array of zeros, rather than using a "cond", since a
     #   cond would require copying data from GPU --> CPU.
-    special_shape = array_ops.concat((self.batch_shape_dynamic(), [1, 1]), 0)
+    special_shape = array_ops.concat((self.batch_shape_tensor(), [1, 1]), 0)
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 
@@ -320,10 +320,10 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     return self._possibly_broadcast_batch_shape(x)
 
   def _determinant(self):
-    return array_ops.ones(shape=self.batch_shape_dynamic(), dtype=self.dtype)
+    return array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
   def _log_abs_determinant(self):
-    return array_ops.zeros(shape=self.batch_shape_dynamic(), dtype=self.dtype)
+    return array_ops.zeros(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
   def _solve(self, rhs, adjoint=False):
     return self._apply(rhs)
@@ -566,7 +566,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     batch_shape = self.multiplier.get_shape()
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     matrix_shape = array_ops.stack(
         (self._num_rows, self._num_rows), axis=0)
 

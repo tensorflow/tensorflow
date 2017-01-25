@@ -342,6 +342,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "record_input_test",
+    size = "small",
+    srcs = ["record_input_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+tf_py_test(
     name = "io_ops_test",
     size = "small",
     srcs = ["io_ops_test.py"],

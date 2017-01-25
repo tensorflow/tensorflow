@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -132,6 +133,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     HloPassFix<HloPassPipeline> fusion("fusion", dump_hlo);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
+    fusion.AddPass<FusionMerger>();
     return fusion.Run(hlo_module).status();
   }
 }

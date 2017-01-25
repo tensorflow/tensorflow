@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import control_imports
 from tensorflow.python.platform import test
 
 
@@ -35,9 +34,6 @@ class DenormalTest(test.TestCase):
       self.assertEqual(tiny, tiny / 16 * 16)
 
   def _flushDenormalsTest(self, use_gpu, dtypes):
-    if control_imports.USE_OSS:
-      # TODO(irving): Fix denormal flushing for open source.
-      return
     with self.test_session(use_gpu=use_gpu):
       array_ops.identity(7).eval()
       for dtype in dtypes:

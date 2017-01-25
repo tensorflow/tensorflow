@@ -95,13 +95,14 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                          uint64 size) override;
 
-  bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                         uint64 size) override;
-  bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                         uint64 size) override;
-  bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                       const DeviceMemoryBase &gpu_src,
-                                       uint64 size) override;
+  port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                 const void *host_src, uint64 size) override;
+  port::Status SynchronousMemcpy(void *host_dst,
+                                 const DeviceMemoryBase &gpu_src,
+                                 uint64 size) override;
+  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
+                                               const DeviceMemoryBase &gpu_src,
+                                               uint64 size) override;
 
   bool HostCallback(Stream *stream, std::function<void()> callback) override;
 

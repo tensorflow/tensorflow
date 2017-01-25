@@ -345,7 +345,7 @@ class TransformedDistribution(distributions.Distribution):
     super(TransformedDistribution, self).__init__(
         dtype=self._distribution.dtype,
         is_continuous=self._distribution.is_continuous,
-        is_reparameterized=self._distribution.is_reparameterized,
+        reparameterization_type=self._distribution.reparameterization_type,
         validate_args=validate_args,
         allow_nan_stats=self._distribution.allow_nan_stats,
         parameters=parameters,

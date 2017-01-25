@@ -579,6 +579,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_shared",
         ":debugger_cli_common",
         ":local_cli_wrapper",
         "//tensorflow/python:array_ops",
@@ -589,6 +590,18 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+    ],
+)
+
+sh_test(
+    name = "examples_test",
+    size = "small",
+    srcs = ["examples/examples_test.sh"],
+    data = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 

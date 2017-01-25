@@ -1106,7 +1106,7 @@ def index_to_string_table_from_tensor(mapping, default_value="UNK", name=None):
   ```python
   mapping_string = t.constant(["emerson", "lake", "palmer")
   indices = tf.constant([1, 5], tf.int64)
-  table = tf.contrib.lookup.index_to_string_from_tensor(
+  table = tf.contrib.lookup.index_to_string_table_from_tensor(
       mapping_string, default_value="UNKNOWN")
   values = table.lookup(indices)
   ...

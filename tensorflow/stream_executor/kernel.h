@@ -322,8 +322,8 @@ class KernelArgIterator {
   }
 
  private:
-  int arg_index_;
-  int number_of_arguments_;
+  size_t arg_index_;
+  size_t number_of_arguments_;
   const void *const *arg_address_iter_;
   const size_t *arg_size_iter_;
   const size_t *shmem_bytes_iter_;
