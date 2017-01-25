@@ -5049,7 +5049,7 @@ op {
     }
   }
   summary: "Compute the cumulative product of the tensor `x` along `axis`."
-  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]\n```"
+  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]\n```"
 }
 op {
   name: "Cumsum"
