@@ -25,7 +25,6 @@ cc_library(
         "platform/**/*.h",
     ]),
     linkopts = [
-        "-ldl",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -53,7 +52,6 @@ cc_library(
         "@local_config_cuda//cuda:curand",
     ],
     linkopts = [
-        "-ldl",
     ],
     visibility = ["//visibility:public"],
     deps = [
