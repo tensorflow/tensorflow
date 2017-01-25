@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
 __all__ = ["Decoder", "dynamic_decode_rnn"]
@@ -132,7 +133,8 @@ def _create_zero_outputs(size, dtype, batch_size):
 def dynamic_decode_rnn(decoder,
                        output_time_major=False,
                        parallel_iterations=32,
-                       swap_memory=False):
+                       swap_memory=False,
+                       scope=None):
   """Perform dynamic decoding with `decoder`.
 
   Args:
@@ -143,6 +145,7 @@ def dynamic_decode_rnn(decoder,
       time to the computation).
     parallel_iterations: Argument passed to `tf.while_loop`.
     swap_memory: Argument passed to `tf.while_loop`.
+    scope: Optional variable scope to use.
 
   Returns:
     `(final_outputs, final_state)`.
@@ -154,84 +157,92 @@ def dynamic_decode_rnn(decoder,
     raise TypeError("Expected decoder to be type Decoder, but saw: %s" %
                     type(decoder))
 
-  zero_outputs = _create_zero_outputs(decoder.output_size, decoder.output_dtype,
-                                      decoder.batch_size)
+  with variable_scope.variable_scope(scope or "decoder") as varscope:
+    # Properly cache variable values inside the while_loop
+    if varscope.caching_device is None:
+      varscope.set_caching_device(lambda op: op.device)
 
-  initial_finished, initial_inputs, initial_state = decoder.initialize()
-  initial_time = constant_op.constant(0, dtype=dtypes.int32)
+    zero_outputs = _create_zero_outputs(decoder.output_size,
+                                        decoder.output_dtype,
+                                        decoder.batch_size)
 
-  def _shape(batch_size, from_shape):
-    if not isinstance(from_shape, tensor_shape.TensorShape):
-      return tensor_shape.TensorShape(None)
-    else:
-      batch_size = tensor_util.constant_value(
-          ops.convert_to_tensor(
-              batch_size, name="batch_size"))
-      return tensor_shape.TensorShape([batch_size]).concatenate(from_shape)
+    initial_finished, initial_inputs, initial_state = decoder.initialize()
+    initial_time = constant_op.constant(0, dtype=dtypes.int32)
 
-  def _create_ta(s, d):
-    return tensor_array_ops.TensorArray(
-        dtype=d, size=0, dynamic_size=True,
-        element_shape=_shape(decoder.batch_size, s))
+    def _shape(batch_size, from_shape):
+      if not isinstance(from_shape, tensor_shape.TensorShape):
+        return tensor_shape.TensorShape(None)
+      else:
+        batch_size = tensor_util.constant_value(
+            ops.convert_to_tensor(
+                batch_size, name="batch_size"))
+        return tensor_shape.TensorShape([batch_size]).concatenate(from_shape)
 
-  initial_outputs_ta = nest.map_structure(
-      _create_ta, decoder.output_size, decoder.output_dtype)
+    def _create_ta(s, d):
+      return tensor_array_ops.TensorArray(
+          dtype=d,
+          size=0,
+          dynamic_size=True,
+          element_shape=_shape(decoder.batch_size, s))
 
-  def condition(unused_time, unused_outputs_ta, unused_state, unused_inputs,
-                finished):
-    return math_ops.logical_not(math_ops.reduce_all(finished))
+    initial_outputs_ta = nest.map_structure(_create_ta, decoder.output_size,
+                                            decoder.output_dtype)
 
-  def body(time, outputs_ta, state, inputs, finished):
-    """Internal while_loop body.
+    def condition(unused_time, unused_outputs_ta, unused_state, unused_inputs,
+                  finished):
+      return math_ops.logical_not(math_ops.reduce_all(finished))
 
-    Args:
-      time: scalar int32 tensor.
-      outputs_ta: structure of TensorArray.
-      state: (structure of) state tensors and TensorArrays.
-      inputs: (structure of) input tensors.
-      finished: 1-D bool tensor.
+    def body(time, outputs_ta, state, inputs, finished):
+      """Internal while_loop body.
 
-    Returns:
-      `(time + 1, outputs_ta, next_state, next_inputs, next_finished)`.
-    """
-    (next_outputs, decoder_state, next_inputs, decoder_finished) = decoder.step(
-        time, inputs, state)
-    next_finished = math_ops.logical_or(decoder_finished, finished)
+      Args:
+        time: scalar int32 tensor.
+        outputs_ta: structure of TensorArray.
+        state: (structure of) state tensors and TensorArrays.
+        inputs: (structure of) input tensors.
+        finished: 1-D bool tensor.
 
-    nest.assert_same_structure(state, decoder_state)
-    nest.assert_same_structure(outputs_ta, next_outputs)
-    nest.assert_same_structure(inputs, next_inputs)
+      Returns:
+        `(time + 1, outputs_ta, next_state, next_inputs, next_finished)`.
+      """
+      (next_outputs, decoder_state, next_inputs,
+       decoder_finished) = decoder.step(time, inputs, state)
+      next_finished = math_ops.logical_or(decoder_finished, finished)
 
-    # Zero out output values past finish
-    emit = nest.map_structure(
-        lambda out, zero: array_ops.where(finished, zero, out), next_outputs,
-        zero_outputs)
+      nest.assert_same_structure(state, decoder_state)
+      nest.assert_same_structure(outputs_ta, next_outputs)
+      nest.assert_same_structure(inputs, next_inputs)
 
-    # Copy through states past finish
-    def _maybe_copy_state(new, cur):
-      return (new if isinstance(cur, tensor_array_ops.TensorArray) else
-              array_ops.where(finished, cur, new))
+      # Zero out output values past finish
+      emit = nest.map_structure(
+          lambda out, zero: array_ops.where(finished, zero, out), next_outputs,
+          zero_outputs)
 
-    next_state = nest.map_structure(_maybe_copy_state, decoder_state, state)
-    outputs_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
-                                    outputs_ta, emit)
-    return (time + 1, outputs_ta, next_state, next_inputs, next_finished)
+      # Copy through states past finish
+      def _maybe_copy_state(new, cur):
+        return (new if isinstance(cur, tensor_array_ops.TensorArray) else
+                array_ops.where(finished, cur, new))
 
-  res = control_flow_ops.while_loop(
-      condition,
-      body,
-      loop_vars=[
-          initial_time, initial_outputs_ta, initial_state, initial_inputs,
-          initial_finished
-      ],
-      parallel_iterations=parallel_iterations,
-      swap_memory=swap_memory)
+      next_state = nest.map_structure(_maybe_copy_state, decoder_state, state)
+      outputs_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
+                                      outputs_ta, emit)
+      return (time + 1, outputs_ta, next_state, next_inputs, next_finished)
 
-  final_outputs_ta = res[1]
-  final_state = res[2]
+    res = control_flow_ops.while_loop(
+        condition,
+        body,
+        loop_vars=[
+            initial_time, initial_outputs_ta, initial_state, initial_inputs,
+            initial_finished
+        ],
+        parallel_iterations=parallel_iterations,
+        swap_memory=swap_memory)
 
-  final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
-  if not output_time_major:
-    final_outputs = nest.map_structure(_transpose_batch_time, final_outputs)
+    final_outputs_ta = res[1]
+    final_state = res[2]
+
+    final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
+    if not output_time_major:
+      final_outputs = nest.map_structure(_transpose_batch_time, final_outputs)
 
   return final_outputs, final_state

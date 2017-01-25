@@ -125,16 +125,17 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       # Match the variable scope of dynamic_rnn below so we end up
       # using the same variables
-      with vs.variable_scope("rnn"):
+      with vs.variable_scope("root") as scope:
         final_decoder_outputs, final_decoder_state = decoder.dynamic_decode_rnn(
-            my_decoder)
+            my_decoder, scope=scope)
 
-      with vs.variable_scope(vs.get_variable_scope(), reuse=True):
+      with vs.variable_scope(scope, reuse=True) as scope:
         final_rnn_outputs, final_rnn_state = rnn.dynamic_rnn(
             cell,
             inputs,
             sequence_length=sequence_length,
-            initial_state=zero_state)
+            initial_state=zero_state,
+            scope=scope)
 
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
