@@ -95,9 +95,13 @@ def generator_input_fn(x,
   def input_fn():
     """generator input function."""
     if not isinstance(x, FunctionType):
-      raise TypeError('x must be a function to a generator ; got {}'.format(type(x).__name__))
-    if not isinstance(x(), GeneratorType):
-      raise TypeError('x() must be a generator ; got {}'.format(type(x()).__name__))
+      raise TypeError('x must be generator function ; got {}'.format(type(x).__name__))
+    generator = x()
+    if not isinstance(generator, GeneratorType):
+      raise TypeError('x() must be generator ; got {}'.format(type(generator).__name__))
+    data = next(generator)
+    if not isinstance(data, dict):
+      raise TypeError('x() must yield dict; got {}'.format(type(data).__name__))
     if target_key is not None and not isinstance(target_key, str):
       raise TypeError('target_key must be string ; got {}'.format(type(target_key).__name__))
 
