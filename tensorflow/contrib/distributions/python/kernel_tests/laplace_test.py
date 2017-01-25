@@ -114,6 +114,38 @@ class LaplaceTest(test.TestCase):
       self.assertEqual(cdf.get_shape(), (6,))
       self.assertAllClose(cdf.eval(), expected_cdf)
 
+  def testLaplaceLogCDF(self):
+    with self.test_session():
+      batch_size = 6
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
+      loc_v = 2.0
+      scale_v = 3.0
+      x = np.array([-2.5, 2.5, -4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      expected_cdf = stats.laplace.logcdf(x, loc_v, scale=scale_v)
+
+      cdf = laplace.log_cdf(x)
+      self.assertEqual(cdf.get_shape(), (6,))
+      self.assertAllClose(cdf.eval(), expected_cdf)
+
+  def testLaplaceLogSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 6
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
+      loc_v = 2.0
+      scale_v = 3.0
+      x = np.array([-2.5, 2.5, -4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      expected_sf = stats.laplace.logsf(x, loc_v, scale=scale_v)
+
+      sf = laplace.log_survival_function(x)
+      self.assertEqual(sf.get_shape(), (6,))
+      self.assertAllClose(sf.eval(), expected_sf)
+
   def testLaplaceMean(self):
     with self.test_session():
       loc_v = np.array([1.0, 3.0, 2.5])

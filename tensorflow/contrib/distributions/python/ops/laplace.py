@@ -22,6 +22,7 @@ import math
 
 import numpy as np
 
+from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
@@ -146,12 +147,15 @@ class Laplace(distribution.Distribution):
         -math_ops.abs(x - self.loc) / self.scale)
 
   def _log_cdf(self, x):
-    return math_ops.log(self.cdf(x))
+    return special_math.log_cdf_laplace(self._z(x))
+
+  def _log_survival_function(self, x):
+    return special_math.log_cdf_laplace(-self._z(x))
 
   def _cdf(self, x):
-    y = x - self.loc
-    return (0.5 + 0.5 * math_ops.sign(y) *
-            (1. - math_ops.exp(-math_ops.abs(y) / self.scale)))
+    z = self._z(x)
+    return (0.5 + 0.5 * math_ops.sign(z) *
+            (1. - math_ops.exp(-math_ops.abs(z))))
 
   def _entropy(self):
     # Use broadcasting rules to calculate the full broadcast scale.
@@ -169,6 +173,9 @@ class Laplace(distribution.Distribution):
 
   def _mode(self):
     return self._mean()
+
+  def _z(self, x):
+    return (x - self.loc) / self.scale
 
 
 class LaplaceWithSoftplusScale(Laplace):
