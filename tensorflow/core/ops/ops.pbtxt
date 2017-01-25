@@ -9845,7 +9845,7 @@ op {
   name: "MatchingFiles"
   input_arg {
     name: "pattern"
-    description: "A (scalar) shell wildcard pattern."
+    description: "Shell wildcard pattern(s). Scalar or vector of type string."
     type: DT_STRING
   }
   output_arg {
@@ -9853,7 +9853,7 @@ op {
     description: "A vector of matching filenames."
     type: DT_STRING
   }
-  summary: "Returns the set of files matching a pattern."
+  summary: "Returns the set of files matching one or more glob patterns."
   description: "Note that this routine only supports wildcard characters in the\nbasename portion of the pattern, not in the directory portion."
 }
 op {
