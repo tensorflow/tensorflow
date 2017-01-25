@@ -407,9 +407,9 @@ class EstimatorTest(test.TestCase):
     right_labels = lambda: np.ones(shape=[7, 10], dtype=np.int32)
     est.fit(right_features(), right_labels(), steps=1)
     # TODO(wicke): This does not fail for np.int32 because of data_feeder magic.
-    wrong_type_features = np.ones(shape=[7., 8.], dtype=np.int64)
+    wrong_type_features = np.ones(shape=[7, 8], dtype=np.int64)
     wrong_size_features = np.ones(shape=[7, 10])
-    wrong_type_labels = np.ones(shape=[7., 10.], dtype=np.float32)
+    wrong_type_labels = np.ones(shape=[7, 10], dtype=np.float32)
     wrong_size_labels = np.ones(shape=[7, 11])
     est.fit(x=right_features(), y=right_labels(), steps=1)
     with self.assertRaises(ValueError):
