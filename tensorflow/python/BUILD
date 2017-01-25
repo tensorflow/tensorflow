@@ -3080,6 +3080,7 @@ cuda_py_test(
         ":gradients",
         ":math_ops",
         ":nn",
+        ":nn_grad",
         ":nn_ops_gen",
         ":platform",
         ":random_ops",
