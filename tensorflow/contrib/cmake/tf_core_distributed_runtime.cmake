@@ -7,6 +7,7 @@ file(GLOB_RECURSE tf_core_distributed_runtime_srcs
 )
 
 file(GLOB_RECURSE tf_core_distributed_runtime_exclude_srcs
+    "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/server_lib.cc"  # Build in tf_core_cpu instead.
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/rpc/grpc_tensorflow_server.cc"
