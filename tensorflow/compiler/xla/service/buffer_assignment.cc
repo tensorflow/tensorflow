@@ -316,7 +316,7 @@ tensorflow::Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    BufferSizeFunction buffer_size, bool colocate_related_buffers,
+    LogicalBuffer::SizeFunction buffer_size, bool colocate_related_buffers,
     const std::vector<const HloInstruction*>* hlos_to_allocate) {
   BufferAssigner assigner(std::move(buffer_size), colocate_related_buffers);
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
@@ -779,7 +779,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       root->shape(), [this, &output_size, root, &assignment](
                          const Shape& /*subshape*/, const ShapeIndex& index) {
         const auto& allocations = assignment->GetAllocations(root, index);
-        if (allocations.size() > 0) {
+        if (!allocations.empty()) {
           output_size += allocations.begin()->size();
         }
         return tensorflow::Status::OK();
