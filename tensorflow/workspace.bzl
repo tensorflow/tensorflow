@@ -2,6 +2,7 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/ipus:poplar_configure.bzl", "poplar_configure")
 
 
 # Parse the bazel version string from `native.bazel_version`.
@@ -57,6 +58,7 @@ temp_workaround_http_archive = repository_rule(
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   cuda_configure(name = "local_config_cuda")
   sycl_configure(name = "local_config_sycl")
+  poplar_configure(name = "local_config_poplar")
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used and will be removed in the future.")
   if tf_repo_name:
