@@ -1161,6 +1161,9 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
       << "Instruction " << user << " not a use of instruction " << this;
   users_.erase(user_it);
 
+  VLOG(3) << "Replacing uses of " << name() << " in " << user->name()
+          << " with " << new_producer->name();
+
   TF_RET_CHECK(
       std::count(user->operands_.begin(), user->operands_.end(), this) >= 0);
   std::replace(user->operands_.begin(), user->operands_.end(), this,
@@ -1179,6 +1182,9 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
       << old_operand->shape().ShortDebugString() << " is not compatible with "
       << new_operand->shape().ShortDebugString();
   operands_[operand_num] = new_operand;
+
+  VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
+          << new_operand->name() << ", was " << old_operand->name();
 
   if (std::find(operands_.begin(), operands_.end(), old_operand) ==
       operands_.end()) {
@@ -1599,7 +1605,7 @@ Status HloInstruction::AcceptInternalVisit(DfsHloVisitor* visitor) {
 Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   // Do not visit this HLO node again if it is already visited.
   if (visitor->DidVisit(*this)) {
-    VLOG(3) << "Not visiting HLO " << this << " as it was already visited.";
+    VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
     return Status::OK();
   }
 
@@ -1612,8 +1618,8 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   visitor->SetVisiting(*this);
 
   for (auto operand : operands_) {
-    VLOG(3) << "Going to visit HLO " << operand << " as operand of HLO "
-            << this;
+    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
+            << name();
     TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor));
   }
 
@@ -1624,7 +1630,7 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   }
 
   TF_RETURN_IF_ERROR(visitor->Preprocess(this));
-  VLOG(3) << "Visiting HLO " << this;
+  VLOG(3) << "Visiting HLO " << name();
   TF_RETURN_IF_ERROR(AcceptInternalVisit(visitor));
   visitor->SetVisited(*this);
   return visitor->Postprocess(this);
@@ -1706,7 +1712,7 @@ Status HloInstruction::AcceptOrdered(
     // The visitor can mark instructions as visited to skip particular
     // instructions.
     if (visitor->DidVisit(*const_instruction)) {
-      VLOG(3) << "Not visiting HLO " << const_instruction
+      VLOG(3) << "Not visiting HLO " << const_instruction->name()
               << " as it was already visited.";
       continue;
     }
@@ -1715,7 +1721,7 @@ Status HloInstruction::AcceptOrdered(
         const_cast<HloInstruction*>(const_instruction);
 
     TF_RETURN_IF_ERROR(visitor->Preprocess(instruction));
-    VLOG(3) << "Visiting HLO " << instruction;
+    VLOG(3) << "Visiting HLO " << instruction->name();
     TF_RETURN_IF_ERROR(instruction->AcceptInternalVisit(visitor));
     visitor->SetVisited(*instruction);
     TF_RETURN_IF_ERROR(visitor->Postprocess(instruction));
