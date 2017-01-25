@@ -40,6 +40,8 @@ flags.DEFINE_string('test_device', None,
 flags.DEFINE_string('types', None, 'Types to test. Comma-separated list.')
 flags.DEFINE_string('disabled_manifest', None,
                     'Path to a file with a list of tests that should not run.')
+flags.DEFINE_string('plugin_loader', None,
+                    'Path to a python module that loads the plugin.')
 
 
 class XLATestCase(test.TestCase):
@@ -72,6 +74,9 @@ class XLATestCase(test.TestCase):
       lines = [comments_re.sub('', l).strip() for l in lines]
       self.disabled_regex = re.compile('|'.join(lines))
       manifest_file.close()
+    if FLAGS.plugin_loader is not None:
+      __import__(FLAGS.plugin_loader)
+      logging.info('Loaded XLA plugin %s', FLAGS.plugin_loader)
 
   def setUp(self):
     name = '{}.{}'.format(type(self).__name__, self._testMethodName)
