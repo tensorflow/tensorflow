@@ -349,7 +349,7 @@ Run one step of LSTM.
 
 - - -
 
-#### `tf.contrib.rnn.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=None, num_proj_shards=None, forget_bias=1.0, state_is_tuple=True, activation=tanh)` {#LSTMCell.__init__}
+#### `tf.contrib.rnn.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=None, num_proj_shards=None, forget_bias=1.0, state_is_tuple=True, activation=tanh, compiled=False)` {#LSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -379,6 +379,14 @@ Initialize the parameters for an LSTM cell.
     the `c_state` and `m_state`.  If False, they are concatenated
     along the column axis.  This latter behavior will soon be deprecated.
 *  <b>`activation`</b>: Activation function of the inner states.
+*  <b>`compiled`</b>: Python boolean.  If `True`, the core computation of the LSTM
+    cell is compiled via XLA.  As of now, this provides speedups for
+    most GPU calculations, and on small batch CPU and embedded calculations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if compiled=True and state_is_tuple=False (not supported).
 
 
 - - -
