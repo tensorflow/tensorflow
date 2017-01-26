@@ -49,7 +49,7 @@ from tensorflow.python.util import compat
 
 class SavedModelExportUtilsTest(test.TestCase):
 
-  def test_build_standardized_signature_def(self):
+  def test_build_standardized_signature_def_regression(self):
     input_tensors = {
         "input-1":
             array_ops.placeholder(
@@ -61,26 +61,189 @@ class SavedModelExportUtilsTest(test.TestCase):
                 dtypes.float32, 1, name="output-tensor-1")
     }
     problem_type = constants.ProblemType.LINEAR_REGRESSION
-    regression_signature_def = (
+    actual_signature_def = (
         saved_model_export_utils.build_standardized_signature_def(
             input_tensors, output_tensors, problem_type))
-    expected_regression_signature_def = meta_graph_pb2.SignatureDef()
+    expected_signature_def = meta_graph_pb2.SignatureDef()
     shape = tensor_shape_pb2.TensorShapeProto(
         dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
     dtype = types_pb2.DataType.Value("DT_FLOAT")
-    expected_regression_signature_def.inputs[
+    expected_signature_def.inputs[
         signature_constants.REGRESS_INPUTS].CopyFrom(
             meta_graph_pb2.TensorInfo(
                 name="input-tensor-1:0", dtype=dtype, tensor_shape=shape))
-    expected_regression_signature_def.outputs[
+    expected_signature_def.outputs[
         signature_constants.REGRESS_OUTPUTS].CopyFrom(
             meta_graph_pb2.TensorInfo(
                 name="output-tensor-1:0", dtype=dtype, tensor_shape=shape))
 
-    expected_regression_signature_def.method_name = (
-        signature_constants.REGRESS_METHOD_NAME)
-    self.assertEqual(regression_signature_def,
-                     expected_regression_signature_def)
+    expected_signature_def.method_name = signature_constants.REGRESS_METHOD_NAME
+    self.assertEqual(actual_signature_def, expected_signature_def)
+
+  def test_build_standardized_signature_def_classification(self):
+    """Tests classification with one output tensor."""
+    input_tensors = {
+        "input-1":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="input-tensor-1")
+    }
+    output_tensors = {
+        "output-1":
+            array_ops.placeholder(
+                dtypes.string, 1, name="output-tensor-1")
+    }
+    problem_type = constants.ProblemType.CLASSIFICATION
+    actual_signature_def = (
+        saved_model_export_utils.build_standardized_signature_def(
+            input_tensors, output_tensors, problem_type))
+    expected_signature_def = meta_graph_pb2.SignatureDef()
+    shape = tensor_shape_pb2.TensorShapeProto(
+        dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
+    dtype_string = types_pb2.DataType.Value("DT_STRING")
+    expected_signature_def.inputs[
+        signature_constants.CLASSIFY_INPUTS].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_CLASSES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-1:0", dtype=dtype_string,
+                tensor_shape=shape))
+
+    expected_signature_def.method_name = (
+        signature_constants.CLASSIFY_METHOD_NAME)
+    self.assertEqual(actual_signature_def, expected_signature_def)
+
+  def test_build_standardized_signature_def_classification2(self):
+    """Tests multiple output tensors that include classes and probabilites."""
+    input_tensors = {
+        "input-1":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="input-tensor-1")
+    }
+    output_tensors = {
+        "classes":
+            array_ops.placeholder(
+                dtypes.string, 1, name="output-tensor-classes"),
+        # Will be used for CLASSIFY_OUTPUT_SCORES.
+        "probabilities":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-proba"),
+        "logits":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-logits-unused"),
+    }
+    problem_type = constants.ProblemType.CLASSIFICATION
+    actual_signature_def = (
+        saved_model_export_utils.build_standardized_signature_def(
+            input_tensors, output_tensors, problem_type))
+    expected_signature_def = meta_graph_pb2.SignatureDef()
+    shape = tensor_shape_pb2.TensorShapeProto(
+        dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
+    dtype_string = types_pb2.DataType.Value("DT_STRING")
+    expected_signature_def.inputs[
+        signature_constants.CLASSIFY_INPUTS].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_CLASSES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-classes:0", dtype=dtype_string,
+                tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_SCORES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-proba:0", dtype=dtype_float,
+                tensor_shape=shape))
+
+    expected_signature_def.method_name = (
+        signature_constants.CLASSIFY_METHOD_NAME)
+    self.assertEqual(actual_signature_def, expected_signature_def)
+
+  def test_build_standardized_signature_def_classification3(self):
+    """Tests multiple output tensors that include classes and scores."""
+    input_tensors = {
+        "input-1":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="input-tensor-1")
+    }
+    output_tensors = {
+        "classes":
+            array_ops.placeholder(
+                dtypes.string, 1, name="output-tensor-classes"),
+        "scores":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-scores"),
+        "logits":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-logits-unused"),
+    }
+    problem_type = constants.ProblemType.CLASSIFICATION
+    actual_signature_def = (
+        saved_model_export_utils.build_standardized_signature_def(
+            input_tensors, output_tensors, problem_type))
+    expected_signature_def = meta_graph_pb2.SignatureDef()
+    shape = tensor_shape_pb2.TensorShapeProto(
+        dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
+    dtype_string = types_pb2.DataType.Value("DT_STRING")
+    expected_signature_def.inputs[
+        signature_constants.CLASSIFY_INPUTS].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_CLASSES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-classes:0", dtype=dtype_string,
+                tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_SCORES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-scores:0", dtype=dtype_float,
+                tensor_shape=shape))
+
+    expected_signature_def.method_name = (
+        signature_constants.CLASSIFY_METHOD_NAME)
+    self.assertEqual(actual_signature_def, expected_signature_def)
+
+  def test_build_standardized_signature_def_classification4(self):
+    """Tests classification without classes tensor."""
+    input_tensors = {
+        "input-1":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="input-tensor-1")
+    }
+    output_tensors = {
+        "probabilities":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-proba"),
+        "logits":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-logits-unused"),
+    }
+    problem_type = constants.ProblemType.CLASSIFICATION
+    actual_signature_def = (
+        saved_model_export_utils.build_standardized_signature_def(
+            input_tensors, output_tensors, problem_type))
+    expected_signature_def = meta_graph_pb2.SignatureDef()
+    shape = tensor_shape_pb2.TensorShapeProto(
+        dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
+    expected_signature_def.inputs[
+        signature_constants.CLASSIFY_INPUTS].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_SCORES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-proba:0", dtype=dtype_float,
+                tensor_shape=shape))
+
+    expected_signature_def.method_name = (
+        signature_constants.CLASSIFY_METHOD_NAME)
+    self.assertEqual(actual_signature_def, expected_signature_def)
 
   def test_get_input_alternatives(self):
     input_ops = input_fn_utils.InputFnOps("bogus features dict", None,
