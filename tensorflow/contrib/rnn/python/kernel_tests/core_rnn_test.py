@@ -154,6 +154,7 @@ class RNNTest(test.TestCase):
   def setUp(self):
     self._seed = 23489
     np.random.seed(self._seed)
+    ops_lib.reset_default_graph()
 
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
@@ -583,7 +584,7 @@ class LSTMTest(test.TestCase):
       (state_notuple_v,) = sess.run((state_notuple,),
                                     feed_dict={inputs[0]: input_value})
       state_tuple_v = sess.run(state_tuple, feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(state_notuple_v, np.hstack(state_tuple_v))
+      self.assertAllClose(state_notuple_v, np.hstack(state_tuple_v))
 
   def _testProjSharding(self, use_gpu):
     num_units = 3
@@ -806,7 +807,7 @@ class LSTMTest(test.TestCase):
       self.assertEqual(len(outputs0_values), len(outputs2_values))
       for o1, o2, o3 in zip(outputs0_values, outputs1_values, outputs2_values):
         # Same weights used by both RNNs so outputs should be the same.
-        self.assertAllEqual(o1, o2)
+        self.assertAllClose(o1, o2)
         # Different weights used so outputs should be different.
         self.assertTrue(np.linalg.norm(o1 - o3) > 1e-6)
 
@@ -844,7 +845,7 @@ class LSTMTest(test.TestCase):
       outputs1_values = output_values[max_length:]
       self.assertEqual(len(outputs0_values), len(outputs1_values))
       for out0, out1 in zip(outputs0_values, outputs1_values):
-        self.assertAllEqual(out0, out1)
+        self.assertAllClose(out0, out1)
 
   def testNoProjNoShardingSimpleStateSaver(self):
     self._testNoProjNoShardingSimpleStateSaver(use_gpu=False)
@@ -934,13 +935,13 @@ class LSTMTest(test.TestCase):
                                   feed_dict={inputs[0]: input_value})
       outputs_dynamic_v = sess.run(outputs_dynamic,
                                    feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
+      self.assertAllClose(outputs_static_v, outputs_dynamic_v)
 
       state_static_v = sess.run(state_static,
                                 feed_dict={inputs[0]: input_value})
       state_dynamic_v = sess.run(state_dynamic,
                                  feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
   def testDynamicRNNWithNestedTupleStates(self):
     num_units = 3
@@ -1003,13 +1004,13 @@ class LSTMTest(test.TestCase):
                                   feed_dict={inputs[0]: input_value})
       outputs_dynamic_v = sess.run(outputs_dynamic,
                                    feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
+      self.assertAllClose(outputs_static_v, outputs_dynamic_v)
 
       state_static_v = sess.run(nest.flatten(state_static),
                                 feed_dict={inputs[0]: input_value})
       state_dynamic_v = sess.run(nest.flatten(state_dynamic),
                                  feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     time_steps = 8
@@ -1038,7 +1039,9 @@ class LSTMTest(test.TestCase):
           use_peepholes=True,
           initializer=initializer,
           num_proj=num_proj,
-          state_is_tuple=False)
+          state_is_tuple=False,
+          # TODO(b/XXX): Defun name aliasing causes errors
+          compiled=False)
 
       with variable_scope.variable_scope("dynamic_scope"):
         outputs_static, state_static = core_rnn.static_rnn(
@@ -1096,7 +1099,9 @@ class LSTMTest(test.TestCase):
           use_peepholes=True,
           initializer=initializer,
           num_proj=num_proj,
-          state_is_tuple=False)
+          state_is_tuple=False,
+          # TODO(b/XXX): Defun name aliasing causes errors
+          compiled=False)
 
       with variable_scope.variable_scope("dynamic_scope"):
         outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
@@ -1150,10 +1155,10 @@ class LSTMTest(test.TestCase):
     ######### Step 3: Comparisons
     self.assertEqual(len(values_static), len(values_dynamic))
     for (value_static, value_dynamic) in zip(values_static, values_dynamic):
-      self.assertAllEqual(value_static, value_dynamic)
-    self.assertAllEqual(state_value_static, state_value_dynamic)
+      self.assertAllClose(value_static, value_dynamic)
+    self.assertAllClose(state_value_static, state_value_dynamic)
 
-    self.assertAllEqual(static_grad_values, dynamic_grad_values)
+    self.assertAllClose(static_grad_values, dynamic_grad_values)
 
     self.assertEqual(
         len(static_individual_grad_values), len(dynamic_individual_grad_values))
@@ -1164,14 +1169,14 @@ class LSTMTest(test.TestCase):
     for i, (a, b) in enumerate(
         zip(static_individual_grad_values, dynamic_individual_grad_values)):
       tf_logging.info("Comparing individual gradients iteration %d" % i)
-      self.assertAllEqual(a, b)
+      self.assertAllClose(a, b)
 
     for i, (a, b) in enumerate(
         zip(static_individual_var_grad_values,
             dynamic_individual_var_grad_values)):
       tf_logging.info("Comparing individual variable gradients iteration %d" %
                       i)
-      self.assertAllEqual(a, b)
+      self.assertAllClose(a, b)
 
   def testDynamicEquivalentToStaticRNN(self):
     self._testDynamicEquivalentToStaticRNN(
@@ -1293,13 +1298,13 @@ class BidirectionalRNNTest(test.TestCase):
       # Both sequences in batch are length=8.  Check that the time=i
       # forward output is equal to time=8-1-i backward output
       for i in xrange(8):
-        self.assertEqual(out[i][0][0], out[8 - 1 - i][0][3])
-        self.assertEqual(out[i][0][1], out[8 - 1 - i][0][4])
-        self.assertEqual(out[i][0][2], out[8 - 1 - i][0][5])
+        self.assertAllClose(out[i][0][0], out[8 - 1 - i][0][3])
+        self.assertAllClose(out[i][0][1], out[8 - 1 - i][0][4])
+        self.assertAllClose(out[i][0][2], out[8 - 1 - i][0][5])
       for i in xrange(8):
-        self.assertEqual(out[i][1][0], out[8 - 1 - i][1][3])
-        self.assertEqual(out[i][1][1], out[8 - 1 - i][1][4])
-        self.assertEqual(out[i][1][2], out[8 - 1 - i][1][5])
+        self.assertAllClose(out[i][1][0], out[8 - 1 - i][1][3])
+        self.assertAllClose(out[i][1][1], out[8 - 1 - i][1][4])
+        self.assertAllClose(out[i][1][2], out[8 - 1 - i][1][5])
       # Via the reasoning above, the forward and backward final state should be
       # exactly the same
       self.assertAllClose(s_fw, s_bw)
@@ -1399,27 +1404,27 @@ class BidirectionalRNNTest(test.TestCase):
       # Check that the time=0 forward output is equal to time=1 backward output
       if not use_time_major:
         out = np.swapaxes(out, 0, 1)
-      self.assertEqual(out[0][0][0], out[1][0][3])
-      self.assertEqual(out[0][0][1], out[1][0][4])
-      self.assertEqual(out[0][0][2], out[1][0][5])
+      self.assertAllClose(out[0][0][0], out[1][0][3])
+      self.assertAllClose(out[0][0][1], out[1][0][4])
+      self.assertAllClose(out[0][0][2], out[1][0][5])
       # Check that the time=1 forward output is equal to time=0 backward output
-      self.assertEqual(out[1][0][0], out[0][0][3])
-      self.assertEqual(out[1][0][1], out[0][0][4])
-      self.assertEqual(out[1][0][2], out[0][0][5])
+      self.assertAllClose(out[1][0][0], out[0][0][3])
+      self.assertAllClose(out[1][0][1], out[0][0][4])
+      self.assertAllClose(out[1][0][2], out[0][0][5])
 
       # Second sequence in batch is length=3
       # Check that the time=0 forward output is equal to time=2 backward output
-      self.assertEqual(out[0][1][0], out[2][1][3])
-      self.assertEqual(out[0][1][1], out[2][1][4])
-      self.assertEqual(out[0][1][2], out[2][1][5])
+      self.assertAllClose(out[0][1][0], out[2][1][3])
+      self.assertAllClose(out[0][1][1], out[2][1][4])
+      self.assertAllClose(out[0][1][2], out[2][1][5])
       # Check that the time=1 forward output is equal to time=1 backward output
-      self.assertEqual(out[1][1][0], out[1][1][3])
-      self.assertEqual(out[1][1][1], out[1][1][4])
-      self.assertEqual(out[1][1][2], out[1][1][5])
+      self.assertAllClose(out[1][1][0], out[1][1][3])
+      self.assertAllClose(out[1][1][1], out[1][1][4])
+      self.assertAllClose(out[1][1][2], out[1][1][5])
       # Check that the time=2 forward output is equal to time=0 backward output
-      self.assertEqual(out[2][1][0], out[0][1][3])
-      self.assertEqual(out[2][1][1], out[0][1][4])
-      self.assertEqual(out[2][1][2], out[0][1][5])
+      self.assertAllClose(out[2][1][0], out[0][1][3])
+      self.assertAllClose(out[2][1][1], out[0][1][4])
+      self.assertAllClose(out[2][1][2], out[0][1][5])
       # Via the reasoning above, the forward and backward final state should be
       # exactly the same
       self.assertAllClose(s_fw, s_bw)
@@ -1560,13 +1565,13 @@ class MultiDimensionalLSTMTest(test.TestCase):
       outputs_sav_v = sess.run(outputs_sav,
                                feed_dict={inputs_using_dim[0]: input_value})
 
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
-      self.assertAllEqual(outputs_static_v, outputs_sav_v)
+      self.assertAllClose(outputs_static_v, outputs_dynamic_v)
+      self.assertAllClose(outputs_static_v, outputs_sav_v)
       outputs_static_array = np.array(outputs_static_v)
       outputs_static_array_double = np.concatenate(
           (outputs_static_array, outputs_static_array), axis=2)
       outputs_bid_array = np.array(outputs_bid_v)
-      self.assertAllEqual(outputs_static_array_double, outputs_bid_array)
+      self.assertAllClose(outputs_static_array_double, outputs_bid_array)
 
       state_static_v = sess.run(state_static,
                                 feed_dict={inputs[0]: input_value})
@@ -1578,10 +1583,10 @@ class MultiDimensionalLSTMTest(test.TestCase):
                                 feed_dict={inputs_using_dim[0]: input_value})
       state_sav_v = sess.run(state_sav,
                              feed_dict={inputs_using_dim[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_sav_v))
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_bid_fw_v))
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_bid_bw_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_sav_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_bid_fw_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_bid_bw_v))
 
 
 class NestedLSTMTest(test.TestCase):
@@ -1663,14 +1668,14 @@ class NestedLSTMTest(test.TestCase):
       outputs_bid_v = sess.run(outputs_bid,
                                feed_dict={single_input_using_dim: input_value})
 
-      self.assertAllEqual(outputs_static_v,
+      self.assertAllClose(outputs_static_v,
                           np.transpose(outputs_dynamic_v, (1, 0, 2, 3)))
-      self.assertAllEqual(outputs_static_v, outputs_sav_v)
+      self.assertAllClose(outputs_static_v, outputs_sav_v)
       outputs_static_array = np.array(outputs_static_v)
       outputs_static_array_double = np.concatenate(
           (outputs_static_array, outputs_static_array), axis=3)
       outputs_bid_array = np.array(outputs_bid_v)
-      self.assertAllEqual(outputs_static_array_double, outputs_bid_array)
+      self.assertAllClose(outputs_static_array_double, outputs_bid_array)
 
       state_dynamic_v = sess.run(state_dynamic,
                                  feed_dict={single_input: input_value})
@@ -1682,10 +1687,10 @@ class NestedLSTMTest(test.TestCase):
                                 feed_dict={single_input_using_dim: input_value})
       state_sav_v = sess.run(state_sav,
                              feed_dict={single_input_using_dim: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_sav_v))
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_bid_fw_v))
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_bid_bw_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_sav_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_bid_fw_v))
+      self.assertAllClose(np.hstack(state_static_v), np.hstack(state_bid_bw_v))
 
 
 class StateSaverRNNTest(test.TestCase):

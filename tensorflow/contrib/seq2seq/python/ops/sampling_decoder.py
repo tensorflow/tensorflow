@@ -113,7 +113,8 @@ class BasicSamplingDecoder(decoder.Decoder):
         dtypes.int32)
 
   def initialize(self, name=None):
-    return self._sampler.initialize() + (self._initial_state,)
+    with ops.name_scope("basic_sampling_decoder_initialize"):
+      return self._sampler.initialize() + (self._initial_state,)
 
   def step(self, time, inputs, state):
     """Perform a decoding step.
@@ -126,11 +127,12 @@ class BasicSamplingDecoder(decoder.Decoder):
     Returns:
       `(outputs, next_state, next_inputs, finished)`.
     """
-    cell_outputs, next_state = self._cell(inputs, state)
-    (sample_id, finished, next_inputs) = self._sampler.sample(
-        time=time, outputs=cell_outputs, state=next_state)
-    outputs = SamplingDecoderOutput(cell_outputs, sample_id)
-    return (outputs, next_state, next_inputs, finished)
+    with ops.name_scope("basic_sampling_decoder_step"):
+      cell_outputs, next_state = self._cell(inputs, state)
+      (sample_id, finished, next_inputs) = self._sampler.sample(
+          time=time, outputs=cell_outputs, state=next_state)
+      outputs = SamplingDecoderOutput(cell_outputs, sample_id)
+      return (outputs, next_state, next_inputs, finished)
 
 
 class BasicTrainingSampler(Sampler):
