@@ -310,7 +310,11 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
     return control_flow_ops.group(*train_ops)
 
   return head.create_model_fn_ops(
-      features, labels, mode, _make_training_op, logits=logits)
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_make_training_op,
+      logits=logits)
 
 
 class _DNNLinearCombinedEstimator(estimator.Estimator):

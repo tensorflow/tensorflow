@@ -175,7 +175,11 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
           summaries=[])
 
     return head.create_model_fn_ops(
-        features, labels, mode, _train_op_fn, logits)
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
 
 
 class DNNClassifier(estimator.Estimator):
