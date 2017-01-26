@@ -91,27 +91,6 @@ inline ImageScalePattern compute_image_scale_pattern(const int64 out_height,
   }
 }
 
-inline int compute_scratch_size(const int64 out_height, const int64 out_width,
-                                const int64 in_height, const int64 in_width,
-                                const int channels,
-                                const ImageScalePattern scale_pattern) {
-  // Allocate a CachedInterpolation for each y, and each x in the out-height,
-  // plus 2 extra to avoid extra branches in the
-  // CachedInterpolation.consecutive computation.
-  const int cached_computation_size =
-      sizeof(CachedInterpolation) * (out_height + out_width + 2);
-  if (scale_pattern == SCALE_DOWN) {
-    return cached_computation_size;
-  } else {
-    // In order to avoid paying the cost of data type conversion multiple times,
-    // we must allocate a temporary image as well.
-    const int tmp_image_size = sizeof(float) * in_height * in_width * channels;
-    // We batch up all memory allocations into a single malloc call for
-    // performance reasons.
-    return cached_computation_size + tmp_image_size;
-  }
-}
-
 inline void compute_interpolation_weights(const ImageScalePattern scale_pattern,
                                           const int64 out_size,
                                           const int64 in_size,
@@ -133,36 +112,6 @@ inline void compute_interpolation_weights(const ImageScalePattern scale_pattern,
   }
 }
 
-template <typename T>
-struct Converter {
-  static inline const float* convert_image_to_float(
-      typename TTypes<T, 4>::ConstTensor images, const int batch_index,
-      const int64 in_height, const int64 in_width, const int channels,
-      std::vector<float>* converted_image_v) {
-    converted_image_v->resize(in_height * in_width * channels);
-    float* converted_image = converted_image_v->data();
-    for (int64 y = 0; y < in_height; ++y) {
-      for (int64 x = 0; x < in_width; ++x) {
-        for (int c = 0; c < channels; ++c) {
-          converted_image[y * in_width * channels + x * channels + c] =
-              static_cast<float>(images(batch_index, y, x, c));
-        }
-      }
-    }
-    return converted_image;
-  }
-};
-
-template <>
-struct Converter<float> {
-  static inline const float* convert_image_to_float(
-      typename TTypes<float, 4>::ConstTensor images, const int b,
-      const int64 in_height, const int64 in_width, const int channels,
-      std::vector<float>* converted_image_v) {
-    return images.data() + (b * in_height * in_width * channels);
-  }
-};
-
 /**
  * Computes the bilinear interpolation from the appropriate 4 float points
  * and the linear interpolation weights.
@@ -176,38 +125,111 @@ inline float compute_lerp(const float top_left, const float top_right,
 }
 
 template <typename T>
-inline void scale_down_image(typename TTypes<T, 4>::ConstTensor images,
-                             const int batch_size, const int64 out_height,
-                             const int64 out_width, const int channels,
-                             const std::vector<CachedInterpolation>& xs,
-                             const std::vector<CachedInterpolation>& ys,
-                             typename TTypes<float, 4>::Tensor output) {
+inline float image_lerp(const T* input_image, int64 in_x_lower,
+                        int64 in_x_upper, float xs_lerp, int64 in_y_lower,
+                        int64 in_y_upper, float ys_lerp, int c) {
+  const float top_left(input_image[in_y_lower + in_x_lower + c]);
+  const float top_right(input_image[in_y_lower + in_x_upper + c]);
+  const float bottom_left(input_image[in_y_upper + in_x_lower + c]);
+  const float bottom_right(input_image[in_y_upper + in_x_upper + c]);
+  return compute_lerp(top_left, top_right, bottom_left, bottom_right, xs_lerp,
+                      ys_lerp);
+}
+
+template <typename T>
+void scale_down_image(
+    typename TTypes<T, 4>::ConstTensor images, const int batch_size,
+    const int64 out_height, const int64 out_width, const int channels,
+    const std::vector<CachedInterpolation>& xs,
+    const std::vector<CachedInterpolation>& ys,
+    typename TTypes<float, 4>::Tensor output) TF_ATTRIBUTE_NOINLINE;
+template <typename T>
+void scale_down_image(typename TTypes<T, 4>::ConstTensor images,
+                      const int batch_size, const int64 out_height,
+                      const int64 out_width, const int channels,
+                      const std::vector<CachedInterpolation>& xs_vec,
+                      const std::vector<CachedInterpolation>& ys,
+                      typename TTypes<float, 4>::Tensor output) {
   // Do not eagerly convert all input data points, as we ignore most.
-  for (int b = 0; b < batch_size; ++b) {
-    // Compute the interpolation
-    for (int64 y = 0; y < out_height; ++y) {
-      for (int64 x = 0; x < out_width; ++x) {
-        for (int c = 0; c < channels; ++c) {
-          const float top_left(images(b, ys[y].lower, xs[x].lower, c));
-          const float top_right(images(b, ys[y].lower, xs[x].upper, c));
-          const float bottom_left(images(b, ys[y].upper, xs[x].lower, c));
-          const float bottom_right(images(b, ys[y].upper, xs[x].upper, c));
-          output(b, y, x, c) =
-              compute_lerp(top_left, top_right, bottom_left, bottom_right,
-                           xs[x].lerp, ys[y].lerp);
+  if (channels == 3) {
+    for (int b = 0; b < batch_size; ++b) {
+      // Compute the interpolation
+      for (int64 y = 0; y < out_height; ++y) {
+        const int64 ys_lower = ys[y].lower;
+        const int64 ys_upper = ys[y].upper;
+        const float ys_lerp = ys[y].lerp;
+        const CachedInterpolation* xs_ptr = xs_vec.data();
+        for (int64 x = 0; x < out_width; ++x) {
+          const int64 xs_lower = xs_ptr->lower;
+          const int64 xs_upper = xs_ptr->upper;
+          const float xs_lerp = xs_ptr->lerp;
+          xs_ptr++;
+
+          const float top_left0(images(b, ys_lower, xs_lower, 0));
+          const float top_right0(images(b, ys_lower, xs_upper, 0));
+          const float bottom_left0(images(b, ys_upper, xs_lower, 0));
+          const float bottom_right0(images(b, ys_upper, xs_upper, 0));
+          const float out0 = compute_lerp(top_left0, top_right0, bottom_left0,
+                                          bottom_right0, xs_lerp, ys_lerp);
+
+          const float top_left1(images(b, ys_lower, xs_lower, 1));
+          const float top_right1(images(b, ys_lower, xs_upper, 1));
+          const float bottom_left1(images(b, ys_upper, xs_lower, 1));
+          const float bottom_right1(images(b, ys_upper, xs_upper, 1));
+          const float out1 = compute_lerp(top_left1, top_right1, bottom_left1,
+                                          bottom_right1, xs_lerp, ys_lerp);
+
+          const float top_left2(images(b, ys_lower, xs_lower, 2));
+          const float top_right2(images(b, ys_lower, xs_upper, 2));
+          const float bottom_left2(images(b, ys_upper, xs_lower, 2));
+          const float bottom_right2(images(b, ys_upper, xs_upper, 2));
+          const float out2 = compute_lerp(top_left2, top_right2, bottom_left2,
+                                          bottom_right2, xs_lerp, ys_lerp);
+
+          float* dest = &output(b, y, x, 0);
+          dest[0] = out0;
+          dest[1] = out1;
+          dest[2] = out2;
+        }
+      }
+    }
+  } else {
+    for (int b = 0; b < batch_size; ++b) {
+      // Compute the interpolation
+      for (int64 y = 0; y < out_height; ++y) {
+        const CachedInterpolation* xs = xs_vec.data();
+        for (int64 x = 0; x < out_width; ++x) {
+          for (int c = 0; c < channels; ++c) {
+            const float top_left(images(b, ys[y].lower, xs[x].lower, c));
+            const float top_right(images(b, ys[y].lower, xs[x].upper, c));
+            const float bottom_left(images(b, ys[y].upper, xs[x].lower, c));
+            const float bottom_right(images(b, ys[y].upper, xs[x].upper, c));
+            output(b, y, x, c) =
+                compute_lerp(top_left, top_right, bottom_left, bottom_right,
+                             xs[x].lerp, ys[y].lerp);
+          }
         }
       }
     }
   }
 }
 
-inline void scale_up_image(const float* input_image, const int batch_index,
-                           const int64 out_height, const int64 out_width,
-                           const int channels, const int64 in_height,
-                           const int64 in_width,
-                           const std::vector<CachedInterpolation>& xs,
-                           const std::vector<CachedInterpolation>& ys,
-                           typename TTypes<float, 4>::Tensor output) {
+template <typename T>
+void scale_up_image(
+    const T* input_image, const int batch_index, const int64 out_height,
+    const int64 out_width, const int channels, const int64 in_height,
+    const int64 in_width, const std::vector<CachedInterpolation>& xs,
+    const std::vector<CachedInterpolation>& ys,
+    typename TTypes<float, 4>::Tensor output) TF_ATTRIBUTE_NOINLINE;
+
+template <typename T>
+void scale_up_image(const T* input_image, const int batch_index,
+                    const int64 out_height, const int64 out_width,
+                    const int channels, const int64 in_height,
+                    const int64 in_width,
+                    const std::vector<CachedInterpolation>& xs,
+                    const std::vector<CachedInterpolation>& ys,
+                    typename TTypes<float, 4>::Tensor output) {
   for (int64 y = 0; y < out_height; y += ys[y].consecutive) {
     const int64 in_y_lower = ys[y].lower * in_width * channels;
     const int64 in_y_upper = ys[y].upper * in_width * channels;
@@ -215,10 +237,10 @@ inline void scale_up_image(const float* input_image, const int batch_index,
       const int64 in_x_lower = xs[x].lower * channels;
       const int64 in_x_upper = xs[x].upper * channels;
       for (int c = 0; c < channels; ++c) {
-        const float top_left = input_image[in_y_lower + in_x_lower + c];
-        const float top_right = input_image[in_y_lower + in_x_upper + c];
-        const float bottom_left = input_image[in_y_upper + in_x_lower + c];
-        const float bottom_right = input_image[in_y_upper + in_x_upper + c];
+        const float top_left(input_image[in_y_lower + in_x_lower + c]);
+        const float top_right(input_image[in_y_lower + in_x_upper + c]);
+        const float bottom_left(input_image[in_y_upper + in_x_lower + c]);
+        const float bottom_right(input_image[in_y_upper + in_x_upper + c]);
         for (int64 y_inner = y; y_inner < y + ys[y].consecutive; ++y_inner) {
           for (int64 x_inner = x; x_inner < x + xs[x].consecutive; ++x_inner) {
             output(batch_index, y_inner, x_inner, c) =
@@ -231,32 +253,76 @@ inline void scale_up_image(const float* input_image, const int batch_index,
   }
 }
 
-inline void scale_similar_image(const float* input_image, const int b,
-                                const int64 out_height, const int64 out_width,
-                                const int channels, const int64 in_height,
-                                const int64 in_width,
-                                const std::vector<CachedInterpolation>& xs,
-                                const std::vector<CachedInterpolation>& ys,
-                                typename TTypes<float, 4>::Tensor output) {
-  // Compute the interpolation
-  for (int64 y = 0; y < out_height; ++y) {
-    const int64 in_y_lower = ys[y].lower * in_width * channels;
-    const int64 in_y_upper = ys[y].upper * in_width * channels;
-    // Similar-sized images do not have a set of inner loops.
-    for (int64 x = 0; x < out_width; ++x) {
-      const int64 in_x_lower = xs[x].lower * channels;
-      const int64 in_x_upper = xs[x].upper * channels;
-      for (int c = 0; c < channels; ++c) {
-        const float top_left = input_image[in_y_lower + in_x_lower + c];
-        const float top_right = input_image[in_y_lower + in_x_upper + c];
-        const float bottom_left = input_image[in_y_upper + in_x_lower + c];
-        const float bottom_right = input_image[in_y_upper + in_x_upper + c];
-        output(b, y, x, c) = compute_lerp(top_left, top_right, bottom_left,
-                                          bottom_right, xs[x].lerp, ys[y].lerp);
+template <typename T>
+void scale_similar_image(
+    const T* input_image, const int b, const int64 out_height,
+    const int64 out_width, const int channels, const int64 in_height,
+    const int64 in_width, const std::vector<CachedInterpolation>& xs_vec,
+    const std::vector<CachedInterpolation>& ys,
+    typename TTypes<float, 4>::Tensor output) TF_ATTRIBUTE_NOINLINE;
+template <typename T>
+void scale_similar_image(const T* input_image, const int b,
+                         const int64 out_height, const int64 out_width,
+                         const int channels, const int64 in_height,
+                         const int64 in_width,
+                         const std::vector<CachedInterpolation>& xs_vec,
+                         const std::vector<CachedInterpolation>& ys,
+                         typename TTypes<float, 4>::Tensor output) {
+  if (channels == 3) {
+    // Compute the interpolation
+    for (int64 y = 0; y < out_height; ++y) {
+      const int64 in_y_lower = ys[y].lower * in_width * channels;
+      const int64 in_y_upper = ys[y].upper * in_width * channels;
+      const float ys_lerp = ys[y].lerp;
+      // Similar-sized images do not have a set of inner loops.
+      const CachedInterpolation* xs_ptr = xs_vec.data();
+      for (int64 x = 0; x < out_width; ++x) {
+        const int64 in_x_lower = xs_ptr->lower * 3;
+        const int64 in_x_upper = xs_ptr->upper * 3;
+        const float xs_lerp = xs_ptr->lerp;
+        xs_ptr++;
+
+        const float out0 =
+            image_lerp(input_image, in_x_lower, in_x_upper, xs_lerp, in_y_lower,
+                       in_y_upper, ys_lerp, 0);
+        const float out1 =
+            image_lerp(input_image, in_x_lower, in_x_upper, xs_lerp, in_y_lower,
+                       in_y_upper, ys_lerp, 1);
+        const float out2 =
+            image_lerp(input_image, in_x_lower, in_x_upper, xs_lerp, in_y_lower,
+                       in_y_upper, ys_lerp, 2);
+        float* dest = &output(b, y, x, 0);
+        dest[0] = out0;
+        dest[1] = out1;
+        dest[2] = out2;
+      }
+    }
+  } else {
+    // Compute the interpolation
+    for (int64 y = 0; y < out_height; ++y) {
+      const int64 in_y_lower = ys[y].lower * in_width * channels;
+      const int64 in_y_upper = ys[y].upper * in_width * channels;
+      const float ys_lerp = ys[y].lerp;
+      // Similar-sized images do not have a set of inner loops.
+      const CachedInterpolation* xs_ptr = xs_vec.data();
+      for (int64 x = 0; x < out_width; ++x) {
+        const int64 in_x_lower = xs_ptr->lower * channels;
+        const int64 in_x_upper = xs_ptr->upper * channels;
+        const float xs_lerp = xs_ptr->lerp;
+        xs_ptr++;
+        for (int c = 0; c < channels; ++c) {
+          const float top_left(input_image[in_y_lower + in_x_lower + c]);
+          const float top_right(input_image[in_y_lower + in_x_upper + c]);
+          const float bottom_left(input_image[in_y_upper + in_x_lower + c]);
+          const float bottom_right(input_image[in_y_upper + in_x_upper + c]);
+          output(b, y, x, c) = compute_lerp(top_left, top_right, bottom_left,
+                                            bottom_right, xs_lerp, ys_lerp);
+        }
       }
     }
   }
 }
+
 }  // namespace
 
 // Partial specialization of ResizeBilinear functor for a CPUDevice.
@@ -284,7 +350,6 @@ struct ResizeBilinear<CPUDevice, T> {
         compute_image_scale_pattern(out_height, out_width, in_height, in_width);
     std::vector<CachedInterpolation> ys(out_height + 1);
     std::vector<CachedInterpolation> xs(out_width + 1);
-    std::vector<float> converted_image_v;
 
     // Compute the cached interpolation weights on the x and y dimensions.
     compute_interpolation_weights(scale_pattern, out_height, in_height,
@@ -294,10 +359,8 @@ struct ResizeBilinear<CPUDevice, T> {
 
     if (scale_pattern == SCALE_UP) {
       for (int b = 0; b < batch_size; ++b) {
-        const float* converted_image = Converter<T>::convert_image_to_float(
-            images, b, in_height, in_width, channels, &converted_image_v);
-        scale_up_image(converted_image, b, out_height, out_width, channels,
-                       in_height, in_width, xs, ys, output);
+        scale_up_image<T>(&images(b, 0, 0, 0), b, out_height, out_width,
+                          channels, in_height, in_width, xs, ys, output);
       }
     } else if (scale_pattern == SCALE_DOWN) {
       // Do not eagerly convert all input data points, as we ignore most.
@@ -305,10 +368,8 @@ struct ResizeBilinear<CPUDevice, T> {
                           xs, ys, output);
     } else {
       for (int b = 0; b < batch_size; ++b) {
-        const float* converted_image = Converter<T>::convert_image_to_float(
-            images, b, in_height, in_width, channels, &converted_image_v);
-        scale_similar_image(converted_image, b, out_height, out_width, channels,
-                            in_height, in_width, xs, ys, output);
+        scale_similar_image<T>(&images(b, 0, 0, 0), b, out_height, out_width,
+                               channels, in_height, in_width, xs, ys, output);
       }
     }
   }
