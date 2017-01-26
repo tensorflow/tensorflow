@@ -1,6 +1,6 @@
 ### `tf.matching_files(pattern, name=None)` {#matching_files}
 
-Returns the set of files matching one or more glob patterns.
+Returns the set of files matching a pattern.
 
 Note that this routine only supports wildcard characters in the
 basename portion of the pattern, not in the directory portion.
@@ -8,8 +8,7 @@ basename portion of the pattern, not in the directory portion.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A `Tensor` of type `string`.
-    Shell wildcard pattern(s). Scalar or vector of type string.
+*  <b>`pattern`</b>: A `Tensor` of type `string`. A (scalar) shell wildcard pattern.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
