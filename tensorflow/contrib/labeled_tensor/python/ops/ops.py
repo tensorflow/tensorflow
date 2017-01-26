@@ -650,7 +650,7 @@ def map_fn(fn, labeled_tensor, name=None):
       @tc.returns(ops.Tensor)
       @tc.accepts(ops.Tensor)
       def tf_fn(tensor):
-        original_axes = labeled_tensor.axes.values()[1:]
+        original_axes = list(labeled_tensor.axes.values())[1:]
         tensor_lt = core.LabeledTensor(tensor, original_axes)
         return fn(tensor_lt).tensor
 
@@ -688,8 +688,8 @@ def foldl(fn, labeled_tensor, initial_value, name=None):
     @tc.accepts(ops.Tensor, ops.Tensor)
     def tf_fn(accumulator, next_element):
       accumulator_lt = core.LabeledTensor(accumulator, initial_value.axes)
-      next_element_lt = core.LabeledTensor(next_element,
-                                           labeled_tensor.axes.values()[1:])
+      next_element_lt = core.LabeledTensor(
+          next_element, list(labeled_tensor.axes.values())[1:])
       return fn(accumulator_lt, next_element_lt).tensor
 
     foldl_op = functional_ops.foldl(
