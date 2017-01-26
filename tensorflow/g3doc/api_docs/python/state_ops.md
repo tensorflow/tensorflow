@@ -1930,7 +1930,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, use_resource=None, custom_getter=None)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -1988,6 +1988,9 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -2075,6 +2078,9 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -2121,9 +2127,12 @@ Attributes:
   custom_getter: default custom getter passed to get_variable.
   name_scope: The name passed to `tf.name_scope`.
   dtype: default type passed to get_variable (defaults to DT_FLOAT).
+  use_resource: if False, create a normal Variable; if True create an
+    experimental ResourceVariable with well-defined semantics. Defaults
+    to False (will later change to True).
 - - -
 
-#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32)` {#VariableScope.__init__}
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32, use_resource=None)` {#VariableScope.__init__}
 
 Creates a new VariableScope with the given properties.
 
@@ -2151,7 +2160,7 @@ Creates a new VariableScope with the given properties.
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, use_resource=None, custom_getter=None)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
@@ -2247,10 +2256,24 @@ Set partitioner for this scope.
 Set regularizer for this scope.
 
 
+- - -
+
+#### `tf.VariableScope.set_use_resource(use_resource)` {#VariableScope.set_use_resource}
+
+Sets whether to use ResourceVariables for this scope.
+
 
 - - -
 
-### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_scope}
+#### `tf.VariableScope.use_resource` {#VariableScope.use_resource}
+
+
+
+
+
+- - -
+
+### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_scope}
 
 Returns a context manager for defining ops that creates variables (layers).
 
@@ -2335,6 +2358,9 @@ then all its sub-scopes become reusing as well.
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 *  <b>`dtype`</b>: type of variables created in this scope (defaults to the type
     in the passed scope, or inherited from parent scope).
+*  <b>`use_resource`</b>: If False, all variables will be regular Variables. If True,
+    experimental ResourceVariables with well-defined semantics will be used
+    instead. Defaults to False (will later change to True).
 
 ##### Returns:
 
@@ -2350,7 +2376,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_op_scope}
 
 Deprecated: context manager for defining an op that creates variables.
 
