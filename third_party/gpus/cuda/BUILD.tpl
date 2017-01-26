@@ -50,7 +50,6 @@ cc_library(
     srcs = ["lib/%{cudart_static_lib}"],
     includes = ["include/"],
     linkopts = [
-        "-ldl",
         "-lpthread",
         %{cudart_static_linkopt}
     ],
