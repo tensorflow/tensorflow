@@ -913,8 +913,8 @@
   * [`swap_outputs`](../../api_docs/python/contrib.graph_editor.md#swap_outputs)
   * [`swap_ts`](../../api_docs/python/contrib.graph_editor.md#swap_ts)
   * [`transform_op_if_inside_handler`](../../api_docs/python/contrib.graph_editor.md#transform_op_if_inside_handler)
-  * [`transform_op_in_place`](../../api_docs/python/contrib.graph_editor.md#transform_op_in_place)
   * [`Transformer`](../../api_docs/python/contrib.graph_editor.md#Transformer)
+  * [`TransformerInfo`](../../api_docs/python/contrib.graph_editor.md#TransformerInfo)
   * [`ts`](../../api_docs/python/contrib.graph_editor.md#ts)
 
 * **[Integrate (contrib)](../../api_docs/python/contrib.integrate.md)**:
