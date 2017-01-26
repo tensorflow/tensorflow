@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -38,14 +39,19 @@ class VariableScopeTest(test.TestCase):
     vs = variable_scope._get_default_variable_store()
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    assert v == v1
+    self.assertEqual(v, v1)
+
+  def testResource(self):
+    vs = variable_scope._get_default_variable_store()
+    v1 = vs.get_variable("v", [1], use_resource=True)
+    self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
 
   def testNameExists(self):
     vs = variable_scope._get_default_variable_store()
     # No check by default, so we can both create and get existing names.
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    assert v == v1
+    self.assertEqual(v, v1)
     # When reuse is False, we fail when variables are already there.
     vs.get_variable("w", [1], reuse=False)  # That's ok.
     with self.assertRaises(ValueError):

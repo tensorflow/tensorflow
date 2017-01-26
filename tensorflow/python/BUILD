@@ -1738,6 +1738,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":init_ops",
         ":platform",
+        ":resource_variable_ops",
         ":variables",
         "@six_archive//:six",
     ],
