@@ -333,5 +333,52 @@ TEST_F(HloCostAnalysisTest, TotalOverflowsInt64) {
   EXPECT_GT(matmul_analysis.flop_count(), std::numeric_limits<int64>::max());
 }
 
+class FusionCostAnalysis : public ::testing::Test {
+ protected:
+  FusionCostAnalysis() = default;
+
+  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+};
+
+TEST_F(FusionCostAnalysis, LoopFusion) {
+  // Fuse all instructions in complicated expression:
+  //
+  //   add = Add(C1, C2)
+  //   clamp = Clamp(C2, add, add)
+  //   exp = Exp(add)
+  //   mul = Mul(exp, C3)
+  //   sub = Sub(mul, clamp)
+  //   tuple = Tuple({sub, sub, mul, C1})
+  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.1f));
+  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(9.0f));
+
+  auto add =
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1.get(), c2.get());
+  auto clamp = HloInstruction::CreateTernary(r0f32_, HloOpcode::kClamp,
+                                             c2.get(), add.get(), add.get());
+  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, add.get());
+  auto mul = HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply,
+                                          exp.get(), c3.get());
+  auto sub = HloInstruction::CreateBinary(r0f32_, HloOpcode::kSubtract,
+                                          mul.get(), clamp.get());
+  auto tuple =
+      HloInstruction::CreateTuple({sub.get(), sub.get(), mul.get(), c1.get()});
+
+  auto fusion = HloInstruction::CreateFusion(
+      r0f32_, HloInstruction::FusionKind::kLoop, tuple.get());
+  fusion->FuseInstruction(sub.get());
+  fusion->FuseInstruction(mul.get());
+  fusion->FuseInstruction(exp.get());
+  fusion->FuseInstruction(clamp.get());
+  fusion->FuseInstruction(add.get());
+
+  HloCostAnalysis fusion_analysis;
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.flop_count(), 4);
+  EXPECT_EQ(fusion_analysis.transcendental_count(), 1);
+}
+
 }  // namespace
 }  // namespace xla
