@@ -3473,6 +3473,7 @@ filegroup(
         "sendrecv_ops.h",
         "sequence_ops.cc",
         "shape_ops.cc",
+        "shape_ops.h",
         "slice_op.cc",
         "slice_op.h",
         "slice_op_cpu_impl.h",
