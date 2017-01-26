@@ -3131,12 +3131,3 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
     `sum_per_d(gradients * (inputs > max))`.
 
 
-
-## Other Functions and Classes
-- - -
-
-### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
-
-
-
-
