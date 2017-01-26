@@ -185,8 +185,7 @@ TEST(IoOpsTest, MatchingFiles_ShapeFn) {
 
   INFER_OK(op, "?", "[?]");
   INFER_OK(op, "[]", "[?]");
-  INFER_OK(op, "[42]", "[?]");
-  INFER_ERROR("Shape must be at most rank 1 but is rank 2", op, "[?,?]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[?]");
 }
 
 }  // end namespace tensorflow

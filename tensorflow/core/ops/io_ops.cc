@@ -810,17 +810,17 @@ REGISTER_OP("MatchingFiles")
     .Output("filenames: string")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     })
     .Doc(R"doc(
-Returns the set of files matching one or more glob patterns.
+Returns the set of files matching a pattern.
 
 Note that this routine only supports wildcard characters in the
 basename portion of the pattern, not in the directory portion.
 
-pattern: Shell wildcard pattern(s). Scalar or vector of type string.
+pattern: A (scalar) shell wildcard pattern.
 filenames: A vector of matching filenames.
 )doc");
 

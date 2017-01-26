@@ -260,13 +260,13 @@ def write_string_to_file(filename, file_content):
 
 
 def get_matching_files(filename):
-  """Returns a list of files that match the given pattern(s).
+  """Returns a list of files that match the given pattern.
 
   Args:
-    filename: string or iterable of strings. The glob pattern(s).
+    filename: string, the pattern
 
   Returns:
-    A list of strings containing filenames that match the given pattern(s).
+    Returns a list of strings containing filenames that match the given pattern.
 
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
@@ -274,20 +274,9 @@ def get_matching_files(filename):
   with errors.raise_exception_on_not_ok_status() as status:
     # Convert each element to string, since the return values of the
     # vector of string should be interpreted as strings, not bytes.
-    if hasattr(filename, "__iter__"):
-      glob_patterns = filename
-      return [
-          compat.as_str_any(matching_filename)
-          for pattern in glob_patterns
-          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-              compat.as_bytes(pattern), status)
-      ]
-    else:
-      return [
-          compat.as_str_any(matching_filename)
-          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-              compat.as_bytes(filename), status)
-      ]
+    return [compat.as_str_any(matching_filename)
+            for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+                compat.as_bytes(filename), status)]
 
 
 def create_dir(dirname):
