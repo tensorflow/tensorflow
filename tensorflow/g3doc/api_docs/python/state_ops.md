@@ -2535,6 +2535,9 @@ Args:
     elements of the initialized variable will be set to the corresponding
     value in the `value` argument.
   dtype: The data type.
+  verify_shape: Boolean that enables verification of the shape of `value`. If
+    `True`, the initializer will throw an error if the shape of `value` is not
+    compatible with the shape of the initialized tensor.
 
 Examples:
   The following example can be rewritten using a numpy.ndarray instead
@@ -2551,7 +2554,6 @@ Examples:
   >>> init = tf.constant_initializer(value)
 
   >>> print('fitting shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
   >>>   x.initializer.run()
@@ -2562,7 +2564,6 @@ Examples:
    [ 4.  5.  6.  7.]]
 
   >>> print('larger shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
   >>>   x.initializer.run()
@@ -2574,11 +2575,17 @@ Examples:
    [ 7.  7.  7.  7.]]
 
   >>> print('smaller shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
   ValueError: Too many elements provided. Needed at most 6, but received 8
+
+  >>> print('shape verification:')
+  >>> init_verify = tf.constant_initializer(value, verify_shape=True)
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
+
+  TypeError: Expected Tensor's shape: (3, 4), got (8,).
 ```
 - - -
 
@@ -2589,7 +2596,7 @@ Examples:
 
 - - -
 
-#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32)` {#constant_initializer.__init__}
+#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32, verify_shape=False)` {#constant_initializer.__init__}
 
 
 
