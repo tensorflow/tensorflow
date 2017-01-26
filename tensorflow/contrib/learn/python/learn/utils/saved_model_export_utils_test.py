@@ -245,6 +245,95 @@ class SavedModelExportUtilsTest(test.TestCase):
         signature_constants.CLASSIFY_METHOD_NAME)
     self.assertEqual(actual_signature_def, expected_signature_def)
 
+  def test_build_standardized_signature_def_classification5(self):
+    """Tests multiple output tensors that include integer classes and scores.
+
+    Integer classes are dropped out, because Servo classification can only serve
+    string classes. So, only scores are present in the signature.
+    """
+    input_tensors = {
+        "input-1":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="input-tensor-1")
+    }
+    output_tensors = {
+        "classes":
+            array_ops.placeholder(
+                dtypes.int64, 1, name="output-tensor-classes"),
+        "scores":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-scores"),
+        "logits":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-logits-unused"),
+    }
+    problem_type = constants.ProblemType.CLASSIFICATION
+    actual_signature_def = (
+        saved_model_export_utils.build_standardized_signature_def(
+            input_tensors, output_tensors, problem_type))
+    expected_signature_def = meta_graph_pb2.SignatureDef()
+    shape = tensor_shape_pb2.TensorShapeProto(
+        dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
+    expected_signature_def.inputs[
+        signature_constants.CLASSIFY_INPUTS].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
+    expected_signature_def.outputs[
+        signature_constants.CLASSIFY_OUTPUT_SCORES].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-scores:0", dtype=dtype_float,
+                tensor_shape=shape))
+
+    expected_signature_def.method_name = (
+        signature_constants.CLASSIFY_METHOD_NAME)
+    self.assertEqual(actual_signature_def, expected_signature_def)
+
+  def test_build_standardized_signature_def_classification6(self):
+    """Tests multiple output tensors that with integer classes and no scores.
+
+    Servo classification cannot serve integer classes, but no scores are
+    available. So, we fall back to predict signature.
+    """
+    input_tensors = {
+        "input-1":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="input-tensor-1")
+    }
+    output_tensors = {
+        "classes":
+            array_ops.placeholder(
+                dtypes.int64, 1, name="output-tensor-classes"),
+        "logits":
+            array_ops.placeholder(
+                dtypes.float32, 1, name="output-tensor-logits"),
+    }
+    problem_type = constants.ProblemType.CLASSIFICATION
+    actual_signature_def = (
+        saved_model_export_utils.build_standardized_signature_def(
+            input_tensors, output_tensors, problem_type))
+    expected_signature_def = meta_graph_pb2.SignatureDef()
+    shape = tensor_shape_pb2.TensorShapeProto(
+        dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_int64 = types_pb2.DataType.Value("DT_INT64")
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
+    expected_signature_def.inputs[
+        signature_constants.PREDICT_INPUTS].CopyFrom(
+            meta_graph_pb2.TensorInfo(
+                name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
+    expected_signature_def.outputs["classes"].CopyFrom(
+        meta_graph_pb2.TensorInfo(
+            name="output-tensor-classes:0", dtype=dtype_int64,
+            tensor_shape=shape))
+    expected_signature_def.outputs["logits"].CopyFrom(
+        meta_graph_pb2.TensorInfo(
+            name="output-tensor-logits:0", dtype=dtype_float,
+            tensor_shape=shape))
+
+    expected_signature_def.method_name = (
+        signature_constants.PREDICT_METHOD_NAME)
+    self.assertEqual(actual_signature_def, expected_signature_def)
+
   def test_get_input_alternatives(self):
     input_ops = input_fn_utils.InputFnOps("bogus features dict", None,
                                           "bogus default input dict")

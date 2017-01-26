@@ -26,6 +26,7 @@ from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -84,7 +85,7 @@ def build_standardized_signature_def(
   # Per-method signature_def functions will standardize the keys if possible
   if _is_classification_problem(problem_type, input_tensors, output_tensors):
     (_, examples), = input_tensors.items()
-    classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
+    classes = _get_classification_classes(output_tensors)
     scores = _get_classification_scores(output_tensors)
     if classes is None and scores is None:
       (_, classes), = output_tensors.items()
@@ -106,8 +107,16 @@ def _get_classification_scores(output_tensors):
   return scores
 
 
-def _is_classification_problem(problem_type, input_tensors, output_tensors):
+def _get_classification_classes(output_tensors):
   classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
+  if classes is not None and classes.dtype != dtypes.string:
+    # Servo classification can only serve string classes.
+    return None
+  return classes
+
+
+def _is_classification_problem(problem_type, input_tensors, output_tensors):
+  classes = _get_classification_classes(output_tensors)
   scores = _get_classification_scores(output_tensors)
   return ((problem_type == constants.ProblemType.CLASSIFICATION or
            problem_type == constants.ProblemType.LOGISTIC_REGRESSION)
