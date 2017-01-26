@@ -95,7 +95,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     #     saved_model_export_utils.FEATURES_INPUT_ALTERNATIVE_KEY],
     #                  "bogus features dict")
 
-  def test_get_output_alternatives_explicit(self):
+  def test_get_output_alternatives_explicit_default(self):
     provided_output_alternatives = {
         "head-1": (constants.ProblemType.LINEAR_REGRESSION,
                    "bogus output dict"),
@@ -106,12 +106,70 @@ class SavedModelExportUtilsTest(test.TestCase):
         model_fn.ModeKeys.INFER,
         predictions={"some_output": "bogus_tensor"},
         output_alternatives=provided_output_alternatives)
+
     output_alternatives, _ = saved_model_export_utils.get_output_alternatives(
         model_fn_ops, "head-1")
 
     self.assertEqual(provided_output_alternatives, output_alternatives)
 
-  def test_get_output_alternatives_implicit(self):
+  def test_get_output_alternatives_wrong_default(self):
+    provided_output_alternatives = {
+        "head-1": (constants.ProblemType.LINEAR_REGRESSION,
+                   "bogus output dict"),
+        "head-2": (constants.ProblemType.CLASSIFICATION, "bogus output dict 2"),
+        "head-3": (constants.ProblemType.UNSPECIFIED, "bogus output dict 3"),
+    }
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions={"some_output": "bogus_tensor"},
+        output_alternatives=provided_output_alternatives)
+
+    with self.assertRaises(ValueError) as e:
+      saved_model_export_utils.get_output_alternatives(model_fn_ops, "WRONG")
+
+    self.assertEqual("Requested default_output_alternative: WRONG, but "
+                     "available output_alternatives are: ['head-1', 'head-2', "
+                     "'head-3']", str(e.exception))
+
+  def test_get_output_alternatives_single_no_default(self):
+    prediction_tensor = constant_op.constant(["bogus"])
+    provided_output_alternatives = {
+        "head-1": (constants.ProblemType.LINEAR_REGRESSION,
+                   {"output": prediction_tensor}),
+    }
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions=prediction_tensor,
+        output_alternatives=provided_output_alternatives)
+
+    output_alternatives, _ = saved_model_export_utils.get_output_alternatives(
+        model_fn_ops)
+
+    self.assertEqual({"head-1":
+                      (constants.ProblemType.LINEAR_REGRESSION,
+                       {"output": prediction_tensor})},
+                     output_alternatives)
+
+  def test_get_output_alternatives_multi_no_default(self):
+    provided_output_alternatives = {
+        "head-1": (constants.ProblemType.LINEAR_REGRESSION,
+                   "bogus output dict"),
+        "head-2": (constants.ProblemType.CLASSIFICATION, "bogus output dict 2"),
+        "head-3": (constants.ProblemType.UNSPECIFIED, "bogus output dict 3"),
+    }
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions={"some_output": "bogus_tensor"},
+        output_alternatives=provided_output_alternatives)
+
+    with self.assertRaises(ValueError) as e:
+      saved_model_export_utils.get_output_alternatives(model_fn_ops)
+
+    self.assertEqual("Please specify a default_output_alternative.  Available "
+                     "output_alternatives are: ['head-1', 'head-2', 'head-3']",
+                     str(e.exception))
+
+  def test_get_output_alternatives_none_provided(self):
     prediction_tensor = constant_op.constant(["bogus"])
     model_fn_ops = model_fn.ModelFnOps(
         model_fn.ModeKeys.INFER,
@@ -119,12 +177,40 @@ class SavedModelExportUtilsTest(test.TestCase):
         output_alternatives=None)
 
     output_alternatives, _ = saved_model_export_utils.get_output_alternatives(
-        model_fn_ops, "some_output")
-    self.assertEqual({
-        "default_output_alternative": (constants.ProblemType.UNSPECIFIED, {
-            "some_output": prediction_tensor
-        })
-    }, output_alternatives)
+        model_fn_ops)
+
+    self.assertEqual(
+        {"default_output_alternative": (constants.ProblemType.UNSPECIFIED, {
+            "some_output": prediction_tensor})},
+        output_alternatives)
+
+  def test_get_output_alternatives_empty_provided_with_default(self):
+    prediction_tensor = constant_op.constant(["bogus"])
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions={"some_output": prediction_tensor},
+        output_alternatives={})
+
+    with self.assertRaises(ValueError) as e:
+      saved_model_export_utils.get_output_alternatives(model_fn_ops, "WRONG")
+
+    self.assertEqual("Requested default_output_alternative: WRONG, but "
+                     "available output_alternatives are: []", str(e.exception))
+
+  def test_get_output_alternatives_empty_provided_no_default(self):
+    prediction_tensor = constant_op.constant(["bogus"])
+    model_fn_ops = model_fn.ModelFnOps(
+        model_fn.ModeKeys.INFER,
+        predictions={"some_output": prediction_tensor},
+        output_alternatives={})
+
+    output_alternatives, _ = saved_model_export_utils.get_output_alternatives(
+        model_fn_ops)
+
+    self.assertEqual(
+        {"default_output_alternative": (constants.ProblemType.UNSPECIFIED, {
+            "some_output": prediction_tensor})},
+        output_alternatives)
 
   def test_get_output_alternatives_implicit_single(self):
     prediction_tensor = constant_op.constant(["bogus"])

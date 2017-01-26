@@ -51,7 +51,7 @@ FEATURES_INPUT_ALTERNATIVE_KEY = 'features_input_alternative'
 # In a single-headed model, the single output is automatically the default.
 # In a multi-headed model, the name of the desired default head should be
 # provided to get_output_alternatives.
-DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
+_FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
 
 
 def build_standardized_signature_def(
@@ -141,37 +141,67 @@ def get_input_alternatives(input_ops):
 
 def get_output_alternatives(
     model_fn_ops,
-    default_output_alternative_key=DEFAULT_OUTPUT_ALTERNATIVE_KEY):
-  """Obtain all output alternatives using the model_fn output and heuristics."""
+    default_output_alternative_key=None):
+  """Obtain all output alternatives using the model_fn output and heuristics.
+
+  Args:
+    model_fn_ops: a `ModelFnOps` object produced by a `model_fn`.  This may or
+      may not have output_alternatives populated.
+    default_output_alternative_key: the name of the head to serve when an
+      incoming serving request does not explicitly request a specific head.
+      Not needed for single-headed models.
+
+  Returns:
+    A tuple of (output_alternatives, actual_default_output_alternative_key),
+    where the latter names the head that will actually be served by default.
+    This may differ from the requested default_output_alternative_key when
+    a) no output_alternatives are provided at all, so one must be generated, or
+    b) there is exactly one head, which is used regardless of the requested
+    default.
+
+  Raises:
+    ValueError: if the requested default_output_alternative_key is not available
+      in output_alternatives, or if there are multiple output_alternatives and
+      no default is specified.
+  """
   output_alternatives = model_fn_ops.output_alternatives
 
-  # Identify the default outputs, creating them if needed.
-  if (output_alternatives
-      and default_output_alternative_key not in output_alternatives):
-    raise ValueError('default_output_alternative_key not in '
-                     'output_alternatives: %s' % default_output_alternative_key)
+  if not output_alternatives:
+    if default_output_alternative_key:
+      raise ValueError('Requested default_output_alternative: {}, '
+                       'but available output_alternatives are: []'.format(
+                           default_output_alternative_key))
 
-  if (output_alternatives
-      and default_output_alternative_key in output_alternatives):
-    # If a default head is provided, use it.
-    actual_default_output_alternative_key = default_output_alternative_key
+    # Lacking provided output alternatives, the best we can do is to
+    # interpret the model as single-headed of unknown type.
+    default_problem_type = constants.ProblemType.UNSPECIFIED
+    default_outputs = model_fn_ops.predictions
+    if not isinstance(default_outputs, dict):
+      default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
+    actual_default_output_alternative_key = (
+        _FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY)
+    output_alternatives = {actual_default_output_alternative_key:
+                           (default_problem_type, default_outputs)}
     return output_alternatives, actual_default_output_alternative_key
 
-  if output_alternatives and len(output_alternatives) == 1:
-    # If there is only one head, use it as the default.
+  if default_output_alternative_key:
+    # If a default head is provided, use it.
+    if default_output_alternative_key in output_alternatives:
+      return output_alternatives, default_output_alternative_key
+
+    raise ValueError('Requested default_output_alternative: {}, '
+                     'but available output_alternatives are: {}'.format(
+                         default_output_alternative_key,
+                         sorted(output_alternatives.keys())))
+
+  if len(output_alternatives) == 1:
+    # If there is only one head, use it as the default regardless of its name.
     (actual_default_output_alternative_key, _), = output_alternatives.items()
     return output_alternatives, actual_default_output_alternative_key
 
-  # Lacking provided output alternatives, the best we can do is to
-  # interpret the model as single-headed of unknown type.
-  default_problem_type = constants.ProblemType.UNSPECIFIED
-  default_outputs = model_fn_ops.predictions
-  if not isinstance(default_outputs, dict):
-    default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
-  actual_default_output_alternative_key = DEFAULT_OUTPUT_ALTERNATIVE_KEY
-  output_alternatives = {actual_default_output_alternative_key:
-                         (default_problem_type, default_outputs)}
-  return output_alternatives, actual_default_output_alternative_key
+  raise ValueError('Please specify a default_output_alternative.  '
+                   'Available output_alternatives are: {}'.format(
+                       sorted(output_alternatives.keys())))
 
 
 def build_all_signature_defs(input_alternatives, output_alternatives,
@@ -272,7 +302,7 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
 
 def make_export_strategy(serving_input_fn,
-                         default_output_alternative_key='default',
+                         default_output_alternative_key=None,
                          assets_extra=None,
                          as_text=False,
                          exports_to_keep=5):
