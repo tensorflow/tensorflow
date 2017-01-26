@@ -121,7 +121,7 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
       OP_REQUIRES(
           context, input_rank >= 2,
           errors::InvalidArgument("Input tensor ", i,
-                                  " must have rank >= 2, got", input_rank));
+                                  " must have rank >= 2, got ", input_rank));
       // If the tensor rank is greater than 2, we consider the inner-most
       // dimensions as matrices, and loop over all the other outer ("batch")
       // dimensions to compute the results.
