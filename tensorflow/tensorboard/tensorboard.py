@@ -88,74 +88,89 @@ flags.DEFINE_integer('reload_interval', 60, 'How often the backend should load '
 FLAGS = flags.FLAGS
 
 
-def main(unused_argv=None):
-  debug = FLAGS.insecure_debug_mode
-  logdir = os.path.expanduser(FLAGS.logdir)
-  if debug:
-    logging.set_verbosity(logging.DEBUG)
-    logging.warning('TensorBoard is in debug mode. This is NOT SECURE.')
+class Server(object):
+  """A simple WSGI-compliant http server that can serve TensorBoard."""
 
+  def create_app(self):
+    """Creates a WSGI-compliant app than can handle TensorBoard requests.
+
+    Returns:
+      (function) A complete WSGI application that handles TensorBoard requests.
+    """
+
+    logdir = os.path.expanduser(FLAGS.logdir)
+    if not logdir:
+      msg = ('A logdir must be specified. Run `tensorboard --help` for '
+             'details and examples.')
+      logging.error(msg)
+      print(msg)
+      return -1
+
+    plugins = {'projector': projector_plugin.ProjectorPlugin()}
+    return application.TensorBoardWSGIApp(
+        logdir,
+        plugins,
+        purge_orphaned_data=FLAGS.purge_orphaned_data,
+        reload_interval=FLAGS.reload_interval)
+
+  def serve(self):
+    """Starts a WSGI server that serves the TensorBoard app."""
+
+    tb_app = self.create_app()
+    logging.info('Starting TensorBoard in directory %s', os.getcwd())
+    debug = FLAGS.insecure_debug_mode
+    if debug:
+      logging.set_verbosity(logging.DEBUG)
+      logging.warning('TensorBoard is in debug mode. This is NOT SECURE.')
+
+    try:
+      tag = resource_loader.load_resource('tensorboard/TAG').strip()
+      logging.info('TensorBoard is tag: %s', tag)
+    except IOError:
+      logging.info('Unable to read TensorBoard tag')
+      tag = ''
+
+    status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
+    print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
+    if FLAGS.host == '0.0.0.0':
+      try:
+        host = socket.gethostbyname(socket.gethostname())
+        print('(You can navigate to http://%s:%d)' % (host, FLAGS.port))
+      except socket.gaierror:
+        pass
+    else:
+      print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
+
+    try:
+      serving.run_simple(
+          FLAGS.host,
+          FLAGS.port,
+          tb_app,
+          threaded=True,
+          use_reloader=debug,
+          use_evalex=debug,
+          use_debugger=debug)
+    except socket.error:
+      if FLAGS.port == 0:
+        msg = 'Unable to find any open ports.'
+        logging.error(msg)
+        print(msg)
+        return -2
+      else:
+        msg = 'Tried to connect to port %d, but address is in use.' % FLAGS.port
+        logging.error(msg)
+        print(msg)
+        return -3
+
+
+def main(unused_argv=None):
   if FLAGS.inspect:
     logging.info('Not bringing up TensorBoard, but inspecting event files.')
     event_file = os.path.expanduser(FLAGS.event_file)
-    efi.inspect(logdir, event_file, FLAGS.tag)
+    efi.inspect(FLAGS.logdir, event_file, FLAGS.tag)
     return 0
 
-  if not logdir:
-    msg = ('A logdir must be specified. Run `tensorboard --help` for '
-           'details and examples.')
-    logging.error(msg)
-    print(msg)
-    return -1
-
-  logging.info('Starting TensorBoard in directory %s', os.getcwd())
-
-  plugins = {'projector': projector_plugin.ProjectorPlugin()}
-  tb_app = application.TensorBoardWSGIApp(
-      logdir,
-      plugins,
-      purge_orphaned_data=FLAGS.purge_orphaned_data,
-      reload_interval=FLAGS.reload_interval)
-
-  try:
-    tag = resource_loader.load_resource('tensorboard/TAG').strip()
-    logging.info('TensorBoard is tag: %s', tag)
-  except IOError:
-    logging.info('Unable to read TensorBoard tag')
-    tag = ''
-
-  status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
-  print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
-
-  if FLAGS.host == "0.0.0.0":
-    try:
-      host = socket.gethostbyname(socket.gethostname())
-      print('(You can navigate to http://%s:%d)' % (host, FLAGS.port))
-    except socket.gaierror:
-      pass
-  else:
-    print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
-
-  try:
-    serving.run_simple(
-        FLAGS.host,
-        FLAGS.port,
-        tb_app,
-        threaded=True,
-        use_reloader=debug,
-        use_evalex=debug,
-        use_debugger=debug)
-  except socket.error:
-    if FLAGS.port == 0:
-      msg = 'Unable to find any open ports.'
-      logging.error(msg)
-      print(msg)
-      return -2
-    else:
-      msg = 'Tried to connect to port %d, but address is in use.' % FLAGS.port
-      logging.error(msg)
-      print(msg)
-      return -3
+  Server().serve()
 
 
 if __name__ == '__main__':
