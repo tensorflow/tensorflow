@@ -86,8 +86,8 @@ def build_standardized_signature_def(
   if _is_classification_problem(problem_type, input_tensors, output_tensors):
     (_, examples), = input_tensors.items()
     classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
-    scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
-    if not (classes or scores):
+    scores = _get_classification_scores(output_tensors)
+    if classes is None and scores is None:
       (_, classes), = output_tensors.items()
     return signature_def_utils.classification_signature_def(
         examples, classes, scores)
@@ -100,13 +100,22 @@ def build_standardized_signature_def(
         input_tensors, output_tensors)
 
 
+def _get_classification_scores(output_tensors):
+  scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
+  if scores is None:
+    scores = output_tensors.get(prediction_key.PredictionKey.PROBABILITIES)
+  return scores
+
+
 def _is_classification_problem(problem_type, input_tensors, output_tensors):
   classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
-  scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
+  scores = _get_classification_scores(output_tensors)
   return ((problem_type == constants.ProblemType.CLASSIFICATION or
            problem_type == constants.ProblemType.LOGISTIC_REGRESSION)
           and len(input_tensors) == 1
-          and (classes or scores or len(output_tensors) == 1))
+          and (classes is not None or
+               scores is not None or
+               len(output_tensors) == 1))
 
 
 def _is_regression_problem(problem_type, input_tensors, output_tensors):
