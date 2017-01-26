@@ -173,10 +173,8 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
     return false;
   }
 
-  // TODO(22689637): Eliminate unnecessary ToString()s when all dependencies
-  // have been migrated.
-  string cc_specific = port::StrCat(filename.ToString(), ".cc", cc_major_,
-                                    cc_minor_, canonical_suffix.ToString());
+  string cc_specific =
+      port::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
   if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
