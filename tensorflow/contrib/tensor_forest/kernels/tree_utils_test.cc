@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
+#include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "testing/base/public/gunit.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 

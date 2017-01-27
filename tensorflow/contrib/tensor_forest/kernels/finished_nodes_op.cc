@@ -14,7 +14,7 @@
 // =============================================================================
 // FinishedNodes returns a 1-D tensor listing the nodes that are finished
 // accumulating.
-#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
+#include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"

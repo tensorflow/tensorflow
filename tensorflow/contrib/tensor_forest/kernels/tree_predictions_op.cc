@@ -16,8 +16,8 @@
 // evaluating the given tree.
 #include <algorithm>
 
-#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
-#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
+#include "tensorflow/contrib/tensor_forest/kernels/data_spec.h"
+#include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"

@@ -17,7 +17,7 @@
 
 #include <limits>
 
-#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
+#include "tensorflow/contrib/tensor_forest/kernels/data_spec.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
