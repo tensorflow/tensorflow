@@ -135,74 +135,67 @@ def same_dynamic_shape(a, b):
       lambda: constant_op.constant(False))
 
 
-def get_logits_and_prob(
-    logits=None, p=None,
-    multidimensional=False, validate_args=False, name="GetLogitsAndProb"):
-  """Converts logits to probabilities and vice-versa, and returns both.
+def get_logits_and_probs(logits=None,
+                         probs=None,
+                         multidimensional=False,
+                         validate_args=False,
+                         name="get_logits_and_probs"):
+  """Converts logit to probabilities (or vice-versa), and returns both.
 
   Args:
     logits: Numeric `Tensor` representing log-odds.
-    p: Numeric `Tensor` representing probabilities.
+    probs: Numeric `Tensor` representing probabilities.
     multidimensional: `Boolean`, default `False`.
-      If `True`, represents whether the last dimension of `logits` or `p`,
-      a [N1, N2, ... k] dimensional tensor, represent the
-      logits / probability between k classes. For `p`, this will
-      additionally assert that the values in the last dimension sum to one.
-
-      If `False`, this will instead assert that each value of `p` is in
-      `[0, 1]`, and will do nothing to `logits`.
-    validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
-      if multidimensional is `False`, otherwise that the last dimension of `p`
-      sums to one.
+      If `True`, represents whether the last dimension of `logits` or `probs`,
+      a `[N1, N2, ... k]` dimensional tensor, representing the
+      logit or probability of `shape[-1]` classes.
+    validate_args: `Boolean`, default `False`.  When `True`, either assert `0 <=
+      probs <= 1` (if not `multidimensional`) or that the last dimension of
+      `probs` sums to one.
     name: A name for this operation (optional).
 
   Returns:
-    Tuple with `logits` and `p`. If `p` has an entry that is `0` or `1`, then
-    the corresponding entry in the returned logits will be `-Inf` and `Inf`
-    respectively.
+    logits, probs: Tuple of `Tensor`s. If `probs` has an entry that is `0` or
+      `1`, then the corresponding entry in the returned logit will be `-Inf` and
+      `Inf` respectively.
 
   Raises:
-    ValueError: if neither `p` nor `logits` were passed in, or both were.
+    ValueError: if neither `probs` nor `logits` were passed in, or both were.
   """
-  with ops.name_scope(name, values=[p, logits]):
-    if p is None and logits is None:
-      raise ValueError("Must pass p or logits.")
-    elif p is not None and logits is not None:
-      raise ValueError("Must pass either p or logits, not both.")
-    elif p is None:
-      logits = array_ops.identity(logits, name="logits")
-      with ops.name_scope("p"):
+  with ops.name_scope(name, values=[probs, logits]):
+    if (probs is None) == (logits is None):
+      raise ValueError("Must pass probs or logits, but not both.")
+
+    if probs is None:
+      logits = ops.convert_to_tensor(logits, name="logits")
+      if multidimensional:
+        return logits, nn.softmax(logits, name="probs")
+      return logits, math_ops.sigmoid(logits, name="probs")
+
+    probs = ops.convert_to_tensor(probs, name="probs")
+    if validate_args:
+      with ops.name_scope("validate_probs"):
+        one = constant_op.constant(1., probs.dtype)
+        dependencies = [check_ops.assert_non_negative(probs)]
         if multidimensional:
-          p = nn.softmax(logits)
+          dependencies += [assert_close(math_ops.reduce_sum(probs, -1), one,
+                                        message="probs does not sum to 1.")]
         else:
-          p = math_ops.sigmoid(logits)
-    elif logits is None:
-      with ops.name_scope("p"):
-        p = array_ops.identity(p)
-        if validate_args:
-          one = constant_op.constant(1., p.dtype)
-          dependencies = [check_ops.assert_non_negative(p)]
-          if multidimensional:
-            dependencies += [assert_close(
-                math_ops.reduce_sum(p, reduction_indices=[-1]),
-                one, message="p does not sum to 1.")]
-          else:
-            dependencies += [check_ops.assert_less_equal(
-                p, one, message="p has components greater than 1.")]
-          p = control_flow_ops.with_dependencies(dependencies, p)
-      with ops.name_scope("logits"):
-        if multidimensional:
-          # Here we don't compute the multidimensional case, in a manner
-          # consistent with respect to the unidimensional case. We do so
-          # following the TF convention. Typically, you might expect to see
-          # logits = log(p) - log(gather(p, pivot)). A side-effect of being
-          # consistent with the TF approach is that the unidimensional case
-          # implicitly handles the second dimension but the multidimensional
-          # case explicitly keeps the pivot dimension.
-          logits = math_ops.log(p)
-        else:
-          logits = math_ops.log(p) - math_ops.log(1. - p)
-    return (logits, p)
+          dependencies += [check_ops.assert_less_equal(
+              probs, one, message="probs has components greater than 1.")]
+        probs = control_flow_ops.with_dependencies(dependencies, probs)
+
+    with ops.name_scope("logits"):
+      if multidimensional:
+        # Here we don't compute the multidimensional case, in a manner
+        # consistent with respect to the unidimensional case. We do so
+        # following the TF convention. Typically, you might expect to see
+        # logits = log(probs) - log(gather(probs, pivot)). A side-effect of
+        # being consistent with the TF approach is that the unidimensional case
+        # implicitly handles the second dimension but the multidimensional case
+        # explicitly keeps the pivot dimension.
+        return math_ops.log(probs), probs
+      return math_ops.log(probs) - math_ops.log1p(-1. * probs), probs
 
 
 def log_combinations(n, counts, name="log_combinations"):

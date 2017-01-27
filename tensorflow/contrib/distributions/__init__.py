@@ -28,7 +28,7 @@ initialized with parameters that define the distributions.
 
 @@Binomial
 @@Bernoulli
-@@BernoulliWithSigmoidP
+@@BernoulliWithSigmoidProbs
 @@Beta
 @@BetaWithSoftplusAB
 @@Categorical

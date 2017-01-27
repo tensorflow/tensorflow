@@ -34,13 +34,13 @@ from tensorflow.python.ops import random_ops
 class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 
-  The Bernoulli distribution is parameterized by p, the probability of a
-  positive event.
+  The Bernoulli distribution with `probs` parameter, i.e., the probability of a
+  `1` outcome (vs a `0` outcome).
   """
 
   def __init__(self,
                logits=None,
-               p=None,
+               probs=None,
                dtype=dtypes.int32,
                validate_args=False,
                allow_nan_stats=True,
@@ -48,23 +48,24 @@ class Bernoulli(distribution.Distribution):
     """Construct Bernoulli distributions.
 
     Args:
-      logits: An N-D `Tensor` representing the log-odds
-        of a positive event. Each entry in the `Tensor` parametrizes
-        an independent Bernoulli distribution where the probability of an event
-        is sigmoid(logits). Only one of `logits` or `p` should be passed in.
-      p: An N-D `Tensor` representing the probability of a positive
-          event. Each entry in the `Tensor` parameterizes an independent
-          Bernoulli distribution. Only one of `logits` or `p` should be passed
-          in.
-      dtype: dtype for samples.
-      validate_args: `Boolean`, default `False`.  Whether to validate that
-        `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
-        invalid, methods like `log_pmf` may return `NaN` values.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: A name for this distribution.
+      logits: An N-D `Tensor` representing the log-odds of a `1` event. Each
+        entry in the `Tensor` parametrizes an independent Bernoulli distribution
+        where the probability of an event is sigmoid(logits). Only one of
+        `logits` or `probs` should be passed in.
+      probs: An N-D `Tensor` representing the probability of a `1`
+        event. Each entry in the `Tensor` parameterizes an independent
+        Bernoulli distribution. Only one of `logits` or `probs` should be passed
+        in.
+      dtype: The type of the event samples. Default: `int32`.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined.  When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
 
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
@@ -72,10 +73,11 @@ class Bernoulli(distribution.Distribution):
     parameters = locals()
     parameters.pop("self")
     with ops.name_scope(name) as ns:
-      self._logits, self._p = distribution_util.get_logits_and_prob(
-          logits=logits, p=p, validate_args=validate_args)
-      with ops.name_scope("q"):
-        self._q = 1. - self._p
+      self._logits, self._probs = distribution_util.get_logits_and_probs(
+          logits=logits,
+          probs=probs,
+          validate_args=validate_args,
+          name=name)
     super(Bernoulli, self).__init__(
         dtype=dtype,
         is_continuous=False,
@@ -83,7 +85,7 @@ class Bernoulli(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
-        graph_parents=[self._p, self._q, self._logits],
+        graph_parents=[self._logits, self._probs],
         name=ns)
 
   @staticmethod
@@ -92,18 +94,13 @@ class Bernoulli(distribution.Distribution):
 
   @property
   def logits(self):
-    """Log-odds of success."""
+    """Log-odds of a `1` outcome (vs `0`)."""
     return self._logits
 
   @property
-  def p(self):
-    """Probability of success."""
-    return self._p
-
-  @property
-  def q(self):
-    """1-p."""
-    return self._q
+  def probs(self):
+    """Probability of a `1` outcome (vs `0`)."""
+    return self._probs
 
   def _batch_shape(self):
     return array_ops.shape(self._logits)
@@ -120,14 +117,13 @@ class Bernoulli(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     new_shape = array_ops.concat(([n], self.batch_shape()), 0)
     uniform = random_ops.random_uniform(
-        new_shape, seed=seed, dtype=self.p.dtype)
-    sample = math_ops.less(uniform, self.p)
+        new_shape, seed=seed, dtype=self.probs.dtype)
+    sample = math_ops.less(uniform, self.probs)
     return math_ops.cast(sample, self.dtype)
 
   def _log_prob(self, event):
     # TODO(jaana): The current sigmoid_cross_entropy_with_logits has
     # inconsistent  behavior for logits = inf/-inf.
-    event = ops.convert_to_tensor(event, name="event")
     event = math_ops.cast(event, self.logits.dtype)
     logits = self.logits
     # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
@@ -157,30 +153,30 @@ class Bernoulli(distribution.Distribution):
             nn.softplus(-self.logits))
 
   def _mean(self):
-    return array_ops.identity(self.p)
+    return array_ops.identity(self.probs)
 
   def _variance(self):
-    return self.q * self.p
+    return self._mean() * (1. - self.probs)
 
   def _mode(self):
-    """Returns `1` if `p > 1-p` and `0` otherwise."""
-    return math_ops.cast(self.p > self.q, self.dtype)
+    """Returns `1` if `prob > 0.5` and `0` otherwise."""
+    return math_ops.cast(self.probs > 0.5, self.dtype)
 
 
-class BernoulliWithSigmoidP(Bernoulli):
-  """Bernoulli with `p = sigmoid(p)`."""
+class BernoulliWithSigmoidProbs(Bernoulli):
+  """Bernoulli with `probs = nn.sigmoid(logits)`."""
 
   def __init__(self,
-               p=None,
+               logits=None,
                dtype=dtypes.int32,
                validate_args=False,
                allow_nan_stats=True,
-               name="BernoulliWithSigmoidP"):
+               name="BernoulliWithSigmoidProbs"):
     parameters = locals()
     parameters.pop("self")
     with ops.name_scope(name) as ns:
-      super(BernoulliWithSigmoidP, self).__init__(
-          p=nn.sigmoid(p, name="sigmoid_p"),
+      super(BernoulliWithSigmoidProbs, self).__init__(
+          probs=nn.sigmoid(logits, name="sigmoid_probs"),
           dtype=dtype,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
@@ -201,8 +197,9 @@ def _kl_bernoulli_bernoulli(a, b, name=None):
   Returns:
     Batchwise KL(a || b)
   """
-  with ops.name_scope(name, "kl_bernoulli_bernoulli", [a.logits, b.logits]):
-    return (math_ops.sigmoid(a.logits) * (-nn.softplus(-a.logits) +
-                                          nn.softplus(-b.logits)) +
-            math_ops.sigmoid(-a.logits) * (-nn.softplus(a.logits) +
-                                           nn.softplus(b.logits)))
+  with ops.name_scope(name, "kl_bernoulli_bernoulli",
+                      values=[a.logits, b.logits]):
+    delta_probs0 = nn.softplus(-b.logits) - nn.softplus(-a.logits)
+    delta_probs1 = nn.softplus(b.logits) - nn.softplus(a.logits)
+    return (math_ops.sigmoid(a.logits) * delta_probs0
+            + math_ops.sigmoid(-a.logits) * delta_probs1)
