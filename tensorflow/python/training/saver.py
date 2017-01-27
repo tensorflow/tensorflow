@@ -1435,6 +1435,7 @@ class Saver(object):
     """
     if self._is_empty:
       return
+    logging.info("Restoring parameters from %s", save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
