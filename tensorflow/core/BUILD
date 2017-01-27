@@ -629,7 +629,9 @@ cc_library(
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
-    ]),
+    ]) + if_mkl([
+        "//tensorflow/core/kernels:mkl_ops"
+        ]),
 )
 
 tf_cuda_library(
