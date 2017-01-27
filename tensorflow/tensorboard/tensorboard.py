@@ -28,7 +28,6 @@ from werkzeug import serving
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import status_bar
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.tensorboard.backend import application
@@ -91,6 +90,15 @@ FLAGS = flags.FLAGS
 class Server(object):
   """A simple WSGI-compliant http server that can serve TensorBoard."""
 
+  def get_tag(self):
+    """Read the TensorBoard TAG number, and return it or an empty string."""
+    try:
+      tag = resource_loader.load_resource('tensorboard/TAG').strip()
+      logging.info('TensorBoard is tag: %s', tag)
+    except IOError:
+      logging.info('Unable to read TensorBoard tag')
+      tag = ''
+
   def create_app(self):
     """Creates a WSGI-compliant app than can handle TensorBoard requests.
 
@@ -123,15 +131,7 @@ class Server(object):
       logging.set_verbosity(logging.DEBUG)
       logging.warning('TensorBoard is in debug mode. This is NOT SECURE.')
 
-    try:
-      tag = resource_loader.load_resource('tensorboard/TAG').strip()
-      logging.info('TensorBoard is tag: %s', tag)
-    except IOError:
-      logging.info('Unable to read TensorBoard tag')
-      tag = ''
-
-    status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
-    print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
+    print('Starting TensorBoard %s on port %d' % (self.get_tag(), FLAGS.port))
     if FLAGS.host == '0.0.0.0':
       try:
         host = socket.gethostbyname(socket.gethostname())
