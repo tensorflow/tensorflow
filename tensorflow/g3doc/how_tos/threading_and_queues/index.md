@@ -102,8 +102,8 @@ also has support to capture and report exceptions.  See the [Coordinator class](
 
 ## QueueRunner
 
-The `QueueRunner` class creates a number of threads that repeatedly run an
-enqueue op.  These threads can use a coordinator to stop together.  In
+The `QueueRunner` class creates a number of threads that run an
+enqueue op when the queue is not full.  These threads can use a coordinator to stop together.  In
 addition, a queue runner runs a *closer thread* that automatically closes the
 queue if an exception is reported to the coordinator.
 

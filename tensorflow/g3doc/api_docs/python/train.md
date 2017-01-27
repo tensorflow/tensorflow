@@ -1808,6 +1808,7 @@ Wait till the Coordinator is told to stop.
 ### `class tf.train.QueueRunner` {#QueueRunner}
 
 Holds a list of enqueue operations for a queue, each to be run in a thread.
+It asynchronously runs the enqueue ops in different threads when the queuue is not full.
 
 Queues are a convenient TensorFlow mechanism to compute tensors
 asynchronously using multiple threads. For example in the canonical 'Input
