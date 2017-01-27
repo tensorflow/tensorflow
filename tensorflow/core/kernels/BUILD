@@ -3604,6 +3604,7 @@ filegroup(
         "cwise_op_mul_1.cc",
         "cwise_op_mul_2.cc",
         "cwise_op_neg.cc",
+        "cwise_op_pow.cc",
         "cwise_op_reciprocal.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
