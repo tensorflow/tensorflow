@@ -44,6 +44,13 @@ function bazel_clean_and_fetch() {
   bazel fetch "//tensorflow/... -//tensorflow/examples/android/..."
 }
 
+# Delete any leftover BUILD files from the Makefile build, which would interfere
+# with Bazel parsing.
+MAKEFILE_DOWNLOAD_DIR=tensorflow/contrib/makefile/downloads
+if [ -d "${MAKEFILE_DOWNLOAD_DIR}" ]; then
+  find ${MAKEFILE_DOWNLOAD_DIR} -type f -name '*BUILD' -delete
+fi
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""
