@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import time
 
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -345,7 +346,7 @@ def make_export_strategy(serving_input_fn,
       collection.
 
   Returns:
-    an ExportStrategy that can be passed to the Experiment constructor.
+    An ExportStrategy that can be passed to the Experiment constructor.
   """
 
   def export_fn(estimator, export_dir_base):
@@ -370,3 +371,26 @@ def make_export_strategy(serving_input_fn,
     return export_result
 
   return export_strategy.ExportStrategy('Servo', export_fn)
+
+
+def make_parsing_export_strategy(feature_columns, exports_to_keep=5):
+  """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
+
+  Creates a SavedModel export that expects to be fed with a single string
+  Tensor containing serialized tf.Examples.  At serving time, incoming
+  tf.Examples will be parsed according to the provided `FeatureColumn`s.
+
+  Args:
+    feature_columns: An iterable of `FeatureColumn`s representing the features
+      that must be provided at serving time (excluding labels!).
+    exports_to_keep: Number of exports to keep.  Older exports will be
+      garbage-collected.  Defaults to 5.  Set to None to disable garbage
+      collection.
+
+  Returns:
+    An ExportStrategy that can be passed to the Experiment constructor.
+  """
+  feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
+  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  return make_export_strategy(serving_input_fn, exports_to_keep=exports_to_keep)
+

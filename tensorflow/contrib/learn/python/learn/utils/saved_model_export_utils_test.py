@@ -29,6 +29,7 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
+from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.learn.python.learn import export_strategy as export_strategy_lib
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
@@ -648,6 +649,25 @@ class SavedModelExportUtilsTest(test.TestCase):
         assets_extra={"from/path": "to/path"},
         as_text=False,
         exports_to_keep=5)
+    self.assertTrue(
+        isinstance(export_strategy, export_strategy_lib.ExportStrategy))
+
+  def test_make_parsing_export_strategy(self):
+    """Only tests that an ExportStrategy instance is created."""
+    sparse_col = fc.sparse_column_with_hash_bucket(
+        "sparse_column", hash_bucket_size=100)
+    embedding_col = fc.embedding_column(
+        fc.sparse_column_with_hash_bucket(
+            "sparse_column_for_embedding", hash_bucket_size=10),
+        dimension=4)
+    real_valued_col1 = fc.real_valued_column("real_valued_column1")
+    bucketized_col1 = fc.bucketized_column(
+        fc.real_valued_column("real_valued_column_for_bucketization1"), [0, 4])
+    feature_columns = [sparse_col, embedding_col, real_valued_col1,
+                       bucketized_col1]
+
+    export_strategy = saved_model_export_utils.make_parsing_export_strategy(
+        feature_columns=feature_columns)
     self.assertTrue(
         isinstance(export_strategy, export_strategy_lib.ExportStrategy))
 
