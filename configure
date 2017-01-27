@@ -168,10 +168,10 @@ done
 
 if [ "$TF_ENABLE_XLA" == "1" ]; then
   # Update Bazel build configuration.
-  sed -i -e "s/WITH_XLA_SUPPORT = (False|True)/WITH_XLA_SUPPORT = True/" tensorflow/core/platform/default/build_config_root.bzl
+  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  sed -i -e "s/WITH_XLA_SUPPORT = (False|True)/WITH_XLA_SUPPORT = False/" tensorflow/core/platform/default/build_config_root.bzl
+  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
 fi
 
 

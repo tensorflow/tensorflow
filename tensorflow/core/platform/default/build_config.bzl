@@ -7,6 +7,7 @@ load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 # configure may change the following lines
 WITH_GCP_SUPPORT = False
 WITH_HDFS_SUPPORT = False
+WITH_XLA_SUPPORT = False
 WITH_JEMALLOC = True
 
 # Appends a suffix to a list of deps.
@@ -241,3 +242,15 @@ def tf_additional_cloud_kernel_deps():
   #if WITH_GCP_SUPPORT:
   #  deps = if_not_mobile(["//tensorflow/core:cloud_ops_op_lib"])
   return deps
+
+def tf_additional_plugin_deps():
+  deps = []
+  if WITH_XLA_SUPPORT:
+    deps.append("//tensorflow/compiler/jit")
+  return deps
+
+def tf_additional_license_deps():
+  licenses = []
+  if WITH_XLA_SUPPORT:
+    licenses.append("@llvm//:LICENSE.TXT")
+  return licenses
