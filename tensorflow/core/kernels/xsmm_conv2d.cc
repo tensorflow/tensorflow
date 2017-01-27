@@ -195,6 +195,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   libxsmm_dnn_err_t status;
   libxsmm_dnn_layer* libxsmm_handle;
   libxsmm_dnn_conv_desc_wrap w(desc);
+  void* scratch;
  
   if(kind == LIBXSMM_DNN_COMPUTE_KIND_FWD)
     libxsmm_handle = libxsmm_handles.find(w);
@@ -279,13 +280,29 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
 
   chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
 
-  chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_INPUT),
-                  "Bind input");
-  chk_libxsmm_err(
-      libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_OUTPUT),
-      "Bind output");
-  chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_FILTER),
-                  "Bind filter");
+
+  if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
+    chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_REGULAR_INPUT),
+                    "Bind input forward");
+    chk_libxsmm_err(
+        libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_REGULAR_OUTPUT),
+        "Bind output forward");
+    chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_REGULAR_FILTER),
+                    "Bind filter forward");
+  } else {
+    chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_GRADIENT_INPUT),
+                    "Bind input backward");
+    chk_libxsmm_err(
+        libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_GRADIENT_OUTPUT),
+        "Bind output backward");
+    chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_REGULAR_FILTER),
+                    "Bind filter backward");
+  }
+
+  /* bind scratch */
+  scratch = (void*)libxsmm_aligned_scratch( libxsmm_dnn_get_scratch_size( libxsmm_handle, kind, &status ), 2097152);
+  chk_libxsmm_err( status, "scratch allocation" );
+  chk_libxsmm_err( libxsmm_dnn_bind_scratch( libxsmm_handle, kind, scratch ), "binding scratch" );
 
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_BWD) {
     libxsmm_dnn_transpose_filter(libxsmm_handle, LIBXSMM_DNN_FILTER);
@@ -293,8 +310,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
 
   BlockingCounter counter(num_threads);
   
-
-
   for (int i = 0; i < num_threads; ++i) {
     worker_threads->workers->Schedule([=, &counter]() {
       chk_libxsmm_err(libxsmm_dnn_execute_st(libxsmm_handle, kind, 0, i),
@@ -303,6 +318,18 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     });
   }
   counter.Wait();
+
+  /* clean up */
+  chk_libxsmm_err( libxsmm_dnn_release_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL ), "release scratch" );
+  if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
+    chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_INPUT ), "release input" );
+    chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_OUTPUT ), "release output" );
+    chk_libxsmm_err( libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_REGULAR_FILTER ), "release filter" );
+  } else {
+    chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_INPUT ), "release input" );
+    chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_OUTPUT ), "release output" );
+    chk_libxsmm_err( libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_REGULAR_FILTER ), "release filter" );
+  }
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_input), "Destroy input");
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_output), "Destroy output");
   chk_libxsmm_err(libxsmm_dnn_destroy_filter(libxsmm_filter), "Destroy filter");
@@ -310,7 +337,9 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   if(kind != LIBXSMM_DNN_COMPUTE_KIND_FWD)
     chk_libxsmm_err(libxsmm_dnn_destroy_conv_layer(libxsmm_handle),
                   "Destroy handle");
+
   libxsmm_free(native_filter);
+  libxsmm_free(scratch);
   return true;  // Succeeded
 }
 
