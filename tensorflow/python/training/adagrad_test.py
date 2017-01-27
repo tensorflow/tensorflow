@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -30,11 +31,15 @@ from tensorflow.python.training import adagrad
 
 class AdagradOptimizerTest(test.TestCase):
 
-  def doTestBasic(self, use_locking=False):
+  def doTestBasic(self, use_locking=False, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+          var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         ada_opt = adagrad.AdagradOptimizer(
@@ -56,6 +61,9 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testBasic(self):
     self.doTestBasic(use_locking=False)
+
+  def testBasicResource(self):
+    self.doTestBasic(use_locking=False, use_resource=True)
 
   def testBasicLocked(self):
     self.doTestBasic(use_locking=True)

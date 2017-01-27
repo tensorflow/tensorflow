@@ -31,6 +31,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 
 
+def _var_key(var):
+  return (var.op.graph, var.op.name)
+
+
 class _OptimizableVariable(object):
   """Interface for abstracting over variables in the optimizers."""
 
@@ -450,7 +454,7 @@ class Optimizer(object):
     named_slots = self._slots.get(name, None)
     if not named_slots:
       return None
-    return named_slots.get(var, None)
+    return named_slots.get(_var_key(var), None)
 
   def get_slot_names(self):
     """Return a list of the names of slots created by the `Optimizer`.
@@ -588,9 +592,9 @@ class Optimizer(object):
       A `Variable` object.
     """
     named_slots = self._slot_dict(slot_name)
-    if var not in named_slots:
-      named_slots[var] = slot_creator.create_slot(var, val, op_name)
-    return named_slots[var]
+    if _var_key(var) not in named_slots:
+      named_slots[_var_key(var)] = slot_creator.create_slot(var, val, op_name)
+    return named_slots[_var_key(var)]
 
   def _zeros_slot(self, var, slot_name, op_name):
     """Find or create a slot initialized with 0.0.
@@ -605,6 +609,6 @@ class Optimizer(object):
       A `Variable` object.
     """
     named_slots = self._slot_dict(slot_name)
-    if var not in named_slots:
-      named_slots[var] = slot_creator.create_zeros_slot(var, op_name)
-    return named_slots[var]
+    if _var_key(var) not in named_slots:
+      named_slots[_var_key(var)] = slot_creator.create_zeros_slot(var, op_name)
+    return named_slots[_var_key(var)]

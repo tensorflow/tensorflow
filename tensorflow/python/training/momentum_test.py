@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
@@ -39,11 +40,15 @@ class MomentumOptimizerTest(test.TestCase):
     var = var - accum * lr * momentum
     return var, accum
 
-  def testBasic(self):
+  def doTestBasic(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+          var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         mom_opt = momentum_lib.MomentumOptimizer(
@@ -92,6 +97,12 @@ class MomentumOptimizerTest(test.TestCase):
                 2.98 - ((0.9 * 0.01 + 0.01) * 2.0), 3.98 - (
                     (0.9 * 0.01 + 0.01) * 2.0)
             ]), var1.eval())
+
+  def testBasic(self):
+    self.doTestBasic(use_resource=False)
+
+  def testResourceBasic(self):
+    self.doTestBasic(use_resource=True)
 
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:

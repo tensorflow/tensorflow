@@ -30,7 +30,7 @@ from tensorflow.python.training import proximal_adagrad
 
 class ProximalAdagradOptimizerTest(test.TestCase):
 
-  def testProximalAdagradwithoutRegularization(self):
+  def doTestProximalAdagradwithoutRegularization(self, use_resource=False):
     with self.test_session() as sess:
       var0 = variables.Variable([0.0, 0.0])
       var1 = variables.Variable([0.0, 0.0])
@@ -55,6 +55,12 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([-2.60260963, -4.29698515]), v0_val)
       self.assertAllClose(np.array([-0.28432083, -0.56694895]), v1_val)
+
+  def testProximalAdagradwithoutRegularization(self):
+    self.doTestProximalAdagradwithoutRegularization(use_resource=False)
+
+  def testResourceProximalAdagradwithoutRegularization(self):
+    self.doTestProximalAdagradwithoutRegularization(use_resource=True)
 
   def testProximalAdagradwithoutRegularization2(self):
     with self.test_session() as sess:

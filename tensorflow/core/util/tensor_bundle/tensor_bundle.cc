@@ -612,7 +612,8 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_CHECK_OK(status_);
   Seek(key);
   if (!iter_->Valid() || iter_->key() != key) {
-    return errors::NotFound("Key ", key, " not found in checkpoint");
+    return errors::NotFound("Key ", key, " not found in checkpoint. Found: \n",
+                            DebugString());
   }
 
   BundleEntryProto entry_copy;
