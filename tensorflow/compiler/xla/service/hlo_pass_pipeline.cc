@@ -28,6 +28,15 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+void DumpModule(const Compiler::HloDumper& dumper_, const HloModule& module,
+                const string& message) {
+  dumper_(module, message);
+  VLOG(2) << "HLO " << message << ":";
+  XLA_VLOG_LINES(2, module.ToString());
+}
+}  // namespace
+
 StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   legacy_flags::HloPassPipelineFlags* flags =
       legacy_flags::GetHloPassPipelineFlags();
@@ -47,10 +56,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();
     tensorflow::strings::StrAppend(&message, prefix, ", before ", pass->name());
-    dumper_(*module, message);
-
-    VLOG(2) << "HLO " << message << ":";
-    XLA_VLOG_LINES(2, module->ToString());
+    DumpModule(dumper_, *module, message);
 
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
 
@@ -58,7 +64,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     prefix.clear();
     tensorflow::strings::StrAppend(&prefix, name(), ": after ", pass->name());
   }
-  dumper_(*module, prefix + ", pipeline end");
+  DumpModule(dumper_, *module, prefix + ", pipeline end");
   return changed;
 }
 

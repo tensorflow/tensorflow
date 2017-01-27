@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -317,7 +318,10 @@ class BufferAssigner {
   // included.
   tensorflow::Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
-      const std::unordered_set<const HloInstruction*>* hlos_to_allocate,
+      const tensorflow::gtl::FlatSet<const HloInstruction*>* hlos_to_allocate,
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
+      const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
+          colocated_allocations,
       BufferAssignment* assignment);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
@@ -330,27 +334,28 @@ class BufferAssigner {
   // alias. Explicitly handling these colocated buffers is necessary because
   // points-to analysis is computation level scope and does not recognize
   // aliasing across computations (b/32491382).
-  using ColocatedBufferSet = std::vector<const LogicalBuffer*>;
+  using ColocatedBufferSet = tensorflow::gtl::FlatSet<const LogicalBuffer*>;
 
   // Returns a vector of ColocatedBufferSet objects, where each
   // ColocatedBufferSet aggregates a set of related LogicalBuffers from 'module'
   // which should be colocated in the same buffer allocation.
-  std::vector<ColocatedBufferSet> BuildColocatedBufferSets(
-      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis);
+  void BuildColocatedBufferSets(
+      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   // For each buffer set in 'colocated_buffer_sets', assigns all buffers in the
   // same set to the same buffer allocation in 'assignment'.
   void AssignColocatedBufferSets(
       const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
-      BufferAssignment* assignment);
+      BufferAssignment* assignment,
+      tensorflow::gtl::FlatSet<const LogicalBuffer*>* colocated_buffers,
+      tensorflow::gtl::FlatSet<BufferAllocation::Index>* colocated_allocations);
 
-  // Checks that points-to set of 'instruction' is unambiguous and distinct
-  // (ensured by CopyInsertion), then adds buffer from point-to set at 'index'
-  // to 'colocated_buffer_set'.
-  void AddBufferToColocatedBufferSet(
-      const HloInstruction* instruction, const ShapeIndex& index,
-      const TuplePointsToAnalysis& points_to_analysis,
-      BufferAssigner::ColocatedBufferSet* colocated_buffer_set);
+  // Adds the 'colocated_set' of buffers to 'colocated_buffer_sets', maintaining
+  // the invariant that all sets in 'colocated_buffer_sets' are disjoint.
+  void AddSetToColocatedBufferSets(
+      const std::vector<const LogicalBuffer*>& colocated_set,
+      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   const HloModule* module_;
 
@@ -359,12 +364,6 @@ class BufferAssigner {
 
   // Indicates whether related buffers should share the same buffer allocation.
   const bool colocate_related_buffers_;
-
-  // Set of colocated buffers populated in AssignColocatedBufferSets.
-  std::unordered_set<const LogicalBuffer*> colocated_buffers_;
-
-  // Set of allocations containing colocated buffers.
-  std::unordered_set<BufferAllocation::Index> colocated_buffer_allocations_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };
