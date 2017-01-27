@@ -1,6 +1,7 @@
-# Release 1.0.0-alpha
+# Release 1.0.0
 
 ## Major Features and Improvements
+* XLA (experimental): initial release of [XLA](https://www.tensorflow.org/versions/master/experimental/xla/), a domain-specific compiler for TensorFlow graphs, that targets CPUs and GPUs.
 * TensorFlow Debugger (tfdbg): command-line interface and API.
 * New python 3 docker images added.
 * Made pip packages pypi compliant. TensorFlow can now be installed by `pip
@@ -8,11 +9,11 @@
 * Several python API calls have been changed to resemble NumPy more closely.
 * Android: person detection + tracking demo implementing Scalable Object
   Detection using Deep Neural Networks.
-* Android: pre-built libs are now built nightly.
 * New (experimental) [Java API](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/java).
+* Add new Android image stylization demo based on "A Learned Representation For Artistic Style", and add YOLO object detector support.
 
 ## Breaking Changes to the API
-
+To help you upgrade your existing TensorFlow Python code to match the API changes below, we have prepared a [conversion script](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/compatibility).
 * TensorFlow/models have been moved to a separate github repository.
 * Division and modulus operators (/, //, %) now match Python (flooring)
   semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
@@ -63,9 +64,7 @@
   keywords. In particular we now match NumPy order as
   `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
   made `tf.sparse_split` require keyword arguments.
-* Deprecated `tf.concat` operator. Please switch to use `tf.concat_v2` for now.
-  In the Beta release, we will update `tf.concat` to match argument order of
-  `tf.concat_v2`.
+* `tf.concat` now takes arguments in reversed order and with different keywords. In particular we now match NumPy order as `tf.concat(values, axis, name)`.
 * `tf.image.decode_jpeg` by default uses the faster DCT method, sacrificing
   a little fidelity for improved speed. One can revert to the old
   behavior by specifying the attribute `dct_method='INTEGER_ACCURATE'`.
@@ -78,12 +77,14 @@
   `tf.zeros_initializer` with `tf.zeros_initializer()`.
 * `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
   `SparseTensorValue.shape`.
-* Remove old tf summary ops, like `tf.scalar_summary` and `tf.histogram_summary`.
-  Use `tf.summary.scalar` and `tf.summary.histogram` instead.
-* Remove tf.train.SummaryWriter and tf.train.SummaryWriterCache.
+* Replace tf.scalar_summary, tf.histogram_summary, tf.audio_summary, tf.image_summary with tf.summary.scalar, tf.summary.histogram, tf.summary.audio, tf.summary.image, respectively. The new summary ops take name rather than tag as their first argument, meaning summary ops now respect TensorFlow name scopes.
+* Replace tf.train.SummaryWriter and tf.train.SummaryWriterCache with tf.summary.FileWriter and tf.summary.FileWriterCache. 
 * Removes RegisterShape from public API. Use C++ shape function registration
   instead.
 * Deprecated `_ref` dtypes from the python API.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
+* Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
 
 ## Bug Fixes and Other Changes
 * New op: `parallel_stack`.
@@ -103,19 +104,27 @@
 * Added a tf.contrib.image.rotate function for arbitrary angles.
 * Added `tf.contrib.framework.filter_variables` as a convenience function to
   filter lists of variables based on regular expressions.
-* Remove old tf summary ops, like `tf.scalar_summary` and `tf.histogram_summary`.
-  Use `tf.summary.scalar` and `tf.summary.histogram` instead.
 * `make_template()` takes an optional `custom_getter_ param`.
 * Added comment about how existing directories are handled by
   `recursive_create_dir`.
 * Added an op for QR factorizations.
 * Divides and mods in Python API now use flooring (Python) semantics.
+* Android: pre-built libs are now built nightly.
 * Android: cmake/gradle build for TensorFlow Inference library under
   `contrib/android/cmake`
 * Android: Much more robust Session initialization code.
 * Android: TF stats now exposed directly in demo and log when debug mode is
   active
 * Android: new/better README.md documentation
+* saved_model is available as `tf.saved_model`.
+* Empty op is now stateful.
+* Improve speed of scatter_update on the cpu for ASSIGN operations.
+* Change `reduce_join` to treat `reduction_indices` in the same way as other `reduce_` ops.
+* Move `TensorForestEstimator` to `contrib/tensor_forest`.
+* Enable compiler optimizations by default and allow configuration in configure.
+* `tf.divide` now honors the name field.
+* Make metrics weight broadcasting more strict.
+* Add new queue-like `StagingArea` and new ops: `stage` and `unstage`.
 
 ## Thanks to our Contributors
 
@@ -139,6 +148,7 @@ Yuan (Terry) Tang, Yuxin Wu
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
+
 
 # Release 0.12.0
 

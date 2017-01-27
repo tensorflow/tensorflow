@@ -1301,7 +1301,7 @@ class AffineBijectorTest(test.TestCase):
   def _matrix_diag(self, d):
     """Batch version of np.diag."""
     orig_shape = d.shape
-    d = np.reshape(d, (np.prod(d.shape[:-1]), d.shape[-1]))
+    d = np.reshape(d, (int(np.prod(d.shape[:-1])), d.shape[-1]))
     diag_list = []
     for i in range(d.shape[0]):
       diag_list.append(np.diag(d[i, ...]))
