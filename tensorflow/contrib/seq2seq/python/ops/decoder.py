@@ -132,6 +132,8 @@ def _create_zero_outputs(size, dtype, batch_size):
 
 def dynamic_decode_rnn(decoder,
                        output_time_major=False,
+                       impute_finished=False,
+                       maximum_iterations=None,
                        parallel_iterations=32,
                        swap_memory=False,
                        scope=None):
@@ -143,6 +145,14 @@ def dynamic_decode_rnn(decoder,
       `True`, outputs are returned as time major tensors (this mode is faster).
       Otherwise, outputs are returned as batch major tensors (this adds extra
       time to the computation).
+    impute_finished: Python boolean.  If `True`, then states for batch
+      entries which are marked as finished get copied through and the
+      corresponding outputs get zeroed out.  This causes some slowdown at
+      each time step, but ensures that the final state and outputs have
+      the correct values and that backprop ignores time steps that were
+      marked as finished.
+    maximum_iterations: `int32` scalar, maximum allowed number of decoding
+       steps.  Default is `None` (decode until the decoder is fully done).
     parallel_iterations: Argument passed to `tf.while_loop`.
     swap_memory: Argument passed to `tf.while_loop`.
     scope: Optional variable scope to use.
@@ -152,6 +162,7 @@ def dynamic_decode_rnn(decoder,
 
   Raises:
     TypeError: if `decoder` is not an instance of `Decoder`.
+    ValueError: if maximum_iterations is provided but is not a scalar.
   """
   if not isinstance(decoder, Decoder):
     raise TypeError("Expected decoder to be type Decoder, but saw: %s" %
@@ -162,11 +173,20 @@ def dynamic_decode_rnn(decoder,
     if varscope.caching_device is None:
       varscope.set_caching_device(lambda op: op.device)
 
+    if maximum_iterations is not None:
+      maximum_iterations = ops.convert_to_tensor(
+          maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
+      if maximum_iterations.get_shape().ndims != 0:
+        raise ValueError("maximum_iterations must be a scalar")
+
     zero_outputs = _create_zero_outputs(decoder.output_size,
                                         decoder.output_dtype,
                                         decoder.batch_size)
 
     initial_finished, initial_inputs, initial_state = decoder.initialize()
+    if maximum_iterations is not None:
+      initial_finished = math_ops.logical_or(
+          initial_finished, 0 >= maximum_iterations)
     initial_time = constant_op.constant(0, dtype=dtypes.int32)
 
     def _shape(batch_size, from_shape):
@@ -208,22 +228,33 @@ def dynamic_decode_rnn(decoder,
       (next_outputs, decoder_state, next_inputs,
        decoder_finished) = decoder.step(time, inputs, state)
       next_finished = math_ops.logical_or(decoder_finished, finished)
+      if maximum_iterations is not None:
+        next_finished = math_ops.logical_or(
+            next_finished, time + 1 >= maximum_iterations)
 
       nest.assert_same_structure(state, decoder_state)
       nest.assert_same_structure(outputs_ta, next_outputs)
       nest.assert_same_structure(inputs, next_inputs)
 
       # Zero out output values past finish
-      emit = nest.map_structure(
-          lambda out, zero: array_ops.where(finished, zero, out), next_outputs,
-          zero_outputs)
+      if impute_finished:
+        emit = nest.map_structure(
+            lambda out, zero: array_ops.where(finished, zero, out),
+            next_outputs,
+            zero_outputs)
+      else:
+        emit = next_outputs
 
       # Copy through states past finish
       def _maybe_copy_state(new, cur):
         return (new if isinstance(cur, tensor_array_ops.TensorArray) else
                 array_ops.where(finished, cur, new))
+      if impute_finished:
+        next_state = nest.map_structure(
+            _maybe_copy_state, decoder_state, state)
+      else:
+        next_state = decoder_state
 
-      next_state = nest.map_structure(_maybe_copy_state, decoder_state, state)
       outputs_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
                                       outputs_ta, emit)
       return (time + 1, outputs_ta, next_state, next_inputs, next_finished)

@@ -104,9 +104,8 @@ class BasicSamplingDecoderTest(test.TestCase):
                           sess_results["step_finished"])
       self.assertAllEqual([-1] * 5, sess_results["step_outputs"].sample_id)
 
-  def testStepWithArgmaxEmbeddingInferenceSampler(self):
+  def testStepWithGreedyEmbeddingSampler(self):
     batch_size = 5
-    max_time = 8
     vocabulary_size = 7
     cell_depth = vocabulary_size  # cell's logits must match vocabulary size
     input_depth = 10
@@ -117,8 +116,8 @@ class BasicSamplingDecoderTest(test.TestCase):
       embeddings = np.random.randn(vocabulary_size,
                                    input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(vocabulary_size)
-      sampler = sampling_decoder.ArgmaxEmbeddingInferenceSampler(
-          embeddings, start_tokens, end_token, max_time=max_time)
+      sampler = sampling_decoder.GreedyEmbeddingSampler(
+          embeddings, start_tokens, end_token)
       my_decoder = sampling_decoder.BasicSamplingDecoder(
           cell=cell,
           sampler=sampler,
@@ -163,8 +162,8 @@ class BasicSamplingDecoderTest(test.TestCase):
           "step_finished": step_finished
       })
 
-      expected_sample_ids = np.argmax(sess_results["step_outputs"].rnn_output,
-                                      -1)
+      expected_sample_ids = np.argmax(
+          sess_results["step_outputs"].rnn_output, -1)
       expected_step_finished = (expected_sample_ids == end_token)
       expected_step_next_inputs = embeddings[expected_sample_ids]
       self.assertAllEqual([False, False, False, False, False],

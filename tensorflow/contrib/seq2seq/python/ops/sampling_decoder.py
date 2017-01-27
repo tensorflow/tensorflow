@@ -195,14 +195,14 @@ class BasicTrainingSampler(Sampler):
     return (sample_id, finished, next_inputs)
 
 
-class ArgmaxEmbeddingInferenceSampler(Sampler):
+class GreedyEmbeddingSampler(Sampler):
   """A (non-)sampler for use during inference.
 
   Uses the argmax of the output (treated as logits) and passes the
   result through an embedding layer to get the next input.
   """
 
-  def __init__(self, embedding, start_tokens, end_token, max_time=None):
+  def __init__(self, embedding, start_tokens, end_token):
     """Initializer.
 
     Args:
@@ -210,8 +210,6 @@ class ArgmaxEmbeddingInferenceSampler(Sampler):
         or the `params` argument for `embedding_lookup`.
       start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
       end_token: `int32` scalar, the token that marks end of decoding.
-      max_time: `int32` scalar, maximum allowed number of decoding steps.
-        Default is `None` (decode until `end_token` is seen).
 
     Raises:
       ValueError: if `sequence_length` is not a 1D tensor.
@@ -234,13 +232,6 @@ class ArgmaxEmbeddingInferenceSampler(Sampler):
     self._batch_size = array_ops.size(self._start_tokens)
     if self._end_token.get_shape().ndims != 0:
       raise ValueError("end_token must be a scalar")
-    if max_time is not None:
-      self._max_time = ops.convert_to_tensor(
-          max_time, dtype=dtypes.int32, name="max_time")
-      if self._max_time.get_shape().ndims != 0:
-        raise ValueError("max_time must be a scalar")
-    else:
-      self._max_time = None
     self._start_inputs = self._embedding_fn(self._start_tokens)
 
   @property
@@ -248,11 +239,7 @@ class ArgmaxEmbeddingInferenceSampler(Sampler):
     return self._batch_size
 
   def initialize(self):
-    if self._max_time is not None:
-      finished = array_ops.tile([math_ops.equal(self._max_time, 0)],
-                                [self._batch_size])
-    else:
-      finished = array_ops.tile([False], [self._batch_size])
+    finished = array_ops.tile([False], [self._batch_size])
     return (finished, self._start_inputs)
 
   def sample(self, time, outputs, **unused_kwargs):
@@ -262,8 +249,6 @@ class ArgmaxEmbeddingInferenceSampler(Sampler):
                       outputs)
     sample_ids = math_ops.cast(math_ops.argmax(outputs, axis=-1), dtypes.int32)
     finished = math_ops.equal(sample_ids, self._end_token)
-    if self._max_time is not None:
-      finished = math_ops.logical_or(finished, time + 1 >= self._max_time)
     all_finished = math_ops.reduce_all(finished)
 
     next_inputs = control_flow_ops.cond(
