@@ -135,6 +135,10 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape,
                                                       const string& config);
 
+  // Creates an outfeed instruction, which outputs data.
+  static std::unique_ptr<HloInstruction> CreateOutfeed(
+      HloInstruction* operand, tensorflow::StringPiece outfeed_config);
+
   // Creates a send instruction with the given channel id, which sends the
   // operand data to a unique receive instruction in another computation that
   // has the same channel id.
@@ -419,6 +423,10 @@ class HloInstruction {
   // Returns the custom_call_target for CustomCall.
   // Precondition: opcode() == HloOpcode::kCustomCall
   const string& custom_call_target() const;
+
+  // Returns the config for the Outfeed instruction.
+  // Precondition: opcode() == HloOpcode::kOutfeed
+  const string& outfeed_config() const;
 
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
@@ -779,6 +787,9 @@ class HloInstruction {
   // kSelectAndScatter.
   HloComputation* select_ = nullptr;
   HloComputation* scatter_ = nullptr;
+
+  // Outfeed configuration information, only present for kOutfeed.
+  string outfeed_config_;
 
   // Instruction operands.
   std::vector<HloInstruction*> operands_;
