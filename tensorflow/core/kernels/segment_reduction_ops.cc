@@ -281,7 +281,7 @@ class UnsortedSegmentBaseOp : public OpKernel {
   explicit UnsortedSegmentBaseOp(
       OpKernelConstruction* context,
       functor::UnsortedSegmentBaseFunctor<Device, T, Index>& functor)
-      : OpKernel(context), reductionFunctor(functor) {}
+      : OpKernel(context), reduction_functor_(functor) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& data = context->input(0);
@@ -317,11 +317,12 @@ class UnsortedSegmentBaseOp : public OpKernel {
     auto output_flat = output->flat_outer_dims<T>();
 
     auto data_ptr = data.template flat<T>().data();
-    reductionFunctor(context, context->template eigen_device<Device>(),
+    reduction_functor_(context, context->template eigen_device<Device>(),
                      output_rows, segment_ids.shape(), segment_flat,
                      data.NumElements(), data_ptr, output_flat);
   }
-  functor::UnsortedSegmentBaseFunctor<Device, T, Index>& reductionFunctor;
+ private:
+  functor::UnsortedSegmentBaseFunctor<Device, T, Index>& reduction_functor_;
 };
 
 template <typename Device, class T, class Index>
@@ -330,8 +331,9 @@ class UnsortedSegmentSumOp : public UnsortedSegmentBaseOp<Device, T, Index> {
   explicit UnsortedSegmentSumOp(OpKernelConstruction* context)
       : UnsortedSegmentBaseOp<Device, T, Index>(
             context,
-            sumFunctor) {}
-    functor::UnsortedSegmentSumFunctor<Device, T, Index> sumFunctor;
+            sum_functor_) {}
+ private:
+    functor::UnsortedSegmentSumFunctor<Device, T, Index> sum_functor_;
 };
 
 template <typename Device, class T, class Index>
@@ -340,8 +342,9 @@ class UnsortedSegmentMaxOp : public UnsortedSegmentBaseOp<Device, T, Index> {
   explicit UnsortedSegmentMaxOp(OpKernelConstruction* context)
       : UnsortedSegmentBaseOp<Device, T, Index>(
             context,
-            maxFunctor) {}
-    functor::UnsortedSegmentMaxFunctor<Device, T, Index> maxFunctor;
+            max_functor_) {}
+ private:
+    functor::UnsortedSegmentMaxFunctor<Device, T, Index> max_functor_;
 };
 
 #define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                  \
