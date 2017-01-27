@@ -923,7 +923,7 @@ Note also that `bazel test` will not always properly resolve dependencies
 through these symlinks, so test results may be unreliable. A workaround is to
 remove the `_python_build` directory before running `bazel test`.
 
-One more thing is that `python setup.py development` does not install the packages listed in "REQUIRED_PACKAGES" part of setup.py. You might need to install them separately.
+One more thing is that `python setup.py development` does not install the packages listed in `REQUIRED_PACKAGES` part of `setup.py`. You might need to install them separately.
 
 ## Train your first TensorFlow neural net model
 
