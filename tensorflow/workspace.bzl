@@ -330,11 +330,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/d78f00a4d1a7031f5b52d7907a054f2be16f38d5.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/d78f00a4d1a7031f5b52d7907a054f2be16f38d5.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
       ],
-      sha256 = "99d4095ba83b696372700eaef2051fed5ea26903d64b4d364e63cc1848b24bd1",
-      strip_prefix = "llvm-d78f00a4d1a7031f5b52d7907a054f2be16f38d5",
+      sha256 = "0e08c91752732227280466d12f330a5854569deddf28ff4a6c3898334dbb0d16",
+      strip_prefix = "llvm-2276fd31f36aa58f39397c435a8be6632d8c8505",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
