@@ -989,6 +989,41 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
       GetAllocation(*assignment, custom_call, /*index=*/{1}).maybe_live_out());
 }
 
+TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
+  // Test a computation which returns a tuple call value.
+  auto module = MakeUnique<HloModule>(TestName());
+  auto elem_shape = f32vec4_;
+  auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
+
+  auto sub_builder = HloComputation::Builder(TestName() + "_sub");
+  auto sub_param = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, elem_shape, "sub_param"));
+  auto sub_tuple =
+      sub_builder.AddInstruction(HloInstruction::CreateTuple({sub_param}));
+  auto sub_computation = module->AddEmbeddedComputation(sub_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, elem_shape, "param"));
+  auto call = builder.AddInstruction(
+      HloInstruction::CreateCall(tuple_shape, {param}, sub_computation));
+  module->AddEntryComputation(builder.Build());
+
+  auto assignment = RunBufferAssignment(module.get());
+
+  EXPECT_EQ(3, assignment->Allocations().size());
+  // Buffers for call are co-located with the sub-computation.
+  EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{}),
+            GetAllocation(*assignment, sub_tuple, /*index=*/{}));
+  EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{0}),
+            GetAllocation(*assignment, sub_param, /*index=*/{}));
+  // The parameter isn't aliased with anything.
+  EXPECT_NE(GetTopLevelAllocation(*assignment, param),
+            GetTopLevelAllocation(*assignment, sub_tuple));
+  EXPECT_NE(GetTopLevelAllocation(*assignment, param),
+            GetTopLevelAllocation(*assignment, sub_param));
+}
+
 TEST_F(BufferAssignmentTest, BitcastAsOutput) {
   // Test a computation which returns a bitcast value.
   auto builder = HloComputation::Builder(TestName());
