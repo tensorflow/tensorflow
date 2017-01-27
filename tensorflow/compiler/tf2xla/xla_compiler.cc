@@ -79,6 +79,7 @@ XlaCompiler::XlaCompiler(const XlaCompiler::Options& options)
       allow_cpu_custom_calls_(options.allow_cpu_custom_calls),
       local_executable_has_hybrid_result_(
           options.local_executable_has_hybrid_result),
+      resolve_compile_time_constants_(options.resolve_compile_time_constants),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options.device_type)),
       device_mgr_({device_}) {}
@@ -304,7 +305,8 @@ Status XlaCompiler::CompileGraph(string const& name,
   }
 
   XlaContext* xla_context =
-      new XlaContext(this, client(), name, allow_cpu_custom_calls_);
+      new XlaContext(this, client(), name, allow_cpu_custom_calls_,
+                     resolve_compile_time_constants_);
   core::ScopedUnref xla_context_unref(xla_context);
 
   TF_RETURN_IF_ERROR(xla_context->BuildArguments(args, use_tuple_arg));
