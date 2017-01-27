@@ -7,6 +7,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
     "tf_copts",
     "tf_cc_test",
     "tf_py_test",
@@ -65,18 +66,19 @@ cc_library(
         "fuse_convolutions.cc",
         "insert_logging.cc",
         "obsfucate_names.cc",
-        "quantize_nodes.cc",
-        "quantize_weights.cc",
         "remove_attribute.cc",
         "remove_device.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
         "rename_op.cc",
-        "round_weights.cc",
         "set_device.cc",
         "sort_by_execution_order.cc",
         "strip_unused_nodes.cc",
-    ],
+    ] + if_not_windows([
+        "quantize_nodes.cc",
+        "quantize_weights.cc",
+        "round_weights.cc",
+    ]),
     hdrs = [
         "fold_constants_lib.h",
     ],
@@ -91,8 +93,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+    ] + if_not_windows([
         "//tensorflow/core/kernels:quantized_ops",
-    ],
+    ]),
     alwayslink = 1,
 )
 
