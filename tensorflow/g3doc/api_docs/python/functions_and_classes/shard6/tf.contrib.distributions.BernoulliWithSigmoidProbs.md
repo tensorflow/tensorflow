@@ -1,14 +1,14 @@
-Bernoulli with `p = sigmoid(p)`.
+Bernoulli with `probs = nn.sigmoid(logits)`.
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.__init__(p=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='BernoulliWithSigmoidP')` {#BernoulliWithSigmoidP.__init__}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.__init__(logits=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='BernoulliWithSigmoidProbs')` {#BernoulliWithSigmoidProbs.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.allow_nan_stats` {#BernoulliWithSigmoidP.allow_nan_stats}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.allow_nan_stats` {#BernoulliWithSigmoidProbs.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -29,7 +29,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.batch_shape(name='batch_shape')` {#BernoulliWithSigmoidP.batch_shape}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.batch_shape(name='batch_shape')` {#BernoulliWithSigmoidProbs.batch_shape}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -49,7 +49,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.cdf(value, name='cdf')` {#BernoulliWithSigmoidP.cdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.cdf(value, name='cdf')` {#BernoulliWithSigmoidProbs.cdf}
 
 Cumulative distribution function.
 
@@ -74,7 +74,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.copy(**override_parameters_kwargs)` {#BernoulliWithSigmoidP.copy}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.copy(**override_parameters_kwargs)` {#BernoulliWithSigmoidProbs.copy}
 
 Creates a deep copy of the distribution.
 
@@ -97,21 +97,21 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.dtype` {#BernoulliWithSigmoidP.dtype}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.dtype` {#BernoulliWithSigmoidProbs.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.entropy(name='entropy')` {#BernoulliWithSigmoidP.entropy}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.entropy(name='entropy')` {#BernoulliWithSigmoidProbs.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.event_shape(name='event_shape')` {#BernoulliWithSigmoidP.event_shape}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.event_shape(name='event_shape')` {#BernoulliWithSigmoidProbs.event_shape}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -128,7 +128,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.get_batch_shape()` {#BernoulliWithSigmoidP.get_batch_shape}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.get_batch_shape()` {#BernoulliWithSigmoidProbs.get_batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -142,7 +142,7 @@ Same meaning as `batch_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.get_event_shape()` {#BernoulliWithSigmoidP.get_event_shape}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.get_event_shape()` {#BernoulliWithSigmoidProbs.get_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -156,14 +156,14 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_continuous` {#BernoulliWithSigmoidP.is_continuous}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.is_continuous` {#BernoulliWithSigmoidProbs.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch(name='is_scalar_batch')` {#BernoulliWithSigmoidP.is_scalar_batch}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.is_scalar_batch(name='is_scalar_batch')` {#BernoulliWithSigmoidProbs.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -180,7 +180,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event(name='is_scalar_event')` {#BernoulliWithSigmoidP.is_scalar_event}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.is_scalar_event(name='is_scalar_event')` {#BernoulliWithSigmoidProbs.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -197,7 +197,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_cdf(value, name='log_cdf')` {#BernoulliWithSigmoidP.log_cdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.log_cdf(value, name='log_cdf')` {#BernoulliWithSigmoidProbs.log_cdf}
 
 Log cumulative distribution function.
 
@@ -226,7 +226,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_pdf(value, name='log_pdf')` {#BernoulliWithSigmoidP.log_pdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.log_pdf(value, name='log_pdf')` {#BernoulliWithSigmoidProbs.log_pdf}
 
 Log probability density function.
 
@@ -250,7 +250,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_pmf(value, name='log_pmf')` {#BernoulliWithSigmoidP.log_pmf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.log_pmf(value, name='log_pmf')` {#BernoulliWithSigmoidProbs.log_pmf}
 
 Log probability mass function.
 
@@ -274,7 +274,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_prob(value, name='log_prob')` {#BernoulliWithSigmoidP.log_prob}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.log_prob(value, name='log_prob')` {#BernoulliWithSigmoidProbs.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -293,7 +293,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.log_survival_function(value, name='log_survival_function')` {#BernoulliWithSigmoidP.log_survival_function}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.log_survival_function(value, name='log_survival_function')` {#BernoulliWithSigmoidProbs.log_survival_function}
 
 Log survival function.
 
@@ -322,46 +322,39 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.logits` {#BernoulliWithSigmoidP.logits}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.logits` {#BernoulliWithSigmoidProbs.logits}
 
-Log-odds of success.
+Log-odds of a `1` outcome (vs `0`).
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.mean(name='mean')` {#BernoulliWithSigmoidP.mean}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.mean(name='mean')` {#BernoulliWithSigmoidProbs.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.mode(name='mode')` {#BernoulliWithSigmoidP.mode}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.mode(name='mode')` {#BernoulliWithSigmoidProbs.mode}
 
 Mode.
 
 Additional documentation from `Bernoulli`:
 
-Returns `1` if `p > 1-p` and `0` otherwise.
+Returns `1` if `prob > 0.5` and `0` otherwise.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.name` {#BernoulliWithSigmoidP.name}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.name` {#BernoulliWithSigmoidProbs.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.p` {#BernoulliWithSigmoidP.p}
-
-Probability of success.
-
-
-- - -
-
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#BernoulliWithSigmoidP.param_shapes}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#BernoulliWithSigmoidProbs.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -385,7 +378,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.param_static_shapes(cls, sample_shape)` {#BernoulliWithSigmoidP.param_static_shapes}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.param_static_shapes(cls, sample_shape)` {#BernoulliWithSigmoidProbs.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -415,14 +408,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.parameters` {#BernoulliWithSigmoidP.parameters}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.parameters` {#BernoulliWithSigmoidProbs.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.pdf(value, name='pdf')` {#BernoulliWithSigmoidP.pdf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.pdf(value, name='pdf')` {#BernoulliWithSigmoidProbs.pdf}
 
 Probability density function.
 
@@ -446,7 +439,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.pmf(value, name='pmf')` {#BernoulliWithSigmoidP.pmf}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.pmf(value, name='pmf')` {#BernoulliWithSigmoidProbs.pmf}
 
 Probability mass function.
 
@@ -470,7 +463,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.prob(value, name='prob')` {#BernoulliWithSigmoidP.prob}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.prob(value, name='prob')` {#BernoulliWithSigmoidProbs.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -489,14 +482,14 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.q` {#BernoulliWithSigmoidP.q}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.probs` {#BernoulliWithSigmoidProbs.probs}
 
-1-p.
+Probability of a `1` outcome (vs `0`).
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.reparameterization_type` {#BernoulliWithSigmoidP.reparameterization_type}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.reparameterization_type` {#BernoulliWithSigmoidProbs.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -511,7 +504,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.sample(sample_shape=(), seed=None, name='sample')` {#BernoulliWithSigmoidP.sample}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.sample(sample_shape=(), seed=None, name='sample')` {#BernoulliWithSigmoidProbs.sample}
 
 Generate samples of the specified shape.
 
@@ -533,14 +526,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.stddev(name='stddev')` {#BernoulliWithSigmoidP.stddev}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.stddev(name='stddev')` {#BernoulliWithSigmoidProbs.stddev}
 
 Standard deviation.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.survival_function(value, name='survival_function')` {#BernoulliWithSigmoidP.survival_function}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.survival_function(value, name='survival_function')` {#BernoulliWithSigmoidProbs.survival_function}
 
 Survival function.
 
@@ -566,14 +559,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.validate_args` {#BernoulliWithSigmoidP.validate_args}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.validate_args` {#BernoulliWithSigmoidProbs.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.variance(name='variance')` {#BernoulliWithSigmoidP.variance}
+#### `tf.contrib.distributions.BernoulliWithSigmoidProbs.variance(name='variance')` {#BernoulliWithSigmoidProbs.variance}
 
 Variance.
 

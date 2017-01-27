@@ -1,33 +1,34 @@
 Bernoulli distribution.
 
-The Bernoulli distribution is parameterized by p, the probability of a
-positive event.
+The Bernoulli distribution with `probs` parameter, i.e., the probability of a
+`1` outcome (vs a `0` outcome).
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, probs=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
 ##### Args:
 
 
-*  <b>`logits`</b>: An N-D `Tensor` representing the log-odds
-    of a positive event. Each entry in the `Tensor` parametrizes
-    an independent Bernoulli distribution where the probability of an event
-    is sigmoid(logits). Only one of `logits` or `p` should be passed in.
-*  <b>`p`</b>: An N-D `Tensor` representing the probability of a positive
-      event. Each entry in the `Tensor` parameterizes an independent
-      Bernoulli distribution. Only one of `logits` or `p` should be passed
-      in.
-*  <b>`dtype`</b>: dtype for samples.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate that
-    `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
-    invalid, methods like `log_pmf` may return `NaN` values.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: A name for this distribution.
+*  <b>`logits`</b>: An N-D `Tensor` representing the log-odds of a `1` event. Each
+    entry in the `Tensor` parametrizes an independent Bernoulli distribution
+    where the probability of an event is sigmoid(logits). Only one of
+    `logits` or `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor` representing the probability of a `1`
+    event. Each entry in the `Tensor` parameterizes an independent
+    Bernoulli distribution. Only one of `logits` or `probs` should be passed
+    in.
+*  <b>`dtype`</b>: The type of the event samples. Default: `int32`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -353,7 +354,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 #### `tf.contrib.distributions.Bernoulli.logits` {#Bernoulli.logits}
 
-Log-odds of success.
+Log-odds of a `1` outcome (vs `0`).
 
 
 - - -
@@ -371,7 +372,7 @@ Mode.
 
 Additional documentation from `Bernoulli`:
 
-Returns `1` if `p > 1-p` and `0` otherwise.
+Returns `1` if `prob > 0.5` and `0` otherwise.
 
 
 - - -
@@ -379,13 +380,6 @@ Returns `1` if `p > 1-p` and `0` otherwise.
 #### `tf.contrib.distributions.Bernoulli.name` {#Bernoulli.name}
 
 Name prepended to all ops created by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Bernoulli.p` {#Bernoulli.p}
-
-Probability of success.
 
 
 - - -
@@ -518,9 +512,9 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.q` {#Bernoulli.q}
+#### `tf.contrib.distributions.Bernoulli.probs` {#Bernoulli.probs}
 
-1-p.
+Probability of a `1` outcome (vs `0`).
 
 
 - - -

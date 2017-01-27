@@ -738,7 +738,7 @@
 
 * **[Statistical Distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
-  * [`BernoulliWithSigmoidP`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidP)
+  * [`BernoulliWithSigmoidProbs`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidProbs)
   * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
   * [`BetaWithSoftplusAB`](../../api_docs/python/contrib.distributions.md#BetaWithSoftplusAB)
   * [`Binomial`](../../api_docs/python/contrib.distributions.md#Binomial)

@@ -10,7 +10,7 @@ drawn from.
 
 ```python
 p = [0.1, 0.5, 0.4]
-dist = Categorical(p=p)
+dist = Categorical(probs=p)
 ```
 
 Creates a 3-class distiribution, with the 2nd class the most likely to be
@@ -27,7 +27,7 @@ The distribution functions can be evaluated on counts.
 ```python
 # counts is a scalar.
 p = [0.1, 0.4, 0.5]
-dist = Categorical(p=p)
+dist = Categorical(probs=p)
 dist.pmf(0)  # Shape []
 
 # p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
@@ -40,7 +40,7 @@ dist.pmf(counts)  # Shape [5, 7, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits=None, p=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits=None, probs=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -48,22 +48,25 @@ Initialize Categorical distributions using class log-probabilities.
 
 
 *  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
-      of a set of Categorical distributions. The first `N - 1` dimensions
-      index into a batch of independent distributions and the last dimension
-      represents a vector of logits for each class. Only one of `logits` or
-      `p` should be passed in.
-*  <b>`p`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
-      of a set of Categorical distributions. The first `N - 1` dimensions
-      index into a batch of independent distributions and the last dimension
-      represents a vector of probabilities for each class. Only one of
-      `logits` or `p` should be passed in.
+    of a set of Categorical distributions. The first `N - 1` dimensions
+    index into a batch of independent distributions and the last dimension
+    represents a vector of logits for each class. Only one of `logits` or
+    `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
+    of a set of Categorical distributions. The first `N - 1` dimensions
+    index into a batch of independent distributions and the last dimension
+    represents a vector of probabilities for each class. Only one of
+    `logits` or `probs` should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`validate_args`</b>: Unused in this distribution.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: A name for this distribution (optional).
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -417,15 +420,6 @@ Scalar `int32` tensor: the number of classes.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.p` {#Categorical.p}
-
-Vector of probabilities summing to one.
-
-Each element is the probability of drawing that coordinate.
-
-
-- - -
-
 #### `tf.contrib.distributions.Categorical.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#Categorical.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
@@ -550,6 +544,15 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.probs` {#Categorical.probs}
+
+Vector of probabilities summing to one.
+
+Each element is the probability of drawing that coordinate.
 
 
 - - -
