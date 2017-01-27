@@ -570,7 +570,6 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
