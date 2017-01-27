@@ -111,6 +111,7 @@ def tf_copts():
                 "/DPLATFORM_WINDOWS",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+		"/DEIGEN_VECTORIZE_SSE3",  # To flush denormals without __SSE3__ set.
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
