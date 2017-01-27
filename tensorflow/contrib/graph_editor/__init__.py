@@ -180,8 +180,8 @@ which to operate must always be given explicitly. This is the reason why
 @@assign_renamed_collections_handler
 @@transform_op_if_inside_handler
 @@copy_op_handler
-@@transform_op_in_place
 @@Transformer
+@@TransformerInfo
 @@copy
 @@copy_with_input_replacements
 @@graph_replace

@@ -270,9 +270,9 @@ struct ProtoHelper<int64> {
 
 template <>
 struct ProtoHelper<ResourceHandle> {
-  static const ResourceHandle* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const ResourceHandle*>(
-        &(*proto.resource_handle_val().begin()));
+  static protobuf::RepeatedPtrField<ResourceHandle>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.resource_handle_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.resource_handle_val().size();
@@ -867,9 +867,9 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
 }
 
 string Tensor::DebugString() const {
-  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
-                         shape().DebugString(), " values: ", SummarizeValue(3),
-                         ">");
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                         " shape: ", shape().DebugString(),
+                         " values: ", SummarizeValue(3), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

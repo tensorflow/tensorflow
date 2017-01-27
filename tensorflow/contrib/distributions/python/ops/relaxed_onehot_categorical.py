@@ -23,7 +23,6 @@ from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import transformed_distribution
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -45,7 +44,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
   goes to 0 the RelaxedOneHotCategorical becomes discrete with a distribution
   described by the logits, as the temperature goes to infinity the
   RelaxedOneHotCategorical becomes the constant distribution that is identically
-  the constant vector of (1/num_classes, ..., 1/num_classes).
+  the constant vector of (1/event_size, ..., 1/event_size).
 
   Because computing log-probabilities of the RelaxedOneHotCategorical can
   suffer from underflow issues, this class is one solution for loss
@@ -69,11 +68,11 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
   ```python
   temperature = 0.5
   p = [0.1, 0.5, 0.4]
-  dist = ExpRelaxedOneHotCategorical(temperature, p=p)
+  dist = ExpRelaxedOneHotCategorical(temperature, probs=p)
   samples = dist.sample()
   exp_samples = tf.exp(samples)
   # exp_samples has the same distribution as samples from
-  # RelaxedOneHotCategorical(temperature, p=p)
+  # RelaxedOneHotCategorical(temperature, probs=p)
   ```
 
   Creates a continuous distribution, whose exp approximates a 3-class one-hot
@@ -87,7 +86,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
   samples = dist.sample()
   exp_samples = tf.exp(samples)
   # exp_samples has the same distribution as samples from
-  # RelaxedOneHotCategorical(temperature, p=p)
+  # RelaxedOneHotCategorical(temperature, probs=p)
   ```
 
   Creates a continuous distribution, whose exp approximates a 3-class one-hot
@@ -103,7 +102,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
   samples = dist.sample()
   exp_samples = tf.exp(samples)
   # exp_samples has the same distribution as samples from
-  # RelaxedOneHotCategorical(temperature, p=p)
+  # RelaxedOneHotCategorical(temperature, probs=p)
   ```
 
   Creates a continuous distribution, whose exp approximates a 3-class one-hot
@@ -119,7 +118,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
   samples = dist.sample()
   exp_samples = tf.exp(samples)
   # exp_samples has the same distribution as samples from
-  # RelaxedOneHotCategorical(temperature, p=p)
+  # RelaxedOneHotCategorical(temperature, probs=p)
   ```
 
   Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The Concrete Distribution:
@@ -130,7 +129,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
       self,
       temperature,
       logits=None,
-      p=None,
+      probs=None,
       dtype=dtypes.float32,
       validate_args=False,
       allow_nan_stats=True,
@@ -145,28 +144,31 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
         of a set of ExpRelaxedCategorical distributions. The first
         `N - 1` dimensions index into a batch of independent distributions and
         the last dimension represents a vector of logits for each class. Only
-        one of `logits` or `p` should be passed in.
-      p: An N-D `Tensor`, `N >= 1`, representing the probabilities
+        one of `logits` or `probs` should be passed in.
+      probs: An N-D `Tensor`, `N >= 1`, representing the probabilities
         of a set of ExpRelaxedCategorical distributions. The first
         `N - 1` dimensions index into a batch of independent distributions and
         the last dimension represents a vector of probabilities for each
-        class. Only one of `logits` or `p` should be passed in.
+        class. Only one of `logits` or `probs` should be passed in.
       dtype: The type of the event samples (default: int32).
-      validate_args: Unused in this distribution.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: A name for this distribution (optional).
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined.  When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
     parameters.pop("self")
-    with ops.name_scope(name, values=[logits, p, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
-      self._logits, self._p = distribution_util.get_logits_and_prob(
-          name=name, logits=logits, p=p, validate_args=validate_args,
+      self._logits, self._probs = distribution_util.get_logits_and_probs(
+          name=name, logits=logits, probs=probs, validate_args=validate_args,
           multidimensional=True)
 
       logits_shape_static = self._logits.get_shape().with_rank_at_least(1)
@@ -180,24 +182,13 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
           self._batch_rank = array_ops.rank(self._logits) - 1
 
       logits_shape = array_ops.shape(self._logits, name="logits_shape")
-      if logits_shape_static[-1].value is not None:
-        self._num_classes = ops.convert_to_tensor(
-            logits_shape_static[-1].value,
-            dtype=dtypes.int32,
-            name="num_classes")
-      else:
-        self._num_classes = array_ops.gather(logits_shape,
-                                             self._batch_rank,
-                                             name="num_classes")
 
-      if logits_shape_static[:-1].is_fully_defined():
-        self._batch_shape_val = constant_op.constant(
-            logits_shape_static[:-1].as_list(),
-            dtype=dtypes.int32,
-            name="batch_shape")
-      else:
-        with ops.name_scope(name="batch_shape"):
-          self._batch_shape_val = logits_shape[:-1]
+      with ops.name_scope(name="event_size"):
+        self._event_size = logits_shape[-1]
+
+      with ops.name_scope(name="batch_shape"):
+        self._batch_shape_val = logits_shape[:-1]
+
     super(_ExpRelaxedOneHotCategorical, self).__init__(
         dtype=dtype,
         is_continuous=True,
@@ -205,13 +196,15 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
-        graph_parents=[self._logits, self._temperature, self._num_classes],
+        graph_parents=[self._logits,
+                       self._probs,
+                       self._temperature],
         name=ns)
 
   @property
-  def num_classes(self):
+  def event_size(self):
     """Scalar `int32` tensor: the number of classes."""
-    return self._num_classes
+    return self._event_size
 
   @property
   def temperature(self):
@@ -224,9 +217,9 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
     return self._logits
 
   @property
-  def p(self):
+  def probs(self):
     """Vector of probabilities summing to one."""
-    return self._p
+    return self._probs
 
   def _batch_shape(self):
     # Use identity to inherit callers "name".
@@ -247,7 +240,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
     if logits.get_shape().ndims == 2:
       logits_2d = logits
     else:
-      logits_2d = array_ops.reshape(logits, [-1, self.num_classes])
+      logits_2d = array_ops.reshape(logits, [-1, self.event_size])
     np_dtype = self.dtype.as_numpy_dtype()
     minval = np.nextafter(np_dtype(0), np_dtype(1))
     uniform = random_ops.random_uniform(shape=array_ops.shape(logits_2d),
@@ -262,7 +255,6 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
     return ret
 
   def _log_prob(self, x):
-    x = ops.convert_to_tensor(x, name="x")
     x = self._assert_valid_sample(x)
     # broadcast logits or x if need be.
     logits = self.logits
@@ -277,11 +269,11 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
       logits_2d = logits
       x_2d = x
     else:
-      logits_2d = array_ops.reshape(logits, [-1, self.num_classes])
-      x_2d = array_ops.reshape(x, [-1, self.num_classes])
+      logits_2d = array_ops.reshape(logits, [-1, self.event_size])
+      x_2d = array_ops.reshape(x, [-1, self.event_size])
     # compute the normalization constant
-    log_norm_const = (math_ops.lgamma(self.num_classes)
-                      + (self.num_classes - 1)
+    log_norm_const = (math_ops.lgamma(self.event_size)
+                      + (self.event_size - 1)
                       * math_ops.log(self.temperature))
     # compute the unnormalized density
     log_softmax = nn_ops.log_softmax(logits_2d - x_2d * self.temperature)
@@ -295,7 +287,8 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
     return math_ops.exp(self._log_prob(x))
 
   def _assert_valid_sample(self, x):
-    if not self.validate_args: return x
+    if not self.validate_args:
+      return x
     return control_flow_ops.with_dependencies([
         check_ops.assert_non_positive(x),
         distribution_util.assert_close(
@@ -312,10 +305,10 @@ class _RelaxedOneHotCategorical(
   vectors, vectors of positive real values that sum to one, which continuously
   approximates a OneHotCategorical. The degree of approximation is controlled by
   a temperature: as the temperaturegoes to 0 the RelaxedOneHotCategorical
-  becomes discrete with a distribution described by the `logits` or `p`
+  becomes discrete with a distribution described by the `logits` or `probs`
   parameters, as the temperature goes to infinity the RelaxedOneHotCategorical
   becomes the constant distribution that is identically the constant vector of
-  (1/num_classes, ..., 1/num_classes).
+  (1/event_size, ..., 1/event_size).
 
   The RelaxedOneHotCategorical distribution was concurrently introduced as the
   Gumbel-Softmax (Jang et al., 2016) and Concrete (Maddison et al., 2016)
@@ -332,7 +325,7 @@ class _RelaxedOneHotCategorical(
   ```python
   temperature = 0.5
   p = [0.1, 0.5, 0.4]
-  dist = RelaxedOneHotCategorical(temperature, p=p)
+  dist = RelaxedOneHotCategorical(temperature, probs=p)
   ```
 
   Creates a continuous distribution, which approximates a 3-class one-hot
@@ -380,7 +373,7 @@ class _RelaxedOneHotCategorical(
       self,
       temperature,
       logits=None,
-      p=None,
+      probs=None,
       dtype=dtypes.float32,
       validate_args=False,
       allow_nan_stats=True,
@@ -395,12 +388,12 @@ class _RelaxedOneHotCategorical(
         of a set of RelaxedOneHotCategorical distributions. The first
         `N - 1` dimensions index into a batch of independent distributions and
         the last dimension represents a vector of logits for each class. Only
-        one of `logits` or `p` should be passed in.
-      p: An N-D `Tensor`, `N >= 1`, representing the probabilities
-        of a set of RelaxedOneHotCategorical distributions. The first
-        `N - 1` dimensions index into a batch of independent distributions and
-        the last dimension represents a vector of probabilities for each
-        class. Only one of `logits` or `p` should be passed in.
+        one of `logits` or `probs` should be passed in.
+      probs: An N-D `Tensor`, `N >= 1`, representing the probabilities
+        of a set of RelaxedOneHotCategorical distributions. The first `N - 1`
+        dimensions index into a batch of independent distributions and the last
+        dimension represents a vector of probabilities for each class. Only one
+        of `logits` or `probs` should be passed in.
       dtype: The type of the event samples (default: int32).
       validate_args: Unused in this distribution.
       allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
@@ -411,7 +404,7 @@ class _RelaxedOneHotCategorical(
     """
     dist = _ExpRelaxedOneHotCategorical(temperature,
                                         logits=logits,
-                                        p=p,
+                                        probs=probs,
                                         dtype=dtype,
                                         validate_args=validate_args,
                                         allow_nan_stats=allow_nan_stats)

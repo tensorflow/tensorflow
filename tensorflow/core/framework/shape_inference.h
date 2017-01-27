@@ -526,7 +526,7 @@ inline Dimension::Dimension() : value_(InferenceContext::kUnknownDim) {}
 inline Dimension::Dimension(int64 value) : value_(value) {
   DCHECK(value >= 0 || value == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got"
+         "InferenceContext::kUnknownDim but got "
       << value;
 }
 
@@ -542,7 +542,7 @@ inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
 inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
   DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got"
+         "InferenceContext::kUnknownDim but got "
       << val;
 }
 

@@ -528,6 +528,60 @@ class DropoutWrapper(RNNCell):
     return output, new_state
 
 
+class ResidualWrapper(RNNCell):
+  """RNNCell wrapper that ensures cell inputs are added to the outputs."""
+
+  def __init__(self, cell):
+    """Constructs a `ResidualWrapper` for `cell`.
+
+    Args:
+      cell: An instance of `RNNCell`.
+    """
+    self._cell = cell
+
+  def __call__(self, inputs, state, scope=None):
+    """Run the cell and add its inputs to its outputs.
+
+    Args:
+      inputs: cell inputs.
+      state: cell state.
+      scope: optional cell scope.
+
+    Returns:
+      Tuple of cell outputs and new state.
+
+    Raises:
+      TypeError: If cell inputs and outputs have different structure (type).
+      ValueError: If cell inputs and outputs have different structure (value).
+    """
+    output, new_state = self._cell(inputs, state, scope=scope)
+    nest.assert_same_structure(inputs, output)
+    res_output = nest.map_structure(
+        lambda inp, out: inp + out, inputs, output)
+    return (res_output, new_state)
+
+
+class DeviceWrapper(RNNCell):
+  """Operator that ensures an RNNCell runs on a particular device."""
+
+  def __init__(self, cell, device):
+    """Construct a `DeviceWrapper` for `cell` with device `device`.
+
+    Ensures the wrapped `cell` is called with `tf.device(device)`.
+
+    Args:
+      cell: An instance of `RNNCell`.
+      device: A device string or function, for passing to `tf.device`.
+    """
+    self._cell = cell
+    self._device = device
+
+  def __call__(self, inputs, state, scope=None):
+    """Run the cell on specified device."""
+    with ops.device(self._device):
+      return self._cell(inputs, state, scope=scope)
+
+
 class EmbeddingWrapper(RNNCell):
   """Operator adding input embedding to the given cell.
 
@@ -615,6 +669,10 @@ class MultiRNNCell(RNNCell):
     """
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")
+    if not nest.is_sequence(cells):
+      raise TypeError(
+          "cells must be a list or tuple, but saw: %s." % cells)
+
     self._cells = cells
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:

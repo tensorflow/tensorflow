@@ -113,66 +113,73 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
   features = _get_feature_dict(features)
   parent_scope = "dnn"
 
-  input_layer_partitioner = (partitioned_variables.min_max_variable_partitioner(
-      max_partitions=num_ps_replicas,
-      min_slice_size=input_layer_min_slice_size))
-  input_layer_scope = parent_scope + "/input_from_feature_columns"
+  partitioner = partitioned_variables.min_max_variable_partitioner(
+      max_partitions=num_ps_replicas)
   with variable_scope.variable_scope(
-      input_layer_scope,
-      values=list(six.itervalues(features)),
-      partitioner=input_layer_partitioner) as scope:
-    net = layers.input_from_feature_columns(
-        columns_to_tensors=features,
-        feature_columns=feature_columns,
-        weight_collections=[parent_scope],
-        scope=scope)
-
-  hidden_layer_partitioner = (
-      partitioned_variables.min_max_variable_partitioner(
-          max_partitions=num_ps_replicas))
-  for layer_id, num_hidden_units in enumerate(hidden_units):
+      parent_scope,
+      values=tuple(six.itervalues(features)),
+      partitioner=partitioner):
+    input_layer_partitioner = (
+        partitioned_variables.min_max_variable_partitioner(
+            max_partitions=num_ps_replicas,
+            min_slice_size=input_layer_min_slice_size))
     with variable_scope.variable_scope(
-        parent_scope + "/hiddenlayer_%d" % layer_id,
-        values=[net],
-        partitioner=hidden_layer_partitioner) as scope:
-      net = layers.fully_connected(
+        "input_from_feature_columns",
+        values=tuple(six.itervalues(features)),
+        partitioner=input_layer_partitioner) as input_layer_scope:
+      net = layers.input_from_feature_columns(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          weight_collections=[parent_scope],
+          scope=input_layer_scope)
+
+    for layer_id, num_hidden_units in enumerate(hidden_units):
+      with variable_scope.variable_scope(
+          "hiddenlayer_%d" % layer_id,
+          values=(net,)) as hidden_layer_scope:
+        net = layers.fully_connected(
+            net,
+            num_hidden_units,
+            activation_fn=activation_fn,
+            variables_collections=[parent_scope],
+            scope=hidden_layer_scope)
+        if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+          net = layers.dropout(net, keep_prob=(1.0 - dropout))
+      _add_hidden_layer_summary(net, hidden_layer_scope.name)
+
+    with variable_scope.variable_scope(
+        "logits",
+        values=(net,)) as logits_scope:
+      logits = layers.fully_connected(
           net,
-          num_hidden_units,
-          activation_fn=activation_fn,
+          head.logits_dimension,
+          activation_fn=None,
           variables_collections=[parent_scope],
-          scope=scope)
-      if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-        net = layers.dropout(net, keep_prob=(1.0 - dropout))
-    _add_hidden_layer_summary(net, scope.name)
+          scope=logits_scope)
+    _add_hidden_layer_summary(logits, logits_scope.name)
 
-  with variable_scope.variable_scope(
-      parent_scope + "/logits",
-      values=[net],
-      partitioner=hidden_layer_partitioner) as scope:
-    logits = layers.fully_connected(
-        net,
-        head.logits_dimension,
-        activation_fn=None,
-        variables_collections=[parent_scope],
-        scope=scope)
-  _add_hidden_layer_summary(logits, scope.name)
+    def _train_op_fn(loss):
+      """Returns the op to optimize the loss."""
+      return optimizers.optimize_loss(
+          loss=loss,
+          global_step=contrib_variables.get_global_step(),
+          learning_rate=_LEARNING_RATE,
+          optimizer=_get_optimizer(optimizer),
+          gradient_multipliers=(
+              dnn_linear_combined._extract_embedding_lr_multipliers(  # pylint: disable=protected-access
+                  embedding_lr_multipliers, parent_scope,
+                  input_layer_scope.name)),
+          clip_gradients=gradient_clip_norm,
+          name=parent_scope,
+          # Empty summaries to prevent optimizers from logging training_loss.
+          summaries=[])
 
-  def _train_op_fn(loss):
-    """Returns the op to optimize the loss."""
-    return optimizers.optimize_loss(
-        loss=loss,
-        global_step=contrib_variables.get_global_step(),
-        learning_rate=_LEARNING_RATE,
-        optimizer=_get_optimizer(optimizer),
-        gradient_multipliers=(
-            dnn_linear_combined._extract_embedding_lr_multipliers(  # pylint: disable=protected-access
-                embedding_lr_multipliers, parent_scope, input_layer_scope)),
-        clip_gradients=gradient_clip_norm,
-        name=parent_scope,
-        # Empty summaries to prevent optimizers from logging the training_loss.
-        summaries=[])
-
-  return head.create_model_fn_ops(features, labels, mode, _train_op_fn, logits)
+    return head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
 
 
 class DNNClassifier(estimator.Estimator):

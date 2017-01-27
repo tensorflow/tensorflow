@@ -69,7 +69,7 @@ they need to be added as a dependency to the `train_op`, example:
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
 One can set updates_collections=None to force the updates in place, but that
-can have speed penalty, specially in distributed settings.
+can have speed penalty, especially in distributed settings.
 
 ##### Args:
 
@@ -1157,7 +1157,7 @@ For the above example, create_feature_spec_for_parsing would return the dict:
 
 - - -
 
-### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
+### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner='sum', ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
 
 Creates a _CrossedColumn for performing feature crosses.
 
@@ -1167,7 +1167,15 @@ Creates a _CrossedColumn for performing feature crosses.
 *  <b>`columns`</b>: An iterable of _FeatureColumn. Items can be an instance of
     _SparseColumn, _CrossedColumn, or _BucketizedColumn.
 *  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
-*  <b>`combiner`</b>: A combiner string, supports sum, mean, sqrtn.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column::
+      * "sum": do not normalize
+      * "mean": do l1 normalization
+      * "sqrtn": do l2 normalization
+    For more information: `tf.embedding_lookup_sparse`.
 *  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
     to restore the column weights. Required if `tensor_name_in_ckpt` is not
     None.
@@ -1194,7 +1202,7 @@ Creates a _CrossedColumn for performing feature crosses.
 
 - - -
 
-### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner='mean', initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
 
 Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
@@ -1206,8 +1214,10 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
     defined in `sparse_id_column` is ignored.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be considered an example level normalization on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize
       * "mean": do l1 normalization
       * "sqrtn": do l2 normalization
@@ -1232,7 +1242,7 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 - - -
 
-### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner=None, initializer=None)` {#scattered_embedding_column}
+### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner='mean', initializer=None)` {#scattered_embedding_column}
 
 Creates an embedding column of a sparse feature using parameter hashing.
 
@@ -1261,8 +1271,10 @@ collisions with a cost of slowing down training.
 *  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
     function to combine the crosses fingerprints on SparseFeatureCrossOp.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be thought as example level normalizations on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1553,7 +1565,7 @@ Creates a `_RealValuedColumn` for dense numeric data.
 
 - - -
 
-### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner='mean', shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
 
 Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
@@ -1565,8 +1577,10 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
     defined in each sparse_id_column is ignored.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be considered an example level normalization on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize
       * "mean": do l1 normalization
       * "sqrtn": do l2 normalization
@@ -1602,7 +1616,7 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
 - - -
 
-### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner=None, dtype=tf.string)` {#sparse_column_with_hash_bucket}
+### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner='sum', dtype=tf.string)` {#sparse_column_with_hash_bucket}
 
 Creates a _SparseColumn with hashed bucket configuration.
 
@@ -1616,8 +1630,9 @@ output_id = Hash(input_feature_string) % bucket_size
 *  <b>`column_name`</b>: A string defining sparse column name.
 *  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1637,7 +1652,7 @@ output_id = Hash(input_feature_string) % bucket_size
 
 - - -
 
-### `tf.contrib.layers.sparse_column_with_integerized_feature(column_name, bucket_size, combiner=None, dtype=tf.int64)` {#sparse_column_with_integerized_feature}
+### `tf.contrib.layers.sparse_column_with_integerized_feature(column_name, bucket_size, combiner='sum', dtype=tf.int64)` {#sparse_column_with_integerized_feature}
 
 Creates an integerized _SparseColumn.
 
@@ -1660,8 +1675,9 @@ values in the tensor which are always zero.)
     than maximum feature. In other words features in this column should be an
     int64 in range [0, bucket_size)
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1682,7 +1698,7 @@ values in the tensor which are always zero.)
 
 - - -
 
-### `tf.contrib.layers.sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None)` {#sparse_column_with_keys}
+### `tf.contrib.layers.sparse_column_with_keys(column_name, keys, default_value=-1, combiner='sum')` {#sparse_column_with_keys}
 
 Creates a _SparseColumn with keys.
 
@@ -1697,8 +1713,9 @@ lookup_id = index_of_feature_in_keys if feature in keys else default_value
 *  <b>`default_value`</b>: The value to use for out-of-vocabulary feature values.
     Default is -1.
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column

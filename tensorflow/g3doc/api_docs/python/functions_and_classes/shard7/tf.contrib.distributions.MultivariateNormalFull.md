@@ -110,7 +110,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.cdf(value, name='cdf', **condition_kwargs)` {#MultivariateNormalFull.cdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.cdf(value, name='cdf')` {#MultivariateNormalFull.cdf}
 
 Cumulative distribution function.
 
@@ -125,7 +125,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -259,7 +258,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.log_cdf(value, name='log_cdf', **condition_kwargs)` {#MultivariateNormalFull.log_cdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_cdf(value, name='log_cdf')` {#MultivariateNormalFull.log_cdf}
 
 Log cumulative distribution function.
 
@@ -278,7 +277,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -289,7 +287,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.log_pdf(value, name='log_pdf', **condition_kwargs)` {#MultivariateNormalFull.log_pdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_pdf(value, name='log_pdf')` {#MultivariateNormalFull.log_pdf}
 
 Log probability density function.
 
@@ -298,7 +296,6 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -314,7 +311,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.log_pmf(value, name='log_pmf', **condition_kwargs)` {#MultivariateNormalFull.log_pmf}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_pmf(value, name='log_pmf')` {#MultivariateNormalFull.log_pmf}
 
 Log probability mass function.
 
@@ -323,7 +320,6 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -339,7 +335,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.log_prob(value, name='log_prob', **condition_kwargs)` {#MultivariateNormalFull.log_prob}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_prob(value, name='log_prob')` {#MultivariateNormalFull.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -364,7 +360,6 @@ or
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -382,7 +377,7 @@ Log of determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#MultivariateNormalFull.log_survival_function}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalFull.log_survival_function}
 
 Log survival function.
 
@@ -402,7 +397,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -501,7 +495,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.pdf(value, name='pdf', **condition_kwargs)` {#MultivariateNormalFull.pdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.pdf(value, name='pdf')` {#MultivariateNormalFull.pdf}
 
 Probability density function.
 
@@ -510,7 +504,6 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -526,7 +519,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.pmf(value, name='pmf', **condition_kwargs)` {#MultivariateNormalFull.pmf}
+#### `tf.contrib.distributions.MultivariateNormalFull.pmf(value, name='pmf')` {#MultivariateNormalFull.pmf}
 
 Probability mass function.
 
@@ -535,7 +528,6 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -551,7 +543,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.prob(value, name='prob', **condition_kwargs)` {#MultivariateNormalFull.prob}
+#### `tf.contrib.distributions.MultivariateNormalFull.prob(value, name='prob')` {#MultivariateNormalFull.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -576,7 +568,6 @@ or
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -602,7 +593,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalFull.sample}
+#### `tf.contrib.distributions.MultivariateNormalFull.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalFull.sample}
 
 Generate samples of the specified shape.
 
@@ -615,7 +606,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -646,7 +636,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.survival_function(value, name='survival_function', **condition_kwargs)` {#MultivariateNormalFull.survival_function}
+#### `tf.contrib.distributions.MultivariateNormalFull.survival_function(value, name='survival_function')` {#MultivariateNormalFull.survival_function}
 
 Survival function.
 
@@ -663,7 +653,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

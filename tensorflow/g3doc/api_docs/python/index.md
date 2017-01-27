@@ -738,13 +738,15 @@
 
 * **[Statistical Distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
-  * [`BernoulliWithSigmoidP`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidP)
+  * [`BernoulliWithSigmoidProbs`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidProbs)
   * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
   * [`BetaWithSoftplusAB`](../../api_docs/python/contrib.distributions.md#BetaWithSoftplusAB)
   * [`Binomial`](../../api_docs/python/contrib.distributions.md#Binomial)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
   * [`Chi2WithAbsDf`](../../api_docs/python/contrib.distributions.md#Chi2WithAbsDf)
+  * [`ConditionalDistribution`](../../api_docs/python/contrib.distributions.md#ConditionalDistribution)
+  * [`ConditionalTransformedDistribution`](../../api_docs/python/contrib.distributions.md#ConditionalTransformedDistribution)
   * [`Dirichlet`](../../api_docs/python/contrib.distributions.md#Dirichlet)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
   * [`Distribution`](../../api_docs/python/contrib.distributions.md#Distribution)
@@ -911,8 +913,8 @@
   * [`swap_outputs`](../../api_docs/python/contrib.graph_editor.md#swap_outputs)
   * [`swap_ts`](../../api_docs/python/contrib.graph_editor.md#swap_ts)
   * [`transform_op_if_inside_handler`](../../api_docs/python/contrib.graph_editor.md#transform_op_if_inside_handler)
-  * [`transform_op_in_place`](../../api_docs/python/contrib.graph_editor.md#transform_op_in_place)
   * [`Transformer`](../../api_docs/python/contrib.graph_editor.md#Transformer)
+  * [`TransformerInfo`](../../api_docs/python/contrib.graph_editor.md#TransformerInfo)
   * [`ts`](../../api_docs/python/contrib.graph_editor.md#ts)
 
 * **[Integrate (contrib)](../../api_docs/python/contrib.integrate.md)**:
@@ -1067,6 +1069,7 @@
   * [`BasicRNNCell`](../../api_docs/python/contrib.rnn.md#BasicRNNCell)
   * [`BidirectionalGridLSTMCell`](../../api_docs/python/contrib.rnn.md#BidirectionalGridLSTMCell)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
+  * [`DeviceWrapper`](../../api_docs/python/contrib.rnn.md#DeviceWrapper)
   * [`DropoutWrapper`](../../api_docs/python/contrib.rnn.md#DropoutWrapper)
   * [`EmbeddingWrapper`](../../api_docs/python/contrib.rnn.md#EmbeddingWrapper)
   * [`FusedRNNCell`](../../api_docs/python/contrib.rnn.md#FusedRNNCell)
@@ -1083,6 +1086,7 @@
   * [`LSTMStateTuple`](../../api_docs/python/contrib.rnn.md#LSTMStateTuple)
   * [`MultiRNNCell`](../../api_docs/python/contrib.rnn.md#MultiRNNCell)
   * [`OutputProjectionWrapper`](../../api_docs/python/contrib.rnn.md#OutputProjectionWrapper)
+  * [`ResidualWrapper`](../../api_docs/python/contrib.rnn.md#ResidualWrapper)
   * [`RNNCell`](../../api_docs/python/contrib.rnn.md#RNNCell)
   * [`stack_bidirectional_dynamic_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_dynamic_rnn)
   * [`stack_bidirectional_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_rnn)

@@ -1439,15 +1439,17 @@ def _softmax(logits, compute_op, dim=-1, name=None):
                                ], 0))
 
   logits = ops.convert_to_tensor(logits)
-  if logits.get_shape().ndims is 2 and dim is -1:
-    return compute_op(logits, name=name)
 
   # We need its original shape for shape inference.
   shape = logits.get_shape()
+  is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
+
+  if shape.ndims is 2 and is_last_dim:
+    return compute_op(logits, name=name)
 
   # If dim is the last dimension, simply reshape the logits to a matrix and
   # apply the internal softmax.
-  if dim is -1:
+  if is_last_dim:
     input_shape = array_ops.shape(logits)
     logits = _flatten_outer_dims(logits)
     output = compute_op(logits, name=name)

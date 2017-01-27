@@ -17,6 +17,10 @@ package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
 import android.util.Log;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.util.Random;
 
 /**
@@ -91,16 +95,153 @@ public class TensorFlowInferenceInterface {
    */
   public native void close();
 
-  // Methods for creating a native Tensor and filling it with values.
-  public native void fillNodeFloat(String inputName, int[] dims, float[] values);
-  public native void fillNodeInt(String inputName, int[] dims, int[] values);
-  public native void fillNodeDouble(String inputName, int[] dims, double[] values);
-  public native void fillNodeByte(String inputName, int[] dims, byte[] values);
+  // Methods for taking a native Tensor and filling it with values from Java arrays.
 
-  public native void readNodeFloat(String outputName, float[] values);
-  public native void readNodeInt(String outputName, int[] values);
-  public native void readNodeDouble(String outputName, double[] values);
-  public native void readNodeByte(String outputName, byte[] values);
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeFloat(String inputName, int[] dims, float[] src);
+
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeInt(String inputName, int[] dims, int[] src);
+
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeDouble(String inputName, int[] dims, double[] src);
+
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeByte(String inputName, int[] dims, byte[] src);
+
+  // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
+
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeFromFloatBuffer(String inputName, IntBuffer dims, FloatBuffer src);
+
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeFromIntBuffer(String inputName, IntBuffer dims, IntBuffer src);
+
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeFromDoubleBuffer(String inputName, IntBuffer dims, DoubleBuffer src);
+
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public native void fillNodeFromByteBuffer(String inputName, IntBuffer dims, ByteBuffer src);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeFloat(String outputName, float[] dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeInt(String outputName, int[] dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeDouble(String outputName, double[] dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeByte(String outputName, byte[] dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeIntoFloatBuffer(String outputName, FloatBuffer dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeIntoIntBuffer(String outputName, IntBuffer dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeIntoDoubleBuffer(String outputName, DoubleBuffer dst);
+
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   *
+   * @return 0 on success, -1 on failure.
+   */
+  public native int readNodeIntoByteBuffer(String outputName, ByteBuffer dst);
 
   /**
    * Canary method solely for determining if the tensorflow_inference native library should be

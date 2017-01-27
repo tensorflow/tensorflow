@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 #if defined(PLATFORM_GOOGLE)
+#include "tensorflow/stream_executor/platform/google/initialize.h"
 #else
 
 #undef REGISTER_MODULE_INITIALIZER
