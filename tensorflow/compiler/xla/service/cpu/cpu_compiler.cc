@@ -234,16 +234,22 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
       /*is_layout_sensitive=*/true,
       [](const Shape&, const Shape&) { return true; });
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  // Outline ops in the entry computation into calls to subcomputations.
+  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
+  if (flags->xla_cpu_parallel) {
+    pipeline.AddPass<ParallelizationPreparation>();
+  }
   // Copy insertion should be performed immediately before IR emission to
   // avoid inserting unnecessary copies (later pass adds an instruction which
   // materializes the value) or missing a necessary copy (later pass removes
   // an instruction which materializes a value).
   pipeline.AddPass<CopyInsertion>();
-  pipeline.AddPass<HloDCE>();
-  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
   if (flags->xla_cpu_parallel) {
+    // Re-run the outlining, in case any copies were inserted into the entry
+    // computation.
     pipeline.AddPass<ParallelizationPreparation>();
   }
+  pipeline.AddPass<HloDCE>();
   return pipeline.Run(hlo_module).status();
 }
 
