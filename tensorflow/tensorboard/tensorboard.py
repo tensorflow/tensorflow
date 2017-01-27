@@ -95,9 +95,10 @@ class Server(object):
     try:
       tag = resource_loader.load_resource('tensorboard/TAG').strip()
       logging.info('TensorBoard is tag: %s', tag)
+      return tag
     except IOError:
       logging.info('Unable to read TensorBoard tag')
-      tag = ''
+      return ''
 
   def create_app(self):
     """Creates a WSGI-compliant app than can handle TensorBoard requests.
