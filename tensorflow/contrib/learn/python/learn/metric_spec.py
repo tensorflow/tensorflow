@@ -204,9 +204,9 @@ class MetricSpec(object):
             raise ValueError('MetricSpec without specified ' + name + '_key'
                              ' requires ' + name + 's tensor or single element'
                              ' dict, got %s' % dict_or_tensor)
-          return dict_or_tensor.values()[0]
-        else:
-          return dict_or_tensor
+          _, tensor = dict_or_tensor.popitem()
+          return tensor
+        return dict_or_tensor
 
     # Get the predictions
     prediction = _get_dict('prediction', predictions, self.prediction_key)
