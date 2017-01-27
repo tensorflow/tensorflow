@@ -617,8 +617,8 @@ message BinaryOpRequest {
 enum RandomDistribution {
   RNG_INVALID = 0;
 
-  // Creates a uniform-distribution-generated random number on the interval
-  // [parameter[0], parameter[1]].
+  // Creates a uniform-distribution-generated random number on the semi-open
+  // interval [parameter[0], parameter[1]).
   RNG_UNIFORM = 1;
 
   // Creates a normal-distribution-generated random number with mean
