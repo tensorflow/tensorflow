@@ -52,7 +52,7 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
   LiteralUtil::EachCell<T>(*actual,
                            [=](tensorflow::gtl::ArraySlice<int64>, T value) {
                              EXPECT_LE(a, value);
-                             EXPECT_GE(b, value);
+                             EXPECT_LT(value, b);
                            });
 }
 
