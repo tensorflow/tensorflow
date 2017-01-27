@@ -153,6 +153,10 @@ Status HloCostAnalysis::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleOutfeed(HloInstruction* outfeed) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleMap(
     HloInstruction* map, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     HloComputation* function,

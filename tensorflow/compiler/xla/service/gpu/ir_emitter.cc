@@ -571,7 +571,11 @@ Status IrEmitter::HandleCustomCall(
 }
 
 Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+  return Unimplemented("Infeed is not supported on GPU (b/30467474).");
+}
+
+Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  return Unimplemented("Outfeed is not supported on GPU (b/34359662).");
 }
 
 Status IrEmitter::HandleRng(HloInstruction* random,

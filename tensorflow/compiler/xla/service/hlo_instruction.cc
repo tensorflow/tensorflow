@@ -234,6 +234,15 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
+    HloInstruction* operand, tensorflow::StringPiece outfeed_config) {
+  std::unique_ptr<HloInstruction> instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
+  instruction->AppendOperand(operand);
+  instruction->outfeed_config_ = outfeed_config.ToString();
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
     HloInstruction* operand, int64 channel_id) {
   auto instruction =
@@ -841,6 +850,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1128,6 +1138,7 @@ bool HloInstruction::Identical(
     // These opcodes are not yet supported.
     case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
     case HloOpcode::kUpdate:
     case HloOpcode::kSend:
@@ -1257,6 +1268,11 @@ const string& HloInstruction::custom_call_target() const {
   return custom_call_target_;
 }
 
+const string& HloInstruction::outfeed_config() const {
+  CHECK_EQ(opcode_, HloOpcode::kOutfeed);
+  return outfeed_config_;
+}
+
 HloComputation* HloInstruction::while_condition() const {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   return condition_;
@@ -1354,12 +1370,12 @@ string HloInstruction::ToString(bool compact_operands) const {
         tensorflow::str_util::Join(dimensions(), ", "), "}");
   }
   if (window_ != nullptr) {
-    tensorflow::strings::StrAppend(&extra, ", window=",
-                                   window_util::ToString(*window_));
+    tensorflow::strings::StrAppend(
+        &extra, ", window=", window_util::ToString(*window_));
   }
   if (padding_config_ != nullptr) {
-    tensorflow::strings::StrAppend(&extra, ", padding=",
-                                   padding_config_->ShortDebugString());
+    tensorflow::strings::StrAppend(
+        &extra, ", padding=", padding_config_->ShortDebugString());
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
@@ -1394,8 +1410,8 @@ string HloInstruction::ToString(bool compact_operands) const {
     tensorflow::strings::StrAppend(&extra, ", computation=", to_apply_->name());
   }
   if (opcode() == HloOpcode::kWhile) {
-    tensorflow::strings::StrAppend(&extra, ", condition=",
-                                   while_condition()->name());
+    tensorflow::strings::StrAppend(&extra,
+                                   ", condition=", while_condition()->name());
     tensorflow::strings::StrAppend(&extra, ", body=", while_body()->name());
   }
   if (opcode() == HloOpcode::kGetTupleElement) {
@@ -1442,6 +1458,7 @@ bool HloInstruction::IsFusable() const {
   switch (opcode_) {
     case HloOpcode::kFusion:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kTrace:
     case HloOpcode::kSend:
@@ -1587,6 +1604,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleSort(this, operands_[0]);
     case HloOpcode::kInfeed:
       return visitor->HandleInfeed(this);
+    case HloOpcode::kOutfeed:
+      return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this, distribution_);
     case HloOpcode::kWhile:

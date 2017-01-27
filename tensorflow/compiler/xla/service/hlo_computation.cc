@@ -101,7 +101,8 @@ HloInstruction* HloComputation::AddInstructionInternal(
 
 /* static */ bool HloComputation::IsRemovable(const HloOpcode& opcode) {
   return !(opcode == HloOpcode::kParameter || opcode == HloOpcode::kRecv ||
-           opcode == HloOpcode::kSend || opcode == HloOpcode::kTrace);
+           opcode == HloOpcode::kSend || opcode == HloOpcode::kTrace ||
+           opcode == HloOpcode::kOutfeed);
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
