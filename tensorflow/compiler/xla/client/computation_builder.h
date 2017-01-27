@@ -555,7 +555,7 @@ class ComputationBuilder {
                                   const Shape& shape);
 
   // Enqueues a U(a, b) random number generation instruction onto the
-  // computation.
+  // computation. Returns values in the semi-open interval [a, b).
   ComputationDataHandle RngUniform(const ComputationDataHandle& a,
                                    const ComputationDataHandle& b,
                                    const Shape& shape);
