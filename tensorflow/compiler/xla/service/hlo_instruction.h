@@ -456,6 +456,10 @@ class HloInstruction {
   // As ToString, but returns a shorter string.
   string ToShortString() const;
 
+  // Returns a category for the HLO. This could be something like "convolution"
+  // or "elementwise".
+  string ToCategory() const;
+
   // Returns a logging instruction, if the output of this instruction is logged.
   //
   // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace

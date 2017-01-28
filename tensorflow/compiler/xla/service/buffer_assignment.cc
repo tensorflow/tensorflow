@@ -652,7 +652,7 @@ void BufferAssigner::BuildColocatedBufferSets(
             while_hlo->shape(),
             [this, while_hlo, &points_to_analysis, colocated_buffer_sets](
                 const Shape& /*subshape*/, const ShapeIndex& index) {
-              vector<const LogicalBuffer*> colocated_set;
+              std::vector<const LogicalBuffer*> colocated_set;
               // Add while.init.
               AddBufferToColocatedSet(while_hlo->operand(0), index,
                                       points_to_analysis, &colocated_set);
@@ -682,7 +682,7 @@ void BufferAssigner::BuildColocatedBufferSets(
             [this, call_hlo, root_hlo, &points_to_analysis,
              colocated_buffer_sets](const Shape& /*subshape*/,
                                     const ShapeIndex& index) {
-              vector<const LogicalBuffer*> colocated_set;
+              std::vector<const LogicalBuffer*> colocated_set;
               // Add call.result.
               AddBufferToColocatedSet(call_hlo, index, points_to_analysis,
                                       &colocated_set);
