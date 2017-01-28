@@ -795,6 +795,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
+        "//tensorflow/compiler/xla:metric_table_report",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
