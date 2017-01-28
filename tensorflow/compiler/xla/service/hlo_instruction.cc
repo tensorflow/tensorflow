@@ -1366,12 +1366,12 @@ string HloInstruction::ToString(bool compact_operands) const {
   string extra;
   if (CanHaveDimensionsField()) {
     tensorflow::strings::StrAppend(
-        &extra, ", dimensions={",
-        tensorflow::str_util::Join(dimensions(), ", "), "}");
+        &extra, ", dimensions={", tensorflow::str_util::Join(dimensions(), ","),
+        "}");
   }
   if (window_ != nullptr) {
-    tensorflow::strings::StrAppend(
-        &extra, ", window=", window_util::ToString(*window_));
+    tensorflow::strings::StrAppend(&extra, ", ",
+                                   window_util::ToString(*window_));
   }
   if (padding_config_ != nullptr) {
     tensorflow::strings::StrAppend(
@@ -1387,24 +1387,45 @@ string HloInstruction::ToString(bool compact_operands) const {
         &extra, ", slice={", tensorflow::str_util::Join(bounds, ", "), "}");
   }
   if (convolution_dimension_numbers_ != nullptr) {
-    tensorflow::strings::StrAppend(
-        &extra,
-        tensorflow::strings::Printf(
-            ", "
-            "conv_dim_nums={batch_dim=%lld,feature_dim=%lld,spatial_dims=(%s),"
-            "kernel_input_feature_dims=%lld,kernel_output_feature_dim=%lld,"
-            "kernel_spatial_dims=(%s)}",
-            convolution_dimension_numbers_->batch_dimension(),
-            convolution_dimension_numbers_->feature_dimension(),
-            tensorflow::str_util::Join(
-                convolution_dimension_numbers_->spatial_dimensions(), ",")
-                .c_str(),
-            convolution_dimension_numbers_->kernel_input_feature_dimension(),
-            convolution_dimension_numbers_->kernel_output_feature_dimension(),
-            tensorflow::str_util::Join(
-                convolution_dimension_numbers_->kernel_spatial_dimensions(),
-                ",")
-                .c_str()));
+    const auto& dnums = *convolution_dimension_numbers_;
+
+    // Show the given dimension labels in order of major to minor based on the
+    // shape's layout.
+    const auto append_dims = [&](const std::vector<string>& dims,
+                                 const Shape& shape) {
+      CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
+      for (int64 logical = 0; logical < dims.size(); ++logical) {
+        int64 physical = logical;
+        if (!shape.layout().minor_to_major().empty()) {
+          physical = LayoutUtil::Major(shape.layout(), logical);
+        }
+        extra += dims[physical];
+      }
+    };
+
+    // lhs_dims[i] is the symbol of the logical dimension i for the lhs
+    // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
+    std::vector<string> lhs_dims(2 + dnums.spatial_dimensions().size());
+    lhs_dims[dnums.batch_dimension()] = 'b';
+    lhs_dims[dnums.feature_dimension()] = 'f';
+    for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
+      lhs_dims[dnums.spatial_dimensions(i)] = tensorflow::strings::StrCat(i);
+    }
+
+    std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
+    rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
+    rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
+    for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
+      rhs_dims[dnums.kernel_spatial_dimensions(i)] =
+          tensorflow::strings::StrCat(i);
+    }
+
+    extra += " dims: ";
+    append_dims(lhs_dims, operands_.at(0)->shape());
+    extra += "_";
+    append_dims(rhs_dims, operands_.at(1)->shape());
+    extra += "->";
+    append_dims(lhs_dims, shape());
   }
   if (to_apply_ != nullptr) {
     tensorflow::strings::StrAppend(&extra, ", computation=", to_apply_->name());
@@ -1430,6 +1451,49 @@ string HloInstruction::ToShortString() const {
                                                      HloInstruction* operand) {
         tensorflow::strings::StrAppend(out, operand->name());
       }).c_str());
+}
+
+string HloInstruction::ToCategory() const {
+  if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
+      opcode() == HloOpcode::kReshape) {
+    return "data formatting";
+  }
+
+  if (opcode() == HloOpcode::kConvolution) {
+    string category = "convolution";
+    if (window_util::HasBaseDilation(window())) {
+      category += " base-dilated";
+    }
+    if (window_util::HasWindowDilation(window())) {
+      category += " window-dilated";
+    }
+    return category;
+  }
+
+  if (opcode() == HloOpcode::kFusion) {
+    if (operands().size() == 2) {
+      bool saw_rank_1 = false;
+      bool saw_higher_rank = false;
+      for (const auto* operand : operands()) {
+        saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
+        saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
+      }
+      if (saw_rank_1 && saw_higher_rank) {
+        return "rank-1-broadcast binary fusion";
+      }
+    }
+    if (IsElementwise()) {
+      return "elementwise fusion";
+    } else {
+      return "non-elementwise fusion";
+    }
+  }
+
+  if (IsElementwise() && opcode() != HloOpcode::kFusion) {
+    return "non-fusion elementwise";
+  }
+
+  return HloOpcodeString(opcode());
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
