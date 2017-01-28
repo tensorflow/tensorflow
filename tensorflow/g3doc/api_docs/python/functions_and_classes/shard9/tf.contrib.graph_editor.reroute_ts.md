@@ -1,12 +1,12 @@
-### `tf.contrib.graph_editor.reroute_b2a_ts(ts0, ts1, can_modify=None, cannot_modify=None)` {#reroute_b2a_ts}
+### `tf.contrib.graph_editor.reroute_ts(ts0, ts1, can_modify=None, cannot_modify=None)` {#reroute_ts}
 
-For each tensor's pair, replace the end of t0 by the end of t1.
+For each tensor's pair, replace the end of t1 by the end of t0.
 
 B0 B1     B0 B1
-|  |    =>  \|
+|  |    => |/
 A0 A1     A0 A1
 
-The end of the tensors in ts0 are left dangling.
+The end of the tensors in ts1 are left dangling.
 
 ##### Args:
 
@@ -15,9 +15,8 @@ The end of the tensors in ts0 are left dangling.
 *  <b>`ts1`</b>: an object convertible to a list of `tf.Tensor`.
 *  <b>`can_modify`</b>: iterable of operations which can be modified. Any operation
     outside within_ops will be left untouched by this function.
-*  <b>`cannot_modify`</b>: iterable of operations which cannot be modified.
-    Any operation within cannot_modify will be left untouched by this
-    function.
+*  <b>`cannot_modify`</b>: iterable of operations which cannot be modified. Any
+    operation within cannot_modify will be left untouched by this function.
 
 ##### Returns:
 
