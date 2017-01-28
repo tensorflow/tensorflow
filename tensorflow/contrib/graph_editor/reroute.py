@@ -24,17 +24,13 @@ from tensorflow.python.framework import ops as tf_ops
 
 __all__ = [
     "swap_ts",
-    "reroute_a2b_ts",
-    "reroute_b2a_ts",
+    "reroute_ts",
     "swap_inputs",
-    "reroute_a2b_inputs",
-    "reroute_b2a_inputs",
+    "reroute_inputs",
     "swap_outputs",
-    "reroute_a2b_outputs",
-    "reroute_b2a_outputs",
-    "swap",
-    "reroute_a2b",
-    "reroute_b2a",
+    "reroute_outputs",
+    "swap_ios",
+    "reroute_ios",
     "remove_control_inputs",
     "add_control_inputs",
 ]
@@ -232,7 +228,7 @@ def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   return _reroute_ts(ts0, ts1, _RerouteMode.swap, can_modify, cannot_modify)
 
 
-def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
+def reroute_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   """For each tensor's pair, replace the end of t1 by the end of t0.
 
   B0 B1     B0 B1
@@ -256,33 +252,6 @@ def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
       converted to a list of tf.Operation.
   """
   return _reroute_ts(ts0, ts1, _RerouteMode.a2b, can_modify, cannot_modify)
-
-
-def reroute_b2a_ts(ts0, ts1, can_modify=None, cannot_modify=None):
-  r"""For each tensor's pair, replace the end of t0 by the end of t1.
-
-  B0 B1     B0 B1
-  |  |    =>  \|
-  A0 A1     A0 A1
-
-  The end of the tensors in ts0 are left dangling.
-
-  Args:
-    ts0: an object convertible to a list of `tf.Tensor`.
-    ts1: an object convertible to a list of `tf.Tensor`.
-    can_modify: iterable of operations which can be modified. Any operation
-      outside within_ops will be left untouched by this function.
-    cannot_modify: iterable of operations which cannot be modified.
-      Any operation within cannot_modify will be left untouched by this
-      function.
-  Returns:
-    The number of individual modifications made by the function.
-  Raises:
-    TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
-    TypeError: if can_modify or cannot_modify is not None and cannot be
-      converted to a list of tf.Operation.
-  """
-  return _reroute_ts(ts0, ts1, _RerouteMode.b2a, can_modify, cannot_modify)
 
 
 def _reroute_sgv_remap(sgv0, sgv1, mode):
@@ -425,14 +394,9 @@ def swap_inputs(sgv0, sgv1):
   return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.swap)
 
 
-def reroute_a2b_inputs(sgv0, sgv1):
+def reroute_inputs(sgv0, sgv1):
   """Re-route all the inputs of sgv0 to sgv1 (see reroute_inputs)."""
   return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.a2b)
-
-
-def reroute_b2a_inputs(sgv0, sgv1):
-  """Re-route all the inputs of sgv1 to sgv0 (see reroute_inputs)."""
-  return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.b2a)
 
 
 def swap_outputs(sgv0, sgv1):
@@ -440,29 +404,19 @@ def swap_outputs(sgv0, sgv1):
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.swap)
 
 
-def reroute_a2b_outputs(sgv0, sgv1):
+def reroute_outputs(sgv0, sgv1):
   """Re-route all the outputs of sgv0 to sgv1 (see _reroute_outputs)."""
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.a2b)
 
 
-def reroute_b2a_outputs(sgv0, sgv1):
-  """Re-route all the outputs of sgv1 to sgv0 (see _reroute_outputs)."""
-  return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.b2a)
-
-
-def swap(sgv0, sgv1):
+def swap_ios(sgv0, sgv1):
   """Swap the inputs and outputs of sgv1 to sgv0 (see _reroute)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.swap)
 
 
-def reroute_a2b(sgv0, sgv1):
+def reroute_ios(sgv0, sgv1):
   """Re-route the inputs and outputs of sgv0 to sgv1 (see _reroute)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.a2b)
-
-
-def reroute_b2a(sgv0, sgv1):
-  """Re-route the inputs and outputs of sgv1 to sgv0 (see _reroute)."""
-  return _reroute_sgv(sgv0, sgv1, _RerouteMode.b2a)
 
 
 def remove_control_inputs(op, cops):
