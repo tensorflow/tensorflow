@@ -195,9 +195,7 @@ class Multinomial(distribution.Distribution):
 
   @property
   def probs(self):
-    """Vector of probabilities summing to one.
-
-    Each element is the probability of drawing that coordinate."""
+    """Probability of of drawing a `1` in that coordinate."""
     return self._probs
 
   def _batch_shape(self):
@@ -256,11 +254,15 @@ class Multinomial(distribution.Distribution):
   def _mean(self):
     return array_ops.identity(self._mean_val)
 
-  def _variance(self):
+  def _covariance(self):
     p = self.probs * array_ops.ones_like(self.total_count)[..., None]
     return array_ops.matrix_set_diag(
         -math_ops.matmul(self._mean_val[..., None], p[..., None, :]),
-        self._mean_val - self._mean_val * p)
+        self._variance())
+
+  def _variance(self):
+    p = self.probs * array_ops.ones_like(self.total_count)[..., None]
+    return self._mean_val - self._mean_val * p
 
   def _maybe_assert_valid_total_count(self, total_count, validate_args):
     if not validate_args:

@@ -252,11 +252,10 @@ class DirichletMultinomial(distribution.Distribution):
     return math_ops.exp(self._log_prob(counts))
 
   def _mean(self):
-    normalized_alpha = self.alpha / array_ops.expand_dims(self.alpha_sum, -1)
-    return self.n[..., None] * normalized_alpha
+    return self.n * (self.alpha / self.alpha_sum[..., None])
 
   @distribution_util.AppendDocstring(
-      """The variance for each batch member is defined as the following:
+      """The covariance for each batch member is defined as the following:
 
       ```
       Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
@@ -272,18 +271,23 @@ class DirichletMultinomial(distribution.Distribution):
       (n + alpha_0) / (1 + alpha_0)
       ```
       """)
+  def _covariance(self):
+    x = self._variance_scale_term() * self._mean()
+    return array_ops.matrix_set_diag(
+        -math_ops.matmul(x[..., None], x[..., None, :]),  # outer prod
+        self._variance())
+
   def _variance(self):
-    alpha_sum = array_ops.expand_dims(self.alpha_sum, -1)
-    normalized_alpha = self.alpha / alpha_sum
-    variance = -math_ops.matmul(
-        array_ops.expand_dims(normalized_alpha, -1),
-        array_ops.expand_dims(normalized_alpha, -2))
-    variance = array_ops.matrix_set_diag(variance, normalized_alpha *
-                                         (1. - normalized_alpha))
-    shared_factor = (self.n * (alpha_sum + self.n) /
-                     (alpha_sum + 1) * array_ops.ones_like(self.alpha))
-    variance *= array_ops.expand_dims(shared_factor, -1)
-    return variance
+    scale = self._variance_scale_term()
+    x = scale * self._mean()
+    return x * (self.n * scale - x)
+
+  def _variance_scale_term(self):
+    """Helper to `_covariance` and `_variance` which computes a shared scale."""
+    # We must take care to expand back the last dim whenever we use the
+    # alpha_sum.
+    c0 = self.alpha_sum[..., None]
+    return math_ops.sqrt((1. + c0 / self.n) / (1. + c0))
 
   def _assert_valid_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""

@@ -40,7 +40,8 @@ from tensorflow.python.ops import math_ops
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
     "batch_shape", "get_batch_shape", "event_shape", "get_event_shape",
     "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
-    "survival_function", "entropy", "mean", "variance", "stddev", "mode"]
+    "survival_function", "entropy", "mean", "variance", "stddev", "mode",
+    "covariance"]
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -877,7 +878,24 @@ class Distribution(_BaseDistribution):
     raise NotImplementedError("variance is not implemented")
 
   def variance(self, name="variance"):
-    """Variance."""
+    """Variance.
+
+    Variance is defined as,
+
+    ```none
+    Var = E[(X - E[X])**2]
+    ```
+
+    where `X` is the random variable associated with this distribution, `E`
+    denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      variance: Floating-point `Tensor` with shape identical to
+        `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+    """
     with self._name_scope(name):
       try:
         return self._variance()
@@ -891,7 +909,25 @@ class Distribution(_BaseDistribution):
     raise NotImplementedError("stddev is not implemented")
 
   def stddev(self, name="stddev"):
-    """Standard deviation."""
+    """Standard deviation.
+
+    Standard deviation is defined as,
+
+    ```none
+    stddev = E[(X - E[X])**2]**0.5
+    ```
+
+    where `X` is the random variable associated with this distribution, `E`
+    denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      stddev: Floating-point `Tensor` with shape identical to
+        `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+    """
+
     with self._name_scope(name):
       try:
         return self._stddev()
@@ -900,6 +936,48 @@ class Distribution(_BaseDistribution):
           return math_ops.sqrt(self._variance())
         except NotImplementedError:
           raise original_exception
+
+  def _covariance(self):
+    raise NotImplementedError("covariance is not implemented")
+
+  def covariance(self, name="covariance"):
+    """Covariance.
+
+    Covariance is (possibly) defined only for non-scalar-event distributions.
+
+    For example, for a length-`k`, vector-valued distribution, it is calculated
+    as,
+
+    ```none
+    Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+    ```
+
+    where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+    denotes expectation.
+
+    Alternatively, for non-vector, multivariate distributions (e.g.,
+    matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+    under some vectorization of the events, i.e.,
+
+    ```none
+    Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+    ````
+
+    where `Cov` is a (batch of) `k' x k'` matrices,
+    `0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+    mapping indices of this distribution's event dimensions to indices of a
+    length-`k'` vector.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      covariance: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+        where the first `n` dimensions are batch coordinates and
+        `k' = reduce_prod(self.event_shape)`.
+    """
+    with self._name_scope(name):
+      return self._covariance()
 
   def _mode(self):
     raise NotImplementedError("mode is not implemented")
