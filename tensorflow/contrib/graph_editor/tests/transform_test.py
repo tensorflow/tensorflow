@@ -100,12 +100,12 @@ class TransformTest(test.TestCase):
 
     graph = ops.Graph()
     transformer(self.graph, graph, "", "")
-    matcher0 = ge.matcher("AddNoise").input_ops(
-        "Noise", ge.matcher("Add").input_ops("Const", "Input"))
-    matcher1 = ge.matcher("AddNoise_1").input_ops(
-        "Noise_1", ge.matcher("Add_1").input_ops("Const_1", matcher0))
-    matcher2 = ge.matcher("AddNoise_2").input_ops(
-        "Noise_2", ge.matcher("Add_2").input_ops("Const_2", matcher1))
+    matcher0 = ge.OpMatcher("AddNoise").input_ops(
+        "Noise", ge.OpMatcher("Add").input_ops("Const", "Input"))
+    matcher1 = ge.OpMatcher("AddNoise_1").input_ops(
+        "Noise_1", ge.OpMatcher("Add_1").input_ops("Const_1", matcher0))
+    matcher2 = ge.OpMatcher("AddNoise_2").input_ops(
+        "Noise_2", ge.OpMatcher("Add_2").input_ops("Const_2", matcher1))
     top = ge.select_ops("^AddNoise_2$", graph=graph)[0]
     self.assertTrue(matcher2(top))
 

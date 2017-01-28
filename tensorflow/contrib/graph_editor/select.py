@@ -28,6 +28,8 @@ from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 
 __all__ = [
+    "can_be_regex",
+    "make_regex",
     "filter_ts",
     "filter_ts_from_regex",
     "filter_ops",
