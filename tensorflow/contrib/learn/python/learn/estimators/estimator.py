@@ -599,7 +599,8 @@ class BaseEstimator(
              signature_fn=None,
              prediction_key=None,
              default_batch_size=1,
-             exports_to_keep=None):
+             exports_to_keep=None,
+             checkpoint_path=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -626,6 +627,9 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+      checkpoint_path: the checkpoint path of the model to be exported. If it is
+          `None` (which is default), will use the latest checkpoint in
+          export_dir.
 
     Returns:
       The string path to the exported directory. NB: this functionality was
@@ -643,7 +647,8 @@ class BaseEstimator(
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
+        exports_to_keep=exports_to_keep,
+        checkpoint_path=checkpoint_path)
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
