@@ -111,6 +111,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
     `signature_fn` without filtering.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 *  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: the checkpoint path of the model to be exported. If it is
+      `None` (which is default), will use the latest checkpoint in
+      export_dir.
 
 ##### Returns:
 
@@ -474,6 +477,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
     `signature_fn` without filtering.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 *  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: the checkpoint path of the model to be exported. If it is
+      `None` (which is default), will use the latest checkpoint in
+      export_dir.
 
 ##### Returns:
 
