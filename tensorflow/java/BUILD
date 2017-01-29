@@ -111,6 +111,11 @@ cc_binary(
             LINKER_EXPORTED_SYMBOLS,
         ],
         "//tensorflow:windows": [],
+        "//tensorflow:debug" : [
+           	"-z defs",
+           	"-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
+           	LINKER_VERSION_SCRIPT,
+       	],
         "//conditions:default": [
             "-z defs",
             "-s",
