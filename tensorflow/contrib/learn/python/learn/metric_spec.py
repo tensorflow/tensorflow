@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import six
 
 from tensorflow.python.platform import tf_logging as logging
 
@@ -390,7 +391,7 @@ class MetricSpec(object):
       ValueError: If `predictions` or `labels` is a single `Tensor` and
         `self.prediction_key` or `self.label_key` is not `None`; or if
         `self.label_key` is `None` but `labels` is a dict with more than one
-        element, or if `self.prediction_key` is `None but `predictions` is a
+        element, or if `self.prediction_key` is `None` but `predictions` is a
         dict with more than one element.
     """
     def _get_dict(name, dict_or_tensor, key):
@@ -410,8 +411,7 @@ class MetricSpec(object):
             raise ValueError('MetricSpec without specified ' + name + '_key'
                              ' requires ' + name + 's tensor or single element'
                              ' dict, got %s' % dict_or_tensor)
-          _, tensor = dict_or_tensor.popitem()
-          return tensor
+          return six.next(six.itervalues(dict_or_tensor))
         return dict_or_tensor
 
     # Get the predictions.
