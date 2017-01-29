@@ -24,14 +24,6 @@ extern "C" {
 
 /*
  * Class:     org_tensorflow_Tensor
- * Method:    buffer
- * Signature: (J)Ljava/nio/ByteBuffer;
- */
-JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv *, jclass,
-                                                              jlong);
-
-/*
- * Class:     org_tensorflow_Tensor
  * Method:    allocate
  * Signature: (I[JJ)J
  */
@@ -53,6 +45,14 @@ Java_org_tensorflow_Tensor_allocateScalarBytes(JNIEnv *, jclass, jbyteArray);
  */
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv *, jclass,
                                                          jlong);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    buffer
+ * Signature: (J)Ljava/nio/ByteBuffer;
+ */
+JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv *, jclass,
+                                                              jlong);
 
 /*
  * Class:     org_tensorflow_Tensor

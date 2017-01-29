@@ -241,7 +241,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
     dims_copy[i] = static_cast<int64_t>(dims[i]);
   }
   TF_Tensor* t = TF_AllocateTensor(static_cast<TF_DataType>(dtype), dims_copy,
-                                   num_dims, (size_t) sizeInBytes);
+                                   num_dims, static_cast<size_t>(sizeInBytes));
   delete[] dims_copy;
   if (dims != nullptr) {
     env->ReleaseLongArrayElements(shape, dims, JNI_ABORT);
@@ -292,6 +292,17 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv* env,
                                                          jlong handle) {
   if (handle == 0) return;
   TF_DeleteTensor(reinterpret_cast<TF_Tensor*>(handle));
+}
+
+JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return nullptr;
+  void* data = TF_TensorData(t);
+  const size_t sz = TF_TensorByteSize(t);
+
+  return env->NewDirectByteBuffer(data, static_cast<jlong>(sz));
 }
 
 JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor_dtype(JNIEnv* env,
@@ -423,15 +434,4 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
   }
   readNDArray(env, dtype, static_cast<const char*>(data), sz, num_dims,
               static_cast<jarray>(value));
-}
-
-JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv* env,
-                                                              jclass clazz,
-                                                              jlong handle) {
-  TF_Tensor* t = requireHandle(env, handle);
-  if (t == nullptr) return nullptr;
-  void* data = TF_TensorData(t);
-  const size_t sz = TF_TensorByteSize(t);
-
-  return env->NewDirectByteBuffer(data, static_cast<jlong>(sz));
 }

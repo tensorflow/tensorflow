@@ -17,6 +17,7 @@ package org.tensorflow;
 
 import java.lang.reflect.Array;
 import java.nio.BufferOverflowException;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
@@ -43,221 +44,14 @@ import java.util.Arrays;
 public final class Tensor implements AutoCloseable {
 
   /**
-   * Create a Tensor with data from the given buffer.
-   *
-   * <p>Supports the following datatypes: {@link DataType#INT32}
-   *
-   * <p>This method copies
-   * <i>n</i>&nbsp;=&nbsp;<tt>src.remaining()</tt> elements from the given
-   * buffer into the tensor, starting at the buffer's current position.
-   * The position of the buffer is then incremented by <i>n</i>.
-   *
-   * @param dataType the tensor datatype.
-   * @param shape the tensor shape.
-   * @param data a buffer containing the tensor data.
-   *
-   * @throws  IllegalArgumentException
-   *          If the tensor datatype or shape is not compatible with the buffer
-   */
-  public static Tensor create(DataType dataType, long[] shape, IntBuffer data) {
-    if(dataType != DataType.INT32) {
-      throw incompatibleBuffer(dataType);
-    }
-    if(data.remaining() != numElements(shape)) {
-      throw incompatibleBuffer(shape);
-    }
-    int elemSize = Integer.SIZE / Byte.SIZE;
-    Tensor t = create(dataType, shape, elemSize * data.remaining());
-    try {
-      ByteBuffer dst = t.buffer();
-      dst.asIntBuffer().put(data);
-      return t;
-    }
-    catch(RuntimeException e) {
-      delete(t.nativeHandle);
-      throw e;
-    }
-  }
-
-  /**
-   * Create a Tensor with data from the given buffer.
-   *
-   * <p>Supports the following datatypes: {@link DataType#FLOAT}
-   *
-   * <p>This method copies
-   * <i>n</i>&nbsp;=&nbsp;<tt>src.remaining()</tt> elements from the given
-   * buffer into the tensor, starting at the buffer's current position.
-   * The position of the buffer is then incremented by <i>n</i>.
-   *
-   * @param dataType the tensor datatype.
-   * @param shape the tensor shape.
-   * @param data a buffer containing the tensor data.
-   *
-   * @throws  IllegalArgumentException
-   *          If the tensor datatype or shape is not compatible with the buffer
-   */
-  public static Tensor create(DataType dataType, long[] shape, FloatBuffer data) {
-    if(dataType != DataType.FLOAT) {
-      throw incompatibleBuffer(dataType);
-    }
-    if(data.remaining() != numElements(shape)) {
-      throw incompatibleBuffer(shape);
-    }
-    int elemSize = Float.SIZE / Byte.SIZE;
-    Tensor t = create(dataType, shape, elemSize * data.remaining());
-    try {
-      ByteBuffer dst = t.buffer();
-      dst.asFloatBuffer().put(data);
-      return t;
-    }
-    catch(RuntimeException e) {
-      delete(t.nativeHandle);
-      throw e;
-    }
-  }
-
-  /**
-   * Create a Tensor with data from the given buffer.
-   *
-   * <p>Supports the following datatypes: {@link DataType#DOUBLE}
-   *
-   * <p>This method copies
-   * <i>n</i>&nbsp;=&nbsp;<tt>src.remaining()</tt> elements from the given
-   * buffer into the tensor, starting at the buffer's current position.
-   * The position of the buffer is then incremented by <i>n</i>.
-   *
-   * @param dataType the tensor datatype.
-   * @param shape the tensor shape.
-   * @param data a buffer containing the tensor data.
-   *
-   * @throws  IllegalArgumentException
-   *          If the tensor datatype or shape is not compatible with the buffer
-   */
-  public static Tensor create(DataType dataType, long[] shape, DoubleBuffer data) {
-    if(dataType != DataType.DOUBLE) {
-      throw incompatibleBuffer(dataType);
-    }
-    if(data.remaining() != numElements(shape)) {
-      throw incompatibleBuffer(shape);
-    }
-    int elemSize = Double.SIZE / Byte.SIZE;
-    Tensor t = create(dataType, shape, elemSize * data.remaining());
-    try {
-      ByteBuffer dst = t.buffer();
-      dst.asDoubleBuffer().put(data);
-      return t;
-    }
-    catch(RuntimeException e) {
-      delete(t.nativeHandle);
-      throw e;
-    }
-  }
-
-  /**
-   * Create a Tensor with data from the given buffer.
-   *
-   * <p>Supports the following datatypes: {@link DataType#INT64}
-   *
-   * <p>This method copies
-   * <i>n</i>&nbsp;=&nbsp;<tt>src.remaining()</tt> elements from the given
-   * buffer into the tensor, starting at the buffer's current position.
-   * The position of the buffer is then incremented by <i>n</i>.
-   *
-   * @param dataType the tensor datatype.
-   * @param shape the tensor shape.
-   * @param data a buffer containing the tensor data.
-   *
-   * @throws  IllegalArgumentException
-   *          If the tensor datatype or shape is not compatible with the buffer
-   */
-  public static Tensor create(DataType dataType, long[] shape, LongBuffer data) {
-    if(dataType != DataType.INT64) {
-      throw incompatibleBuffer(dataType);
-    }
-    if(data.remaining() != numElements(shape)) {
-      throw incompatibleBuffer(shape);
-    }
-    int elemSize = Long.SIZE / Byte.SIZE;
-    Tensor t = create(dataType, shape, elemSize * data.remaining());
-    try {
-      ByteBuffer dst = t.buffer();
-      dst.asLongBuffer().put(data);
-      return t;
-    }
-    catch(RuntimeException e) {
-      delete(t.nativeHandle);
-      throw e;
-    }
-  }
-
-  /**
-   * Create a Tensor with data from the given buffer.
-   *
-   * <p>Supports all datatypes.  Note that primitive data must be in native byte order.
-   *
-   * <p>This method copies
-   * <i>n</i>&nbsp;=&nbsp;<tt>src.remaining()</tt> elements from the given
-   * buffer into the tensor, starting at the buffer's current position.
-   * The position of the buffer is then incremented by <i>n</i>.
-   *
-   * @param dataType the tensor datatype.
-   * @param shape the tensor shape.
-   * @param data a buffer containing the tensor data.
-   *
-   * @throws  IllegalArgumentException
-   *          If the tensor datatype or shape is not compatible with the buffer
-   */
-  public static Tensor create(DataType dataType, long[] shape, ByteBuffer data) {
-    switch(dataType) {
-      case FLOAT:
-      case DOUBLE:
-      case INT32:
-      case INT64:
-      case BOOL:
-        int elemSize = elemByteSize(dataType);
-        if(data.remaining() / elemSize != numElements(shape)) {
-          throw incompatibleBuffer(shape);
-        }
-        break;
-      case STRING:
-      default:
-        // not all types are checked
-        break;
-    }
-
-    Tensor t = create(dataType, shape, data.remaining());
-    try {
-      ByteBuffer dst = t.buffer();
-      dst.put(data);
-      return t;
-    }
-    catch(RuntimeException e) {
-      delete(t.nativeHandle);
-      throw e;
-    }
-  }
-
-  private static Tensor create(DataType dataType, long[] shape, long byteSize) {
-    Tensor t = new Tensor();
-    t.dtype = dataType;
-    t.shapeCopy = Arrays.copyOf(shape, shape.length);
-    t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy, byteSize);
-    return t;
-  }
-
-  /**
    * Gets the size (in bytes) of the tensor data.
-   *
-   * <p>Use this size information when constructing a byte buffer for {@code #writeTo(...)}.
    */
-  public int byteSize() {
+  public int numBytes() {
     return buffer().remaining();
   }
 
   /**
    * Gets the total number of elements in the tensor.
-   *
-   * <p>Use this size information when constructing a typed buffer for {@code #writeTo(...)}.
    *
    * @return the number of elements in a flattened (1-D) view of the tensor.
    */
@@ -268,10 +62,10 @@ public final class Tensor implements AutoCloseable {
       case INT32:
       case INT64:
       case BOOL:
-        return byteSize() / elemByteSize(dataType());
+        return numBytes() / elemByteSize(dataType());
       case STRING:
       default:
-        throw new UnsupportedOperationException("unsupported operation on a tensor of DataType "
+        throw new UnsupportedOperationException("unsupported operation on a tensor of type "
                 + dataType());
     }
   }
@@ -292,10 +86,10 @@ public final class Tensor implements AutoCloseable {
    *          If the tensor datatype is not {@link DataType#INT32}
    */
   public void writeTo(IntBuffer dst) {
-    ByteBuffer src = buffer();
     if(dtype != DataType.INT32) {
-      throw incompatibleBuffer(dtype);
+      throw incompatibleBuffer(dst, dtype);
     }
+    ByteBuffer src = buffer();
     dst.put(src.asIntBuffer());
   }
 
@@ -315,10 +109,10 @@ public final class Tensor implements AutoCloseable {
    *          If the tensor datatype is not {@link DataType#FLOAT}
    */
   public void writeTo(FloatBuffer dst) {
-    ByteBuffer src = buffer();
     if(dtype != DataType.FLOAT) {
-      throw incompatibleBuffer(dtype);
+      throw incompatibleBuffer(dst, dtype);
     }
+    ByteBuffer src = buffer();
     dst.put(src.asFloatBuffer());
   }
 
@@ -338,10 +132,10 @@ public final class Tensor implements AutoCloseable {
    *          If the tensor datatype is not {@link DataType#DOUBLE}
    */
   public void writeTo(DoubleBuffer dst) {
-    ByteBuffer src = buffer();
     if(dtype != DataType.DOUBLE) {
-      throw incompatibleBuffer(dtype);
+      throw incompatibleBuffer(dst, dtype);
     }
+    ByteBuffer src = buffer();
     dst.put(src.asDoubleBuffer());
   }
 
@@ -361,10 +155,10 @@ public final class Tensor implements AutoCloseable {
    *          If the tensor datatype is not {@link DataType#INT64}
    */
   public void writeTo(LongBuffer dst) {
-    ByteBuffer src = buffer();
     if(dtype != DataType.INT64) {
-      throw incompatibleBuffer(dtype);
+      throw incompatibleBuffer(dst, dtype);
     }
+    ByteBuffer src = buffer();
     dst.put(src.asLongBuffer());
   }
 
@@ -435,6 +229,188 @@ public final class Tensor implements AutoCloseable {
     } else {
       t.nativeHandle = allocateScalarBytes((byte[]) obj);
     }
+    return t;
+  }
+
+  /**
+   * Create an {@link DataType#INT32} Tensor with data from the given buffer.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements
+   * from the buffer (starting from its current position) into the tensor.
+   * For example, if {@code shape = {2,3} } (which represents a 2x3 matrix)
+   * then the buffer must have 6 elements remaining, which will be
+   * consumed by this method.
+   *
+   * @param shape the tensor shape.
+   * @param data a buffer containing the tensor data.
+   *
+   * @throws  IllegalArgumentException
+   *          If the tensor shape is not compatible with the buffer
+   */
+  public static Tensor create(long[] shape, IntBuffer data) {
+    if(data.remaining() != numElements(shape)) {
+      throw incompatibleBuffer(data.remaining(), shape);
+    }
+    int elemSize = elemByteSize(DataType.INT32);
+    Tensor t = createHelper(DataType.INT32, shape, elemSize * data.remaining());
+    try {
+      ByteBuffer dst = t.buffer();
+      dst.asIntBuffer().put(data);
+      return t;
+    } catch(RuntimeException e) {
+      delete(t.nativeHandle);
+      throw e;
+    }
+  }
+
+  /**
+   * Create a {@link DataType#FLOAT} Tensor with data from the given buffer.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements
+   * from the buffer (starting from its current position) into the tensor.
+   * For example, if {@code shape = {2,3} } (which represents a 2x3 matrix)
+   * then the buffer must have 6 elements remaining, which will be
+   * consumed by this method.
+   *
+   * @param shape the tensor shape.
+   * @param data a buffer containing the tensor data.
+   *
+   * @throws  IllegalArgumentException
+   *          If the tensor shape is not compatible with the buffer
+   */
+  public static Tensor create(long[] shape, FloatBuffer data) {
+    if(data.remaining() != numElements(shape)) {
+      throw incompatibleBuffer(data.remaining(), shape);
+    }
+    int elemSize = elemByteSize(DataType.FLOAT);
+    Tensor t = createHelper(DataType.FLOAT, shape, elemSize * data.remaining());
+    try {
+      ByteBuffer dst = t.buffer();
+      dst.asFloatBuffer().put(data);
+      return t;
+    } catch(RuntimeException e) {
+      delete(t.nativeHandle);
+      throw e;
+    }
+  }
+
+  /**
+   * Create a {@link DataType#DOUBLE} Tensor with data from the given buffer.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements
+   * from the buffer (starting from its current position) into the tensor.
+   * For example, if {@code shape = {2,3} } (which represents a 2x3 matrix)
+   * then the buffer must have 6 elements remaining, which will be
+   * consumed by this method.
+   *
+   * @param shape the tensor shape.
+   * @param data a buffer containing the tensor data.
+   *
+   * @throws  IllegalArgumentException
+   *          If the tensor shape is not compatible with the buffer
+   */
+  public static Tensor create(long[] shape, DoubleBuffer data) {
+    if(data.remaining() != numElements(shape)) {
+      throw incompatibleBuffer(data.remaining(), shape);
+    }
+    int elemSize = elemByteSize(DataType.DOUBLE);
+    Tensor t = createHelper(DataType.DOUBLE, shape, elemSize * data.remaining());
+    try {
+      ByteBuffer dst = t.buffer();
+      dst.asDoubleBuffer().put(data);
+      return t;
+    } catch(RuntimeException e) {
+      delete(t.nativeHandle);
+      throw e;
+    }
+  }
+
+  /**
+   * Create an {@link DataType#INT64} Tensor with data from the given buffer.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements
+   * from the buffer (starting from its current position) into the tensor.
+   * For example, if {@code shape = {2,3} } (which represents a 2x3 matrix)
+   * then the buffer must have 6 elements remaining, which will be
+   * consumed by this method.
+   *
+   * @param shape the tensor shape.
+   * @param data a buffer containing the tensor data.
+   *
+   * @throws  IllegalArgumentException
+   *          If the tensor shape is not compatible with the buffer
+   */
+  public static Tensor create(long[] shape, LongBuffer data) {
+    if(data.remaining() != numElements(shape)) {
+      throw incompatibleBuffer(data.remaining(), shape);
+    }
+    int elemSize = elemByteSize(DataType.INT64);
+    Tensor t = createHelper(DataType.INT64, shape, elemSize * data.remaining());
+    try {
+      ByteBuffer dst = t.buffer();
+      dst.asLongBuffer().put(data);
+      return t;
+    } catch(RuntimeException e) {
+      delete(t.nativeHandle);
+      throw e;
+    }
+  }
+
+  /**
+   * Create a Tensor with data from the given buffer.
+   *
+   * <p>Supports all datatypes.  Note that primitive data must be in native byte order.
+   * Tensors of type {@link DataType#STRING} must be encoded as per the C API.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements
+   * from the buffer (starting from its current position) into the tensor.
+   * For example, if {@code shape = {2,3} } (which represents a 2x3 matrix)
+   * then the buffer must have (6 elements x the byte size per element) bytes remaining,
+   * which will be consumed by this method.
+   *
+   * @param dataType the tensor datatype.
+   * @param shape the tensor shape.
+   * @param data a buffer containing the tensor data.
+   *
+   * @throws  IllegalArgumentException
+   *          If the tensor datatype or shape is not compatible with the buffer
+   */
+  public static Tensor create(DataType dataType, long[] shape, ByteBuffer data) {
+    switch(dataType) {
+      case FLOAT:
+      case DOUBLE:
+      case INT32:
+      case INT64:
+      case BOOL:
+        int elemSize = elemByteSize(dataType);
+        if(elemSize * numElements(shape) != data.remaining()) {
+          throw new IllegalArgumentException(String.format(
+              "byte buffer with %d bytes is not compatible with a Tensor of type %s with shape %s",
+              data.remaining(), dataType, Arrays.toString(shape)));
+        }
+        break;
+      case STRING:
+      default:
+        // not all types are checked
+        break;
+    }
+
+    Tensor t = createHelper(dataType, shape, data.remaining());
+    try {
+      ByteBuffer dst = t.buffer();
+      dst.put(data);
+      return t;
+    } catch(RuntimeException e) {
+      delete(t.nativeHandle);
+      throw e;
+    }
+  }
+
+  private static Tensor createHelper(DataType dataType, long[] shape, long byteSize) {
+    Tensor t = new Tensor();
+    t.dtype = dataType;
+    t.shapeCopy = Arrays.copyOf(shape, shape.length);
+    t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy, byteSize);
     return t;
   }
 
@@ -591,18 +567,20 @@ public final class Tensor implements AutoCloseable {
 
   private Tensor() {}
 
-  // buffer support
-
   private ByteBuffer buffer() {
     return buffer(nativeHandle).order(ByteOrder.nativeOrder());
   }
 
-  private static IllegalArgumentException incompatibleBuffer(DataType dataType) {
-    return new IllegalArgumentException("incompatible buffer for Tensor of DataType " + dataType);
+  private static IllegalArgumentException incompatibleBuffer(Buffer buf, DataType dataType) {
+    return new IllegalArgumentException(String.format(
+        "cannot use %s with Tensor of type %s",
+            buf.getClass().getName(), dataType));
   }
 
-  private static IllegalArgumentException incompatibleBuffer(long[] shape) {
-    return new IllegalArgumentException("incompatible buffer for Tensor of shape " + Arrays.toString(shape));
+  private static IllegalArgumentException incompatibleBuffer(int numElements, long[] shape) {
+    return new IllegalArgumentException(String.format(
+        "buffer with %d elements is not compatible with a Tensor with shape %s",
+        numElements, Arrays.toString(shape)));
   }
 
   private static int numElements(long[] shape) {
@@ -617,23 +595,17 @@ public final class Tensor implements AutoCloseable {
   private static int elemByteSize(DataType dataType) {
     switch(dataType) {
       case FLOAT:
-        return Float.SIZE / Byte.SIZE;
-      case DOUBLE:
-        return Double.SIZE / Byte.SIZE;
       case INT32:
-        return Integer.SIZE / Byte.SIZE;
+        return 4;
+      case DOUBLE:
       case INT64:
-        return Long.SIZE / Byte.SIZE;
+        return 8;
       case BOOL:
         return 1;
-      case STRING:
-        return 0;
       default:
-        throw new IllegalArgumentException("dataType");
+        throw new IllegalArgumentException("unsupported DataType " + dataType);
     }
   }
-
-  // ND-array support
 
   private static DataType dataTypeOf(Object o) {
     if (o.getClass().isArray()) {
@@ -715,13 +687,13 @@ public final class Tensor implements AutoCloseable {
     }
   }
 
-  private static native ByteBuffer buffer(long handle);
-
   private static native long allocate(int dtype, long[] shape, long byteSize);
 
   private static native long allocateScalarBytes(byte[] value);
 
   private static native void delete(long handle);
+
+  private static native ByteBuffer buffer(long handle);
 
   private static native int dtype(long handle);
 
