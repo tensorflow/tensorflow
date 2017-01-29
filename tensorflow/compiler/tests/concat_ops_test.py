@@ -288,7 +288,7 @@ class ConcatTest(XLATestCase):
         scalar = constant_op.constant(7)
         dim = array_ops.placeholder(dtypes.int32)
         with self.assertRaisesRegexp(
-            ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
+            ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
           array_ops.concat([scalar, scalar, scalar], dim)
 
 
