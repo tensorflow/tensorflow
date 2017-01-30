@@ -115,6 +115,36 @@ class AdagradOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([[3.0], [3.715679168701172]]), var1.eval())
 
+  def testSparseRepeatedIndices(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        repeated_index_update_var = variables.Variable(
+            [[1.0], [2.0]], dtype=dtype)
+        aggregated_update_var = variables.Variable(
+            [[1.0], [2.0]], dtype=dtype)
+        grad_repeated_index = ops.IndexedSlices(
+            constant_op.constant(
+                [0.1, 0.1], shape=[2, 1], dtype=dtype),
+            constant_op.constant([1, 1]),
+            constant_op.constant([2, 1]))
+        grad_aggregated = ops.IndexedSlices(
+            constant_op.constant(
+                [0.2], shape=[1, 1], dtype=dtype),
+            constant_op.constant([1]),
+            constant_op.constant([2, 1]))
+        repeated_update = adagrad.AdagradOptimizer(3.0).apply_gradients(
+            [(grad_repeated_index, repeated_index_update_var)])
+        aggregated_update = adagrad.AdagradOptimizer(3.0).apply_gradients(
+            [(grad_aggregated, aggregated_update_var)])
+        variables.global_variables_initializer().run()
+        self.assertAllClose(aggregated_update_var.eval(),
+                            repeated_index_update_var.eval())
+        for _ in range(3):
+          repeated_update.run()
+          aggregated_update.run()
+          self.assertAllClose(aggregated_update_var.eval(),
+                              repeated_index_update_var.eval())
+
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
