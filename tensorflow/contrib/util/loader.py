@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for loading op libraries."""
+"""Utilities for loading op libraries.
+
+@@load_op_library
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

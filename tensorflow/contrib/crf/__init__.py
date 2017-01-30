@@ -37,3 +37,7 @@ from tensorflow.contrib.crf.python.ops.crf import crf_sequence_score
 from tensorflow.contrib.crf.python.ops.crf import crf_unary_score
 from tensorflow.contrib.crf.python.ops.crf import CrfForwardRnnCell
 from tensorflow.contrib.crf.python.ops.crf import viterbi_decode
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+remove_undocumented(__name__)

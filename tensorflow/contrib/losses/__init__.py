@@ -19,8 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 # pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.losses.python import losses
 from tensorflow.contrib.losses.python.losses import *
 # pylint: enable=unused-import,wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__, doc_string_modules=[losses])
