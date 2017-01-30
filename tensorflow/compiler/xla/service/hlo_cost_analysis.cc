@@ -315,37 +315,16 @@ Status HloCostAnalysis::HandleRng(HloInstruction* random,
 }
 
 Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
-  switch (fusion->fusion_kind()) {
-    case HloInstruction::FusionKind::kLoop:
-    case HloInstruction::FusionKind::kInput: {
-      // Compute the cost of the fused expression.
-      HloInstruction* fused_expression_root = fusion->fused_expression_root();
-      HloCostAnalysis visitor;
-      TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
+  // Compute the cost of the fused expression.
+  HloInstruction* fused_expression_root = fusion->fused_expression_root();
+  HloCostAnalysis visitor;
+  TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
 
-      // Compute the cost of all elements for this Fusion operation.
-      auto element_count = ShapeUtil::ElementsIn(fusion->shape());
-      transcendental_count_ += element_count * visitor.transcendental_count();
-      auto hlo_flop_count = element_count * visitor.flop_count();
-      hlo_to_flop_count_[fusion] = hlo_flop_count;
-      flop_count_ += hlo_flop_count;
-      return Status::OK();
-    }
-    case HloInstruction::FusionKind::kTransposeDot:
-    case HloInstruction::FusionKind::kConvBackwardFilter:
-    case HloInstruction::FusionKind::kConvBackwardInput: {
-      // Compute the cost of the fused expression.
-      HloInstruction* fused_expression_root = fusion->fused_expression_root();
-      HloCostAnalysis visitor;
-      TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
-
-      // Attribute the cost of the fused expression to the fusion node.
-      transcendental_count_ += visitor.transcendental_count();
-      hlo_to_flop_count_[fusion] += visitor.flop_count();
-      flop_count_ += visitor.flop_count();
-      return Status::OK();
-    }
-  }
+  // Attribute the cost of the fused expression to the fusion node.
+  transcendental_count_ += visitor.transcendental_count();
+  hlo_to_flop_count_[fusion] += visitor.flop_count();
+  flop_count_ += visitor.flop_count();
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleCall(
