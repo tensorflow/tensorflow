@@ -197,14 +197,13 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
         continue;
       }
     }
-    SignatureDef signature_def;
     const Signature signature = it_named_signature.second;
     if (IsRegressionSignature(signature)) {
       (*meta_graph_def->mutable_signature_def())[key] =
           BuildRegressionSignatureDef(signature.regression_signature());
     } else if (IsClassificationSignature(signature)) {
-      (*meta_graph_def->mutable_signature_def())[key] = signature_def;
-      BuildClassificationSignatureDef(signature.classification_signature());
+      (*meta_graph_def->mutable_signature_def())[key] =
+          BuildClassificationSignatureDef(signature.classification_signature());
     } else {
       LOG(WARNING)
           << "Named signature up-conversion to SignatureDef is only supported "

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
-#include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -57,6 +56,19 @@ class XlaCompilerTest : public ::testing::Test {
   std::unique_ptr<FunctionLibraryRuntime> flr_;
 };
 
+// Tests compilation of an empty graph.
+TEST_F(XlaCompilerTest, EmptyReturnValues) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler_->CompileGraph("add", std::move(graph), flr_.get(),
+                                       /*args=*/{}, /*use_tuple_arg=*/false,
+                                       &result));
+
+  // No computation should be generated.
+  EXPECT_EQ(0, result.computation.handle().handle());
+}
+
+// Tests compilation and execution of a graph that adds two tensors.
 TEST_F(XlaCompilerTest, Simple) {
   // Builds a graph that adds two Tensors.
   Scope scope = Scope::NewRootScope().ExitOnError();

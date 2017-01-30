@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
   tensorflow::int64 FLAGS_min_float_ops = 0;
   tensorflow::string FLAGS_device_regexes = ".*";
   tensorflow::string FLAGS_order_by = "name";
-  tensorflow::string FLAGS_account_type_regexes = "Variable";
+  tensorflow::string FLAGS_account_type_regexes = "Variable,VariableV2";
   tensorflow::string FLAGS_start_name_regexes = ".*";
   tensorflow::string FLAGS_trim_name_regexes = "";
   tensorflow::string FLAGS_show_name_regexes = ".*";

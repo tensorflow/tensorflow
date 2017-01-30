@@ -1,5 +1,7 @@
 # A Guide to TF Layers: Building a Convolutional Neural Network
 
+Note: This tutorial requires TF v1.0 alpha; see the [Download and Setup page](https://www.tensorflow.org/versions/r1.0/get_started/os_setup) for installation instructions.
+
 The TensorFlow [`layers`
 module](https://www.tensorflow.org/code/tensorflow/python/layers/layers.py)
 provides a high-level API that makes it easy to construct a neural network. It
@@ -44,10 +46,6 @@ evaluate the convolutional neural network. The complete, final code can be
 [found
 here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/layers/cnn_mnist.py).
 
-<p class="note"><b>NOTE:</b> Before proceeding, make sure you've
-<a href="https://www.tensorflow.org/get_started/os_setup">installed the latest
-version of TensorFlow</a> on your machine.</p>
-
 ## Intro to Convolutional Neural Networks
 
 Convolutional neural networks (CNNs) are the current state-of-the-art model
@@ -87,9 +85,9 @@ is equal to 1). We can interpret the softmax values for a given image as
 relative measurements of how likely it is that the image falls into each target
 class.
 
-NOTE: For a more comprehensive walkthrough of CNN architecture, see Stanford
-University's [Convolutional Neural Networks for Visual Recognition course
-materials](http://cs231n.github.io/convolutional-networks/).
+<p class="note"><b>NOTE:</b> For a more comprehensive walkthrough of CNN
+architecture, see Stanford University's <a href="http://cs231n.github.io/convolutional-networks/">
+Convolutional Neural Networks for Visual Recognition course materials</a>.</p>
 
 ## Building the CNN MNIST Classifier {#building-cnn-classifier}
 
@@ -506,7 +504,7 @@ if mode == learn.ModeKeys.TRAIN:
 <p class="note"><b>NOTE:</b> For a more in-depth look at configuring training ops for Estimator model
 functions, see <a href="../estimators/index.md#defining_the_training_op_for_the_model">"Defining the training op for the
 model"</a> in the
-<a href="../estimators/index.md">"Creating Estimations in tf.contrib.learn"]</a> tutorial.</p>
+<a href="../estimators/index.md">"Creating Estimations in tf.contrib.learn"</a> tutorial.</p>
 
 ### Generate Predictions {#generate-predictions}
 
@@ -541,7 +539,7 @@ using [`tf.nn.softmax()`](../../api_docs/python/nn.md#softmax):
 tf.nn.softmax(logits, name="softmax_tensor")
 ```
 
-<p class="note"><b>NOTE:</b We use the `name` argument to explicitly name this operation `softmax_tensor`, so we can reference it later. (We'll set up logging for the softmax values in <a href="#set-up-a-logging-hook">Set Up a Logging Hook</a>.)</p>
+<p class="note"><b>NOTE:</b> We use the `name` argument to explicitly name this operation `softmax_tensor`, so we can reference it later. (We'll set up logging for the softmax values in <a href="#set-up-a-logging-hook">Set Up a Logging Hook</a>.)</p>
 
 We compile our predictions in a dict as follows:
 

@@ -1212,57 +1212,56 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   return false;
 }
 
-/* static */ bool CUDADriver::SynchronousMemcpyD2H(CudaContext* context,
-                                                   void *host_dst,
-                                                   CUdeviceptr gpu_src,
-                                                   uint64 size) {
+/* static */ port::Status CUDADriver::SynchronousMemcpyD2H(CudaContext *context,
+                                                           void *host_dst,
+                                                           CUdeviceptr gpu_src,
+                                                           uint64 size) {
   ScopedActivateContext activation{context};
   CUresult res = dynload::cuMemcpyDtoH_v2(host_dst, gpu_src, size);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << port::Printf(
-        "failed to synchronous memcpy from device to host: %s; "
-        "host dst: %p; GPU src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), host_dst, port::bit_cast<void *>(gpu_src), size, size);
-    return false;
+    return port::InternalError(
+        port::Printf("failed to synchronous memcpy from device to host: %s; "
+                     "host dst: %p; GPU src: %p; size: %llu=0x%llx",
+                     ToString(res).c_str(), host_dst,
+                     port::bit_cast<void *>(gpu_src), size, size));
   }
   VLOG(2) << "successfully sync memcpy'd d2h of " << size << " bytes to "
           << host_dst;
-  return true;
+  return port::Status::OK();
 }
 
-/* static */ bool CUDADriver::SynchronousMemcpyH2D(CudaContext* context,
-                                                   CUdeviceptr gpu_dst,
-                                                   const void *host_src,
-                                                   uint64 size) {
+/* static */ port::Status CUDADriver::SynchronousMemcpyH2D(CudaContext *context,
+                                                           CUdeviceptr gpu_dst,
+                                                           const void *host_src,
+                                                           uint64 size) {
   ScopedActivateContext activation{context};
   CUresult res = dynload::cuMemcpyHtoD_v2(gpu_dst, host_src, size);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << port::Printf(
+    return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p;"
         " host src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst), host_src, size, size);
-    return false;
+        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst), host_src, size,
+        size));
   }
   VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
-  return true;
+  return port::Status::OK();
 }
 
-/* static */ bool CUDADriver::SynchronousMemcpyD2D(CudaContext* context,
-                                                   CUdeviceptr gpu_dst,
-                                                   CUdeviceptr gpu_src,
-                                                   uint64 size) {
+/* static */ port::Status CUDADriver::SynchronousMemcpyD2D(CudaContext *context,
+                                                           CUdeviceptr gpu_dst,
+                                                           CUdeviceptr gpu_src,
+                                                           uint64 size) {
   ScopedActivateContext activation{context};
   CUresult res = dynload::cuMemcpyDtoD_v2(gpu_dst, gpu_src, size);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << port::Printf(
+    return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p; "
         "GPU src: %p; size: %llu=0x%llx",
         ToString(res).c_str(), port::bit_cast<void *>(gpu_dst),
-        port::bit_cast<void *>(gpu_src), size, size);
-    return false;
+        port::bit_cast<void *>(gpu_src), size, size));
   }
   VLOG(2) << "successfully sync memcpy'd d2d of " << size << " bytes";
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool CUDADriver::AsynchronousMemcpyD2H(CudaContext* context,

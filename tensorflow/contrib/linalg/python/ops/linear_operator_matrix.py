@@ -157,7 +157,7 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
   def _shape(self):
     return self._matrix.get_shape()
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
   def _apply(self, x, adjoint=False):

@@ -247,10 +247,9 @@ LocalService::CompileAheadOfTime(
             *instance.result_layout));
   }
 
-  return execute_backend_->compiler()
-      ->CompileAheadOfTime(std::move(hlo_modules), std::move(module_configs),
-                           MakeHloDumper(), options)
-      .ConsumeValueOrDie();
+  return execute_backend_->compiler()->CompileAheadOfTime(
+      std::move(hlo_modules), std::move(module_configs), MakeHloDumper(),
+      options);
 }
 
 tensorflow::Status LocalService::ValidateExecuteOptions(

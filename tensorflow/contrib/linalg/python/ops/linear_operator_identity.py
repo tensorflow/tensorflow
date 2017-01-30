@@ -29,12 +29,52 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 
-__all__ = ["LinearOperatorIdentity",]
+__all__ = [
+    "LinearOperatorIdentity",
+    "LinearOperatorScaledIdentity",
+]
 
 
-class LinearOperatorIdentity(linear_operator.LinearOperator):
+class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
+
+  def _check_num_rows_possibly_add_asserts(self):
+    """Static check of init arg `num_rows`, possibly add asserts."""
+    # Possibly add asserts.
+    if self._assert_proper_shapes:
+      self._num_rows = control_flow_ops.with_dependencies(
+          [
+              check_ops.assert_rank(
+                  self._num_rows,
+                  0,
+                  message="Argument num_rows must be a 0-D Tensor."),
+              check_ops.assert_non_negative(
+                  self._num_rows,
+                  message="Argument num_rows must be non-negative."),
+          ],
+          self._num_rows)
+
+    # Static checks.
+    if not self._num_rows.dtype.is_integer:
+      raise TypeError("Argument num_rows must be integer type.  Found:"
+                      " %s" % self._num_rows)
+
+    num_rows_static = self._num_rows_static
+
+    if num_rows_static is None:
+      return  # Cannot do any other static checks.
+
+    if num_rows_static.ndim != 0:
+      raise ValueError("Argument num_rows must be a 0-D Tensor.  Found:"
+                       " %s" % num_rows_static)
+
+    if num_rows_static < 0:
+      raise ValueError("Argument num_rows must be non-negative.  Found:"
+                       " %s" % num_rows_static)
+
+
+class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   """`LinearOperator` acting like a [batch] square identity matrix.
 
   This operator acts like a [batch] identity matrix `A` with shape
@@ -221,7 +261,7 @@ class LinearOperatorIdentity(linear_operator.LinearOperator):
     batch_shape = tensor_shape.TensorShape(self._batch_shape_static)
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     matrix_shape = array_ops.stack(
         (self._num_rows, self._num_rows), axis=0)
     if self._batch_shape_arg is None:
@@ -267,34 +307,26 @@ class LinearOperatorIdentity(linear_operator.LinearOperator):
     # Dynamic broadcast:
     #   Always add to an array of zeros, rather than using a "cond", since a
     #   cond would require copying data from GPU --> CPU.
-    special_shape = array_ops.concat((self.batch_shape_dynamic(), [1, 1]), 0)
+    special_shape = array_ops.concat((self.batch_shape_tensor(), [1, 1]), 0)
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 
   def _apply(self, x, adjoint=False):
     # Note that adjoint has no effect since this matrix is self-adjoint.
-    if x.dtype != self.dtype:
-      raise TypeError(
-          "Expected argument 'x' to have dtype %s.  Found: %s"
-          % (self.dtype, x))
     if self._assert_proper_shapes:
-      x = self._assert_compatible_matrix_dimensions(x)
+      aps = linear_operator_util.assert_compatible_matrix_dimensions(
+          self, x)
+      x = control_flow_ops.with_dependencies([aps], x)
     return self._possibly_broadcast_batch_shape(x)
 
   def _determinant(self):
-    return array_ops.ones(shape=self.batch_shape_dynamic(), dtype=self.dtype)
+    return array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
   def _log_abs_determinant(self):
-    return array_ops.zeros(shape=self.batch_shape_dynamic(), dtype=self.dtype)
+    return array_ops.zeros(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
   def _solve(self, rhs, adjoint=False):
     return self._apply(rhs)
-
-  def _to_dense(self):
-    return linalg_ops.eye(
-        num_rows=self.domain_dimension_dynamic(),
-        batch_shape=self.batch_shape_dynamic(),
-        dtype=self.dtype)
 
   def add_to_tensor(self, mat, name="add_to_tensor"):
     """Add matrix represented by this operator to `mat`.  Equiv to `I + mat`.
@@ -381,14 +413,238 @@ class LinearOperatorIdentity(linear_operator.LinearOperator):
       raise ValueError("Argument batch_shape must be non-negative.  Found:"
                        "%s" % self._batch_shape_static)
 
-  def _assert_compatible_matrix_dimensions(self, x):
-    """Check that an argument to solve/apply has proper domain dimension."""
-    # Static checks are done in the base class.  Only dynamic asserts here.
-    assert_same_dd = check_ops.assert_equal(
-        array_ops.shape(x)[-2],
-        self.domain_dimension_dynamic(),
-        message=(
-            "Incompatible matrix dimensions.  "
-            "shape[-2] of argument to be the same as this operator"))
 
-    return control_flow_ops.with_dependencies([assert_same_dd], x)
+class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
+  """`LinearOperator` acting like a scaled [batch] identity matrix `A = c I`.
+
+  This operator acts like a scaled [batch] identity matrix `A` with shape
+  `[B1,...,Bb, N, N]` for some `b >= 0`.  The first `b` indices index a
+  batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
+  a scaled version of the `N x N` identity matrix.
+
+  `LinearOperatorIdentity` is initialized with `num_rows`, and a `multiplier`
+  (a `Tensor`) of shape `[B1,...,Bb]`.  `N` is set to `num_rows`, and the
+  `multiplier` determines the scale for each batch member.
+
+  ```python
+  # Create a 2 x 2 scaled identity matrix.
+  operator = LinearOperatorIdentity(num_rows=2, multiplier=3.)
+
+  operator.to_dense()
+  ==> [[3., 0.]
+       [0., 3.]]
+
+  operator.shape
+  ==> [2, 2]
+
+  operator.log_determinant()
+  ==> 2 * Log[3]
+
+  x = ... Shape [2, 4] Tensor
+  operator.apply(x)
+  ==> 3 * x
+
+  y = tf.random_normal(shape=[3, 2, 4])
+  # Note that y.shape is compatible with operator.shape because operator.shape
+  # is broadcast to [3, 2, 2].
+  x = operator.solve(y)
+  ==> 3 * x
+
+  # Create a 2-batch of 2x2 identity matrices
+  operator = LinearOperatorIdentity(num_rows=2, multiplier=5.)
+  operator.to_dense()
+  ==> [[[5., 0.]
+        [0., 5.]],
+       [[5., 0.]
+        [0., 5.]]]
+
+  x = ... Shape [2, 2, 3]
+  operator.apply(x)
+  ==> 5 * x
+
+  # Here the operator and x have different batch_shape, and are broadcast.
+  x = ... Shape [1, 2, 3]
+  operator.apply(x)
+  ==> 5 * x
+  ```
+
+  ### Shape compatibility
+
+  This operator acts on [batch] matrix with compatible shape.
+  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+
+  ```
+  operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
+  x.shape =   [C1,...,Cc] + [N, R],
+  and [C1,...,Cc] broadcasts with [B1,...,Bb] to [D1,...,Dd]
+  ```
+
+  ### Performance
+
+  * `operator.apply(x)` is `O(D1*...*Dd*N*R)`
+  * `operator.solve(x)` is `O(D1*...*Dd*N*R)`
+  * `operator.determinant()` is `O(D1*...*Dd)`
+
+  #### Matrix property hints
+
+  This `LinearOperator` is initialized with boolean flags of the form `is_X`,
+  for `X = non_singular, self_adjoint, positive_definite`.
+  These have the following meaning
+  * If `is_X == True`, callers should expect the operator to have the
+    property `X`.  This is a promise that should be fulfilled, but is *not* a
+    runtime assert.  For example, finite floating point precision may result
+    in these promises being violated.
+  * If `is_X == False`, callers should expect the operator to not have `X`.
+  * If `is_X == None` (the default), callers should have no expectation either
+    way.
+  """
+
+  def __init__(self,
+               num_rows,
+               multiplier,
+               is_non_singular=None,
+               is_self_adjoint=None,
+               is_positive_definite=None,
+               assert_proper_shapes=False,
+               name="LinearOperatorScaledIdentity"):
+    """Initialize a `LinearOperatorScaledIdentity`.
+
+    The `LinearOperatorScaledIdentity` is initialized with `num_rows`, which
+    determines the size of each identity matrix, and a `multiplier`,
+    which defines `dtype`, batch shape, and scale of each matrix.
+
+    This operator is able to broadcast the leading (batch) dimensions.
+
+    Args:
+      num_rows:  Scalar non-negative integer `Tensor`.  Number of rows in the
+        corresponding identity matrix.
+      multiplier:  `Tensor` of shape `[B1,...,Bb]`, or `[]` (a scalar).
+      is_non_singular:  Expect that this operator is non-singular.
+      is_self_adjoint:  Expect that this operator is equal to its hermitian
+        transpose.
+      is_positive_definite:  Expect that this operator is positive definite.
+      assert_proper_shapes:  Python `bool`.  If `False`, only perform static
+        checks that initialization and method arguments have proper shape.
+        If `True`, and static checks are inconclusive, add asserts to the graph.
+      name: A name for this `LinearOperator`
+
+    Raises:
+      ValueError:  If `num_rows` is determined statically to be non-scalar, or
+        negative.
+    """
+    self._assert_proper_shapes = assert_proper_shapes
+
+    with ops.name_scope(name, values=[multiplier, num_rows]):
+      self._multiplier = ops.convert_to_tensor(multiplier, name="multiplier")
+
+      super(LinearOperatorScaledIdentity, self).__init__(
+          dtype=self._multiplier.dtype,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          name=name)
+
+      # Shape [B1,...Bb, 1, 1]
+      self._multiplier_matrix = array_ops.expand_dims(
+          array_ops.expand_dims(self.multiplier, -1), -1)
+      self._multiplier_matrix_conj = math_ops.conj(
+          self._multiplier_matrix)
+      self._abs_multiplier = math_ops.abs(self.multiplier)
+
+      self._num_rows = linear_operator_util.shape_tensor(
+          num_rows, name="num_rows")
+      self._num_rows_static = tensor_util.constant_value(self._num_rows)
+      self._check_num_rows_possibly_add_asserts()
+      self._num_rows_cast_to_dtype = math_ops.cast(self._num_rows, self.dtype)
+      self._num_rows_cast_to_real_dtype = math_ops.cast(
+          self._num_rows, self.dtype.real_dtype)
+
+  def _shape(self):
+    matrix_shape = tensor_shape.TensorShape(
+        (self._num_rows_static, self._num_rows_static))
+
+    batch_shape = self.multiplier.get_shape()
+    return batch_shape.concatenate(matrix_shape)
+
+  def _shape_tensor(self):
+    matrix_shape = array_ops.stack(
+        (self._num_rows, self._num_rows), axis=0)
+
+    batch_shape = array_ops.shape(self.multiplier)
+    return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  def _assert_non_singular(self):
+    return check_ops.assert_positive(
+        math_ops.abs(self.multiplier),
+        message="LinearOperator was singular")
+
+  def _assert_positive_definite(self):
+    return check_ops.assert_positive(
+        math_ops.real(self.multiplier),
+        message="LinearOperator was not positive definite.")
+
+  def _assert_self_adjoint(self):
+    imag_multiplier = math_ops.imag(self.multiplier)
+    return check_ops.assert_equal(
+        array_ops.zeros_like(imag_multiplier),
+        imag_multiplier,
+        message="LinearOperator was not self-adjoint")
+
+  def _apply(self, x, adjoint=False):
+    if adjoint:
+      matrix = self._multiplier_matrix_conj
+    else:
+      matrix = self._multiplier_matrix
+    if self._assert_proper_shapes:
+      aps = linear_operator_util.assert_compatible_matrix_dimensions(
+          self, x)
+      x = control_flow_ops.with_dependencies([aps], x)
+    return x * matrix
+
+  def _determinant(self):
+    return self.multiplier ** self._num_rows_cast_to_dtype
+
+  def _log_abs_determinant(self):
+    return self._num_rows_cast_to_real_dtype * math_ops.log(
+        self._abs_multiplier)
+
+  def _solve(self, rhs, adjoint=False):
+    if adjoint:
+      matrix = self._multiplier_matrix_conj
+    else:
+      matrix = self._multiplier_matrix
+    if self._assert_proper_shapes:
+      aps = linear_operator_util.assert_compatible_matrix_dimensions(
+          self, rhs)
+      rhs = control_flow_ops.with_dependencies([aps], rhs)
+    return rhs / matrix
+
+  def add_to_tensor(self, mat, name="add_to_tensor"):
+    """Add matrix represented by this operator to `mat`.  Equiv to `I + mat`.
+
+    Args:
+      mat:  `Tensor` with same `dtype` and shape broadcastable to `self`.
+      name:  A name to give this `Op`.
+
+    Returns:
+      A `Tensor` with broadcast shape and same `dtype` as `self`.
+    """
+    with self._name_scope(name, values=[mat]):
+      # Shape [B1,...,Bb, 1]
+      multiplier_vector = array_ops.expand_dims(self.multiplier, -1)
+
+      # Shape [C1,...,Cc, M, M]
+      mat = ops.convert_to_tensor(mat, name="mat")
+
+      # Shape [C1,...,Cc, M]
+      mat_diag = array_ops.matrix_diag_part(mat)
+
+      # multiplier_vector broadcasts here.
+      new_diag = multiplier_vector + mat_diag
+
+      return array_ops.matrix_set_diag(mat, new_diag)
+
+  @property
+  def multiplier(self):
+    """The [batch] scalar `Tensor`, `c` in `cI`."""
+    return self._multiplier

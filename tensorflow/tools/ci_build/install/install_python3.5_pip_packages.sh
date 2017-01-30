@@ -49,35 +49,6 @@ set -e
 # Install Python 3.5 and dev library
 apt-get install -y --no-install-recommends python3.5 libpython3.5-dev
 
-# Install pip3.4 and numpy for Python 3.4
-# This strange-looking install step is a stopgap measure to make the genrule
-# contrib/session_bundle/example:half_plus_two pass. The genrule calls Python
-# (via bazel) directly, but calls the wrong version of Python (3.4) because
-# bazel does not support specification of Python minor versions yet. So we
-# install numpy for Python3.4 here so that the genrule will at least not
-# complain about missing numpy. Once we upgrade to 16.04 for Python 3.5 builds,
-# this will no longer be necessary.
-set +e
-pip3_version=$(pip3 --version | grep "python 3.4")
-if [[ -z $pip3_version ]]; then
-  set -e
-  wget -q https://bootstrap.pypa.io/get-pip.py
-  python3.4 get-pip.py
-  rm -f get-pip.py
-fi
-
-NUMPY_VERSION="1.11.0"
-numpy_ver_flat=$(echo $NUMPY_VERSION | sed 's/\.//g' | sed 's/^0*//g')
-local_numpy_ver=$(python3 -c "import numpy; print(numpy.__version__)")
-local_numpy_ver_flat=$(echo $local_numpy_ver | sed 's/\.//g' | sed 's/^0*//g')
-if [[ -z $local_numpy_ver_flat ]]; then
-  local_numpy_ver_flat=0
-fi
-if (( $local_numpy_ver_flat < $numpy_ver_flat )); then
-  set -e
-  pip3 install --upgrade numpy==${NUMPY_VERSION}
-fi
-
 # Install pip3.5
 set +e
 pip35_version=$(pip3.5 --version | grep "python 3.5")
@@ -125,3 +96,5 @@ pip3.5 install wheel==0.29.0
 pip3.5 install --upgrade pandas==0.18.1
 
 pip3.5 install portpicker
+
+pip3.5 install werkzeug

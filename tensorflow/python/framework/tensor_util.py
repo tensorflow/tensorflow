@@ -638,6 +638,11 @@ def _ConstantValue(tensor):
     return np.concatenate(values, axis=dim)
   elif tensor.op.type == "Pack":
     values = []
+    # Some imported GraphDefs have Pack ops with zero inputs. Those are invalid
+    # and shouldn't be produced, but to deal sensibly with them here we check
+    # and return None.
+    if not tensor.op.inputs:
+      return None
     for x in tensor.op.inputs:
       value = constant_value(x)
       if value is None:

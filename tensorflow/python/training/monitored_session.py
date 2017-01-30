@@ -237,7 +237,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.initialize_all_tables())
+                                  data_flow_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -248,6 +248,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              chief_only_hooks=None,
                              save_checkpoint_secs=600,
                              save_summaries_steps=100,
+                             save_summaries_secs=None,
                              config=None):
   """Creates a `MonitoredSession` for training.
 
@@ -273,8 +274,12 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       using a default checkpoint saver. If `save_checkpoint_secs` is set to
       `None`, then the default checkpoint saver isn't used.
     save_summaries_steps: The frequency, in number of global steps, that the
-      summaries are written to disk using a default summary saver. If
-      `save_summaries_steps` is set to `None`, then the default summary saver
+      summaries are written to disk using a default summary saver. If both
+      `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
+      the default summary saver isn't used.
+    save_summaries_secs: The frequency, in secs, that the summaries are written
+      to disk using a default summary saver.  If both `save_summaries_steps` and
+      `save_summaries_secs` are set to `None`, then the default summary saver
       isn't used.
     config: an instance of `tf.ConfigProto` proto used to configure the session.
       It's the `config` argument of constructor of `tf.Session`.
@@ -301,10 +306,12 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     all_hooks.append(
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
 
-    if save_summaries_steps and save_summaries_steps > 0:
+    if (save_summaries_steps and save_summaries_steps > 0) or (
+        save_summaries_secs and save_summaries_secs > 0):
       all_hooks.append(basic_session_run_hooks.SummarySaverHook(
           scaffold=scaffold,
           save_steps=save_summaries_steps,
+          save_secs=save_summaries_secs,
           output_dir=checkpoint_dir))
     if save_checkpoint_secs and save_checkpoint_secs > 0:
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(

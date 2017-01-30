@@ -202,7 +202,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     const TensorShapes& input_matrix_shapes, const TensorOutputs& outputs,
     const TensorShapes& output_matrix_shapes) {
   ConstMatrixMaps matrix_inputs;
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
     matrix_inputs.push_back(
@@ -213,7 +213,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
   }
 
   MatrixMaps matrix_outputs;
-  for (int i = 0; i < output_matrix_shapes.size(); ++i) {
+  for (size_t i = 0; i < output_matrix_shapes.size(); ++i) {
     // The output matrix shape may not be a matrix.
     int num_output_rows = output_matrix_shapes[i].dims() >= 1
                               ? output_matrix_shapes[i].dim_size(0)

@@ -29,18 +29,19 @@ from tensorflow.python.ops import parsing_ops
 # A return type allowing input_fns to return multiple values in a well-
 # defined way (analogous to ModelFnOps).
 # The expected return values are:
-#  features: a dict of string to Tensor, giving the features to be passed to
-#            the model.
-#  labels: a dict of string to Tensor, giving labels (aka targets) for training.
-#  default_inputs: a dict of string to Tensor, giving the input Tensors (if
-#            any) that this input_fn expects to be fed.
+#  features: a dict of string to `Tensor` or `SparseTensor`, giving the features
+#            to be passed to the model.
+#  labels: a dict of string to `Tensor` or `SparseTensor`, giving labels (aka
+#            targets) for training.
+#  default_inputs: a dict of string to `Tensor` or `SparseTensor`, giving the
+#            input placeholders (if any) that this input_fn expects to be fed.
 InputFnOps = collections.namedtuple('InputFnOps',
                                     ['features',
                                      'labels',
                                      'default_inputs'])
 
 
-def build_parsing_serving_input_fn(feature_spec, default_batch_size=1):
+def build_parsing_serving_input_fn(feature_spec, default_batch_size=None):
   """Build an input_fn appropriate for serving, expecting fed tf.Examples.
 
   Creates an input_fn that expects a serialized tf.Example fed into a string
@@ -51,6 +52,7 @@ def build_parsing_serving_input_fn(feature_spec, default_batch_size=1):
   Args:
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.
     default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
 
   Returns:
     An input_fn suitable for use in serving.
@@ -67,7 +69,7 @@ def build_parsing_serving_input_fn(feature_spec, default_batch_size=1):
   return input_fn
 
 
-def build_default_serving_input_fn(features, default_batch_size=1):
+def build_default_serving_input_fn(features, default_batch_size=None):
   """Build an input_fn appropriate for serving, expecting feature Tensors.
 
   Creates an input_fn that expects all features to be fed directly.
@@ -77,6 +79,7 @@ def build_default_serving_input_fn(features, default_batch_size=1):
   Args:
     features: a dict of string to `Tensor`.
     default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
 
   Returns:
     An input_fn suitable for use in serving.

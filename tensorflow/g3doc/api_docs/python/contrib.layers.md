@@ -83,7 +83,8 @@ can have speed penalty, specially in distributed settings.
     Lower `decay` value (recommend trying `decay`=0.9) if model experiences
     reasonably good training performance but poor validation and/or test
     performance. Try zero_debias_moving_mean=True for improved stability.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
@@ -361,7 +362,7 @@ prior to the initial matrix multiply by `weights`.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
+*  <b>`inputs`</b>: A tensor of at least rank 2 and static value for the last dimension;
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
 *  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
@@ -411,7 +412,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 
 *  <b>`inputs`</b>: a tensor with 2 or more dimensions. The normalization
           occurs over all but the first dimension.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
@@ -1639,8 +1641,16 @@ output_id = Hash(input_feature_string) % bucket_size
 
 Creates an integerized _SparseColumn.
 
-Use this when your features are already pre-integerized into int64 IDs.
-output_id = input_feature
+Use this when your features are already pre-integerized into int64 IDs, that
+is, when the set of values to output is already coming in as what's desired in
+the output. Integerized means we can use the feature value itself as id.
+
+Typically this is used for reading contiguous ranges of integers indexes, but
+it doesn't have to be. The output value is simply copied from the
+input_feature, whatever it is. Just be aware, however, that if you have large
+gaps of unused integers it might affect what you feed those in (for instance,
+if you make up a one-hot tensor from these, the unused integers will appear as
+values in the tensor which are always zero.)
 
 ##### Args:
 

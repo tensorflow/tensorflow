@@ -1360,7 +1360,7 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
-    if not gfile.IsDirectory(os.path.dirname(save_path)):
+    if not gfile.IsDirectory(os.path.dirname(os.path.abspath(save_path))):
       raise ValueError(
           "Parent directory of {} doesn't exist, can't save.".format(save_path))
 
@@ -1436,7 +1436,7 @@ class Saver(object):
     if self._is_empty:
       return
     sess.run(self.saver_def.restore_op_name,
-             {self.saver_def.filename_tensor_name: save_path})
+             {self.saver_def.filename_tensor_name: os.path.abspath(save_path)})
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):

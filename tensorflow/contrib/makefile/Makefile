@@ -138,6 +138,11 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
 OPTFLAGS := -O2
+
+ifneq ($(TARGET),ANDROID)
+  OPTFLAGS += -march=native
+endif
+
 CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib

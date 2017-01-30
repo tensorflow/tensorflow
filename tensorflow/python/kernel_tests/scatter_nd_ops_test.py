@@ -52,7 +52,7 @@ def _FlatOuterDims(tensor, ndims=2):
 
 def _NumpyScatterNd(ref, indices, updates, op):
   ixdim = indices.shape[-1]
-  num_updates = indices.size / ixdim
+  num_updates = indices.size // ixdim
   total_nd = len(ref.shape)
   slice_size = 1
   for i in range(ixdim, total_nd):

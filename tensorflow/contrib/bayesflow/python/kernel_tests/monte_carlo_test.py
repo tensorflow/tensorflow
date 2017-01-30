@@ -59,15 +59,15 @@ class ExpectationImportanceSampleTest(test.TestCase):
       e_x2 = monte_carlo.expectation_importance_sampler(
           f=math_ops.square, log_p=p.log_prob, sampling_dist_q=q, n=n, seed=42)
 
-      stdev = math_ops.sqrt(e_x2 - math_ops.square(e_x))
+      stddev = math_ops.sqrt(e_x2 - math_ops.square(e_x))
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
       # Convergence of mean is +- 0.003 if n = 100M
-      # Convergence of std is +- 0.00001 if n = 100M
+      # Convergence of stddev is +- 0.00001 if n = 100M
       self.assertEqual(p.get_batch_shape(), e_x.get_shape())
       self.assertAllClose(p.mean().eval(), e_x.eval(), rtol=0.01)
-      self.assertAllClose(p.std().eval(), stdev.eval(), rtol=0.02)
+      self.assertAllClose(p.stddev().eval(), stddev.eval(), rtol=0.02)
 
   def test_multivariate_normal_prob_positive_product_of_components(self):
     # Test that importance sampling can correctly estimate the probability that
@@ -75,9 +75,9 @@ class ExpectationImportanceSampleTest(test.TestCase):
     n = 1000
     with self.test_session():
       p = distributions.MultivariateNormalDiag(
-          mu=[0.0, 0.0], diag_stdev=[1.0, 1.0])
+          mu=[0.0, 0.0], diag_stddev=[1.0, 1.0])
       q = distributions.MultivariateNormalDiag(
-          mu=[0.5, 0.5], diag_stdev=[3., 3.])
+          mu=[0.5, 0.5], diag_stddev=[3., 3.])
 
       # Compute E_p[X_1 * X_2 > 0], with X_i the ith component of X ~ p(x).
       # Should equal 1/2 because p is a spherical Gaussian centered at (0, 0).

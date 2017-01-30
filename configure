@@ -9,9 +9,26 @@ SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
+
+function is_linux() {
+  if [[ "${PLATFORM}" == "linux" ]]; then
+    true
+  else
+    false
+  fi
+}
+
+function is_macos() {
+  if [[ "${PLATFORM}" == "darwin" ]]; then
+    true
+  else
+    false
+  fi
+}
+
 function is_windows() {
   # On windows, the shell script is actually running in msys
-  if [[ "${PLATFORM}" =~ msys_nt* ]]; then
+  if [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]; then
     true
   else
     false
@@ -23,13 +40,8 @@ function bazel_clean_and_fetch() {
   # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
   if ! is_windows; then
     bazel clean --expunge
-    # TODO(https://github.com/bazelbuild/bazel/issues/2220) Remove the nested `bazel query`.
-    bazel fetch $(bazel query "//tensorflow/... -//tensorflow/examples/android/...")
-  else
-    # TODO(pcloudy): Also filter out //tensorflow/examples/android/... on Windows after
-    # https://github.com/bazelbuild/bazel/issues/2248 is fixed.
-    bazel fetch //tensorflow/...
   fi
+  bazel fetch "//tensorflow/... -//tensorflow/examples/android/..."
 }
 
 ## Set up python-related environment settings
@@ -54,6 +66,15 @@ while true; do
   # Retry
 done
 
+## Set up architecture-dependent optimization flags.
+if [ -z "$CC_OPT_FLAGS" ]; then
+  default_cc_opt_flags="-march=native"
+  read -p "Please specify optimization flags to use during compilation [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
+  if [ -z "$CC_OPT_FLAGS" ]; then
+    CC_OPT_FLAGS=$default_cc_opt_flags
+  fi
+fi
+
 if is_windows; then
   TF_NEED_GCP=0
   TF_NEED_HDFS=0
@@ -61,16 +82,20 @@ if is_windows; then
   TF_NEED_OPENCL=0
 fi
 
-while [ "$TF_NEED_JEMALLOC" == "" ]; do
-  read -p "Do you wish to use jemalloc as the malloc implementation? "\
-"(Linux only) [Y/n] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "jemalloc enabled on Linux"; TF_NEED_JEMALLOC=1;;
-    [Nn]* ) echo "jemalloc disabled on Linux"; TF_NEED_JEMALLOC=0;;
-    "" ) echo "jemalloc enabled on Linux"; TF_NEED_JEMALLOC=1;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
+if is_linux; then
+  while [ "$TF_NEED_JEMALLOC" == "" ]; do
+    read -p "Do you wish to use jemalloc as the malloc implementation? [Y/n] "\
+      INPUT
+    case $INPUT in
+      [Yy]* ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
+      [Nn]* ) echo "jemalloc disabled"; TF_NEED_JEMALLOC=0;;
+      "" ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
+      * ) echo "Invalid selection: " $INPUT;;
+    esac
+  done
+else
+  TF_NEED_JEMALLOC=0
+fi
 
 if [ "$TF_NEED_JEMALLOC" == "1" ]; then
   sed -i -e "s/WITH_JEMALLOC = False/WITH_JEMALLOC = True/" tensorflow/core/platform/default/build_config.bzl
@@ -95,7 +120,7 @@ done
 if [ "$TF_NEED_GCP" == "1" ]; then
   ## Verify that libcurl header files are available.
   # Only check Linux, since on MacOS the header files are installed with XCode.
-  if [[ $(uname -a) =~ Linux ]] && [[ ! -f "/usr/include/curl/curl.h" ]]; then
+  if is_linux && [[ ! -f "/usr/include/curl/curl.h" ]]; then
     echo "ERROR: It appears that the development version of libcurl is not "\
 "available. Please install the libcurl3-dev package."
     exit 1
@@ -152,6 +177,12 @@ fi
 
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
+
+# Append CC optimization flags to bazel.rc
+echo >> tools/bazel.rc
+for opt in $CC_OPT_FLAGS; do
+  echo "build:opt --cxxopt=$opt --copt=$opt" >> tools/bazel.rc
+done
 
 # Run the gen_git_source to create links where bazel can track dependencies for
 # git hash propagation
@@ -216,8 +247,6 @@ while ! is_windows && true; do
 done
 
 # Find out where the CUDA toolkit is installed
-OSNAME=`uname -s`
-
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
@@ -249,9 +278,9 @@ while true; do
 
   if is_windows; then
     CUDA_RT_LIB_PATH="lib/x64/cudart.lib"
-  elif [ "$OSNAME" == "Linux" ]; then
+  elif is_linux; then
     CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
-  elif [ "$OSNAME" == "Darwin" ]; then
+  elif is_macos; then
     CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
   fi
 
@@ -297,10 +326,10 @@ while true; do
     if is_windows; then
       cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
       cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
-    elif [ "$OSNAME" == "Linux" ]; then
+    elif is_linux; then
       cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib64/libcudnn.so"
       cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.so"
-    elif [ "$OSNAME" == "Darwin" ]; then
+    elif is_macos; then
       cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/libcudnn.dylib"
       cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.dylib"
     fi
@@ -327,7 +356,7 @@ while true; do
       echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
     fi
   else
-    if [ "$OSNAME" == "Darwin" ]; then
+    if is_macos; then
       TF_CUDNN_EXT=".${TF_CUDNN_VERSION}.dylib"
     else
       TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
@@ -337,10 +366,10 @@ while true; do
   if is_windows; then
     CUDA_DNN_LIB_PATH="lib/x64/cudnn.lib"
     CUDA_DNN_LIB_ALT_PATH="lib/x64/cudnn.lib"
-  elif [ "$OSNAME" == "Linux" ]; then
+  elif is_linux; then
     CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
-  elif [ "$OSNAME" == "Darwin" ]; then
+  elif is_macos; then
     CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}"
   fi
@@ -351,7 +380,7 @@ while true; do
     break
   fi
 
-  if [ "$OSNAME" == "Linux" ]; then
+  if is_linux; then
     CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
@@ -362,7 +391,7 @@ while true; do
   echo "Invalid path to cuDNN ${CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
   echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}"
   echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}"
-  if [ "$OSNAME" == "Linux" ]; then
+  if is_linux; then
     echo "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}"
   fi
 
@@ -489,7 +518,7 @@ while true; do
     fi
   fi
 
-  if [ "$OSNAME" == "Linux" ]; then
+  if is_linux; then
     SYCL_RT_LIB_PATH="lib/libComputeCpp.so"
   fi
 

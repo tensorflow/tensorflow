@@ -97,10 +97,9 @@ Status PadShapeFn(InferenceContext* c) {
     return Status::OK();
   }
 
-  // tensor value was provided for paddings_t; doublecheck n_dim value is the
-  // same.
-  const auto num_dims = c->Value(n_dim);
-  DCHECK_EQ(num_dims, paddings_t->shape().dim_size(0));
+  const int64 num_dims = paddings_t->shape().dim_size(0);
+  TF_RETURN_IF_ERROR(c->WithRank(input, num_dims, &input));
+  TF_RETURN_IF_ERROR(c->WithValue(n_dim, num_dims, &n_dim));
 
   if (paddings_t->dtype() == DT_INT32) {
     return PadKnown<int32>(c, input, paddings_t, num_dims);
@@ -164,6 +163,71 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
 }
 
 }  // namespace
+
+REGISTER_OP("ParallelConcat")
+    .Input("values: N * T")
+    .Output("output: T")
+    .Attr("N: int >= 1")
+    .Attr("T: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      // Validate that the shape attr is correct.
+      TensorShapeProto passed_shape_proto;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &passed_shape_proto));
+      ShapeHandle passed_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(passed_shape_proto, &passed_shape));
+      if (!c->FullyDefined(passed_shape)) {
+        return errors::InvalidArgument("shape attr must be fully defined.");
+      }
+      ShapeHandle cur;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(
+          passed_shape, 0, c->MakeDim(shape_inference::DimensionOrConstant(1)),
+          &cur));
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        if (!c->FullyDefined(c->input(i))) {
+          return errors::InvalidArgument(
+              "All input shapes must be fully defined.");
+        }
+        DimensionHandle unused;
+        if (!c->WithValue(c->Dim(c->input(i), 0), 1, &unused).ok()) {
+          return errors::InvalidArgument("Size of first dimension must be 1.");
+        }
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
+                                        "From merging shape ", i,
+                                        " with other shapes.");
+      }
+
+      c->set_output(0, passed_shape);
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Concatenates a list of `N` tensors along the first dimension.
+
+The input tensors are all required to have size 1 in the first dimension.
+
+For example:
+
+```prettyprint
+# 'x' is [[1, 4]]
+# 'y' is [[2, 5]]
+# 'z' is [[3, 6]]
+parallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+```
+
+The difference between concat and parallel_concat is that concat requires all
+of the inputs be computed before the operation will begin but doesn't require
+that the input shapes be known during graph construction.  Parallel concat
+will copy pieces of the input into the output as they become available, in
+some situations this can provide a performance benefit.
+
+values: Tensors to be concatenated. All must have size 1 in the first dimension
+ and same shape.
+output: The concatenated tensor.
+shape: the final shape of the result; should be equal to the shapes of any input
+ but with the number of input values in the first dimension.
+)doc");
 
 REGISTER_OP("Pack")
     .Input("values: N * T")
@@ -440,7 +504,8 @@ REGISTER_OP("SplitV")
           c->set_output(i, output_shape);
         }
       } else {
-        // Determine the output shape if split dimension and split sizes are known
+        // Determine the output shape if split dimension and split sizes are
+        // known.
         int64 split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         std::vector<int64> data;
@@ -451,12 +516,12 @@ REGISTER_OP("SplitV")
         }
         if (num_outputs != data.size()) {
           return errors::InvalidArgument(
-            "Length of size_splits should be equal to num_outputs");
+              "Length of size_splits should be equal to num_outputs");
         }
         for (int i = 0; i < num_outputs; ++i) {
           output_shape = c->UnknownShapeOfRank(rank);
-          TF_RETURN_IF_ERROR(
-              c->ReplaceDim(input, split_dim, c->MakeDim(data[i]), &output_shape));
+          TF_RETURN_IF_ERROR(c->ReplaceDim(input, split_dim,
+                                           c->MakeDim(data[i]), &output_shape));
           c->set_output(i, output_shape);
         }
       }
@@ -1160,12 +1225,10 @@ Equivalent to np.full
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("Empty")
-    .Input("shape: Tshape")
+REGISTER_OP("_ParallelConcatStart")
     .Output("output: dtype")
+    .Attr("shape: shape")
     .Attr("dtype: type")
-    .Attr("Tshape: {int32, int64} = DT_INT32")
-    .Attr("init: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
@@ -1181,128 +1244,31 @@ conjunction with inplace operations.
 
 shape: 1-D `Tensor` indicating the shape of the output.
 dtype: The element type of the returned tensor.
-init: `bool` indicating whether or not to zero the allocated memory.
 output: An empty Tensor of the specified type.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("InplaceUpdate")
+REGISTER_OP("_ParallelConcatUpdate")
     .Input("value: T")
-    .Input("loc: Tshape")
     .Input("update: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .Attr("loc: int")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Updates input `value` at `loc` with `update`.
 
-If `loc` is None, `value` and `update` must be the same size.
-```
-value = update
-```
-
-If `loc` is a scalar, `value` has rank 1 higher than `update`
-```
-value[i, :] = update
-```
-
-If `loc` is a vector, `value` has the same rank as `update`
-```
-value[loc, :] = update
-```
-
 If you use this function you will almost certainly want to add
 a control dependency as done in the implementation of parallel_stack to
 avoid race conditions.
 
 value: A `Tensor` object that will be updated in-place.
-loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
-     such that value[loc, :] is updated.
+loc: A scalar indicating the index of the first dimension such that
+         value[loc, :] is updated.
 update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
         otherwise of rank equal to `value` that contains the new values
         for `value`.
 output: `value` that has been updated accordingly.
-)doc");
-
-// --------------------------------------------------------------------------
-REGISTER_OP("InplaceAdd")
-    .Input("value: T")
-    .Input("loc: Tshape")
-    .Input("update: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Updates input `value` at `loc` by adding `update` elementwise.
-
-If `loc` is None, `value` and `update` must be the same size.
-```
-value += update
-```
-
-If `loc` is a scalar, `value` has rank 1 higher than `update`
-```
-value[i, :] += update
-```
-
-If `loc` is a vector, `value` has the same rank as `update`
-```
-value[loc, :] += update
-```
-
-If you use this function you will almost certainly want to add
-a control dependency as done in the implementation of parallel_stack to
-avoid race conditions.
-
-value: A `Tensor` object that will be updated in-place.
-loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
-     such that value[loc, :] is updated.
-update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-        otherwise of rank equal to `value` that contains the new values
-        that will be added to `value`.
-output: `value` where `update` has been added as appropriate.
-)doc");
-
-// --------------------------------------------------------------------------
-REGISTER_OP("InplaceSubtract")
-    .Input("value: T")
-    .Input("loc: Tshape")
-    .Input("update: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Updates input `value` at `loc` by subtracting `update` elementwise.
-
-If `loc` is None, `value` and `update` must be the same size.
-```
-value -= update
-```
-
-If `loc` is a scalar, `value` has rank 1 higher than `update`
-```
-value[i, :] -= update
-```
-
-If `loc` is a vector, `value` has the same rank as `update`
-```
-value[loc, :] -= update
-```
-
-If you use this function you will almost certainly want to add
-a control dependency as done in the implementation of parallel_stack to
-avoid race conditions.
-
-value: A `Tensor` object that will be updated in-place.
-loc: A scalar or 1-D `Tensor` indicating the indices of the first dimension
-     such that value[loc, :] is updated.
-update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-        otherwise of rank equal to `value` that contains the new values
-        that will be subtracted from `value`.
-output: `value` where `update` has been subtracted as appropriate.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1370,8 +1336,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices), " and params shape: ",
-            c->DebugString(params));
+            c->DebugString(indices),
+            " and params shape: ", c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -1906,12 +1872,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument("batch_dim must be < input rank: ",
-                                       batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument(
+            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument("seq_dim must be < input rank: ",
-                                       seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument(
+            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -1932,7 +1898,7 @@ This op first slices `input` along the dimension `batch_dim`, and for each
 slice `i`, reverses the first `seq_lengths[i]` elements along
 the dimension `seq_dim`.
 
-The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
 and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
 The output slice `i` along dimension `batch_dim` is then given by input
@@ -1985,7 +1951,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 
 input: The input to reverse.
 seq_lengths: 1-D with length `input.dims(batch_dim)` and
-  `max(seq_lengths) < input.dims(seq_dim)`
+  `max(seq_lengths) <= input.dims(seq_dim)`
 seq_dim: The dimension which is partially reversed.
 batch_dim: The dimension along which reversal is performed.
 output: The partially reversed input. It has the same shape as `input`.
@@ -3790,8 +3756,9 @@ REGISTER_OP("SpaceToDepth")
       TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
                                      &output_depth));
 
-      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
-                                     output_width, output_depth}));
+      c->set_output(0,
+                    c->MakeShape({c->Dim(input, 0), output_height, output_width,
+                                  output_depth}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -3895,8 +3862,9 @@ REGISTER_OP("DepthToSpace")
       TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 3), block_size * block_size,
                                    true /* evenly_divisible */, &output_depth));
 
-      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
-                                     output_width, output_depth}));
+      c->set_output(0,
+                    c->MakeShape({c->Dim(input, 0), output_height, output_width,
+                                  output_depth}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -4772,8 +4740,9 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), " must match the outer ", outer_dims,
+            "The outer ", outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }

@@ -54,9 +54,12 @@ class Worker : public WorkerInterface {
                             StatusCallback done) override;
 
   void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
-                     RunGraphResponse* response, StatusCallback done) override;
+                     MutableRunGraphResponseWrapper* response,
+                     StatusCallback done) override;
 
   MutableRunGraphRequestWrapper* CreateRunGraphRequest() override;
+
+  MutableRunGraphResponseWrapper* CreateRunGraphResponse() override;
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
@@ -117,10 +120,12 @@ class Worker : public WorkerInterface {
                          GraphMgr::NamedTensors* out);
 
   void DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
-                  RunGraphResponse* response, StatusCallback done);
+                  MutableRunGraphResponseWrapper* response,
+                  StatusCallback done);
 
   void DoPartialRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
-                         RunGraphResponse* response, StatusCallback done);
+                         MutableRunGraphResponseWrapper* response,
+                         StatusCallback done);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Worker);
 };

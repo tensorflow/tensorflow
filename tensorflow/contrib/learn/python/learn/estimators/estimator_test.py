@@ -219,12 +219,12 @@ def _build_estimator_for_export_tests(tmpdir):
 
   feature_spec = feature_column_lib.create_feature_spec_for_parsing(
       feature_columns)
-  export_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
 
   # hack in an op that uses an asset, in order to test asset export.
   # this is not actually valid, of course.
-  def export_input_fn_with_asset():
-    features, labels, inputs = export_input_fn()
+  def serving_input_fn_with_asset():
+    features, labels, inputs = serving_input_fn()
 
     vocab_file_name = os.path.join(tmpdir, 'my_vocab_file')
     vocab_file = gfile.GFile(vocab_file_name, mode='w')
@@ -237,7 +237,7 @@ def _build_estimator_for_export_tests(tmpdir):
 
     return input_fn_utils.InputFnOps(features, labels, inputs)
 
-  return est, export_input_fn_with_asset
+  return est, serving_input_fn_with_asset
 
 
 class CheckCallsMonitor(monitors_lib.BaseMonitor):
@@ -415,9 +415,9 @@ class EstimatorTest(test.TestCase):
     right_labels = lambda: np.ones(shape=[7, 10], dtype=np.int32)
     est.fit(right_features(), right_labels(), steps=1)
     # TODO(wicke): This does not fail for np.int32 because of data_feeder magic.
-    wrong_type_features = np.ones(shape=[7., 8.], dtype=np.int64)
+    wrong_type_features = np.ones(shape=[7, 8], dtype=np.int64)
     wrong_size_features = np.ones(shape=[7, 10])
-    wrong_type_labels = np.ones(shape=[7., 10.], dtype=np.float32)
+    wrong_type_labels = np.ones(shape=[7, 10], dtype=np.float32)
     wrong_size_labels = np.ones(shape=[7, 11])
     est.fit(x=right_features(), y=right_labels(), steps=1)
     with self.assertRaises(ValueError):
@@ -627,6 +627,16 @@ class EstimatorTest(test.TestCase):
     predictions = list(est.predict(x=iris.data))
     self.assertEqual(len(predictions), iris.target.shape[0])
 
+  def testHooksNotChanged(self):
+    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
+    # We pass empty array and expect it to remain empty after calling
+    # fit and evaluate. Requires inside to copy this array if any hooks were
+    # added.
+    my_array = []
+    est.fit(input_fn=iris_input_fn, steps=100, monitors=my_array)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1, hooks=my_array)
+    self.assertEqual(my_array, [])
+
   def testIrisInputFnLabelsDict(self):
     iris = base.load_iris()
     est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
@@ -818,7 +828,7 @@ class EstimatorTest(test.TestCase):
 
   def test_export_savedmodel(self):
     tmpdir = tempfile.mkdtemp()
-    est, export_input_fn = _build_estimator_for_export_tests(tmpdir)
+    est, serving_input_fn = _build_estimator_for_export_tests(tmpdir)
 
     extra_file_name = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('my_extra_file'))
@@ -830,7 +840,7 @@ class EstimatorTest(test.TestCase):
     export_dir_base = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('export'))
     export_dir = est.export_savedmodel(
-        export_dir_base, export_input_fn, assets_extra=assets_extra)
+        export_dir_base, serving_input_fn, assets_extra=assets_extra)
 
     self.assertTrue(gfile.Exists(export_dir_base))
     self.assertTrue(gfile.Exists(export_dir))

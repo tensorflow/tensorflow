@@ -36,7 +36,6 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -68,7 +67,6 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
 
@@ -815,9 +813,10 @@ class BaseEstimator(
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
-      hooks = hooks or []
+      # We need to copy the hook array as we modify it, thus [:].
+      hooks = hooks[:] if hooks else []
       if feed_fn:
-        hooks.append(_FeedFnHook(feed_fn))
+        hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
       if steps:
         hooks.append(
             evaluation.StopAfterNEvalsHook(
@@ -1237,22 +1236,20 @@ class Estimator(BaseEstimator):
         self._labels_info[model_fn_lib.ModeKeys.INFER])
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
-  @experimental
   def export_savedmodel(
-      self, export_dir_base, input_fn,
+      self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
-      as_text=False,
-      exports_to_keep=None):
+      as_text=False):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
       export_dir_base: A string containing a directory to write the exported
         graph and checkpoints.
-      input_fn: A function that takes no argument and
+      serving_input_fn: A function that takes no argument and
         returns an `InputFnOps`.
       default_output_alternative_key: the name of the head to serve when none is
-        specified.
+        specified.  Not needed for single-headed models.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel.  Each key should give the destination
         path (including the filename) relative to the assets.extra directory.
@@ -1261,7 +1258,6 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
-      exports_to_keep: Number of exports to keep.
 
     Returns:
       The string path to the exported directory.
@@ -1269,14 +1265,14 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if an unrecognized export_type is requested.
     """
-    if input_fn is None:
-      raise ValueError('input_fn must be defined.')
+    if serving_input_fn is None:
+      raise ValueError('serving_input_fn must be defined.')
 
     with ops.Graph().as_default() as g:
       contrib_variables.create_global_step(g)
 
-      # Call the input_fn and collect the input alternatives.
-      input_ops = input_fn()
+      # Call the serving_input_fn and collect the input alternatives.
+      input_ops = serving_input_fn()
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
 
@@ -1287,7 +1283,7 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
-      # Build the SignatureDefs from all pairs of input and output signatures
+      # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
@@ -1304,7 +1300,7 @@ class Estimator(BaseEstimator):
 
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
-        data_flow_ops.initialize_all_tables()
+        data_flow_ops.tables_initializer()
         saver_for_restore = saver.Saver(
             variables.global_variables(),
             sharded=True)
@@ -1312,7 +1308,7 @@ class Estimator(BaseEstimator):
 
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
-            data_flow_ops.initialize_all_tables())
+            data_flow_ops.tables_initializer())
 
         # Perform the export
         builder = saved_model_builder.SavedModelBuilder(export_dir)
@@ -1338,17 +1334,6 @@ class Estimator(BaseEstimator):
       return export_dir
 
 
-class _FeedFnHook(session_run_hook.SessionRunHook):
-  """Runs feed_fn and sets the feed_dict accordingly."""
-
-  def __init__(self, feed_fn):
-    self.feed_fn = feed_fn
-
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn())
-
-
 # For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
@@ -1364,7 +1349,7 @@ class SKCompat(sklearn.BaseEstimator):
                                       epochs=None)
     all_monitors = []
     if feed_fn:
-      all_monitors = [_FeedFnHook(feed_fn)]
+      all_monitors = [basic_session_run_hooks.FeedFnHook(feed_fn)]
     if monitors:
       all_monitors.extend(monitors)
 

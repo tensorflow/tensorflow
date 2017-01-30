@@ -485,22 +485,19 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export_savedmodel(*args, **kwargs)` {#Estimator.export_savedmodel}
+#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#Estimator.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -509,7 +506,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 
@@ -1038,22 +1034,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export_savedmodel(*args, **kwargs)` {#DNNClassifier.export_savedmodel}
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNClassifier.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -1062,7 +1055,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 
@@ -1424,7 +1416,9 @@ Initializes a `DNNRegressor` instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
-*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
@@ -1466,22 +1460,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export_savedmodel(*args, **kwargs)` {#DNNRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNRegressor.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -1490,7 +1481,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 
@@ -1890,22 +1880,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.export_savedmodel(*args, **kwargs)` {#LinearClassifier.export_savedmodel}
+#### `tf.contrib.learn.LinearClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearClassifier.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -1914,7 +1901,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 
@@ -2202,7 +2188,9 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
   _joint_weights: If True use a single (possibly partitioned) variable to
     store the weights. It's faster, but requires all feature columns are
     sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
@@ -2276,22 +2264,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export_savedmodel(*args, **kwargs)` {#LinearRegressor.export_savedmodel}
+#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearRegressor.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -2300,7 +2285,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 
@@ -3112,7 +3096,7 @@ it.
 
 - - -
 
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None)` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None, seed=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -3139,7 +3123,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If `None`, cycles through the dataset forever.
     NOTE - If specified, creates a variable that must be initialized, so call
-    `tf.global_variables_initializer()` as shown in the tests.
+    `tf.global_variables_initializer()` and run the op in a session.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
 *  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
@@ -3147,6 +3131,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 *  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
     representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
+*  <b>`seed`</b>: An integer (optional). Seed used if randomize_input == True.
 
 ##### Returns:
 
@@ -3188,7 +3173,7 @@ All ops are added to the default graph.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.local_variables_initializer() as shown in the tests.
+    tf.local_variables_initializer() and run the op in a session.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`feature_queue_capacity`</b>: Capacity of the parsed features queue. Set this
     value to a small number, for example 5 if the parsed features are large.
@@ -3227,7 +3212,7 @@ See more detailed description in `read_examples`.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.local_variables_initializer() as shown in the tests.
+    tf.local_variables_initializer() and run the op in a session.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`name`</b>: Name of resulting op.

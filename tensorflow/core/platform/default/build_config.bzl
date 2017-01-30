@@ -2,6 +2,7 @@
 
 load("@protobuf//:protobuf.bzl", "cc_proto_library")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
+load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 
 # configure may change the following lines
 WITH_GCP_SUPPORT = False
@@ -144,6 +145,23 @@ def tf_additional_proto_srcs():
       "platform/default/protobuf.cc",
   ]
 
+def tf_env_time_hdrs():
+  return [
+      "platform/env_time.h",
+  ]
+
+def tf_env_time_srcs():
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/windows/env_time.cc",
+        "platform/env_time.cc",
+      ], exclude = []),
+    "//conditions:default" : native.glob([
+        "platform/posix/env_time.cc",
+        "platform/env_time.cc",
+      ], exclude = []),
+  })
+
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]
 
@@ -205,6 +223,24 @@ def tf_additional_core_deps():
     deps.append("//tensorflow/core/platform/cloud:gcs_file_system")
   if WITH_HDFS_SUPPORT:
     deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
+  return deps
+
+# TODO(jart, jhseu): Delete when GCP is default on.
+def tf_additional_cloud_op_deps():
+  deps = []
+  # TODO(hormati): Remove the comments below to enable BigQuery op. The op is
+  # not linked for now because it is under perf testing.
+  #if WITH_GCP_SUPPORT:
+  #  deps = if_not_mobile(["//tensorflow/core/kernels/cloud:bigquery_reader_ops"])
+  return deps
+
+# TODO(jart, jhseu): Delete when GCP is default on.
+def tf_additional_cloud_kernel_deps():
+  deps = []
+  # TODO(hormati): Remove the comments below to enable BigQuery op. The op is
+  # not linked for now because it is under perf testing.
+  #if WITH_GCP_SUPPORT:
+  #  deps = if_not_mobile(["//tensorflow/core:cloud_ops_op_lib"])
   return deps
 
 def tf_additional_plugin_deps():

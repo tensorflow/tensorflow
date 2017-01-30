@@ -90,6 +90,12 @@ class ArgMaxTest(test.TestCase):
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
+  def testDefaultAxis(self):
+    with self.test_session():
+      for op in math_ops.argmin, math_ops.argmax:
+        ans = op([1]).eval()
+        self.assertAllEqual(ans, 0)
+
 
 if __name__ == "__main__":
   test.main()

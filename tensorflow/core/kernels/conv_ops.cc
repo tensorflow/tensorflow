@@ -196,18 +196,24 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.S = filter_cols;
     desc.u = stride_rows;
     desc.v = stride_cols;
-    desc.pad_h_in = pad_rows;  // ignored by libxsmm for now.
-    desc.pad_w_in = pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h = pad_rows;
+    desc.pad_w = pad_cols;
+    desc.pad_h_in = pad_rows;  // libxsmm supports only physical padding for now
+    desc.pad_w_in = pad_cols;  // libxsmm supports only physical padding for now
     desc.pad_h_out = 0;
     desc.pad_w_out = 0;
     desc.threads = num_threads;
     desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
     desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_RSCK;
+    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
     desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
     desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
 
     auto input_ptr = input.template flat<float>().data();
     auto filter_ptr = filter.template flat<float>().data();

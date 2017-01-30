@@ -55,8 +55,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:tensorflow_opensource",
-        "//tensorflow/core/kernels:cwise_op",
     ],
     alwayslink = 1,
 )
@@ -97,7 +95,6 @@ cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
-        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:client_library",

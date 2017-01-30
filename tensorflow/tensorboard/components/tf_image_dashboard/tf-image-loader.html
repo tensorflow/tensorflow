@@ -58,6 +58,7 @@ future for loading older images.
         width: 100%;
         height: auto;
         position: relative;
+        --step-slider-knob-color: #424242;
       }
 
       #image-annotation {
@@ -78,6 +79,12 @@ future for loading older images.
          * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
          * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2. */
         width: calc(100% + 31px);
+        --paper-slider-active-color: var(--step-slider-knob-color);
+        --paper-slider-knob-color: var(--step-slider-knob-color);
+        --paper-slider-pin-color: var(--step-slider-knob-color);
+        --paper-slider-knob-start-color: var(--step-slider-knob-color);
+        --paper-slider-knob-start-border-color: var(--step-slider-knob-color);
+        --paper-slider-pin-start-color: var(--step-slider-knob-color);
       }
 
       img {
@@ -136,7 +143,7 @@ future for loading older images.
         },
       },
       observers: [
-        "_onStepIndexChanged(_stepIndex)",
+        "_updateImageUrl(_steps, _stepIndex)",
       ],
       redraw: function() {
         // Other dashboards logic requires a redraw method to be defined. redraw is called at
@@ -154,37 +161,23 @@ future for loading older images.
         // Update the border color based on the run.
         var color = this.colorScale.scale(run);
         this.$$("#image-annotation").style.borderColor = color;
-
-        // Set the color for the slider that lets the user select a step.
-        // These values should all be changed from their defaults set by paper-slider.
-        var mixins = [
-          "--paper-slider-active-color",
-          "--paper-slider-secondary-color",
-          "--paper-slider-knob-color",
-          "--paper-slider-knob-start-color",
-          "--paper-slider-knob-start-border-color",
-        ];
-
-        for (var i = 0; i < mixins.length; i++) {
-          this.customStyle[mixins[i]] = color;
-        }
       },
-      _onStepIndexChanged: function(stepIndex) {
+      _updateImageUrl: function(steps, stepIndex) {
         // We manually change the image URL (instead of binding to the image's src attribute)
         // because we would like to clear the image URL before setting the src to the new URL. If
         // we avoid doing that, the user might be misled into believing that the new image has
         // finished loading (and that it looks identical to the previous image).
-        if (!this._steps.length) {
+        if (!steps.length) {
           return;
         }
         this.$.img.src = "";
-        this.$.img.src = this._steps[stepIndex].url;
+        this.$.img.src = steps[stepIndex].url;
       },
       _computeHasAtLeastOneStep: function(steps) {
-        return steps.length > 0;
+        return !!steps && steps.length > 0;
       },
       _computeHasMultipleSteps: function(steps) {
-        return steps.length > 1;
+        return !!steps && steps.length > 1;
       },
       _computeStepValue: function(stepIndex) {
         return this._steps[stepIndex].step;

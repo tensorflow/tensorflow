@@ -342,13 +342,14 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "inplace_ops_test",
+    name = "record_input_test",
     size = "small",
-    srcs = ["inplace_ops_test.py"],
+    srcs = ["record_input_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -2465,6 +2466,24 @@ tf_py_test(
         "//tensorflow/python:sets",
         "//tensorflow/python:sparse_ops",
     ],
+)
+
+tf_py_test(
+    name = "weights_broadcast_test",
+    size = "small",
+    srcs = ["weights_broadcast_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:weights_broadcast_ops",
+    ],
+    shard_count = 3,
 )
 
 tf_py_test(

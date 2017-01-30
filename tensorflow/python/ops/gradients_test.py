@@ -569,5 +569,17 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         str(w[0].message))
 
 
+class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
+
+  def testRealOnly(self):
+    x = constant_op.constant(7+3j, dtype=dtypes.complex64)
+    y = math_ops.square(x)
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Gradients of complex tensors must set grad_ys "
+        r"\(y\.dtype = tf\.complex64\)"):
+      gradients.gradients(y, x)
+
+
 if __name__ == "__main__":
   googletest.main()

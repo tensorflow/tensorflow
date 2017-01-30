@@ -132,16 +132,18 @@ class LayoutUtil {
   static string HumanString(const Layout& layout);
 
   // Copies the layout from 'src' to 'dst'. Recursively copies layouts of
-  // tuples.  'src' and 'dst' must be compatible.
+  // tuples.  'src' and 'dst' need not be compatible but the two shapes must
+  // have the same tuple structure (if any) and arrays must have the same
+  // rank. within the shapes must have the same number of dimensions.
   static tensorflow::Status CopyLayoutBetweenShapes(const Shape& src,
                                                     Shape* dst);
 
   // Returns true if the layouts of lhs and rhs are equal, false
   // otherwise. Recursively compares layouts of tuples.
   //
-  // Since the structure of the shape determines the structure of the layout,
-  // this returns true if and only if the shapes and layouts are identical
-  // except that the element type is ignored.
+  // lhs and rhs need not be compatible to have the same layout but the two
+  // shapes must have the same tuple structure (if any) and arrays must have the
+  // same rank. Element type is ignored.
   static bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs);
 
   // Returns whether the given dimensions are consecutive in the given layout,

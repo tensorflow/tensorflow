@@ -153,7 +153,7 @@ class Binomial(distribution.Distribution):
     super(Binomial, self).__init__(
         dtype=self._p.dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -209,9 +209,6 @@ class Binomial(distribution.Distribution):
 
   def _variance(self):
     return self._n * self._p * (1 - self._p)
-
-  def _std(self):
-    return math_ops.sqrt(self._variance())
 
   @distribution_util.AppendDocstring(
       """Note that when `(n + 1) * p` is an integer, there are actually two

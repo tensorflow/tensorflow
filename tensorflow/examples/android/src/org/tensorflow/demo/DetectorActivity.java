@@ -60,7 +60,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final String MB_OUTPUT_NAMES = "output_locations/Reshape,output_scores/Reshape";
   private static final String MB_MODEL_FILE = "file:///android_asset/multibox_model.pb";
   private static final String MB_LOCATION_FILE =
-      "file:///android_asset/multibox_location_priors.pb";
+      "file:///android_asset/multibox_location_priors.txt";
 
   // Configuration values for tiny-yolo-voc. Note that the graph is not included with TensorFlow and
   // must be manually placed in the assets/ directory by the user.
