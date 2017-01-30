@@ -335,13 +335,7 @@ class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Concrete implementation of this class should provide the following functions:
-
-    * _get_train_ops
-    * _get_eval_ops
-    * _get_predict_ops
-
-  `Estimator` implemented below is a good example of how to use this class.
+  Users should not instantiate or subclass this class. Instead, use `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -804,18 +798,7 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      # The default return type of _get_eval_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_eval_ops returns an
-      # `eval_dict` dictionary of Tensors. The following else-statement code
-      # covers these cases, but will soon be deleted after the subclasses are
-      # updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
-      eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
-        eval_dict = eval_ops.eval_metric_ops
-      else:  # Legacy signature
-        eval_dict = eval_ops
+      eval_dict = self._get_eval_ops(features, labels, metrics).eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
@@ -868,7 +851,7 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
-      infer_ops = self._call_legacy_get_predict_ops(features)
+      infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
@@ -938,7 +921,7 @@ class BaseEstimator(
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
-      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
+      model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
@@ -992,30 +975,6 @@ class BaseEstimator(
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
       summary_io.SummaryWriterCache.clear()
       return loss
-
-  def _call_legacy_get_predict_ops(self, features):
-    # The default return type of _get_predict_ops is ModelFnOps. But there are
-    # some subclasses of tf.contrib.learn.Estimator which override this
-    # method and use the legacy signature, namely _get_predict_ops returns a
-    # `predictions` Tensor or dict or Tensors. The following else-statement
-    # code covers these cases, but will soon be deleted after the subclasses
-    # are updated.
-    # TODO(b/32664904): Update subclasses and delete the else-statement.
-    infer_ops = self._get_predict_ops(features)
-    if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return infer_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.INFER, predictions=infer_ops)
-
-  def _call_legacy_get_train_ops(self, features, labels):
-    train_ops = self._get_train_ops(features, labels)
-    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return train_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.TRAIN,
-        predictions=None,
-        loss=train_ops[1],
-        train_op=train_ops[0])
 
 
 def _identity_feature_engineering_fn(features, labels):
