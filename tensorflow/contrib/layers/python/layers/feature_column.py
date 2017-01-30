@@ -1945,9 +1945,7 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
       len(columns) is not > 1.
   """
   if combiner is None:
-    logging.warn("The default value of combiner will change from \"sum\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "sum"
+    combiner = "sqrtn"
   return _CrossedColumn(
       columns,
       hash_bucket_size,
