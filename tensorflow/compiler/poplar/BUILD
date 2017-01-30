@@ -16,8 +16,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/jit:xla_cpu_device",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:all_kernels",
         "//tensorflow/stream_executor:stream_executor",

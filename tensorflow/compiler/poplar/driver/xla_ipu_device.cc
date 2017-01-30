@@ -19,6 +19,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
+#include <poplar/Engine.hpp>
+#include <popnn/Net.hpp>
+
 namespace tensorflow {
 
 const char* const DEVICE_XLA_IPU = "XLA_IPU";
