@@ -61,7 +61,7 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     return resource_variable_ops.resource_scatter_add(
         handle, indices, -grad * self._learning_rate)
 
-  def _apply_sparse(self, grad, var):
+  def _apply_sparse_duplicate_indices(self, grad, var):
     delta = ops.IndexedSlices(
         grad.values *
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
