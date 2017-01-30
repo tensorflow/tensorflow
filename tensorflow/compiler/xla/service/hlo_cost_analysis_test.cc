@@ -333,14 +333,11 @@ TEST_F(HloCostAnalysisTest, TotalOverflowsInt64) {
   EXPECT_GT(matmul_analysis.flop_count(), std::numeric_limits<int64>::max());
 }
 
-class FusionCostAnalysis : public ::testing::Test {
- protected:
-  FusionCostAnalysis() = default;
-
-  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
-};
+using FusionCostAnalysis = ::testing::Test;
 
 TEST_F(FusionCostAnalysis, LoopFusion) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+
   // Fuse all instructions in complicated expression:
   //
   //   add = Add(C1, C2)
@@ -349,24 +346,27 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
   //   mul = Mul(exp, C3)
   //   sub = Sub(mul, clamp)
   //   tuple = Tuple({sub, sub, mul, C1})
-  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.1f));
-  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(9.0f));
+  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+      /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2));
+  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+      /*from=*/1.0f, /*to=*/2.0f, /*rows=*/2, /*cols=*/2));
+  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+      /*from=*/2.0f, /*to=*/3.0f, /*rows=*/2, /*cols=*/2));
 
   auto add =
-      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1.get(), c2.get());
-  auto clamp = HloInstruction::CreateTernary(r0f32_, HloOpcode::kClamp,
-                                             c2.get(), add.get(), add.get());
-  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, add.get());
-  auto mul = HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply,
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, c1.get(), c2.get());
+  auto clamp = HloInstruction::CreateTernary(r2f32, HloOpcode::kClamp, c2.get(),
+                                             add.get(), add.get());
+  auto exp = HloInstruction::CreateUnary(r2f32, HloOpcode::kExp, add.get());
+  auto mul = HloInstruction::CreateBinary(r2f32, HloOpcode::kMultiply,
                                           exp.get(), c3.get());
-  auto sub = HloInstruction::CreateBinary(r0f32_, HloOpcode::kSubtract,
+  auto sub = HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract,
                                           mul.get(), clamp.get());
   auto tuple =
       HloInstruction::CreateTuple({sub.get(), sub.get(), mul.get(), c1.get()});
 
   auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, tuple.get());
+      r2f32, HloInstruction::FusionKind::kLoop, tuple.get());
   fusion->FuseInstruction(sub.get());
   fusion->FuseInstruction(mul.get());
   fusion->FuseInstruction(exp.get());
@@ -376,8 +376,8 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
   HloCostAnalysis fusion_analysis;
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
-  EXPECT_EQ(fusion_analysis.flop_count(), 4);
-  EXPECT_EQ(fusion_analysis.transcendental_count(), 1);
+  EXPECT_EQ(fusion_analysis.flop_count(), 16);
+  EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
 }
 
 }  // namespace
