@@ -59,11 +59,36 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.multiply(a, tf.subtract(b, c))\n")
 
+  def testRenamePack(self):
+    text = "tf.pack(a)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.stack(a)\n")
+    text = "tf.unpack(a)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.unstack(a)\n")
+
   def testReorder(self):
     text = "tf.concat(a, b)\ntf.split(a, b, c)\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text, "tf.concat(concat_dim=a, values=b)\n"
+    self.assertEqual(new_text, "tf.concat(axis=a, values=b)\n"
                      "tf.split(axis=a, num_or_size_splits=b, value=c)\n")
+
+  def testConcatReorderWithKeywordArgs(self):
+    text = "tf.concat(concat_dim=a, values=b)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.concat(axis=a, values=b)\n")
+    text = "tf.concat(values=b, concat_dim=a)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.concat(values=b, axis=a)\n")
+    text = "tf.concat(a, values=b)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.concat(axis=a, values=b)\n")
+
+  def testConcatReorderNested(self):
+    text = "tf.concat(a, tf.concat(c, d))\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text, "tf.concat(axis=a, values=tf.concat(axis=c, values=d))\n")
 
   def testKeyword(self):
     text = "tf.reduce_any(a, reduction_indices=[1, 2])\n"
