@@ -150,5 +150,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v.assign_sub(1.0).eval()
       self.assertEqual(2.0, v.value().eval())
 
+  def testDestroyResource(self):
+    with self.test_session() as sess:
+      v = resource_variable_ops.ResourceVariable(3.0)
+      variables.global_variables_initializer().run()
+      self.assertEqual(3.0, v.value().eval())
+      sess.run(resource_variable_ops.destroy_resource_op(v.handle))
+      with self.assertRaises(errors.NotFoundError):
+        v.value().eval()
+
+
 if __name__ == "__main__":
   test.main()

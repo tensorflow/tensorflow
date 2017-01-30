@@ -13,6 +13,7 @@
 // limitations under the License.
 // ============================================================================
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -81,6 +82,17 @@ operation.
 
 resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
+)");
+
+REGISTER_OP("DestroyResourceOp")
+    .Input("resource: resource")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"(
+Deletes the resource specified by the handle.
+
+All subsequent operations using the resource will result in a NotFound
+error status.
 )");
 
 Status CreateAssignShapeFn(InferenceContext* c) {

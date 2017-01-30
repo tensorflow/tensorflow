@@ -57,6 +57,18 @@ class ReadVariableOp : public OpKernel {
   }
 };
 
+class DestroyResourceOp : public OpKernel {
+ public:
+  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, DeleteResource(ctx, HandleFromInput(ctx, 0)));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
+                        DestroyResourceOp);
+
 // TODO(apassos) register for the GPU as well.
 #define REGISTER_KERNELS(type)                                                 \
   REGISTER_KERNEL_BUILDER(                                                     \
