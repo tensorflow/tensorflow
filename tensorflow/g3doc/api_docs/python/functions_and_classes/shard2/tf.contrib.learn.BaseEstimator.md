@@ -1,12 +1,6 @@
 Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-Concrete implementation of this class should provide the following functions:
-
-  * _get_train_ops
-  * _get_eval_ops
-  * _get_predict_ops
-
-`Estimator` implemented below is a good example of how to use this class.
+Users should not instantiate or subclass this class. Instead, use `Estimator`.
 - - -
 
 #### `tf.contrib.learn.BaseEstimator.__init__(model_dir=None, config=None)` {#BaseEstimator.__init__}

@@ -38,12 +38,12 @@ dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 x = ... # A 3x3 positive definite matrix.
-dist.pdf(x)  # Shape is [], a scalar.
+dist.prob(x)  # Shape is [], a scalar.
 
 # Evaluate this on a two observations, each in R^{3x3}, returning a length two
 # Tensor.
 x = [x0, x1]  # Shape is [2, 3, 3].
-dist.pdf(x)  # Shape is [2].
+dist.prob(x)  # Shape is [2].
 
 # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
 df = [5, 4]
@@ -52,7 +52,7 @@ dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
 
 # Evaluate this on four observations.
 x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3].
-dist.pdf(x)  # Shape is [2, 2].
+dist.prob(x)  # Shape is [2, 2].
 
 # (*) - To efficiently create a trainable covariance matrix, see the example
 #   in tf.contrib.distributions.matrix_diag_transform.
@@ -72,7 +72,7 @@ Construct Wishart distributions.
     the symmetric positive definite scale matrix of the distribution.
 *  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
     or output is a matrix assumes the input is Cholesky and returns a
-    Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
+    Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
@@ -377,54 +377,6 @@ Computes the log normalizing constant, log(Z).
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_pdf(value, name='log_pdf')` {#WishartCholesky.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartCholesky.log_pmf(value, name='log_pmf')` {#WishartCholesky.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartCholesky.log_prob(value, name='log_prob')` {#WishartCholesky.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
@@ -558,54 +510,6 @@ constant-valued tensors when constant values are fed.
 #### `tf.contrib.distributions.WishartCholesky.parameters` {#WishartCholesky.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartCholesky.pdf(value, name='pdf')` {#WishartCholesky.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartCholesky.pmf(value, name='pmf')` {#WishartCholesky.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -

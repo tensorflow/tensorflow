@@ -34,12 +34,12 @@ dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 x = ... # A 3x3 positive definite matrix.
-dist.pdf(x)  # Shape is [], a scalar.
+dist.prob(x)  # Shape is [], a scalar.
 
 # Evaluate this on a two observations, each in R^{3x3}, returning a length two
 # Tensor.
 x = [x0, x1]  # Shape is [2, 3, 3].
-dist.pdf(x)  # Shape is [2].
+dist.prob(x)  # Shape is [2].
 
 # Initialize two 3x3 Wisharts with Full factored scale matrices.
 df = [5, 4]
@@ -48,7 +48,7 @@ dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
 
 # Evaluate this on four observations.
 x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3]; xi is positive definite.
-dist.pdf(x)  # Shape is [2, 2].
+dist.prob(x)  # Shape is [2, 2].
 
 # (*) - To efficiently create a trainable covariance matrix, see the example
 #   in tf.contrib.distributions.matrix_diag_transform.
@@ -68,7 +68,7 @@ Construct Wishart distributions.
     scale matrix of the distribution.
 *  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
     or output is a matrix assumes the input is Cholesky and returns a
-    Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
+    Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
@@ -373,54 +373,6 @@ Computes the log normalizing constant, log(Z).
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_pdf(value, name='log_pdf')` {#WishartFull.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.log_pmf(value, name='log_pmf')` {#WishartFull.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartFull.log_prob(value, name='log_prob')` {#WishartFull.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
@@ -554,54 +506,6 @@ constant-valued tensors when constant values are fed.
 #### `tf.contrib.distributions.WishartFull.parameters` {#WishartFull.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.pdf(value, name='pdf')` {#WishartFull.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.pmf(value, name='pmf')` {#WishartFull.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -

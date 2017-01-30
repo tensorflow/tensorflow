@@ -28,15 +28,15 @@ The distribution functions can be evaluated on counts.
 # counts is a scalar.
 p = [0.1, 0.4, 0.5]
 dist = Categorical(probs=p)
-dist.pmf(0)  # Shape []
+dist.prob(0)  # Shape []
 
 # p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
 counts = [1, 0]
-dist.pmf(counts)  # Shape [2]
+dist.prob(counts)  # Shape [2]
 
 # p will be broadcast to shape [3, 5, 7, 3] to match counts.
 counts = [[...]] # Shape [5, 7, 3]
-dist.pmf(counts)  # Shape [5, 7, 3]
+dist.prob(counts)  # Shape [5, 7, 3]
 ```
 - - -
 
@@ -333,54 +333,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.log_pdf(value, name='log_pdf')` {#Categorical.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.log_pmf(value, name='log_pmf')` {#Categorical.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
 #### `tf.contrib.distributions.Categorical.log_prob(value, name='log_prob')` {#Categorical.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
@@ -525,54 +477,6 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.pdf(value, name='pdf')` {#Categorical.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.pmf(value, name='pmf')` {#Categorical.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
 #### `tf.contrib.distributions.Categorical.prob(value, name='prob')` {#Categorical.prob}
 
 Probability density/mass function (depending on `is_continuous`).
@@ -594,9 +498,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 #### `tf.contrib.distributions.Categorical.probs` {#Categorical.probs}
 
-Vector of probabilities summing to one.
-
-Each element is the probability of drawing that coordinate.
+Vector of coordinatewise probabilities.
 
 
 - - -

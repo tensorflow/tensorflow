@@ -18,7 +18,7 @@ is the beta function.
 This class provides methods to create indexed batches of Beta
 distributions. One entry of the broadcasted
 shape represents of `a` and `b` represents one single Beta distribution.
-When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
+When calling distribution functions (e.g. `dist.prob(x)`), `a`, `b`
 and `x` are broadcast to the same shape (if possible).
 Every entry in a/b/x corresponds to a single Beta distribution.
 
@@ -36,15 +36,15 @@ dist = Beta(a, b)
 ```python
 # x same shape as a.
 x = [.2, .3, .7]
-dist.pdf(x)  # Shape [3]
+dist.prob(x)  # Shape [3]
 
 # a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
 x = [[.1, .4, .5], [.2, .3, .5]]
-dist.pdf(x)  # Shape [2, 3]
+dist.prob(x)  # Shape [2, 3]
 
 # a/b will be broadcast to shape [5, 7, 3] to match x.
 x = [[...]]  # Shape [5, 7, 3]
-dist.pdf(x)  # Shape [5, 7, 3]
+dist.prob(x)  # Shape [5, 7, 3]
 ```
 
 Creates a 2-batch of 3-class distributions.
@@ -56,7 +56,7 @@ dist = Beta(a, b)
 
 # x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
 x = [.2, .3, .9]
-dist.pdf(x)  # Shape [2]
+dist.prob(x)  # Shape [2]
 ```
 - - -
 
@@ -388,54 +388,6 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.log_pdf(value, name='log_pdf')` {#Beta.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.log_pmf(value, name='log_pmf')` {#Beta.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
 #### `tf.contrib.distributions.Beta.log_prob(value, name='log_prob')` {#Beta.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
@@ -569,54 +521,6 @@ constant-valued tensors when constant values are fed.
 #### `tf.contrib.distributions.Beta.parameters` {#Beta.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.pdf(value, name='pdf')` {#Beta.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.pmf(value, name='pmf')` {#Beta.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -

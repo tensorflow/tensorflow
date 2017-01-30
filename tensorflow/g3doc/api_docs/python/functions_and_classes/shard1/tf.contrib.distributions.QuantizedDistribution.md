@@ -65,11 +65,11 @@ the `distribution`.
     instance of `Distribution`.
 *  <b>`lower_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
-    If provided, base distribution's pdf/pmf should be defined at
+    If provided, base distribution's `prob` should be defined at
     `lower_cutoff`.
 *  <b>`upper_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
-    If provided, base distribution's pdf/pmf should be defined at
+    If provided, base distribution's `prob` should be defined at
     `upper_cutoff - 1`.
     `upper_cutoff` must be strictly greater than `lower_cutoff`.
 *  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
@@ -392,54 +392,6 @@ The base distribution's `log_cdf` method must be defined on `y - 1`.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.log_pdf(value, name='log_pdf')` {#QuantizedDistribution.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.log_pmf(value, name='log_pmf')` {#QuantizedDistribution.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
 #### `tf.contrib.distributions.QuantizedDistribution.log_prob(value, name='log_prob')` {#QuantizedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
@@ -602,54 +554,6 @@ constant-valued tensors when constant values are fed.
 #### `tf.contrib.distributions.QuantizedDistribution.parameters` {#QuantizedDistribution.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.pdf(value, name='pdf')` {#QuantizedDistribution.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.pmf(value, name='pmf')` {#QuantizedDistribution.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
