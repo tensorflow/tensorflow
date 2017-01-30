@@ -218,22 +218,13 @@ size_t readNDArray(JNIEnv* env, TF_DataType dtype, const char* src,
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
                                                             jclass clazz,
                                                             jint dtype,
-                                                            jlongArray shape) {
-  size_t elem_size = elemByteSize(static_cast<TF_DataType>(dtype));
-  if (elem_size == 0) {
-    throwException(env, kIllegalArgumentException,
-                   "cannot allocate Tensor with DataType %d", dtype);
-    return 0;
-  }
+                                                            jlongArray shape,
+                                                            jlong sizeInBytes) {
   int num_dims = static_cast<int>(env->GetArrayLength(shape));
   jlong* dims = nullptr;
   if (num_dims > 0) {
     jboolean is_copy;
     dims = env->GetLongArrayElements(shape, &is_copy);
-  }
-  size_t num_elems = 1;
-  for (int i = 0; i < num_dims; ++i) {
-    num_elems *= dims[i];
   }
   static_assert(sizeof(jlong) == sizeof(int64_t),
                 "Java long is not compatible with the TensorFlow C API");
@@ -250,7 +241,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv* env,
     dims_copy[i] = static_cast<int64_t>(dims[i]);
   }
   TF_Tensor* t = TF_AllocateTensor(static_cast<TF_DataType>(dtype), dims_copy,
-                                   num_dims, elem_size * num_elems);
+                                   num_dims, static_cast<size_t>(sizeInBytes));
   delete[] dims_copy;
   if (dims != nullptr) {
     env->ReleaseLongArrayElements(shape, dims, JNI_ABORT);
@@ -301,6 +292,17 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv* env,
                                                          jlong handle) {
   if (handle == 0) return;
   TF_DeleteTensor(reinterpret_cast<TF_Tensor*>(handle));
+}
+
+JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return nullptr;
+  void* data = TF_TensorData(t);
+  const size_t sz = TF_TensorByteSize(t);
+
+  return env->NewDirectByteBuffer(data, static_cast<jlong>(sz));
 }
 
 JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor_dtype(JNIEnv* env,
