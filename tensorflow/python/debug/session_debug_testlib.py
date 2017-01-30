@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -971,6 +972,29 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertLess(numeric_summary[9], 0.0)
       self.assertTrue(np.isnan(numeric_summary[10]))
       self.assertTrue(np.isnan(numeric_summary[11]))
+
+  def testDebugQueueOpsDoesNotoErrorOut(self):
+    with session.Session() as sess:
+      q = data_flow_ops.FIFOQueue(3, "float", name="fifo_queue")
+      q_init = q.enqueue_many(([101.0, 202.0, 303.0],), name="enqueue_many")
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_urls=self._debug_urls())
+
+      sess.run(q_init, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      self.assertIsNone(dump.get_tensors("fifo_queue", 0, "DebugIdentity")[0])
+      self.assertAllClose(
+          [101.0, 202.0, 303.0],
+          dump.get_tensors("enqueue_many/component_0", 0, "DebugIdentity")[0])
 
   def testLookUpNodePythonTracebackWorks(self):
     with session.Session() as sess:

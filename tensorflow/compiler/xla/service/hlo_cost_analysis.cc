@@ -153,6 +153,10 @@ Status HloCostAnalysis::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleOutfeed(HloInstruction* outfeed) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleMap(
     HloInstruction* map, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     HloComputation* function,
@@ -164,8 +168,10 @@ Status HloCostAnalysis::HandleMap(
 
   // Compute the cost of all elements for this Map operation.
   auto element_count = ShapeUtil::ElementsIn(map->shape());
-  flop_count_ += element_count * visitor.flop_count();
   transcendental_count_ += element_count * visitor.transcendental_count();
+  auto hlo_flop_count = element_count * visitor.flop_count();
+  hlo_to_flop_count_[map] = hlo_flop_count;
+  flop_count_ += hlo_flop_count;
   return Status::OK();
 }
 
@@ -180,7 +186,9 @@ Status HloCostAnalysis::HandleReduce(
   // Compute the cost of all elements for this Reduce operation.
   auto reduction_count = ShapeUtil::ElementsIn(arg->shape()) -
                          ShapeUtil::ElementsIn(reduce->shape());
-  flop_count_ += reduction_count * visitor.flop_count();
+  auto hlo_flop_count = reduction_count * visitor.flop_count();
+  hlo_to_flop_count_[reduce] = hlo_flop_count;
+  flop_count_ += hlo_flop_count;
   transcendental_count_ += reduction_count * visitor.transcendental_count();
   return Status::OK();
 }
@@ -201,7 +209,9 @@ Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
   for (const auto& dimension : window.dimensions()) {
     window_size *= dimension.size();
   }
-  flop_count_ += output_size * (window_size - 1) * visitor.flop_count();
+  auto hlo_flop_count = output_size * (window_size - 1) * visitor.flop_count();
+  hlo_to_flop_count_[reduce_window] = hlo_flop_count;
+  flop_count_ += hlo_flop_count;
   transcendental_count_ +=
       output_size * (window_size - 1) * visitor.transcendental_count();
   return Status::OK();
@@ -225,9 +235,11 @@ Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
   for (const auto& dimension : instruction->window().dimensions()) {
     window_size *= dimension.size();
   }
-  flop_count_ +=
+  auto hlo_flop_count =
       source_element_count * ((window_size - 1) * select_visitor.flop_count() +
                               scatter_visitor.flop_count());
+  hlo_to_flop_count_[instruction] = hlo_flop_count;
+  flop_count_ += hlo_flop_count;
   transcendental_count_ +=
       source_element_count *
       ((window_size - 1) * select_visitor.transcendental_count() +
@@ -303,8 +315,16 @@ Status HloCostAnalysis::HandleRng(HloInstruction* random,
 }
 
 Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
-  // Fusion instruction itself does not contribute to computation.
-  return fusion->fused_expression_root()->Accept(this);
+  // Compute the cost of the fused expression.
+  HloInstruction* fused_expression_root = fusion->fused_expression_root();
+  HloCostAnalysis visitor;
+  TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
+
+  // Attribute the cost of the fused expression to the fusion node.
+  transcendental_count_ += visitor.transcendental_count();
+  hlo_to_flop_count_[fusion] += visitor.flop_count();
+  flop_count_ += visitor.flop_count();
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleCall(

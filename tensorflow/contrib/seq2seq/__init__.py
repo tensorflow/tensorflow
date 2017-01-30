@@ -19,13 +19,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# pylint: disable=unused-import,line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn import attention_decoder_fn_inference
 from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn import attention_decoder_fn_train
 from tensorflow.contrib.seq2seq.python.ops.attention_decoder_fn import prepare_attention
 from tensorflow.contrib.seq2seq.python.ops.decoder_fn import *
 from tensorflow.contrib.seq2seq.python.ops.loss import *
 from tensorflow.contrib.seq2seq.python.ops.seq2seq import *
-# pylint: enable=unused-import,line-too-long
+# pylint: enable=unused-import,widcard-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ["attention_decoder_fn_inference",
+                    "attention_decoder_fn_train",
+                    "dynamic_rnn_decoder",
+                    "prepare_attention",
+                    "sequence_loss",
+                    "simple_decoder_fn_train",
+                    "simple_decoder_fn_inference"]
+
+remove_undocumented(__name__, _allowed_symbols)

@@ -65,10 +65,11 @@ def seek_next(string_list, shuffle=False, seed=None, num_epochs=None):
   """Returns an op that seeks the next element in a list of strings.
 
   Seeking happens in a round robin fashion. This op creates a variable called
-  counter that is initialized to -1 and is used to keep track of which element
-  in the list was returned. If num_epochs is not None, then we limit the number
-  of times we go around the string_list before OutOfRangeError is thrown. It
-  creates a variable to keep track of this.
+  obtain_next_counter that is initialized to -1 and is used to keep track of
+  which element in the list was returned, and a variable
+  obtain_next_expanded_list to hold the list. If num_epochs is not None, then we
+  limit the number of times we go around the string_list before OutOfRangeError
+  is thrown. It creates a variable to keep track of this.
 
   Args:
     string_list: A list of strings.
@@ -88,9 +89,11 @@ def seek_next(string_list, shuffle=False, seed=None, num_epochs=None):
         initializer=constant_op.constant(
             -1, dtype=dtypes.int64),
         dtype=dtypes.int64)
-    with ops.device(counter.device):
-      string_tensor = constant_op.constant(
-          expanded_list, name="obtain_next_expanded_list")
+    with ops.colocate_with(counter):
+      string_tensor = variable_scope.get_variable(
+          name="obtain_next_expanded_list",
+          initializer=constant_op.constant(expanded_list),
+          dtype=dtypes.string)
     if num_epochs:
       filename_counter = variable_scope.get_variable(
           name="obtain_next_filename_counter",

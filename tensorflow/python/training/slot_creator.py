@@ -41,8 +41,9 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 
 
 def _create_slot_var(primary, val, scope):
@@ -52,7 +53,10 @@ def _create_slot_var(primary, val, scope):
   # scope.
   current_partitioner = variable_scope.get_variable_scope().partitioner
   variable_scope.get_variable_scope().set_partitioner(None)
-  slot = variable_scope.get_variable(scope, initializer=val, trainable=False)
+  slot = variable_scope.get_variable(
+      scope, initializer=val, trainable=False,
+      use_resource=isinstance(
+          primary, resource_variable_ops.ResourceVariable))
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 
   # pylint: disable=protected-access

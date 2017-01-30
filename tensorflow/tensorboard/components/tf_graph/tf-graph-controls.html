@@ -220,6 +220,12 @@ span.counter {
   font-size: 13px;
   color: gray;
 }
+
+.runs paper-item {
+  --paper-item: {
+    white-space: nowrap;
+  }
+}
 </style>
 <svg width="0" height="0">
   <defs>
@@ -251,7 +257,7 @@ span.counter {
     <a href="#" id="graphdownload" class="title" download="graph.png">
     </a>
   </div>
-  <div class="control-holder">
+  <div class="control-holder runs">
     <div class="title">Run <span class="counter">([[datasets.length]])</span></div>
     <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
       <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">

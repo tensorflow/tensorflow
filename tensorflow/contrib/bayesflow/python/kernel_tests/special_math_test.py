@@ -76,6 +76,7 @@ class NdtrTest(test.TestCase):
       actual = sm.log_ndtr(grid).eval()
 
       # Basic tests.
+      # isfinite checks for NaN and Inf.
       self.assertTrue(np.isfinite(actual).all())
       # On the grid, -inf < log_cdf(x) < 0.  In this case, we should be able
       # to use a huge grid because we have used tricks to escape numerical
@@ -99,6 +100,7 @@ class NdtrTest(test.TestCase):
       actual = sm.ndtr(grid).eval()
 
       # Basic tests.
+      # isfinite checks for NaN and Inf.
       self.assertTrue(np.isfinite(actual).all())
       # On the grid, 0 < cdf(x) < 1.  The grid cannot contain everything due
       # to numerical limitations of cdf.
@@ -178,6 +180,7 @@ class NdtrGradientTest(test.TestCase):
       output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
       grad_output = gradients_impl.gradients(output, x)
       variables.global_variables_initializer().run()
+      # isfinite checks for NaN and Inf.
       self.assert_all_true(np.isfinite(output.eval()))
       self.assert_all_true(np.isfinite(grad_output[0].eval()))
 
@@ -201,6 +204,7 @@ class NdtrGradientTest(test.TestCase):
       # Check for NaN separately in order to get informative failures.
       self.assert_all_false(np.isnan(grad_eval))
       self.assert_all_true(grad_eval > 0.)
+      # isfinite checks for NaN and Inf.
       self.assert_all_true(np.isfinite(grad_eval))
 
       # Do the same checks but explicitly compute the gradient.
@@ -217,6 +221,7 @@ class NdtrGradientTest(test.TestCase):
         # The ndtr gradient will only be non-zero in the range [-14, 14] for
         # float32 and [-38, 38] for float64.
         self.assert_all_true(grad_eval >= 0.)
+      # isfinite checks for NaN and Inf.
       self.assert_all_true(np.isfinite(grad_eval))
 
       # Versus scipy.
@@ -243,6 +248,103 @@ class NdtrGradientTest(test.TestCase):
 
 class LogNdtrGradientTest(NdtrGradientTest):
   _use_log = True
+
+
+class LogCDFLaplaceTest(test.TestCase):
+  # Note that scipy.stats.laplace does not have a stable Log CDF, so we cannot
+  # rely on scipy to cross check the extreme values.
+
+  # Test will be done differently over different ranges.  These are the values
+  # such that when exceeded by x, produce output that causes the naive (scipy)
+  # implementation to have numerical issues.
+  #
+  # If x = log(1 / (2 * eps)), then 0.5 * exp{-x} = eps.
+  # With inserting eps = np.finfo(dtype).eps, we see that log(1 / (2 * eps)) is
+  # the value of x such that any larger value will result in
+  # 1 - 0.5 * exp{-x} = 0, which will cause the log_cdf_laplace code to take a
+  # log # of zero.  We therefore choose these as our cutoffs for testing.
+  CUTOFF_FLOAT64_UPPER = np.log(1. / (2. * np.finfo(np.float64).eps)) - 1.
+  CUTOFF_FLOAT32_UPPER = np.log(1. / (2. * np.finfo(np.float32).eps)) - 1.
+
+  def assertAllTrue(self, x):
+    self.assertAllEqual(np.ones_like(x, dtype=np.bool), x)
+
+  def _test_grid_log(self, dtype, scipy_dtype, grid_spec, error_spec):
+    with self.test_session():
+      grid = _make_grid(dtype, grid_spec)
+      actual = sm.log_cdf_laplace(grid).eval()
+
+      # Basic tests.
+      # isfinite checks for NaN and Inf.
+      self.assertAllTrue(np.isfinite(actual))
+      self.assertAllTrue((actual < 0))
+      _check_strictly_increasing(actual)
+
+      # Versus scipy.
+      scipy_dist = stats.laplace(loc=0., scale=1.)
+      expected = scipy_dist.logcdf(grid.astype(scipy_dtype))
+      self.assertAllClose(
+          expected.astype(np.float64),
+          actual.astype(np.float64),
+          rtol=error_spec.rtol,
+          atol=error_spec.atol)
+
+  def test_float32_lower_and_mid_segment_scipy_float32_ok(self):
+    # Choose values mild enough that we can use scipy in float32, which will
+    # allow for a high accuracy match to scipy (since we both use float32).
+    self._test_grid_log(
+        np.float32,  # dtype
+        np.float32,  # scipy_dtype
+        GridSpec(min=-10, max=self.CUTOFF_FLOAT32_UPPER - 5, shape=[100]),
+        ErrorSpec(rtol=5e-4, atol=0))
+
+  def test_float32_all_segments_with_scipy_float64_ok(self):
+    # Choose values outside the range where scipy float32 works.
+    # Let scipy use float64.  This means we
+    # won't be exactly the same since we are in float32.
+    self._test_grid_log(
+        np.float32,  # dtype
+        np.float64,  # scipy_dtype
+        GridSpec(min=-50, max=self.CUTOFF_FLOAT32_UPPER + 5, shape=[100]),
+        ErrorSpec(rtol=0.05, atol=0))
+
+  def test_float32_extreme_values_result_and_gradient_finite_and_nonzero(self):
+    with self.test_session() as sess:
+      # On the lower branch, log_cdf_laplace(x) = x, so we know this will be
+      # fine, but test to -200 anyways.
+      grid = _make_grid(
+          np.float32, GridSpec(min=-200, max=80, shape=[20, 100]))
+      grid = ops.convert_to_tensor(grid)
+
+      actual = sm.log_cdf_laplace(grid)
+      grad = gradients_impl.gradients(actual, grid)[0]
+
+      actual_, grad_ = sess.run([actual, grad])
+
+      # isfinite checks for NaN and Inf.
+      self.assertAllTrue(np.isfinite(actual_))
+      self.assertAllTrue(np.isfinite(grad_))
+      self.assertFalse(np.any(actual_ == 0))
+      self.assertFalse(np.any(grad_ == 0))
+
+  def test_float64_extreme_values_result_and_gradient_finite_and_nonzero(self):
+    with self.test_session() as sess:
+      # On the lower branch, log_cdf_laplace(x) = x, so we know this will be
+      # fine, but test to -200 anyways.
+      grid = _make_grid(
+          np.float64, GridSpec(min=-200, max=700, shape=[20, 100]))
+      grid = ops.convert_to_tensor(grid)
+
+      actual = sm.log_cdf_laplace(grid)
+      grad = gradients_impl.gradients(actual, grid)[0]
+
+      actual_, grad_ = sess.run([actual, grad])
+
+      # isfinite checks for NaN and Inf.
+      self.assertAllTrue(np.isfinite(actual_))
+      self.assertAllTrue(np.isfinite(grad_))
+      self.assertFalse(np.any(actual_ == 0))
+      self.assertFalse(np.any(grad_ == 0))
 
 
 if __name__ == "__main__":

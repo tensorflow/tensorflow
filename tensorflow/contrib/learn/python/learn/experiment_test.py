@@ -342,9 +342,9 @@ class ExperimentTest(test.TestCase):
         eval_metrics='eval_metrics',
         eval_hooks=[noop_hook],
         eval_delay_secs=0,
-        continuous_eval_throttle_secs=0,
-        continuous_eval_predicate_fn=_predicate_fn)
-    ex.continuous_eval(evaluate_checkpoint_only_once=False)
+        continuous_eval_throttle_secs=0)
+    ex.continuous_eval(evaluate_checkpoint_only_once=False,
+                       continuous_eval_predicate_fn=_predicate_fn)
     self.assertEqual(0, est.fit_count)
     self.assertEqual(3, est.eval_count)
     self.assertEqual([noop_hook], est.eval_hooks)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for contrib.seq2seq.python.seq2seq.loss_ops."""
+"""Tests for contrib.seq2seq.python.seq2seq.decoder_fn."""
 # pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division

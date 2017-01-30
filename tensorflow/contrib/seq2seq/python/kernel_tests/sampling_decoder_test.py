@@ -104,6 +104,76 @@ class BasicSamplingDecoderTest(test.TestCase):
                           sess_results["step_finished"])
       self.assertAllEqual([-1] * 5, sess_results["step_outputs"].sample_id)
 
+  def testStepWithGreedyEmbeddingSampler(self):
+    batch_size = 5
+    vocabulary_size = 7
+    cell_depth = vocabulary_size  # cell's logits must match vocabulary size
+    input_depth = 10
+    start_tokens = [0] * batch_size
+    end_token = 1
+
+    with self.test_session() as sess:
+      embeddings = np.random.randn(vocabulary_size,
+                                   input_depth).astype(np.float32)
+      cell = core_rnn_cell.LSTMCell(vocabulary_size)
+      sampler = sampling_decoder.GreedyEmbeddingSampler(
+          embeddings, start_tokens, end_token)
+      my_decoder = sampling_decoder.BasicSamplingDecoder(
+          cell=cell,
+          sampler=sampler,
+          initial_state=cell.zero_state(
+              dtype=dtypes.float32, batch_size=batch_size))
+      output_size = my_decoder.output_size
+      output_dtype = my_decoder.output_dtype
+      batch_size_t = my_decoder.batch_size
+      self.assertEqual(
+          sampling_decoder.SamplingDecoderOutput(cell_depth,
+                                                 tensor_shape.TensorShape([])),
+          output_size)
+      self.assertEqual(
+          sampling_decoder.SamplingDecoderOutput(dtypes.float32, dtypes.int32),
+          output_dtype)
+
+      (first_finished, first_inputs, first_state) = my_decoder.initialize()
+      (step_outputs, step_state, step_next_inputs,
+       step_finished) = my_decoder.step(
+           constant_op.constant(0), first_inputs, first_state)
+
+      self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(
+          isinstance(step_outputs, sampling_decoder.SamplingDecoderOutput))
+      self.assertEqual((batch_size, cell_depth), step_outputs[0].get_shape())
+      self.assertEqual((batch_size,), step_outputs[1].get_shape())
+      self.assertEqual((batch_size, cell_depth), first_state[0].get_shape())
+      self.assertEqual((batch_size, cell_depth), first_state[1].get_shape())
+      self.assertEqual((batch_size, cell_depth), step_state[0].get_shape())
+      self.assertEqual((batch_size, cell_depth), step_state[1].get_shape())
+
+      sess.run(variables.global_variables_initializer())
+      sess_results = sess.run({
+          "batch_size": batch_size_t,
+          "first_finished": first_finished,
+          "first_inputs": first_inputs,
+          "first_state": first_state,
+          "step_outputs": step_outputs,
+          "step_state": step_state,
+          "step_next_inputs": step_next_inputs,
+          "step_finished": step_finished
+      })
+
+      expected_sample_ids = np.argmax(
+          sess_results["step_outputs"].rnn_output, -1)
+      expected_step_finished = (expected_sample_ids == end_token)
+      expected_step_next_inputs = embeddings[expected_sample_ids]
+      self.assertAllEqual([False, False, False, False, False],
+                          sess_results["first_finished"])
+      self.assertAllEqual(expected_step_finished, sess_results["step_finished"])
+      self.assertAllEqual(expected_sample_ids,
+                          sess_results["step_outputs"].sample_id)
+      self.assertAllEqual(expected_step_next_inputs,
+                          sess_results["step_next_inputs"])
+
 
 if __name__ == "__main__":
   test.main()

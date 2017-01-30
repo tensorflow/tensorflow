@@ -43,9 +43,9 @@ class CategoricalTest(test.TestCase):
 
   def testP(self):
     p = [0.2, 0.8]
-    dist = categorical.Categorical(p=p)
+    dist = categorical.Categorical(probs=p)
     with self.test_session():
-      self.assertAllClose(p, dist.p.eval())
+      self.assertAllClose(p, dist.probs.eval())
       self.assertAllEqual([2], dist.logits.get_shape())
 
   def testLogits(self):
@@ -53,9 +53,9 @@ class CategoricalTest(test.TestCase):
     logits = np.log(p) - 50.
     dist = categorical.Categorical(logits=logits)
     with self.test_session():
-      self.assertAllEqual([2], dist.p.get_shape())
+      self.assertAllEqual([2], dist.probs.get_shape())
       self.assertAllEqual([2], dist.logits.get_shape())
-      self.assertAllClose(dist.p.eval(), p)
+      self.assertAllClose(dist.probs.eval(), p)
       self.assertAllClose(dist.logits.eval(), logits)
 
   def testShapes(self):
@@ -90,7 +90,7 @@ class CategoricalTest(test.TestCase):
     self.assertEqual(dist.dtype, dtypes.int64)
     self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
-    self.assertEqual(dist.p.dtype, dtypes.float32)
+    self.assertEqual(dist.probs.dtype, dtypes.float32)
     self.assertEqual(dist.logits.dtype, dtypes.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
     self.assertEqual(
@@ -157,7 +157,7 @@ class CategoricalTest(test.TestCase):
       true_entropy = - math_ops.reduce_sum(
           probabilities * log_probabilities, axis=-1)
 
-      categorical_distribution = categorical.Categorical(p=probabilities)
+      categorical_distribution = categorical.Categorical(probs=probabilities)
       categorical_entropy = categorical_distribution.entropy()
 
       # works

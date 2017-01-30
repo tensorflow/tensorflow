@@ -829,6 +829,7 @@ tf_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
 )

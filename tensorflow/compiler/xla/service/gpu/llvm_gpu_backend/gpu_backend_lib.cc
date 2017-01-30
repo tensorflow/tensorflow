@@ -193,11 +193,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
 
   // NVPTX's early-as-possible passes include NVVM reflect.
-  builder.addExtension(
-      llvm::PassManagerBuilder::EP_EarlyAsPossible,
-      [&](const PassManagerBuilder&, legacy::PassManagerBase& pass_manager) {
-        target_machine->addEarlyAsPossiblePasses(pass_manager);
-      });
+  target_machine->adjustPassManager(builder);
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);

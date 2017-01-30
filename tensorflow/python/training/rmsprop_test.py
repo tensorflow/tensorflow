@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
@@ -34,13 +35,15 @@ from tensorflow.python.training import rmsprop
 _DATA_TYPES = [dtypes.half, dtypes.float32]
 
 _TEST_PARAM_VALUES = [
-    # learning_rate, decay, momentum, epsilon, centered
-    [0.5, 0.9, 0.0, 1e-3, True],
-    [0.5, 0.9, 0.0, 1e-3, False],
-    [0.1, 0.9, 0.0, 1e-3, True],
-    [0.5, 0.95, 0.0, 1e-3, False],
-    [0.5, 0.95, 0.0, 1e-5, True],
-    [0.5, 0.95, 0.9, 1e-5, True],
+    # learning_rate, decay, momentum, epsilon, centered, use_resource
+    [0.5, 0.9, 0.0, 1e-3, True, False],
+    [0.5, 0.9, 0.0, 1e-3, False, False],
+    [0.5, 0.9, 0.0, 1e-3, True, True],
+    [0.5, 0.9, 0.0, 1e-3, False, True],
+    [0.1, 0.9, 0.0, 1e-3, True, False],
+    [0.5, 0.95, 0.0, 1e-3, False, False],
+    [0.5, 0.95, 0.0, 1e-5, True, False],
+    [0.5, 0.95, 0.9, 1e-5, True, False],
 ]
 
 _TESTPARAMS = [
@@ -84,7 +87,8 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testDense(self):
     # TODO(yori): Use ParameterizedTest when available
-    for dtype, learning_rate, decay, momentum, epsilon, centered in _TESTPARAMS:
+    for (dtype, learning_rate, decay, momentum,
+         epsilon, centered, use_resource) in _TESTPARAMS:
       with self.test_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -92,9 +96,13 @@ class RMSPropOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
 
-        var0 = variables.Variable(var0_np)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable(var0_np)
+          var1 = resource_variable_ops.ResourceVariable(var1_np)
+        else:
+          var0 = variables.Variable(var0_np)
+          var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
-        var1 = variables.Variable(var1_np)
         grads1 = constant_op.constant(grads1_np)
         opt = rmsprop.RMSPropOptimizer(
             learning_rate=learning_rate,
@@ -154,7 +162,8 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testSparse(self):
     # TODO(yori): Use ParameterizedTest when available
-    for dtype, learning_rate, decay, momentum, epsilon, centered in _TESTPARAMS:
+    for (dtype, learning_rate, decay,
+         momentum, epsilon, centered, _) in _TESTPARAMS:
       with self.test_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

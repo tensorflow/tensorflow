@@ -78,9 +78,12 @@ class SoftmaxTest(test_lib.TestCase):
     with self.test_session():
       x_tf = constant_op.constant(x_np)
       y_tf = nn_ops.softmax(x_tf)
+      y_tf_last_dim = nn_ops.softmax(x_tf, 1)
       y_tf_np = y_tf.eval()
+      y_tf_last_dim_np = y_tf_last_dim.eval()
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
+    self.assertAllClose(y_tf_last_dim_np, y_np, eps)
 
   def testGradient(self):
     x_shape = [5, 10]

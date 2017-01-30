@@ -348,6 +348,22 @@ def _SymGrad(op, out_grads):
   return in_grads
 
 
+def _MaybeCompile(op, is_func, grad_fn):
+  """Compile the calculation in grad_fn if op was marked as compiled."""
+  if is_func:
+    # Functions handle their own gradient compilation
+    return grad_fn()
+  try:
+    xla_compile = op.get_attr("_XlaCompile")
+    attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile)}
+    with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
+      return grad_fn()
+  except ValueError as e:
+    if "No attr named" in str(e):
+      return grad_fn()
+    raise e
+
+
 def gradients(ys,
               xs,
               grad_ys=None,
@@ -510,11 +526,13 @@ def gradients(ys,
               if grad_fn:
                 # If grad_fn was found, do not use SymbolicGradient even for
                 # functions.
-                in_grads = grad_fn(op, *out_grads)
+                in_grads = _MaybeCompile(
+                    op, is_func_call, lambda: grad_fn(op, *out_grads))
               else:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
-                in_grads = _SymGrad(op, out_grads)
+                in_grads = _MaybeCompile(
+                    op, is_func_call, lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(

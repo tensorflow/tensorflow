@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "distributions_py",
@@ -42,7 +42,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "distribution_test",
     size = "small",
     srcs = ["python/kernel_tests/distribution_test.py"],
@@ -59,7 +59,27 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
+    name = "conditional_distribution_test",
+    size = "small",
+    srcs = [
+        "python/kernel_tests/conditional_distribution_test.py",
+        "python/kernel_tests/distribution_test.py",
+    ],
+    additional_deps = [
+        ":distributions_py",
+        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
+cuda_py_test(
     name = "operator_pd_test",
     size = "small",
     srcs = ["python/kernel_tests/operator_pd_test.py"],
@@ -78,7 +98,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "operator_pd_cholesky_test",
     size = "medium",
     srcs = ["python/kernel_tests/operator_pd_cholesky_test.py"],
@@ -95,7 +115,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "operator_pd_diag_test",
     size = "medium",
     srcs = ["python/kernel_tests/operator_pd_diag_test.py"],
@@ -111,7 +131,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "operator_pd_full_test",
     size = "medium",
     srcs = ["python/kernel_tests/operator_pd_full_test.py"],
@@ -126,7 +146,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "operator_pd_identity_test",
     size = "medium",
     srcs = ["python/kernel_tests/operator_pd_identity_test.py"],
@@ -142,7 +162,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "operator_pd_vdvt_update_test",
     size = "large",
     srcs = ["python/kernel_tests/operator_pd_vdvt_update_test.py"],
@@ -161,7 +181,7 @@ cuda_py_tests(
     tags = ["notap"],  # http://b/30441813
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "bernoulli_test",
     size = "small",
     srcs = ["python/kernel_tests/bernoulli_test.py"],
@@ -177,7 +197,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "beta_test",
     size = "small",
     srcs = ["python/kernel_tests/beta_test.py"],
@@ -195,7 +215,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "binomial_test",
     size = "small",
     srcs = ["python/kernel_tests/binomial_test.py"],
@@ -209,7 +229,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "categorical_test",
     size = "small",
     srcs = ["python/kernel_tests/categorical_test.py"],
@@ -228,7 +248,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "chi2_test",
     srcs = ["python/kernel_tests/chi2_test.py"],
     additional_deps = [
@@ -243,7 +263,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "dirichlet_test",
     size = "small",
     srcs = ["python/kernel_tests/dirichlet_test.py"],
@@ -258,7 +278,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "dirichlet_multinomial_test",
     size = "medium",
     srcs = ["python/kernel_tests/dirichlet_multinomial_test.py"],
@@ -275,7 +295,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "exponential_test",
     srcs = ["python/kernel_tests/exponential_test.py"],
     additional_deps = [
@@ -291,7 +311,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "gamma_test",
     srcs = ["python/kernel_tests/gamma_test.py"],
     additional_deps = [
@@ -307,7 +327,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "inverse_gamma_test",
     srcs = ["python/kernel_tests/inverse_gamma_test.py"],
     additional_deps = [
@@ -323,7 +343,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "laplace_test",
     srcs = ["python/kernel_tests/laplace_test.py"],
     additional_deps = [
@@ -339,7 +359,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "multinomial_test",
     srcs = ["python/kernel_tests/multinomial_test.py"],
     additional_deps = [
@@ -355,7 +375,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "mvn_test",
     size = "small",
     srcs = ["python/kernel_tests/mvn_test.py"],
@@ -373,7 +393,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "mixture_test",
     size = "medium",
     srcs = ["python/kernel_tests/mixture_test.py"],
@@ -395,7 +415,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "normal_test",
     size = "medium",
     srcs = ["python/kernel_tests/normal_test.py"],
@@ -414,7 +434,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "poisson_test",
     size = "small",
     srcs = ["python/kernel_tests/poisson_test.py"],
@@ -429,7 +449,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "student_t_test",
     size = "small",
     srcs = ["python/kernel_tests/student_t_test.py"],
@@ -448,7 +468,7 @@ cuda_py_tests(
     tags = ["nomsan"],  # disable to avoid false positives from scipy.
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "vector_student_t_test",
     size = "medium",
     srcs = ["python/kernel_tests/vector_student_t_test.py"],
@@ -465,7 +485,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "uniform_test",
     size = "small",
     srcs = ["python/kernel_tests/uniform_test.py"],
@@ -482,7 +502,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "wishart_test",
     size = "small",
     srcs = ["python/kernel_tests/wishart_test.py"],
@@ -501,7 +521,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "kullback_leibler_test",
     size = "small",
     srcs = ["python/kernel_tests/kullback_leibler_test.py"],
@@ -514,7 +534,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "normal_conjugate_posteriors_test",
     size = "small",
     srcs = ["python/kernel_tests/normal_conjugate_posteriors_test.py"],
@@ -530,7 +550,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "quantized_distribution_test",
     size = "medium",
     srcs = ["python/kernel_tests/quantized_distribution_test.py"],
@@ -548,7 +568,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "transformed_distribution_test",
     size = "medium",
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],
@@ -565,7 +585,27 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
+    name = "conditional_transformed_distribution_test",
+    size = "medium",
+    srcs = [
+        "python/kernel_tests/conditional_transformed_distribution_test.py",
+        "python/kernel_tests/transformed_distribution_test.py",
+    ],
+    additional_deps = [
+        ":distributions_py",
+        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "distribution_util_test",
     size = "small",
     srcs = ["python/kernel_tests/distribution_util_test.py"],
@@ -584,7 +624,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "shape_test",
     size = "small",
     srcs = ["python/kernel_tests/shape_test.py"],
@@ -601,10 +641,30 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "bijector_test",
     size = "medium",
     srcs = ["python/kernel_tests/bijector_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+    shard_count = 5,
+)
+
+cuda_py_test(
+    name = "conditional_bijector_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/conditional_bijector_test.py"],
     additional_deps = [
         ":distributions_py",
         ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",

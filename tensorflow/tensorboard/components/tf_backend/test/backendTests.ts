@@ -257,6 +257,27 @@ module TF.Backend {
          assertHistogramEquality(newHistogram, histogram);
        });
 
+    it('Handles a histogram of all zeros', function() {
+      let h = {
+        min: 0,
+        max: 0,
+        nItems: 51200,
+        sum: 0,
+        sumSquares: 0,
+        bucketRightEdges: [0, 1e-12, 1.7976931348623157e+308],
+        bucketCounts: [0, 51200, 0],
+        wall_time: '2017-01-25T02:30:11.257Z',
+        step: 0
+      };
+      let newHistogram = convertBins(h, 0, 0, 5);
+      let expectedHistogram = [
+        {x: -1, dx: 0.4, y: 0}, {x: -0.6, dx: 0.4, y: 0},
+        {x: -0.2, dx: 0.4, y: 51200}, {x: 0.2, dx: 0.4, y: 0},
+        {x: 0.6, dx: 0.4, y: 0}
+      ];
+      assertHistogramEquality(newHistogram, expectedHistogram);
+    });
+
     it('Handles a right-most right edge that extends to very large number.',
        function() {
          let counts = [1, 2, 3];

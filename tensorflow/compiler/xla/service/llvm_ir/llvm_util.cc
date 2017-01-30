@@ -464,7 +464,8 @@ void SetTargetOptions(llvm::TargetOptions* options) {
   auto* flags = legacy_flags::GetLlvmBackendFlags();
   options->LessPreciseFPMADOption = options->UnsafeFPMath =
       flags->xla_fast_math || flags->xla_precision_losing_optimizations;
-  options->NoInfsFPMath = options->NoNaNsFPMath = flags->xla_fast_math;
+  options->NoInfsFPMath = options->NoNaNsFPMath = options->NoSignedZerosFPMath =
+      flags->xla_fast_math;
 }
 
 }  // namespace llvm_ir
