@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import os
 import socket
+
 from werkzeug import serving
 
 from tensorflow.python.platform import app
@@ -30,6 +31,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_file_inspector as efi
+from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
@@ -115,11 +117,14 @@ class Server(object):
       print(msg)
       return -1
 
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=FLAGS.purge_orphaned_data)
     plugins = {'projector': projector_plugin.ProjectorPlugin()}
     return application.TensorBoardWSGIApp(
         logdir,
         plugins,
-        purge_orphaned_data=FLAGS.purge_orphaned_data,
+        multiplexer,
         reload_interval=FLAGS.reload_interval)
 
   def serve(self):
