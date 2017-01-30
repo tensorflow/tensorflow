@@ -134,3 +134,12 @@ from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['bijector',
+                    'ConditionalDistribution',
+                    'ConditionalTransformedDistribution',
+                    'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
+
+remove_undocumented(__name__, _allowed_symbols)
