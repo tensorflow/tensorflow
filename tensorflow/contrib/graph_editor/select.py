@@ -272,7 +272,7 @@ def get_ops_ios(ops, control_inputs=False, control_outputs=None,
   return res
 
 
-def compute_boundary_ts(ops, ambiguous_ts_are_outputs=True):
+def compute_boundary_ts(ops):
   """Compute the tensors at the boundary of a set of ops.
 
   This function looks at all the tensors connected to the given ops (in/out)
@@ -281,17 +281,18 @@ def compute_boundary_ts(ops, ambiguous_ts_are_outputs=True):
   2) output tensors: tensors whose consumer operations are not in ops
   3) inside tensors: tensors which are neither input nor output tensors.
 
+  Note that a tensor can be both an inside tensor and an output tensor if it is
+  consumed by operations both outside and inside of `ops`.
+
   Args:
     ops: an object convertible to a list of tf.Operation.
-    ambiguous_ts_are_outputs: a tensor can have consumers both inside and
-      outside ops. Such tensors are treated as outside tensor if
-      ambiguous_ts_are_outputs is True, otherwise they are treated as
-      inside tensor.
   Returns:
     A tuple `(outside_input_ts, outside_output_ts, inside_ts)` where:
       `outside_input_ts` is a Python list of input tensors;
       `outside_output_ts` is a python list of output tensors;
       `inside_ts` is a python list of inside tensors.
+    Since a tensor can be both an inside tensor and an output tensor,
+    `outside_output_ts` and `inside_ts` might intersect.
   Raises:
     TypeError: if ops cannot be converted to a list of tf.Operation.
   """
@@ -301,22 +302,25 @@ def compute_boundary_ts(ops, ambiguous_ts_are_outputs=True):
   output_ts_set = frozenset(output_ts)
   ops_set = frozenset(ops)
 
-  # fill in inside
+  # Compute inside tensors.
   inside_ts = []
+  only_inside_ts = []
   for t in input_ts:
-    # is also output?
+    # Skip if the input tensor is not also an output tensor.
     if t not in output_ts_set:
       continue
-    # is ambiguous_ts_are_outputs is True, don't add to inside if ambiguous
-    if ambiguous_ts_are_outputs:
-      consumers = frozenset(t.consumers())
-      if consumers - ops_set:
-        continue
+    # Mark as "inside".
     inside_ts.append(t)
+    # Mark as "only inside" if the tensor is not both inside and output.
+    consumers = frozenset(t.consumers())
+    if consumers - ops_set:
+      continue
+    only_inside_ts.append(t)
 
   inside_ts_set = frozenset(inside_ts)
+  only_inside_ts_set = frozenset(only_inside_ts)
+  outside_output_ts = [t for t in output_ts if t not in only_inside_ts_set]
   outside_input_ts = [t for t in input_ts if t not in inside_ts_set]
-  outside_output_ts = [t for t in output_ts if t not in inside_ts_set]
   return outside_input_ts, outside_output_ts, inside_ts
 
 

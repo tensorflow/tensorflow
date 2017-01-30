@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from google.protobuf import json_format
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
@@ -76,6 +75,3 @@ def tensor_summary(  # pylint: disable=invalid-name
 
 
 ops.NotDifferentiable("TensorSummary")
-
-
-ops.RegisterShape("TensorSummary")(common_shapes.call_cpp_shape_fn)

@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Data structures and helpers for TensorFlow Debugger (tfdbg)."""
+"""Classes and functions to handle debug-dump data of TensorFlow Debugger."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,25 +24,34 @@ import os
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.platform import gfile
+
+
+METADATA_FILE_PREFIX = "_tfdbg_"
+GRAPH_FILE_TAG = "graph_"
+FETCHES_INFO_FILE_TAG = "fetches_info_"
+FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
 
 
 def load_tensor_from_event_file(event_file_path):
   """Load a tensor from an event file.
 
-  Assumes that the event file contains a Event protobuf and the Event protobuf
-  contains a tensor.
+  Assumes that the event file contains a `Event` protobuf and the `Event`
+  protobuf contains a `Tensor` value.
 
   Args:
-    event_file_path: Path to the event file.
+    event_file_path: (`str`) path to the event file.
 
   Returns:
-    The tensor value loaded from the event file. For uninitialized tensors,
-    return None.
+    The tensor value loaded from the event file, as a `numpy.ndarray`. For
+    uninitialized tensors, returns None.
   """
+
   event = event_pb2.Event()
-  with open(event_file_path, "rb") as f:
+  with gfile.Open(event_file_path, "rb") as f:
     event.ParseFromString(f.read())
 
     if (event.summary.value[0].tensor.tensor_content or
@@ -53,6 +63,22 @@ def load_tensor_from_event_file(event_file_path):
       tensor_value = None
 
   return tensor_value
+
+
+def _load_graph_def_from_event_file(event_file_path):
+  event = event_pb2.Event()
+  with gfile.Open(event_file_path, "rb") as f:
+    event.ParseFromString(f.read())
+
+  return graph_pb2.GraphDef.FromString(event.graph_def)
+
+
+def _load_log_message_from_event_file(event_file_path):
+  event = event_pb2.Event()
+  with gfile.Open(event_file_path, "rb") as f:
+    event.ParseFromString(f.read())
+
+  return event.log_message.message
 
 
 def parse_node_or_tensor_name(name):
@@ -77,6 +103,37 @@ def parse_node_or_tensor_name(name):
     return node_name, output_slot
   else:
     return name, None
+
+
+def _is_graph_file(file_name):
+  return file_name.startswith(METADATA_FILE_PREFIX + GRAPH_FILE_TAG)
+
+
+def _is_run_fetches_info_file(file_name):
+  return file_name == METADATA_FILE_PREFIX + FETCHES_INFO_FILE_TAG
+
+
+def _is_run_feed_keys_info_file(file_name):
+  return file_name == METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG
+
+
+def get_node_name(element_name):
+  return element_name.split(":")[0] if ":" in element_name else element_name
+
+
+def get_output_slot(element_name):
+  """Get the output slot number from the name of a graph element.
+
+  If element_name is a node name without output slot at the end, 0 will be
+  assumed.
+
+  Args:
+    element_name: (`str`) name of the graph element in question.
+
+  Returns:
+    (`int`) output slot number.
+  """
+  return int(element_name.split(":")[-1]) if ":" in element_name else 0
 
 
 def _get_tensor_name(node_name, output_slot):
@@ -114,7 +171,7 @@ def _is_copy_node(node_name):
   """Determine whether a node name is that of a debug Copy node.
 
   Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_tensor_watch_opts.
+  RunOptions.debug_options.debug_tensor_watch_opts.
 
   Args:
     node_name: Name of the node.
@@ -130,7 +187,7 @@ def _is_debug_node(node_name):
   """Determine whether a node name is that of a debug node.
 
   Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_tensor_watch_opts.
+  RunOptions.debug_options.debug_tensor_watch_opts.
 
   Args:
     node_name: Name of the node.
@@ -186,51 +243,67 @@ def has_inf_or_nan(datum, tensor):
   """A predicate for whether a tensor consists of any bad numerical values.
 
   This predicate is common enough to merit definition in this module.
-  Bad numerical values include nans and infs.
-  The signature of this function follows the requiremnet of DebugDumpDir's
-  find() method.
+  Bad numerical values include `nan`s and `inf`s.
+  The signature of this function follows the requirement of the method
+  `DebugDumpDir.find()`.
 
   Args:
-    datum: (DebugTensorDatum) Datum metadata.
-    tensor: (numpy.ndarray or None) Value of the tensor. None represents
+    datum: (`DebugTensorDatum`) Datum metadata.
+    tensor: (`numpy.ndarray` or None) Value of the tensor. None represents
       an uninitialized tensor.
 
   Returns:
-    (bool) True if and only if tensor consists of any nan or inf values.
+    (`bool`) True if and only if tensor consists of any nan or inf values.
   """
 
-  _ = datum  # Datum metadata is unused in this predicte.
+  _ = datum  # Datum metadata is unused in this predicate.
+
   if tensor is None:
     # Uninitialized tensor doesn't have bad numerical values.
     return False
-  else:
+  elif (np.issubdtype(tensor.dtype, np.float) or
+        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
+  else:
+    return False
 
 
 class DebugTensorDatum(object):
-  """A single tensor dumped by tfdbg.
+  """A single tensor dumped by TensorFlow Debugger (tfdbg).
 
-  Contains "metadata" for the dumped tensor, including node name, output slot,
-  debug op and timestamp.
+  Contains metadata about the dumped tensor, including `timestamp`,
+  `node_name`, `output_slot`, `debug_op`, and path to the dump file
+  (`file_path`).
 
-  This type does not contain the space-expensive tensor (numpy array) itself.
-  It just points to the file path from which the tensor can be loaded if
-  needed.
+  This type does not hold the generally space-expensive tensor value (numpy
+  array). Instead, it points to the file from which the tensor value can be
+  loaded (with the `get_tensor` method) if needed.
   """
 
   def __init__(self, dump_root, debug_dump_rel_path):
-    """DebugTensorDatum constructor.
+    """`DebugTensorDatum` constructor.
 
     Args:
-      dump_root: Debug dump root directory.
-      debug_dump_rel_path: Path to a debug dump file, relative to the debug
-          dump root directory. For example, suppose the debug dump root
-          directory is "/tmp/tfdbg_1" and the dump file is at
-          "/tmp/tfdbg_1/ns_1/node_a_0_DebugIdentity_123456789", then
+      dump_root: (`str`) Debug dump root directory.
+      debug_dump_rel_path: (`str`) Path to a debug dump file, relative to the
+          `dump_root`. For example, suppose the debug dump root
+          directory is `/tmp/tfdbg_1` and the dump file is at
+          `/tmp/tfdbg_1/ns_1/node_a_0_DebugIdentity_123456789`, then
           the value of the debug_dump_rel_path should be
-          "ns_1/node_a_0_DebugIdenity_1234456789".
+          `ns_1/node_a_0_DebugIdenity_1234456789`.
+
+    Raises:
+      ValueError: If the base file name of the dump file does not conform to
+        the dump file naming pattern:
+        `node_name`_`output_slot`_`debug_op`_`timestamp`
     """
+
     base = os.path.basename(debug_dump_rel_path)
+
+    if base.count("_") < 3:
+      raise ValueError(
+          "Dump file path does not conform to the naming pattern: %s" % base)
 
     # TODO(cais): Add hostname and pid to support dumps from distributed
     #             sessions.
@@ -239,7 +312,7 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
-    namespace = os.path.dirname(debug_dump_rel_path)
+    namespace = os.path.dirname(debug_dump_rel_path).replace("\\", "/")
     node_base_name = "_".join(base.split("_")[:-3])
     if not namespace or namespace == ".":
       self._node_name = node_base_name
@@ -247,6 +320,11 @@ class DebugTensorDatum(object):
       self._node_name = namespace + "/" + node_base_name
 
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
+    self._dump_size_bytes = (gfile.Stat(self._file_path).length if
+                             gfile.Exists(self._file_path) else None)
+
+    self._run_fetches_info = None
+    self._run_feed_keys_info = None
 
   def __str__(self):
     return "{DebugTensorDatum: %s:%d @ %s @ %d}" % (self.node_name,
@@ -258,31 +336,63 @@ class DebugTensorDatum(object):
     return self.__str__()
 
   def get_tensor(self):
-    """Get tensor from the dump (Event) file.
+    """Get tensor from the dump (`Event`) file.
 
     Returns:
-      The tensor loaded from the dump (Event) file.
+      The tensor loaded from the dump (`Event`) file.
     """
+
     return load_tensor_from_event_file(self.file_path)
 
+  # TODO(cais): Add time unit suffix to timestamp and t0 (us).
   @property
   def timestamp(self):
+    """Timestamp of when this tensor value was dumped.
+
+    Returns:
+      (`int`) The timestamp in microseconds.
+    """
+
     return self._timestamp
 
   @property
   def debug_op(self):
+    """Name of the debug op.
+
+    Returns:
+      (`str`) debug op name (e.g., `DebugIdentity`).
+    """
+
     return self._debug_op
 
   @property
   def node_name(self):
+    """Name of the node from which the tensor value was dumped.
+
+    Returns:
+      (`str`) name of the node watched by the debug op.
+    """
+
     return self._node_name
 
   @property
   def output_slot(self):
+    """Output slot index from which the tensor value was dumped.
+
+    Returns:
+      (`int`) output slot index watched by the debug op.
+    """
+
     return self._output_slot
 
   @property
   def tensor_name(self):
+    """Name of the tensor watched by the debug op.
+
+    Returns:
+      (`str`) `Tensor` name, in the form of `node_name`:`output_slot`
+    """
+
     return _get_tensor_name(self.node_name, self.output_slot)
 
   @property
@@ -290,124 +400,187 @@ class DebugTensorDatum(object):
     """Watch key identities a debug watch on a tensor.
 
     Returns:
-      A watch key, in the form of <tensor_name>:<debug_op>.
+      (`str`) A watch key, in the form of `tensor_name`:`debug_op`.
     """
+
     return _get_tensor_watch_key(self.node_name, self.output_slot,
                                  self.debug_op)
 
   @property
   def file_path(self):
+    """Path to the file which stores the value of the dumped tensor."""
+
     return self._file_path
+
+  @property
+  def dump_size_bytes(self):
+    """Size of the dump file.
+
+    Unit: byte.
+
+    Returns:
+      If the dump file exists, size of the dump file, in bytes.
+      If the dump file does not exist, None.
+    """
+
+    return self._dump_size_bytes
 
 
 class DebugDumpDir(object):
-  """Data set from a debug dump directory on filesystem.
+  """Data set from a debug-dump directory on filesystem.
 
-  An instance of DebugDumpDir contains all DebugTensorDatum in a tfdbg dump
-  root directory. This is an immutable object, of which all constitute tensor
-  dump files and partition_graphs are loaded during the __init__ call.
+  An instance of `DebugDumpDir` contains all `DebugTensorDatum` instances
+  in a tfdbg dump root directory.
   """
 
   def __init__(self, dump_root, partition_graphs=None, validate=True):
-    """DebugDumpDir constructor.
+    """`DebugDumpDir` constructor.
 
     Args:
-      dump_root: Path to the dump root directory.
+      dump_root: (`str`) path to the dump root directory.
       partition_graphs: A repeated field of GraphDefs representing the
           partition graphs executed by the TensorFlow runtime.
-      validate: Whether the dump files are to be validated against the
+      validate: (`bool`) whether the dump files are to be validated against the
           partition graphs.
 
     Raises:
       IOError: If dump_root does not exist as a directory.
-      ValueError: If the dump_root directory contains file path patterns
-         that do not conform to the canonical dump file naming pattern.
     """
 
-    if not os.path.isdir(dump_root):
+    if not gfile.IsDirectory(dump_root):
       raise IOError("Dump root directory %s does not exist" % dump_root)
+
+    self._load_dumps(dump_root)
+    self._create_tensor_watch_maps()
+    self._load_partition_graphs(partition_graphs, validate)
+
+    self._python_graph = None
+
+  def _load_dumps(self, dump_root):
+    """Load `DebugTensorDatum` instances from the dump root.
+
+    Populates a list of `DebugTensorDatum` instance and sorts the list by
+    ascending timestamp.
+
+    This sorting order reflects the order in which the TensorFlow executor
+    processed the nodes of the graph. It is (one of many possible) topological
+    sort of the nodes. This is useful for displaying tensors in the debugger
+    frontend as well as for the use case in which the user wants to find a
+    "culprit tensor", i.e., the first tensor in the graph that exhibits certain
+    problematic properties, i.e., all zero values, or bad numerical values such
+    as nan and inf.
+
+    In addition, creates a map from node name to debug watches. In this Map,
+    the key is the watched node name; the value is a dictionary.
+    Of this dictionary, the key is the watched_output_slot.
+
+    This method attempts to load the debug watches from the tensor dump files
+    first, before loading the full set of debug watches from the partition
+    graphs as done later. This is necessary because sometimes the partition
+    graphs may not be available, e.g., when the run errors out.
+
+    Args:
+      dump_root: (`str`) Dump root directory.
+    """
 
     self._dump_root = dump_root
     self._dump_tensor_data = []
+    self._dump_graph_file_paths = []
 
-    # A map from node name to debug watches.
-    # The key is the watched node name.
-    # The value is a dictionary.
-    #   Of this dictionary, the key is the watched_output_slot.
-    #   The value is a set of debug ops watching this output slot.
     self._debug_watches = collections.defaultdict(
         lambda: collections.defaultdict(set))
 
-    for root, _, files in os.walk(self._dump_root):
+    for root, _, files in gfile.Walk(self._dump_root):
       for f in files:
-        if f.count("_") < 3:
-          raise ValueError(
-              "Dump file path does not conform to the naming pattern: %s" % f)
+        if f.startswith(METADATA_FILE_PREFIX):
+          if _is_graph_file(f):
+            self._dump_graph_file_paths.append(
+                os.path.join(self._dump_root, root, f))
 
-        debug_dump_rel_path = os.path.join(
-            os.path.relpath(root, self._dump_root), f)
-        datum = DebugTensorDatum(self._dump_root, debug_dump_rel_path)
+          if _is_run_fetches_info_file(f):
+            self._run_fetches_info = _load_log_message_from_event_file(
+                os.path.join(root, f))
+
+          if _is_run_feed_keys_info_file(f):
+            self._run_feed_keys_info = _load_log_message_from_event_file(
+                os.path.join(root, f))
+
+          continue
+
+        datum = self._dump_file_name_to_datum(root, f)
         self._dump_tensor_data.append(datum)
 
-        # Attempt to load the debug watches from the tensor dump files first,
-        # before loading the full set of debug watches from the partition
-        # graphs as done further below.
-        # This is necessary because sometimes the partition graphs may not be
-        # available, e.g., when the run errors out.
         self._debug_watches[datum.node_name][datum.output_slot].add(
             datum.debug_op)
 
-    # Sort the data by ascending timestamp.
-    # This sorting order reflects the order in which the TensorFlow
-    # executor processed the nodes of the graph. It is (one of many
-    # possible) topological sort of the nodes. This is useful for
-    # displaying tensors in the debugger frontend as well as for the use
-    # case in which the user wants to find a "culprit tensor", i.e., the
-    # first tensor in the graph that exhibits certain problematic
-    # properties, i.e., all zero values, or bad numerical values such as
-    # nan and inf.
     self._dump_tensor_data = sorted(
         self._dump_tensor_data, key=lambda x: x.timestamp)
 
-    # Time stamp of the first tensor dump.
     if self._dump_tensor_data:
       self._t0 = self._dump_tensor_data[0].timestamp
     else:
       self._t0 = None
 
-    # Create a map from watch key (tensor name + debug op) to
-    # DebugTensorDatum item.
-    # Also make a map from watch key to relative timestamp.
-    # "relative" means (absolute timestamp - t0).
+  def _dump_file_name_to_datum(self, dir_name, file_name):
+    """Obtain a DebugTensorDatum from the directory and file name.
+
+    Args:
+      dir_name: (`str`) Name of the directory in which the dump file resides.
+      file_name: (`str`) Base name of the dump file.
+
+    Returns:
+      (`DebugTensorDatum`) The `DebugTensorDatum` loaded from the dump file.
+    """
+
+    # Calculate the relative path of the dump file with respect to the root.
+    debug_dump_rel_path = os.path.join(
+        os.path.relpath(dir_name, self._dump_root), file_name)
+
+    return DebugTensorDatum(self._dump_root, debug_dump_rel_path)
+
+  def _create_tensor_watch_maps(self):
+    """Create maps from tensor watch keys to datum and to timestamps.
+
+    Create a map from watch key (tensor name + debug op) to `DebugTensorDatum`
+    item. Also make a map from watch key to relative timestamp.
+    "relative" means (absolute timestamp - t0).
+    """
+
     self._watch_key_to_datum = {}
     self._watch_key_to_rel_time = {}
+    self._watch_key_to_dump_size_bytes = {}
     for datum in self._dump_tensor_data:
       if datum.watch_key not in self._watch_key_to_datum:
         self._watch_key_to_datum[datum.watch_key] = [datum]
         self._watch_key_to_rel_time[datum.watch_key] = [
             datum.timestamp - self._t0
         ]
+        self._watch_key_to_dump_size_bytes[datum.watch_key] = [
+            datum.dump_size_bytes
+        ]
       else:
         self._watch_key_to_datum[datum.watch_key].append(datum)
         self._watch_key_to_rel_time[datum.watch_key].append(datum.timestamp -
                                                             self._t0)
+        self._watch_key_to_dump_size_bytes[datum.watch_key].append(
+            datum.dump_size_bytes)
 
-    # Initialize partition graph-related information.
-    self._partition_graphs = None
-    self._node_inputs = None
-    self._node_ctrl_inputs = None
-    self._node_recipients = None
-    self._node_ctrl_recipients = None
-    self._devices = None
-    self._node_devices = None
-    self._node_op_types = None
+  def set_python_graph(self, python_graph):
+    """Provide Python `Graph` object to the wrapper.
 
-    # Check the dump data against partition executor graphs.
-    if partition_graphs:
-      self._load_partition_graphs(partition_graphs)
+    Unlike the partition graphs, which are protobuf `GraphDef` objects, `Graph`
+    is a Python object and carries additional information such as the traceback
+    of the construction of the nodes in the graph.
 
-    if (partition_graphs is not None) and validate:
-      self._validate_dump_with_graphs()
+    Args:
+      python_graph: (ops.Graph) The Python Graph object.
+    """
+
+    self._python_graph = python_graph
+    self._node_traceback = {}
+    if self._python_graph:
+      for op in self._python_graph.get_operations():
+        self._node_traceback[op.name] = op.traceback
 
   @property
   def dumped_tensor_data(self):
@@ -418,8 +591,9 @@ class DebugDumpDir(object):
     """Absolute timestamp of the first dumped tensor.
 
     Returns:
-      Absolute timestamp of the first dumped tensor.
+      (`int`) absolute timestamp of the first dumped tensor, in microseconds.
     """
+
     return self._t0
 
   @property
@@ -427,11 +601,12 @@ class DebugDumpDir(object):
     """Total number of dumped tensors in the dump root directory.
 
     Returns:
-      Total number of dumped tensors in the dump root directory.
+      (`int`) total number of dumped tensors in the dump root directory.
     """
+
     return len(self._dump_tensor_data)
 
-  def _load_partition_graphs(self, partition_graphs):
+  def _load_partition_graphs(self, partition_graphs, validate):
     """Load and process partition graphs.
 
     Load the graphs; parse the input and control input structure; obtain the
@@ -442,87 +617,122 @@ class DebugDumpDir(object):
     Args:
       partition_graphs: Partition graphs executed by the TensorFlow runtime,
         represented as repeated fields of GraphDef.
+        If no partition_graph is available, use None.
+      validate: (`bool`) Whether the dump files are to be validated against the
+        partition graphs.
+    """
+
+    if partition_graphs:
+      self._partition_graphs = partition_graphs
+    elif self._dump_graph_file_paths:
+      # In case partition graphs are not available from arguments, load them
+      # from the dump directory.
+      self._partition_graphs = [
+          _load_graph_def_from_event_file(dump_file_path)
+          for dump_file_path in self._dump_graph_file_paths
+      ]
+    else:
+      self._partition_graphs = None
+      return
+
+    self._node_attributes = {}
+
+    self._node_inputs = {}
+    self._node_ctrl_inputs = {}
+
+    self._node_recipients = {}
+    self._node_ctrl_recipients = {}
+
+    self._devices = []
+    self._node_devices = {}
+    self._node_op_types = {}
+
+    self._copy_send_nodes = []
+
+    for pg in self._partition_graphs:
+      for node in pg.node:
+        self._process_partition_graph_node(node)
+
+    self._prune_non_control_edges_of_debug_ops()
+    self._prune_control_edges_of_debug_ops()
+
+    self._populate_recipient_maps()
+
+    if validate:
+      self._validate_dump_with_graphs()
+
+  def _process_partition_graph_node(self, node):
+    """Process a node from the partition graphs.
+
+    Args:
+      node: (NodeDef) A partition-graph node to be processed.
 
     Raises:
       ValueError: If duplicate node names are encountered.
     """
 
-    self._partition_graphs = partition_graphs
+    if _is_debug_node(node.name):
+      # This is a debug node. Parse the node name and retrieve the
+      # information about debug watches on tensors. But do not include
+      # the node in the graph.
+      (watched_node_name, watched_output_slot, _,
+       debug_op) = _parse_debug_node_name(node.name)
 
-    # A map from node name to node attributes.
-    self._node_attributes = {}
+      self._debug_watches[watched_node_name][watched_output_slot].add(
+          debug_op)
 
-    # A map from node name to the node's non-control inputs, for non-debug &
-    # non-copy nodes only.
-    self._node_inputs = {}
+      return
 
-    # A map from node name to the node's control inputs.
-    self._node_ctrl_inputs = {}
+    if node.name in self._node_inputs:
+      raise ValueError("Duplicate node name: '%s'" % node.name)
 
-    # A map from node name to non-control recipients of the node's output(s).
-    self._node_recipients = {}
+    self._node_attributes[node.name] = node.attr
 
-    # A map from node name to control recipients of the node.
-    self._node_ctrl_recipients = {}
+    if node.device not in self._devices and node.device:
+      self._devices.append(node.device)
 
-    # A map from node name to devices (as indices to self._devices)
-    self._devices = []
-    self._node_devices = {}
+    self._node_inputs[node.name] = []
+    self._node_ctrl_inputs[node.name] = []
+    self._node_recipients[node.name] = []
+    self._node_ctrl_recipients[node.name] = []
 
-    # A map from node name to node type.
-    self._node_op_types = {}
+    self._node_devices[node.name] = node.device
+    self._node_op_types[node.name] = node.op
 
-    # A list of _Send that send Copy node outputs across devices.
-    copy_send_nodes = []
+    for inp in node.input:
+      if _is_copy_node(inp) and node.op == "_Send":
+        self._copy_send_nodes.append(node.name)
 
-    for pg in self._partition_graphs:
-      for node in pg.node:
-        if _is_debug_node(node.name):
-          # This is a debug node. Parse the node name and retrieve the
-          # information about debug watches on tensors. But do not include
-          # the node in the graph.
-          (watched_node_name, watched_output_slot, _,
-           debug_op) = _parse_debug_node_name(node.name)
+      if inp.startswith("^"):
+        cinp = inp[1:]
+        self._node_ctrl_inputs[node.name].append(cinp)
+      else:
+        self._node_inputs[node.name].append(inp)
 
-          self._debug_watches[watched_node_name][watched_output_slot].add(
-              debug_op)
+  def _prune_nodes_from_input_and_recipient_maps(self, nodes_to_prune):
+    """Prune nodes out of input and recipient maps.
 
-          continue
+    Args:
+      nodes_to_prune: (`list` of `str`) Names of the nodes to be pruned.
+    """
 
-        if node.name in self._node_inputs:
-          raise ValueError("Duplicate node name: '%s'" % node.name)
+    for node in nodes_to_prune:
+      del self._node_inputs[node]
+      del self._node_ctrl_inputs[node]
+      del self._node_recipients[node]
+      del self._node_ctrl_recipients[node]
 
-        # Collect node attributes.
-        self._node_attributes[node.name] = node.attr
+  def _prune_non_control_edges_of_debug_ops(self):
+    """Prune (non-control) edges related to debug ops.
 
-        # Keep track of devices.
-        if node.device not in self._devices and node.device:
-          self._devices.append(node.device)
+    Prune the Copy ops and associated _Send ops inserted by the debugger out
+    from the non-control inputs and output recipients map. Replace the inputs
+    and recipients with original ones.
+    """
 
-        self._node_inputs[node.name] = []
-        self._node_ctrl_inputs[node.name] = []
-        self._node_recipients[node.name] = []
-        self._node_ctrl_recipients[node.name] = []
-
-        self._node_devices[node.name] = node.device
-        self._node_op_types[node.name] = node.op
-
-        for inp in node.input:
-          if _is_copy_node(inp) and node.op == "_Send":
-            copy_send_nodes.append(node.name)
-
-          if inp.startswith("^"):
-            cinp = inp[1:]
-            self._node_ctrl_inputs[node.name].append(cinp)
-          else:
-            self._node_inputs[node.name].append(inp)
-
-    # Prune the Copy ops and associated _Send ops inserted by the debugger out
-    # from the non-control inputs and output recipients map. Replace the inputs
-    # and recipients with original ones.
     copy_nodes = []
     for node in self._node_inputs:
-      if node in copy_send_nodes:
+      if node in self._copy_send_nodes:
         continue
 
       if _is_copy_node(node):
@@ -538,21 +748,12 @@ class DebugDumpDir(object):
           orig_inp = self._node_inputs[inp][0]
           inputs[i] = orig_inp
 
-    # Remove the Copy ops inserted by the debugger from the maps.
-    for copy_node in copy_nodes:
-      del self._node_inputs[copy_node]
-      del self._node_ctrl_inputs[copy_node]
-      del self._node_recipients[copy_node]
-      del self._node_ctrl_recipients[copy_node]
+    self._prune_nodes_from_input_and_recipient_maps(copy_nodes)
+    self._prune_nodes_from_input_and_recipient_maps(self._copy_send_nodes)
 
-    # Remove the _Send ops associated with the Copy ops.
-    for copy_send_node in copy_send_nodes:
-      del self._node_inputs[copy_send_node]
-      del self._node_ctrl_inputs[copy_send_node]
-      del self._node_recipients[copy_send_node]
-      del self._node_ctrl_recipients[copy_send_node]
+  def _prune_control_edges_of_debug_ops(self):
+    """Prune control edges related to the debug ops."""
 
-    # Prune the edges from debug ops from the control edge map.
     for node in self._node_ctrl_inputs:
       ctrl_inputs = self._node_ctrl_inputs[node]
       debug_op_inputs = []
@@ -562,40 +763,45 @@ class DebugDumpDir(object):
       for debug_op_inp in debug_op_inputs:
         ctrl_inputs.remove(debug_op_inp)
 
-    # Create the recipients maps.
+  def _populate_recipient_maps(self):
+    """Populate the map from node name to recipient(s) of its output(s)."""
+
     for node in self._node_inputs:
       inputs = self._node_inputs[node]
       for inp in inputs:
-        # A tensor name: replace it with the node name.
-        if inp.count(":") == 1:
-          inp = inp.split(":")[0]
-
+        inp = get_node_name(inp)
+        if inp not in self._node_recipients:
+          self._node_recipients[inp] = []
         self._node_recipients[inp].append(node)
 
     for node in self._node_ctrl_inputs:
       ctrl_inputs = self._node_ctrl_inputs[node]
       for ctrl_inp in ctrl_inputs:
-        if ctrl_inp in copy_send_nodes:
-          # Skip _Send ops associated with Copy nodes.
+        if ctrl_inp in self._copy_send_nodes:
           continue
 
+        if ctrl_inp not in self._node_ctrl_recipients:
+          self._node_ctrl_recipients[ctrl_inp] = []
         self._node_ctrl_recipients[ctrl_inp].append(node)
 
   def _validate_dump_with_graphs(self):
     """Validate the dumped tensor data against the partition graphs.
 
+    Only the watched nodes are validated by this method, because tfdbg allows
+    clients to watch only a subset of the nodes.
+
     Raises:
-      RuntimeError: If the partition graphs have not been loaded yet.
+      LookupError: If the partition graphs have not been loaded yet.
       ValueError: If dumps contain node names not found in partition graph.
         Or if the temporal order of the dump's timestamps violate the
         input relations on the partition graphs.
     """
 
     if not self._partition_graphs:
-      raise RuntimeError("No partition graphs loaded.")
+      raise LookupError("No partition graphs loaded.")
 
     # Verify that the node names in the dump data are all present in the
-    # partittion graphs.
+    # partition graphs.
     for datum in self._dump_tensor_data:
       if datum.node_name not in self._node_inputs:
         raise ValueError("Node name '%s' is not found in partition graphs." %
@@ -604,38 +810,35 @@ class DebugDumpDir(object):
     pending_inputs = {}
     for node in self._node_inputs:
       pending_inputs[node] = []
-
-      # TODO(cais): tfdbg currently does not watch control edges. Add control
-      # edges to pending_inputs when it does.
       inputs = self._node_inputs[node]
       for inp in inputs:
-        if inp.count(":") == 1:
-          inp = inp.split(":")[0]
-
-        # Keep track of only the watched nodes, as the debugger allows clients
-        # to watch a subset of the nodes.
-        if inp in self._debug_watches:
-          pending_inputs[node].append(inp)
+        inp_node = get_node_name(inp)
+        inp_output_slot = get_output_slot(inp)
+        if (inp_node in self._debug_watches and
+            inp_output_slot in self._debug_watches[inp_node] and
+            (inp_node, inp_output_slot) not in pending_inputs[node]):
+          pending_inputs[node].append((inp_node, inp_output_slot))
 
     for datum in self._dump_tensor_data:
       node = datum.node_name
+      slot = datum.output_slot
       if pending_inputs[node]:
         raise ValueError("Causality violated in timing relations of debug "
                          "dumps: %s (%d): "
                          "these input(s) are not satisfied: %s" %
                          (node, datum.timestamp, repr(pending_inputs[node])))
 
-      # Get the recipients of the node's output
       recipients = self._node_recipients[node]
       for recipient in recipients:
         recipient_pending_inputs = pending_inputs[recipient]
-        if node in recipient_pending_inputs:
+        if (node, slot) in recipient_pending_inputs:
           if self.node_op_type(recipient) == "Merge":
             # If this is a Merge op, we automatically clear the list because
             # a Merge node only requires one of its two inputs.
             del recipient_pending_inputs[:]
           else:
-            del recipient_pending_inputs[recipient_pending_inputs.index(node)]
+            del recipient_pending_inputs[
+                recipient_pending_inputs.index((node, slot))]
 
   def loaded_partition_graphs(self):
     """Test whether partition graphs have been loaded."""
@@ -648,12 +851,35 @@ class DebugDumpDir(object):
       Partition graphs as repeated fields of GraphDef.
 
     Raises:
-      RuntimeError: If no partition graphs have been loaded.
+      LookupError: If no partition graphs have been loaded.
     """
+
     if self._partition_graphs is None:
-      raise RuntimeError("No partition graphs have been loaded.")
+      raise LookupError("No partition graphs have been loaded.")
 
     return self._partition_graphs
+
+  @property
+  def run_fetches_info(self):
+    """Get a str representation of the fetches used in the Session.run() call.
+
+    Returns:
+      If the information is available, a `str` obtained from `repr(fetches)`.
+      If the information is not available, `None`.
+    """
+
+    return self._run_fetches_info
+
+  @property
+  def run_feed_keys_info(self):
+    """Get a str representation of the feed_dict used in the Session.run() call.
+
+    Returns:
+      If the information is available, a `str` obtained from `repr(feed_dict)`.
+      If the information is not available, `None`.
+    """
+
+    return self._run_feed_keys_info
 
   def nodes(self):
     """Get a list of all nodes from the partition graphs.
@@ -662,15 +888,16 @@ class DebugDumpDir(object):
       All nodes' names, as a list of str.
 
     Raises:
-      RuntimeError: If no partition graphs have been loaded.
+      LookupError: If no partition graphs have been loaded.
     """
+
     if self._partition_graphs is None:
-      raise RuntimeError("No partition graphs have been loaded.")
+      raise LookupError("No partition graphs have been loaded.")
 
     return [node_name for node_name in self._node_inputs]
 
   def node_attributes(self, node_name):
-    """Get attributes of a node.
+    """Get the attributes of a node.
 
     Args:
       node_name: Name of the node in question.
@@ -679,11 +906,12 @@ class DebugDumpDir(object):
       Attributes of the node.
 
     Raises:
-      RuntimeError: If no partition graphs have been loaded.
+      LookupError: If no partition graphs have been loaded.
       ValueError: If no node named node_name exists.
     """
+
     if self._partition_graphs is None:
-      raise RuntimeError("No partition graphs have been loaded.")
+      raise LookupError("No partition graphs have been loaded.")
 
     if node_name in self._node_attributes:
       return self._node_attributes[node_name]
@@ -695,20 +923,20 @@ class DebugDumpDir(object):
 
     Args:
       node_name: Name of the node.
-      is_control: Whether control inputs, rather than non-control inputs, are
-      to be returned.
+      is_control: (`bool`) Whether control inputs, rather than non-control
+        inputs, are to be returned.
 
     Returns:
-      All non-control inputs to the node, as a list of node names.
+      (`list` of `str`) inputs to the node, as a list of node names.
 
     Raises:
-      RuntimeError: If node inputs and control inputs have not been loaded
+      LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
       ValueError: If the node does not exist in partition graphs.
     """
 
-    if self._node_inputs is None or self._node_ctrl_inputs is None:
-      raise RuntimeError(
+    if self._partition_graphs is None:
+      raise LookupError(
           "Node inputs are not loaded from partition graphs yet.")
 
     if node_name not in self._node_inputs:
@@ -728,16 +956,17 @@ class DebugDumpDir(object):
       include_control: Include control inputs (True by default).
 
     Returns:
-      All transitive inputs to the node, as a list of node names.
+      (`list` of `str`) all transitive inputs to the node, as a list of node
+        names.
 
     Raises:
-      RuntimeError: If node inputs and control inputs have not been loaded
+      LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
       ValueError: If the node does not exist in partition graphs.
     """
 
-    if not self._node_inputs or not self._node_ctrl_inputs:
-      raise RuntimeError(
+    if self._partition_graphs is None:
+      raise LookupError(
           "Node inputs are not loaded from partition graphs yet.")
 
     if node_name not in self._node_inputs:
@@ -759,10 +988,7 @@ class DebugDumpDir(object):
       Args:
         node: Name of the node, as a str.
       """
-      if node.count(":") == 1:
-        # This check is necessary for cases in which an input is not from the
-        # 0-th output slot, e.g., from a Switch op.
-        node = node[:node.rindex(":")]
+      node = get_node_name(node)
 
       # Stop the tracing at a Merge op, as it is generally impossible to infer
       # outside the runtime which input to the Merge op is alive.
@@ -770,7 +996,6 @@ class DebugDumpDir(object):
         return
 
       if node in visited_nodes:
-        # Avoid infinite loops.
         return
       visited_nodes.append(node)
 
@@ -778,14 +1003,14 @@ class DebugDumpDir(object):
         if inp == node_name:
           continue
         inputs.append(inp)
-        trace_inputs(inp)  # Recursive call.
+        trace_inputs(inp)
 
       if include_control:
         for ctrl_inp in self._node_ctrl_inputs[node]:
           if ctrl_inp == node_name:
             continue
           inputs.append(ctrl_inp)
-          trace_inputs(ctrl_inp)  # Recursive call.
+          trace_inputs(ctrl_inp)
 
     trace_inputs(node_name)
 
@@ -795,21 +1020,21 @@ class DebugDumpDir(object):
     """Get recipient of the given node's output according to partition graphs.
 
     Args:
-      node_name: Name of the node.
-      is_control: Whether control outputs, rather than non-control outputs,
-      are to be returned.
+      node_name: (`str`) name of the node.
+      is_control: (`bool`) whether control outputs, rather than non-control
+        outputs, are to be returned.
 
     Returns:
-      All non-control inputs to the node, as a list of node names.
+      (`list` of `str`) all inputs to the node, as a list of node names.
 
     Raises:
-      RuntimeError: If node inputs and control inputs have not been loaded
+      LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
       ValueError: If the node does not exist in partition graphs.
     """
 
-    if self._node_recipients is None or self._node_ctrl_recipients is None:
-      raise RuntimeError(
+    if self._partition_graphs is None:
+      raise LookupError(
           "Node recipients are not loaded from partition graphs yet.")
 
     if node_name not in self._node_recipients:
@@ -825,15 +1050,15 @@ class DebugDumpDir(object):
     """Get the list of devices.
 
     Returns:
-      Number of devices.
+      (`list` of `str`) names of the devices.
 
     Raises:
-      RuntimeError: If node inputs and control inputs have not been loaded
+      LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
     """
 
-    if self._devices is None:
-      raise RuntimeError("Devices are not loaded from partition graphs yet.")
+    if self._partition_graphs is None:
+      raise LookupError("Devices are not loaded from partition graphs yet.")
 
     return self._devices
 
@@ -841,17 +1066,17 @@ class DebugDumpDir(object):
     """Test if a node exists in the partition graphs.
 
     Args:
-      node_name: Name of the node to be checked, as a str.
+      node_name: (`str`) name of the node to be checked.
 
     Returns:
       A boolean indicating whether the node exists.
 
     Raises:
-      RuntimeError: If no partition graphs have been loaded yet.
+      LookupError: If no partition graphs have been loaded yet.
     """
 
     if self._node_inputs is None:
-      raise RuntimeError(
+      raise LookupError(
           "Nodes have not been loaded from partition graphs yet.")
 
     return node_name in self._node_inputs
@@ -860,18 +1085,19 @@ class DebugDumpDir(object):
     """Get the device of a node.
 
     Args:
-      node_name: Name of the node.
+      node_name: (`str`) name of the node.
 
     Returns:
-      Name of the device on which the node is placed, as a str.
+      (`str`) name of the device on which the node is placed.
 
     Raises:
-      RuntimeError: If node inputs and control inputs have not been loaded
+      LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
       ValueError: If the node does not exist in partition graphs.
     """
-    if self._node_devices is None:
-      raise RuntimeError(
+
+    if self._partition_graphs is None:
+      raise LookupError(
           "Node devices are not loaded from partition graphs yet.")
 
     if node_name not in self._node_devices:
@@ -884,18 +1110,19 @@ class DebugDumpDir(object):
     """Get the op type of given node.
 
     Args:
-      node_name: Name of the node.
+      node_name: (`str`) name of the node.
 
     Returns:
-      Type of the node's op, as a str.
+      (`str`) op type of the node.
 
     Raises:
-      RuntimeError: If node op types have not been loaded
+      LookupError: If node op types have not been loaded
          from partition graphs yet.
       ValueError: If the node does not exist in partition graphs.
     """
-    if self._node_op_types is None:
-      raise RuntimeError(
+
+    if self._partition_graphs is None:
+      raise LookupError(
           "Node op types are not loaded from partition graphs yet.")
 
     if node_name not in self._node_op_types:
@@ -908,14 +1135,14 @@ class DebugDumpDir(object):
     """Get all tensor watch keys of given node according to partition graphs.
 
     Args:
-      node_name: Name of the node.
+      node_name: (`str`) name of the node.
 
     Returns:
-      All debug tensor watch keys, as a list of strings. Returns an empty list
-      if the node name does not correspond to any debug watch keys.
+      (`list` of `str`) all debug tensor watch keys. Returns an empty list if
+        the node name does not correspond to any debug watch keys.
 
     Raises:
-      RuntimeError: If debug watch information has not been loaded from
+      `LookupError`: If debug watch information has not been loaded from
         partition graphs yet.
     """
 
@@ -932,13 +1159,13 @@ class DebugDumpDir(object):
     return watch_keys
 
   def watch_key_to_data(self, debug_watch_key):
-    """Get all DebugTensorDatum instances corresponding to a debug watch key.
+    """Get all `DebugTensorDatum` instances corresponding to a debug watch key.
 
     Args:
-      debug_watch_key: A debug watch key, as a str.
+      debug_watch_key: (`str`) debug watch key.
 
     Returns:
-      A list of DebugTensorDatuminstances that correspond to the debug watch
+      A list of `DebugTensorDatum` instances that correspond to the debug watch
       key. If the watch key does not exist, returns an empty list.
 
     Raises:
@@ -952,18 +1179,24 @@ class DebugDumpDir(object):
 
     Args:
       predicate: A callable that takes two input arguments:
-          predicate(debug_tensor_datum, tensor),
-          where "debug_tensor_datum" is an instance of DebugTensorDatum, which
-          carries "metadata", such as the name of the node, the tensor's slot
-          index on the node, timestamp, debug op name, etc; and "tensor" is
-          the dumped tensor value as a numpy array.
-      first_n: Return only the first n dumped tensor data (in time order) for
-          which the predicate is True. To return all such data, let first_n be
-          <= 0.
+
+        ```python
+        def predicate(debug_tensor_datum, tensor):
+          # returns a bool
+        ```
+
+        where `debug_tensor_datum` is an instance of `DebugTensorDatum`, which
+        carries the metadata, such as the `Tensor`'s node name, output slot
+        timestamp, debug op name, etc.; and `tensor` is the dumped tensor value
+        as a `numpy.ndarray`.
+      first_n: (`int`) return only the first n `DebugTensotDatum` instances (in
+        time order) for which the predicate returns True. To return all the
+        `DebugTensotDatum` instances, let first_n be <= 0.
 
     Returns:
-      A list of all DebugTensorDatum objects in this DebugDumpDir object for
-      which predicate returns True, sorted in ascending order of the timestamp.
+      A list of all `DebugTensorDatum` objects in this `DebugDumpDir` object
+       for which predicate returns True, sorted in ascending order of the
+       timestamp.
     """
 
     matched_data = []
@@ -980,16 +1213,16 @@ class DebugDumpDir(object):
     """Get the file paths from a debug-dumped tensor.
 
     Args:
-      node_name: Name of the node that the tensor is produced by.
-      output_slot: Output slot index of tensor.
-      debug_op: Name of the debug op.
+      node_name: (`str`) name of the node that the tensor is produced by.
+      output_slot: (`int`) output slot index of tensor.
+      debug_op: (`str`) name of the debug op.
 
     Returns:
       List of file path(s) loaded. This is a list because each debugged tensor
         may be dumped multiple times.
 
     Raises:
-      ValueError: If the tensor does not exist in the debub dump data.
+      ValueError: If the tensor does not exist in the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
@@ -1003,18 +1236,18 @@ class DebugDumpDir(object):
     """Get the tensor value from for a debug-dumped tensor.
 
     The tensor may be dumped multiple times in the dump root directory, so a
-    list of tensors (numpy arrays) is returned.
+    list of tensors (`numpy.ndarray`) is returned.
 
     Args:
-      node_name: Name of the node that the tensor is produced by.
-      output_slot: Output slot index of tensor.
-      debug_op: Name of the debug op.
+      node_name: (`str`) name of the node that the tensor is produced by.
+      output_slot: (`int`) output slot index of tensor.
+      debug_op: (`str`) name of the debug op.
 
     Returns:
-      List of tensor(s) loaded from the tensor dump file(s).
+      List of tensors (`numpy.ndarray`) loaded from the debug-dump file(s).
 
     Raises:
-      ValueError: If the tensor does not exist in the debub dump data.
+      ValueError: If the tensor does not exist in the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
@@ -1027,21 +1260,21 @@ class DebugDumpDir(object):
   def get_rel_timestamps(self, node_name, output_slot, debug_op):
     """Get the relative timestamp from for a debug-dumped tensor.
 
-    Relative timestamp means (absolute timestamp - t0), t0 being the absolute
-    timestamp of the first dumped tensor in the dump root. The tensor may be
-    dumped multiple times in the dump root directory, so a list of relative
-    timestamp (numpy arrays) is returned.
+    Relative timestamp means (absolute timestamp - `t0`), where `t0` is the
+    absolute timestamp of the first dumped tensor in the dump root. The tensor
+    may be dumped multiple times in the dump root directory, so a list of
+    relative timestamps (`numpy.ndarray`) is returned.
 
     Args:
-      node_name: Name of the node that the tensor is produced by.
-      output_slot: Output slot index of tensor.
-      debug_op: Name of the debug op.
+      node_name: (`str`) name of the node that the tensor is produced by.
+      output_slot: (`int`) output slot index of tensor.
+      debug_op: (`str`) name of the debug op.
 
     Returns:
-      List of relative timestamps.
+      (`list` of `int`) list of relative timestamps.
 
     Raises:
-      ValueError: If the tensor does not exist in the debub dump data.
+      ValueError: If the tensor watch key does not exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
@@ -1050,3 +1283,51 @@ class DebugDumpDir(object):
                        watch_key)
 
     return self._watch_key_to_rel_time[watch_key]
+
+  def get_dump_sizes_bytes(self, node_name, output_slot, debug_op):
+    """Get the sizes of the dump files for a debug-dumped tensor.
+
+    Unit of the file size: byte.
+
+    Args:
+      node_name: (`str`) name of the node that the tensor is produced by.
+      output_slot: (`int`) output slot index of tensor.
+      debug_op: (`str`) name of the debug op.
+
+    Returns:
+      (`list` of `int`): list of dump file sizes in bytes.
+
+    Raises:
+      ValueError: If the tensor watch key does not exist in the debug dump data.
+    """
+
+    watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
+    if watch_key not in self._watch_key_to_datum:
+      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
+                       watch_key)
+
+    return self._watch_key_to_dump_size_bytes[watch_key]
+
+  def node_traceback(self, element_name):
+    """Try to retrieve the Python traceback of node's construction.
+
+    Args:
+      element_name: (`str`) Name of a graph element (node or tensor).
+
+    Returns:
+      (list) The traceback list object as returned by the `extract_trace`
+        method of Python's traceback module.
+
+    Raises:
+      LookupError: If Python graph is not available for traceback lookup.
+      KeyError: If the node cannot be found in the Python graph loaded.
+    """
+
+    if self._python_graph is None:
+      raise LookupError("Python graph is not available for traceback lookup")
+
+    node_name = get_node_name(element_name)
+    if node_name not in self._node_traceback:
+      raise KeyError("Cannot find node \"%s\" in Python graph" % node_name)
+
+    return self._node_traceback[node_name]

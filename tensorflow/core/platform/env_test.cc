@@ -63,6 +63,23 @@ class DefaultEnvTest : public ::testing::Test {
   Env* env_ = Env::Default();
 };
 
+TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
+  const string filename = io::JoinPath(BaseDir(), "out_of_range");
+  const string input = CreateTestFile(env_, filename, 2);
+  std::unique_ptr<RandomAccessFile> f;
+  TF_EXPECT_OK(env_->NewRandomAccessFile(filename, &f));
+
+  // Reading past EOF should give an OUT_OF_RANGE error
+  StringPiece result;
+  char scratch[3];
+  EXPECT_EQ(error::OUT_OF_RANGE, f->Read(0, 3, &result, scratch).code());
+  EXPECT_EQ(input, result);
+
+  // Exact read to EOF works.
+  TF_EXPECT_OK(f->Read(0, 2, &result, scratch));
+  EXPECT_EQ(input, result);
+}
+
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
@@ -272,6 +289,11 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
   TF_EXPECT_OK(env->FileExists(create_path));
+}
+
+TEST_F(DefaultEnvTest, GetExecutablePath) {
+  Env* env = Env::Default();
+  TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
 }
 
 }  // namespace tensorflow

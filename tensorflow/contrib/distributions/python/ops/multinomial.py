@@ -19,11 +19,13 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 
 
 _multinomial_prob_note = """
@@ -167,7 +169,7 @@ class Multinomial(distribution.Distribution):
     super(Multinomial, self).__init__(
         dtype=self._p.dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -205,6 +207,31 @@ class Multinomial(distribution.Distribution):
   def _get_event_shape(self):
     return self._mean_val.get_shape().with_rank_at_least(1)[-1:]
 
+  def _sample_n(self, n, seed=None):
+    n_draws = math_ops.cast(self.n, dtype=dtypes.int32)
+    if self.n.get_shape().ndims is not None:
+      if self.n.get_shape().ndims != 0:
+        raise NotImplementedError(
+            "Sample only supported for scalar number of draws.")
+    elif self.validate_args:
+      is_scalar = check_ops.assert_rank(
+          n_draws, 0,
+          message="Sample only supported for scalar number of draws.")
+      n_draws = control_flow_ops.with_dependencies([is_scalar], n_draws)
+    k = self.event_shape()[0]
+    # Flatten batch dims so logits has shape [B, k],
+    # where B = reduce_prod(self.batch_shape()).
+    logits = array_ops.reshape(self.logits, [-1, k])
+    draws = random_ops.multinomial(logits=logits,
+                                   num_samples=n * n_draws,
+                                   seed=seed)
+    draws = array_ops.reshape(draws, shape=[-1, n, n_draws])
+    x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
+                            reduction_indices=-2)  # shape: [B, n, k]
+    x = array_ops.transpose(x, perm=[1, 0, 2])
+    final_shape = array_ops.concat([[n], self.batch_shape(), [k]], 0)
+    return array_ops.reshape(x, final_shape)
+
   @distribution_util.AppendDocstring(_multinomial_prob_note)
   def _log_prob(self, counts):
     counts = self._assert_valid_sample(counts)
@@ -223,9 +250,8 @@ class Multinomial(distribution.Distribution):
 
   def _variance(self):
     p = self.p * array_ops.expand_dims(array_ops.ones_like(self.n), -1)
-    outer_prod = math_ops.batch_matmul(
-        array_ops.expand_dims(self._mean_val, -1),
-        array_ops.expand_dims(p, -2))
+    outer_prod = math_ops.matmul(
+        array_ops.expand_dims(self._mean_val, -1), array_ops.expand_dims(p, -2))
     return array_ops.matrix_set_diag(-outer_prod,
                                      self._mean_val - self._mean_val * p)
 

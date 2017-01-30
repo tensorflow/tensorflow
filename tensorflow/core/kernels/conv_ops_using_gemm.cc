@@ -44,6 +44,8 @@ limitations under the License.
 // and disable the standard EigenTensor one in other build setups, you'll need
 // to define it there too.
 
+#define EIGEN_USE_THREADS
+
 #include <string.h>
 #include <map>
 #include <vector>
@@ -188,6 +190,18 @@ class ReferenceConvFunctor {
   }
 };
 
+// We don't want to allocate a buffer to hold all the patches if the size is
+// going to be extremely large, so break it into chunks if it's bigger than
+// a limit. Each chunk will be processed serially, so we can refill the
+// buffer for the next chunk and reuse it, keeping maximum memory size down.
+// In this case, we've picked 16 megabytes as a reasonable limit for Android and
+// other platforms using Eigen, and 1MB for Apple devices, from experimentation.
+#if defined(__APPLE__) && defined(IS_MOBILE_PLATFORM)
+const size_t kMaxChunkSize = (1 * 1024 * 1024);
+#else
+const size_t kMaxChunkSize = (16 * 1024 * 1024);
+#endif
+
 // Implements convolution as a two stage process, first packing the patches of
 // the input image into columns (im2col) and then running GEMM to produce the
 // final result.
@@ -216,6 +230,21 @@ class Im2ColConvFunctor {
     if ((output_width <= 0) || (output_height <= 0)) {
       LOG(WARNING) << "Conv2D was called with bad output width or height: "
                    << output_width << ", " << output_height;
+      return;
+    }
+
+    // If this is a simple 1x1 kernel, we can skip im2col and just use a GEMM.
+    if (filter_height == filter_width && filter_width == 1 &&
+        stride_rows == 1 && stride_cols == 1) {
+      const int m = input_batches * input_width * input_height;
+      const int n = filter_count;
+      const int k = input_depth;
+      const int lda = k;
+      const int ldb = filter_count;
+      const int ldc = filter_count;
+      TGemmFunctor gemm_functor;
+      gemm_functor(context, m, n, k, input_data, lda, filter_data, ldb,
+                   output_data, ldc);
       return;
     }
 
@@ -251,26 +280,19 @@ class Im2ColConvFunctor {
     // by the width, then the height. This is the standard memory order in the
     // image world if it helps to visualize it.
     const int filter_value_count = filter_width * filter_height * input_depth;
-
-    // We don't want to allocate a buffer to hold all the patches if the size is
-    // going to be extremely large, so break it into chunks if it's bigger than
-    // a limit. Each chunk will be processed serially, so we can refill the
-    // buffer for the next chunk and reuse it, keeping maximum memory size down.
-    // In this case, we've picked 1 megabyte as a reasonable limit.
-    const size_t max_chunk_size = (1 * 1024 * 1024);
-    OP_REQUIRES(context, (filter_value_count * sizeof(T1)) <= max_chunk_size,
+    OP_REQUIRES(context, (filter_value_count * sizeof(T1)) <= kMaxChunkSize,
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
-    const size_t patches_per_chunk =
-        max_chunk_size / (filter_value_count * sizeof(T1));
-    const size_t chunk_value_count =
-      (max_chunk_size + (sizeof(T1) - 1)) / sizeof(T1);
+    const int64 patches_per_chunk =
+        kMaxChunkSize / (filter_value_count * sizeof(T1));
+    const int64 chunk_value_count =
+        (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
     // Because memory allocation is very expensive on mobile platforms, try to
     // allocate a persistent buffer that will be kept around between calls. We
     // use TensorFlow's resource management to ensure that the memory will be
     // released when the session is over.
     Im2ColBufferResource<T1, chunk_value_count>* im2col_buffer_resource;
-    std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)> creator =
-        [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
+    std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)>
+        creator = [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
           return Status::OK();
         };
@@ -285,103 +307,99 @@ class Im2ColConvFunctor {
     core::ScopedUnref unref_buffer(im2col_buffer_resource);
     T1* im2col_buffer = im2col_buffer_resource->data;
 
-    for (int batch = 0; batch < input_batches; ++batch) {
-      const T1* input_batch_start =
-          input_data + (batch * input_height * input_width * input_depth);
-      for (int out_y = 0; out_y < output_height; ++out_y) {
+    const int64 patch_count = (input_batches * output_height * output_width);
+    const int64 chunk_count =
+        (patch_count + (patches_per_chunk - 1)) / patches_per_chunk;
+    for (int64 chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+      const int64 patch_index_start = chunk_index * patches_per_chunk;
+      const int64 patch_index_end =
+          std::min(patch_index_start + patches_per_chunk, patch_count);
+      for (int64 patch_index = patch_index_start; patch_index < patch_index_end;
+           ++patch_index) {
+        const int64 batch = patch_index / (output_height * output_width);
+        const int64 out_y = (patch_index / output_width) % output_height;
+        const int64 out_x = patch_index % output_width;
+        const T1* input_batch_start =
+            input_data + (batch * input_height * input_width * input_depth);
         const int in_y_origin = (out_y * stride_rows) - filter_top_offset;
-        for (int out_x = 0; out_x < output_width; ++out_x) {
-          const int in_x_origin = (out_x * stride_cols) - filter_left_offset;
-          const int patch_index = (batch * output_width * output_height) +
-                                  (out_y * output_width) + out_x;
-          const int patch_index_within_chunk = patch_index % patches_per_chunk;
-          T1* im2col_patch_start =
-              im2col_buffer + (patch_index_within_chunk * filter_value_count);
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            const int in_y = in_y_origin + filter_y;
-            T1* im2col_row_start =
-                im2col_patch_start + (filter_y * filter_width * input_depth);
-            // If we're off the top or the bottom of the input, fill the whole
-            // row with zeroes.
-            if ((in_y < 0) || (in_y >= input_height)) {
-              T1* im2col_row_end =
-                  im2col_row_start + (filter_width * input_depth);
-              std::fill(im2col_row_start, im2col_row_end, T1(0));
-            } else {
-              // What we're doing here is trying to copy and fill the im2col
-              // buffer as efficiently as possible, using functions to set or
-              // duplicate values en masse. We know we don't have to worry about
-              // vertical edges because we dealt with that case above, so we
-              // just need to handle filters that overlap the left or right
-              // edges. Here's what that looks like:
-              //
-              // < left_zero_count > < center_copy_count > < right_zero_count >
-              // +------------------+---------------------+--------------------+
-              // |     (filter)     |       (image)       |      (filter)      |
-              // +------------------+---------------------+--------------------+
-              // in_x_origin        0                 input_width       in_x_end
-              //
-              // In reality it's unlikely that a filter patch will be wider
-              // than an input, but this shows all the edge cases.
-              // We use std::fill() to set the left and right sections to zeroes
-              // and std::copy() to copy over the input data for the center.
-              const int in_x_end = in_x_origin + filter_width;
-              const int left_zero_count = std::max(0, 0 - in_x_origin);
-              const int right_zero_count = std::max(0, in_x_end - input_width);
-              const int center_copy_count =
-                  filter_width - (left_zero_count + right_zero_count);
-              if (left_zero_count > 0) {
-                T1* im2col_left_start = im2col_row_start;
-                T1* im2col_left_end =
-                    im2col_left_start + (left_zero_count * input_depth);
-                std::fill(im2col_left_start, im2col_left_end, T1(0));
-              }
-              if (center_copy_count > 0) {
-                const T1* input_row_start =
-                    input_batch_start + (in_y * input_width * input_depth) +
-                    (std::max(0, in_x_origin) * input_depth);
-                const T1* input_row_end =
-                    input_row_start + (center_copy_count * input_depth);
-                T1* im2col_center_start =
-                    im2col_row_start + (left_zero_count * input_depth);
-                std::copy(input_row_start, input_row_end, im2col_center_start);
-              }
-              if (right_zero_count > 0) {
-                T1* im2col_right_start =
-                    im2col_row_start +
-                    ((left_zero_count + center_copy_count) * input_depth);
-                T1* im2col_right_end =
-                    im2col_right_start + (right_zero_count * input_depth);
-                std::fill(im2col_right_start, im2col_right_end, T1(0));
-              }
+        const int in_x_origin = (out_x * stride_cols) - filter_left_offset;
+        const int patch_index_within_chunk = patch_index % patches_per_chunk;
+        T1* im2col_patch_start =
+            im2col_buffer + (patch_index_within_chunk * filter_value_count);
+        for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+          const int in_y = in_y_origin + filter_y;
+          T1* im2col_row_start =
+              im2col_patch_start + (filter_y * filter_width * input_depth);
+          // If we're off the top or the bottom of the input, fill the
+          // whole row with zeroes.
+          if ((in_y < 0) || (in_y >= input_height)) {
+            T1* im2col_row_end =
+                im2col_row_start + (filter_width * input_depth);
+            std::fill(im2col_row_start, im2col_row_end, T1(0));
+          } else {
+            // What we're doing here is trying to copy and fill the im2col
+            // buffer as efficiently as possible, using functions to set or
+            // duplicate values en masse. We know we don't have to worry about
+            // vertical edges because we dealt with that case above, so we
+            // just need to handle filters that overlap the left or right
+            // edges. Here's what that looks like:
+            //
+            // < left_zero_count > < center_copy_count > < right_zero_count >
+            // +------------------+---------------------+--------------------+
+            // |     (filter)     |       (image)       |      (filter)      |
+            // +------------------+---------------------+--------------------+
+            // in_x_origin        0                 input_width       in_x_end
+            //
+            // In reality it's unlikely that a filter patch will be wider
+            // than an input, but this shows all the edge cases.
+            // We use std::fill() to set the left and right sections to zeroes
+            // and std::copy() to copy over the input data for the center.
+            const int in_x_end = in_x_origin + filter_width;
+            const int left_zero_count = std::max(0, 0 - in_x_origin);
+            const int right_zero_count = std::max(0, in_x_end - input_width);
+            const int center_copy_count =
+                filter_width - (left_zero_count + right_zero_count);
+            if (left_zero_count > 0) {
+              T1* im2col_left_start = im2col_row_start;
+              T1* im2col_left_end =
+                  im2col_left_start + (left_zero_count * input_depth);
+              std::fill(im2col_left_start, im2col_left_end, T1(0));
             }
-          }
-          const bool is_last_in_chunk =
-              (patch_index_within_chunk == (patches_per_chunk - 1));
-          const bool is_last_overall =
-              ((batch == (input_batches - 1)) &&
-               (out_y == (output_height - 1)) && (out_x == (output_width - 1)));
-          if (is_last_in_chunk || is_last_overall) {
-            // Now we've assembled a set of image patches into a matrix, apply a
-            // GEMM matrix multiply of the patches as rows, times the filter
-            // weights in columns, to get partial results in the output matrix.
-            const int how_many_patches = patch_index_within_chunk + 1;
-            const int m = how_many_patches;
-            const int n = filter_count;
-            const int k = filter_value_count;
-            const int lda = filter_value_count;
-            const int ldb = filter_count;
-            const int ldc = filter_count;
-            const size_t start_patch_index =
-                patch_index - (how_many_patches - 1);
-            T3* chunk_output_data =
-                output_data + (start_patch_index * filter_count);
-            TGemmFunctor gemm_functor;
-            gemm_functor(m, n, k, im2col_buffer, lda, filter_data, ldb,
-                         chunk_output_data, ldc);
+            if (center_copy_count > 0) {
+              const T1* input_row_start =
+                  input_batch_start + (in_y * input_width * input_depth) +
+                  (std::max(0, in_x_origin) * input_depth);
+              const T1* input_row_end =
+                  input_row_start + (center_copy_count * input_depth);
+              T1* im2col_center_start =
+                  im2col_row_start + (left_zero_count * input_depth);
+              std::copy(input_row_start, input_row_end, im2col_center_start);
+            }
+            if (right_zero_count > 0) {
+              T1* im2col_right_start =
+                  im2col_row_start +
+                  ((left_zero_count + center_copy_count) * input_depth);
+              T1* im2col_right_end =
+                  im2col_right_start + (right_zero_count * input_depth);
+              std::fill(im2col_right_start, im2col_right_end, T1(0));
+            }
           }
         }
       }
+      // Now we've assembled a set of image patches into a matrix, apply a
+      // GEMM matrix multiply of the patches as rows, times the filter
+      // weights in columns, to get partial results in the output matrix.
+      const int how_many_patches = patch_index_end - patch_index_start;
+      const int m = how_many_patches;
+      const int n = filter_count;
+      const int k = filter_value_count;
+      const int lda = filter_value_count;
+      const int ldb = filter_count;
+      const int ldc = filter_count;
+      T3* chunk_output_data = output_data + (patch_index_start * filter_count);
+      TGemmFunctor gemm_functor;
+      gemm_functor(context, m, n, k, im2col_buffer, lda, filter_data, ldb,
+                   chunk_output_data, ldc);
     }
   }
 };

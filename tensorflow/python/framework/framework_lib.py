@@ -20,7 +20,6 @@
 
 @@Graph
 @@Operation
-@@Output
 @@Tensor
 
 ## Tensor types
@@ -36,6 +35,7 @@
 @@control_dependencies
 @@convert_to_tensor
 @@convert_to_tensor_or_indexed_slices
+@@convert_to_tensor_or_sparse_tensor
 @@get_default_graph
 @@reset_default_graph
 @@import_graph_def
@@ -54,7 +54,6 @@
 @@RegisterGradient
 @@NotDifferentiable
 @@NoGradient
-@@RegisterShape
 @@TensorShape
 @@Dimension
 @@op_scope
@@ -74,7 +73,6 @@ from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-from tensorflow.python.framework.ops import Output
 from tensorflow.python.framework.ops import IndexedSlices
 
 from tensorflow.python.framework.sparse_tensor import SparseTensor
@@ -96,6 +94,7 @@ from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import convert_to_tensor_or_indexed_slices
 from tensorflow.python.framework.random_seed import get_seed
 from tensorflow.python.framework.random_seed import set_random_seed
+from tensorflow.python.framework.sparse_tensor import convert_to_tensor_or_sparse_tensor
 from tensorflow.python.framework.subscribe import subscribe
 from tensorflow.python.framework.importer import import_graph_def
 

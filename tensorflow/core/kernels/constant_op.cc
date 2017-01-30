@@ -36,8 +36,9 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-  OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
-                          *proto, AllocatorAttributes(), &tensor_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->device()->MakeTensorFromProto(
+                     *proto, AllocatorAttributes(), &tensor_));
   OP_REQUIRES(
       ctx, ctx->output_type(0) == tensor_.dtype(),
       errors::InvalidArgument("Type mismatch between value (",
@@ -52,19 +53,10 @@ ConstantOp::~ConstantOp() {}
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
 #if TENSORFLOW_USE_SYCL
-<<<<<<< HEAD
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Const")                               \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("dtype"),             \
-			  ConstantOp);
-=======
 #define REGISTER_SYCL_KERNEL(TYPE)                                     \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
->>>>>>> 463fd9166576248c405e25d505514b703ad6515e
 TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif
@@ -122,6 +114,9 @@ REGISTER_KERNEL_BUILDER(Name("Const")
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -133,6 +128,17 @@ struct FillFunctor<CPUDevice, T> {
     out.device(d) = out.constant(in());
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specialization of FillFunctor<Device=SYCLDevice, T>.
+template <typename T>
+struct FillFunctor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstScalar in) {
+    To32Bit(out).device(d) = To32Bit(out).constant(in());
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 
@@ -177,6 +183,17 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL(SYCL, float)
+REGISTER_KERNEL_BUILDER(Name("Fill")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("dims")
+                            .HostMemory("value")
+                            .HostMemory("output"),
+                        FillOp<CPUDevice, int32>);
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL(GPU, Eigen::half);
@@ -223,8 +240,17 @@ class ZerosLikeOp : public OpKernel {
       ZerosLikeOp<dev##Device, type>)
 
 #define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
-TF_CALL_ALL_TYPES(REGISTER_CPU);
+TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL_BUILDER(Name("ZerosLike")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        ZerosLikeOp<CPUDevice, int32>);
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL(bool, GPU);
@@ -279,4 +305,9 @@ REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
                         PlaceholderOp);
 
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
+                        PlaceholderOp);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

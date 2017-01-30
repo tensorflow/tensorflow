@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.framework.importer."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
@@ -39,179 +38,182 @@ class TypesTest(test_util.TensorFlowTestCase):
     for datatype_enum in types_pb2.DataType.values():
       if datatype_enum == types_pb2.DT_INVALID:
         continue
-      self.assertEqual(
-          datatype_enum, tf.DType(datatype_enum).as_datatype_enum)
+      self.assertEqual(datatype_enum,
+                       dtypes.DType(datatype_enum).as_datatype_enum)
 
   def testAllTypesConvertibleToDType(self):
     for datatype_enum in types_pb2.DataType.values():
       if datatype_enum == types_pb2.DT_INVALID:
         continue
-      self.assertEqual(
-          datatype_enum, tf.as_dtype(datatype_enum).as_datatype_enum)
+      self.assertEqual(datatype_enum,
+                       dtypes.as_dtype(datatype_enum).as_datatype_enum)
 
   def testAllTypesConvertibleToNumpyDtype(self):
     for datatype_enum in types_pb2.DataType.values():
       if not _is_numeric_dtype_enum(datatype_enum):
         continue
-      dtype = tf.as_dtype(datatype_enum)
+      dtype = dtypes.as_dtype(datatype_enum)
       numpy_dtype = dtype.as_numpy_dtype
       _ = np.empty((1, 1, 1, 1), dtype=numpy_dtype)
-      if dtype.base_dtype != tf.bfloat16:
+      if dtype.base_dtype != dtypes.bfloat16:
         # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
-        self.assertEqual(tf.as_dtype(datatype_enum).base_dtype,
-                         tf.as_dtype(numpy_dtype))
+        self.assertEqual(
+            dtypes.as_dtype(datatype_enum).base_dtype,
+            dtypes.as_dtype(numpy_dtype))
 
   def testInvalid(self):
     with self.assertRaises(TypeError):
-      tf.DType(types_pb2.DT_INVALID)
+      dtypes.DType(types_pb2.DT_INVALID)
     with self.assertRaises(TypeError):
-      tf.as_dtype(types_pb2.DT_INVALID)
+      dtypes.as_dtype(types_pb2.DT_INVALID)
 
   def testNumpyConversion(self):
-    self.assertIs(tf.float32, tf.as_dtype(np.float32))
-    self.assertIs(tf.float64, tf.as_dtype(np.float64))
-    self.assertIs(tf.int32, tf.as_dtype(np.int32))
-    self.assertIs(tf.int64, tf.as_dtype(np.int64))
-    self.assertIs(tf.uint8, tf.as_dtype(np.uint8))
-    self.assertIs(tf.uint16, tf.as_dtype(np.uint16))
-    self.assertIs(tf.int16, tf.as_dtype(np.int16))
-    self.assertIs(tf.int8, tf.as_dtype(np.int8))
-    self.assertIs(tf.complex64, tf.as_dtype(np.complex64))
-    self.assertIs(tf.complex128, tf.as_dtype(np.complex128))
-    self.assertIs(tf.string, tf.as_dtype(np.object))
-    self.assertIs(tf.string, tf.as_dtype(np.array(["foo", "bar"]).dtype))
-    self.assertIs(tf.bool, tf.as_dtype(np.bool))
+    self.assertIs(dtypes.float32, dtypes.as_dtype(np.float32))
+    self.assertIs(dtypes.float64, dtypes.as_dtype(np.float64))
+    self.assertIs(dtypes.int32, dtypes.as_dtype(np.int32))
+    self.assertIs(dtypes.int64, dtypes.as_dtype(np.int64))
+    self.assertIs(dtypes.uint8, dtypes.as_dtype(np.uint8))
+    self.assertIs(dtypes.uint16, dtypes.as_dtype(np.uint16))
+    self.assertIs(dtypes.int16, dtypes.as_dtype(np.int16))
+    self.assertIs(dtypes.int8, dtypes.as_dtype(np.int8))
+    self.assertIs(dtypes.complex64, dtypes.as_dtype(np.complex64))
+    self.assertIs(dtypes.complex128, dtypes.as_dtype(np.complex128))
+    self.assertIs(dtypes.string, dtypes.as_dtype(np.object))
+    self.assertIs(dtypes.string,
+                  dtypes.as_dtype(np.array(["foo", "bar"]).dtype))
+    self.assertIs(dtypes.bool, dtypes.as_dtype(np.bool))
     with self.assertRaises(TypeError):
-      tf.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
+      dtypes.as_dtype(np.dtype([("f1", np.uint), ("f2", np.int32)]))
 
   def testRealDtype(self):
-    for dtype in [tf.float32, tf.float64, tf.bool, tf.uint8, tf.int8, tf.int16,
-                  tf.int32, tf.int64]:
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.bool, dtypes.uint8, dtypes.int8,
+        dtypes.int16, dtypes.int32, dtypes.int64
+    ]:
       self.assertIs(dtype.real_dtype, dtype)
-    self.assertIs(tf.complex64.real_dtype, tf.float32)
-    self.assertIs(tf.complex128.real_dtype, tf.float64)
+    self.assertIs(dtypes.complex64.real_dtype, dtypes.float32)
+    self.assertIs(dtypes.complex128.real_dtype, dtypes.float64)
 
   def testStringConversion(self):
-    self.assertIs(tf.float32, tf.as_dtype("float32"))
-    self.assertIs(tf.float64, tf.as_dtype("float64"))
-    self.assertIs(tf.int32, tf.as_dtype("int32"))
-    self.assertIs(tf.uint8, tf.as_dtype("uint8"))
-    self.assertIs(tf.uint16, tf.as_dtype("uint16"))
-    self.assertIs(tf.int16, tf.as_dtype("int16"))
-    self.assertIs(tf.int8, tf.as_dtype("int8"))
-    self.assertIs(tf.string, tf.as_dtype("string"))
-    self.assertIs(tf.complex64, tf.as_dtype("complex64"))
-    self.assertIs(tf.complex128, tf.as_dtype("complex128"))
-    self.assertIs(tf.int64, tf.as_dtype("int64"))
-    self.assertIs(tf.bool, tf.as_dtype("bool"))
-    self.assertIs(tf.qint8, tf.as_dtype("qint8"))
-    self.assertIs(tf.quint8, tf.as_dtype("quint8"))
-    self.assertIs(tf.qint32, tf.as_dtype("qint32"))
-    self.assertIs(tf.bfloat16, tf.as_dtype("bfloat16"))
-    self.assertIs(tf.float32_ref, tf.as_dtype("float32_ref"))
-    self.assertIs(tf.float64_ref, tf.as_dtype("float64_ref"))
-    self.assertIs(tf.int32_ref, tf.as_dtype("int32_ref"))
-    self.assertIs(tf.uint8_ref, tf.as_dtype("uint8_ref"))
-    self.assertIs(tf.int16_ref, tf.as_dtype("int16_ref"))
-    self.assertIs(tf.int8_ref, tf.as_dtype("int8_ref"))
-    self.assertIs(tf.string_ref, tf.as_dtype("string_ref"))
-    self.assertIs(tf.complex64_ref, tf.as_dtype("complex64_ref"))
-    self.assertIs(tf.complex128_ref, tf.as_dtype("complex128_ref"))
-    self.assertIs(tf.int64_ref, tf.as_dtype("int64_ref"))
-    self.assertIs(tf.bool_ref, tf.as_dtype("bool_ref"))
-    self.assertIs(tf.qint8_ref, tf.as_dtype("qint8_ref"))
-    self.assertIs(tf.quint8_ref, tf.as_dtype("quint8_ref"))
-    self.assertIs(tf.qint32_ref, tf.as_dtype("qint32_ref"))
-    self.assertIs(tf.bfloat16_ref, tf.as_dtype("bfloat16_ref"))
+    self.assertIs(dtypes.float32, dtypes.as_dtype("float32"))
+    self.assertIs(dtypes.float64, dtypes.as_dtype("float64"))
+    self.assertIs(dtypes.int32, dtypes.as_dtype("int32"))
+    self.assertIs(dtypes.uint8, dtypes.as_dtype("uint8"))
+    self.assertIs(dtypes.uint16, dtypes.as_dtype("uint16"))
+    self.assertIs(dtypes.int16, dtypes.as_dtype("int16"))
+    self.assertIs(dtypes.int8, dtypes.as_dtype("int8"))
+    self.assertIs(dtypes.string, dtypes.as_dtype("string"))
+    self.assertIs(dtypes.complex64, dtypes.as_dtype("complex64"))
+    self.assertIs(dtypes.complex128, dtypes.as_dtype("complex128"))
+    self.assertIs(dtypes.int64, dtypes.as_dtype("int64"))
+    self.assertIs(dtypes.bool, dtypes.as_dtype("bool"))
+    self.assertIs(dtypes.qint8, dtypes.as_dtype("qint8"))
+    self.assertIs(dtypes.quint8, dtypes.as_dtype("quint8"))
+    self.assertIs(dtypes.qint32, dtypes.as_dtype("qint32"))
+    self.assertIs(dtypes.bfloat16, dtypes.as_dtype("bfloat16"))
+    self.assertIs(dtypes.float32_ref, dtypes.as_dtype("float32_ref"))
+    self.assertIs(dtypes.float64_ref, dtypes.as_dtype("float64_ref"))
+    self.assertIs(dtypes.int32_ref, dtypes.as_dtype("int32_ref"))
+    self.assertIs(dtypes.uint8_ref, dtypes.as_dtype("uint8_ref"))
+    self.assertIs(dtypes.int16_ref, dtypes.as_dtype("int16_ref"))
+    self.assertIs(dtypes.int8_ref, dtypes.as_dtype("int8_ref"))
+    self.assertIs(dtypes.string_ref, dtypes.as_dtype("string_ref"))
+    self.assertIs(dtypes.complex64_ref, dtypes.as_dtype("complex64_ref"))
+    self.assertIs(dtypes.complex128_ref, dtypes.as_dtype("complex128_ref"))
+    self.assertIs(dtypes.int64_ref, dtypes.as_dtype("int64_ref"))
+    self.assertIs(dtypes.bool_ref, dtypes.as_dtype("bool_ref"))
+    self.assertIs(dtypes.qint8_ref, dtypes.as_dtype("qint8_ref"))
+    self.assertIs(dtypes.quint8_ref, dtypes.as_dtype("quint8_ref"))
+    self.assertIs(dtypes.qint32_ref, dtypes.as_dtype("qint32_ref"))
+    self.assertIs(dtypes.bfloat16_ref, dtypes.as_dtype("bfloat16_ref"))
     with self.assertRaises(TypeError):
-      tf.as_dtype("not_a_type")
+      dtypes.as_dtype("not_a_type")
 
   def testDTypesHaveUniqueNames(self):
-    dtypes = []
+    dtypez = []
     names = set()
     for datatype_enum in types_pb2.DataType.values():
       if datatype_enum == types_pb2.DT_INVALID:
         continue
-      dtype = tf.as_dtype(datatype_enum)
-      dtypes.append(dtype)
+      dtype = dtypes.as_dtype(datatype_enum)
+      dtypez.append(dtype)
       names.add(dtype.name)
-    self.assertEqual(len(dtypes), len(names))
+    self.assertEqual(len(dtypez), len(names))
 
   def testIsInteger(self):
-    self.assertEqual(tf.as_dtype("int8").is_integer, True)
-    self.assertEqual(tf.as_dtype("int16").is_integer, True)
-    self.assertEqual(tf.as_dtype("int32").is_integer, True)
-    self.assertEqual(tf.as_dtype("int64").is_integer, True)
-    self.assertEqual(tf.as_dtype("uint8").is_integer, True)
-    self.assertEqual(tf.as_dtype("uint16").is_integer, True)
-    self.assertEqual(tf.as_dtype("complex64").is_integer, False)
-    self.assertEqual(tf.as_dtype("complex128").is_integer, False)
-    self.assertEqual(tf.as_dtype("float").is_integer, False)
-    self.assertEqual(tf.as_dtype("double").is_integer, False)
-    self.assertEqual(tf.as_dtype("string").is_integer, False)
-    self.assertEqual(tf.as_dtype("bool").is_integer, False)
-    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("int8").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("int16").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("int32").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("int64").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("uint8").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("uint16").is_integer, True)
+    self.assertEqual(dtypes.as_dtype("complex64").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("complex128").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("float").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("double").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("string").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("bool").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
 
   def testIsFloating(self):
-    self.assertEqual(tf.as_dtype("int8").is_floating, False)
-    self.assertEqual(tf.as_dtype("int16").is_floating, False)
-    self.assertEqual(tf.as_dtype("int32").is_floating, False)
-    self.assertEqual(tf.as_dtype("int64").is_floating, False)
-    self.assertEqual(tf.as_dtype("uint8").is_floating, False)
-    self.assertEqual(tf.as_dtype("uint16").is_floating, False)
-    self.assertEqual(tf.as_dtype("complex64").is_floating, False)
-    self.assertEqual(tf.as_dtype("complex128").is_floating, False)
-    self.assertEqual(tf.as_dtype("float32").is_floating, True)
-    self.assertEqual(tf.as_dtype("float64").is_floating, True)
-    self.assertEqual(tf.as_dtype("string").is_floating, False)
-    self.assertEqual(tf.as_dtype("bool").is_floating, False)
-    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("int8").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("int16").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("int32").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("int64").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("uint8").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("uint16").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("complex64").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("complex128").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("float32").is_floating, True)
+    self.assertEqual(dtypes.as_dtype("float64").is_floating, True)
+    self.assertEqual(dtypes.as_dtype("string").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("bool").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
 
   def testIsComplex(self):
-    self.assertEqual(tf.as_dtype("int8").is_complex, False)
-    self.assertEqual(tf.as_dtype("int16").is_complex, False)
-    self.assertEqual(tf.as_dtype("int32").is_complex, False)
-    self.assertEqual(tf.as_dtype("int64").is_complex, False)
-    self.assertEqual(tf.as_dtype("uint8").is_complex, False)
-    self.assertEqual(tf.as_dtype("uint16").is_complex, False)
-    self.assertEqual(tf.as_dtype("complex64").is_complex, True)
-    self.assertEqual(tf.as_dtype("complex128").is_complex, True)
-    self.assertEqual(tf.as_dtype("float32").is_complex, False)
-    self.assertEqual(tf.as_dtype("float64").is_complex, False)
-    self.assertEqual(tf.as_dtype("string").is_complex, False)
-    self.assertEqual(tf.as_dtype("bool").is_complex, False)
-    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("int8").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("int16").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("int32").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("int64").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("uint8").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("uint16").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("complex64").is_complex, True)
+    self.assertEqual(dtypes.as_dtype("complex128").is_complex, True)
+    self.assertEqual(dtypes.as_dtype("float32").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("float64").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("string").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("bool").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
 
   def testIsUnsigned(self):
-    self.assertEqual(tf.as_dtype("int8").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("int16").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("int32").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("int64").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("uint8").is_unsigned, True)
-    self.assertEqual(tf.as_dtype("uint16").is_unsigned, True)
-    self.assertEqual(tf.as_dtype("float32").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("float64").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("bool").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("string").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("complex64").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("complex128").is_unsigned, False)
-    self.assertEqual(tf.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("int8").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("int16").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("int32").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("int64").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("uint8").is_unsigned, True)
+    self.assertEqual(dtypes.as_dtype("uint16").is_unsigned, True)
+    self.assertEqual(dtypes.as_dtype("float32").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("float64").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("bool").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("string").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("complex64").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("complex128").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
 
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max
     for datatype_enum in types_pb2.DataType.values():
       if not _is_numeric_dtype_enum(datatype_enum):
         continue
-      dtype = tf.as_dtype(datatype_enum)
+      dtype = dtypes.as_dtype(datatype_enum)
       numpy_dtype = dtype.as_numpy_dtype
 
       # ignore types for which there are no minimum/maximum (or we cannot
       # compute it, such as for the q* types)
-      if (dtype.is_quantized or
-          dtype.base_dtype == tf.bool or
-          dtype.base_dtype == tf.string or
-          dtype.base_dtype == tf.complex64 or
-          dtype.base_dtype == tf.complex128):
+      if (dtype.is_quantized or dtype.base_dtype == dtypes.bool or
+          dtype.base_dtype == dtypes.string or
+          dtype.base_dtype == dtypes.complex64 or
+          dtype.base_dtype == dtypes.complex128):
         continue
 
       print("%s: %s - %s" % (dtype, dtype.min, dtype.max))
@@ -236,10 +238,10 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEquals(dtype.min, 0)
         self.assertEquals(dtype.max, 255)
       if numpy_dtype == np.uint16:
-        if dtype == tf.uint16:
+        if dtype == dtypes.uint16:
           self.assertEquals(dtype.min, 0)
           self.assertEquals(dtype.max, 65535)
-        elif dtype == tf.bfloat16:
+        elif dtype == dtypes.bfloat16:
           self.assertEquals(dtype.min, 0)
           self.assertEquals(dtype.max, 4294967295)
       if numpy_dtype == np.uint32:
@@ -251,15 +253,19 @@ class TypesTest(test_util.TensorFlowTestCase):
 
   def testRepr(self):
     for enum, name in dtypes._TYPE_TO_STRING.items():
-      dtype = tf.DType(enum)
-      self.assertEquals(repr(dtype), 'tf.' + name)
+      if enum > 100:
+        continue
+      dtype = dtypes.DType(enum)
+      self.assertEquals(repr(dtype), "tf." + name)
+      import tensorflow as tf
       dtype2 = eval(repr(dtype))
-      self.assertEquals(type(dtype2), tf.DType)
+      self.assertEquals(type(dtype2), dtypes.DType)
       self.assertEquals(dtype, dtype2)
 
   def testEqWithNonTFTypes(self):
-    self.assertNotEqual(tf.int32, int)
-    self.assertNotEqual(tf.float64, 2.1)
+    self.assertNotEqual(dtypes.int32, int)
+    self.assertNotEqual(dtypes.float64, 2.1)
+
 
 if __name__ == "__main__":
   googletest.main()

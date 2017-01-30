@@ -12,16 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests NumpySource and PandasSource."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
+from tensorflow.python.client import session
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -36,7 +47,7 @@ def get_rows(array, row_indices):
   return np.vstack(rows)
 
 
-class NumpySourceTestCase(tf.test.TestCase):
+class NumpySourceTestCase(test.TestCase):
 
   def testNumpySource(self):
     batch_size = 3
@@ -46,12 +57,12 @@ class NumpySourceTestCase(tf.test.TestCase):
     index_column = numpy_source().index
     value_column = numpy_source().value
     cache = {}
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       value_tensor = value_column.build(cache)
       index_tensor = index_column.build(cache)
-      with tf.Session() as sess:
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      with session.Session() as sess:
+        coord = coordinator.Coordinator()
+        threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
         for i in range(iterations):
           expected_index = [
               j % array.shape[0]
@@ -65,7 +76,7 @@ class NumpySourceTestCase(tf.test.TestCase):
         coord.join(threads)
 
 
-class PandasSourceTestCase(tf.test.TestCase):
+class PandasSourceTestCase(test.TestCase):
 
   def testPandasFeeding(self):
     if not HAS_PANDAS:
@@ -76,18 +87,20 @@ class PandasSourceTestCase(tf.test.TestCase):
     a = np.arange(32)
     b = np.arange(32, 64)
     dataframe = pd.DataFrame({"a": a, "b": b}, index=index)
-    pandas_source = in_memory_source.PandasSource(dataframe,
-                                                  batch_size=batch_size)
+    pandas_source = in_memory_source.PandasSource(
+        dataframe, batch_size=batch_size)
     pandas_columns = pandas_source()
     cache = {}
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       pandas_tensors = [col.build(cache) for col in pandas_columns]
-      with tf.Session() as sess:
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      with session.Session() as sess:
+        coord = coordinator.Coordinator()
+        threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
         for i in range(iterations):
-          indices = [j % dataframe.shape[0]
-                     for j in range(batch_size * i, batch_size * (i + 1))]
+          indices = [
+              j % dataframe.shape[0]
+              for j in range(batch_size * i, batch_size * (i + 1))
+          ]
           expected_df_indices = dataframe.index[indices]
           expected_rows = dataframe.iloc[indices]
           actual_value = sess.run(pandas_tensors)
@@ -100,4 +113,4 @@ class PandasSourceTestCase(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

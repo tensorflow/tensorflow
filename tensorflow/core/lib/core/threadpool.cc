@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+
 
 namespace tensorflow {
 namespace thread {
@@ -50,6 +52,8 @@ struct EigenEnvironment {
     return env_->StartThread(thread_options_, name_, [=]() {
       // Set the processor flag to flush denormals to zero
       port::ScopedFlushDenormal flush;
+      // Set the C++ rounding mode to ROUND TO NEAREST
+      port::ScopedSetRound round;
       f();
     });
   }
@@ -117,6 +121,20 @@ void ThreadPool::Schedule(std::function<void()> fn) {
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
                              std::function<void(int64, int64)> fn) {
   impl_->ParallelFor(total, cost_per_unit, std::move(fn));
+}
+
+void ThreadPool::ParallelForWithWorkerId(
+    int64 total, int64 cost_per_unit,
+    const std::function<void(int64, int64, int)>& fn) {
+  impl_->ParallelFor(total, cost_per_unit,
+                     [this, &fn](int64 start, int64 limit) {
+                       // ParallelFor may use the current thread to do some
+                       // work synchronously. When calling CurrentThreadId()
+                       // from outside of the thread pool, we get -1, so we can
+                       // shift every id up by 1.
+                       int id = CurrentThreadId() + 1;
+                       fn(start, limit, id);
+                     });
 }
 
 int ThreadPool::NumThreads() const { return impl_->NumThreads(); }

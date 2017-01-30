@@ -1,6 +1,6 @@
 ### `tf.contrib.layers.bucketized_column(source_column, boundaries)` {#bucketized_column}
 
-Creates a _BucketizedColumn.
+Creates a _BucketizedColumn for discretizing dense input.
 
 ##### Args:
 

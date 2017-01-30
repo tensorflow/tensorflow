@@ -116,6 +116,7 @@ import abc
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug import debug_utils
+from tensorflow.python.debug import stepper
 from tensorflow.python.framework import errors
 
 
@@ -155,9 +156,9 @@ class OnSessionInitRequest(object):
 class OnSessionInitAction(object):
   """Enum-like values for possible action to take on session init."""
 
-  # Proceed, without special actions, in the wrapper session initializaton. What
-  # action the wrapper session performs next is determined by the caller of the
-  # wrapper session. E.g., it can call run().
+  # Proceed, without special actions, in the wrapper session initialization.
+  # What action the wrapper session performs next is determined by the caller
+  # of the wrapper session. E.g., it can call run().
   PROCEED = "proceed"
 
   # Instead of letting the caller of the wrapper session determine what actions
@@ -175,7 +176,7 @@ class OnSessionInitResponse(object):
     """Constructor.
 
     Args:
-      action: (OnSessionInitAction) Debugger action to take on session init.
+      action: (`OnSessionInitAction`) Debugger action to take on session init.
     """
     _check_type(action, str)
     self.action = action
@@ -190,7 +191,7 @@ class OnRunStartRequest(object):
 
   def __init__(self, fetches, feed_dict, run_options, run_metadata,
                run_call_count):
-    """Constructor of OnRunStartRequest.
+    """Constructor of `OnRunStartRequest`.
 
     Args:
       fetches: Fetch targets of the run() call.
@@ -231,14 +232,24 @@ class OnRunStartResponse(object):
   action the debug-wrapper session actually takes on the run() call.
   """
 
-  def __init__(self, action, debug_urls):
-    """Constructor of OnRunStartResponse.
+  def __init__(self,
+               action,
+               debug_urls,
+               debug_ops="DebugIdentity",
+               node_name_regex_whitelist=None,
+               op_type_regex_whitelist=None):
+    """Constructor of `OnRunStartResponse`.
 
     Args:
-      action: (OnRunStartAction) the action actually taken by the wrapped
+      action: (`OnRunStartAction`) the action actually taken by the wrapped
         session for the run() call.
-      debug_urls: (list of str) debug_urls used in watching the tensors during
-        the run() call.
+      debug_urls: (`list` of `str`) debug_urls used in watching the tensors
+        during the run() call.
+      debug_ops: (`str` or `list` of `str`) Debug op(s) to be used by the
+        debugger.
+      node_name_regex_whitelist: Regular-expression whitelist for node
+        name.
+      op_type_regex_whitelist: Regular-expression whitelist for op type.
     """
 
     _check_type(action, str)
@@ -246,6 +257,11 @@ class OnRunStartResponse(object):
 
     _check_type(debug_urls, list)
     self.debug_urls = debug_urls
+
+    self.debug_ops = debug_ops
+
+    self.node_name_regex_whitelist = node_name_regex_whitelist
+    self.op_type_regex_whitelist = op_type_regex_whitelist
 
 
 class OnRunEndRequest(object):
@@ -259,10 +275,10 @@ class OnRunEndRequest(object):
                run_metadata=None,
                client_graph_def=None,
                tf_error=None):
-    """Constructor for OnRunEndRequest.
+    """Constructor for `OnRunEndRequest`.
 
     Args:
-      performed_action: (OnRunStartAction) Actually-performed action by the
+      performed_action: (`OnRunStartAction`) Actually-performed action by the
         debug-wrapper session.
       run_metadata: run_metadata output from the run() call (if any).
       client_graph_def: (GraphDef) GraphDef from the client side, i.e., from
@@ -302,16 +318,23 @@ class BaseDebugWrapperSession(session.SessionInterface):
   # is available.
 
   def __init__(self, sess):
-    """Constructor of BaseDebugWrapperSession.
+    """Constructor of `BaseDebugWrapperSession`.
 
     Args:
       sess: An (unwrapped) TensorFlow session instance.
 
     Raises:
-      ValueError: On invalid OnSessionInitAction value.
+      ValueError: On invalid `OnSessionInitAction` value.
+      NotImplementedError: If a non-DirectSession sess object is received.
     """
 
     _check_type(sess, session.BaseSession)
+
+    # TODO(cais): Remove this check once tfdbg is integrated with GrpcSession.
+    if sess.sess_str:
+      raise NotImplementedError(
+          "Non-DirectSession support is not available from TensorFlow "
+          "Debugger yet (sess_str=%s)" % sess.sess_str)
 
     # The session being wrapped.
     self._sess = sess
@@ -351,16 +374,16 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """Wrapper around Session.run() that inserts tensor watch options.
 
     Args:
-      fetches: Same as the fetches arg to regular Session.run()
-      feed_dict: Same as the feed_dict arg to regular Session.run()
-      options: Same as the options arg to regular Session.run()
-      run_metadata: Same as the run_metadata to regular Session.run()
+      fetches: Same as the `fetches` arg to regular `Session.run()`.
+      feed_dict: Same as the `feed_dict` arg to regular `Session.run()`.
+      options: Same as the `options` arg to regular `Session.run()`.
+      run_metadata: Same as the `run_metadata` arg to regular `Session.run()`.
 
     Returns:
-      Simply forwards the output of the wrapped Session.run() call.
+      Simply forwards the output of the wrapped `Session.run()` call.
 
     Raises:
-      ValueError: On invalid OnRunStartAction value.
+      ValueError: On invalid `OnRunStartAction` value.
     """
 
     self._run_call_count += 1
@@ -376,8 +399,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
       decorated_run_options = options or config_pb2.RunOptions()
       run_metadata = run_metadata or config_pb2.RunMetadata()
 
-      self._decorate_run_options(decorated_run_options,
-                                 run_start_resp.debug_urls)
+      self._decorate_run_options(
+          decorated_run_options,
+          run_start_resp.debug_urls,
+          debug_ops=run_start_resp.debug_ops,
+          node_name_regex_whitelist=run_start_resp.node_name_regex_whitelist,
+          op_type_regex_whitelist=run_start_resp.op_type_regex_whitelist)
 
       # Invoke the run() method of the wrapped Session. Catch any TensorFlow
       # runtime errors.
@@ -397,7 +424,13 @@ class BaseDebugWrapperSession(session.SessionInterface):
           client_graph_def=self._sess.graph.as_graph_def(),
           tf_error=tf_error)
 
-    elif run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN:
+    elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
+          run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
+      if run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
+        retvals = self.invoke_node_stepper(
+            stepper.NodeStepper(self._sess, fetches, feed_dict),
+            restore_variable_values_on_exit=True)
+
       # Invoke run() method of the wrapped session.
       retvals = self._sess.run(
           fetches,
@@ -407,10 +440,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
       # Prepare arg for the on-run-end callback.
       run_end_req = OnRunEndRequest(run_start_resp.action)
-    elif run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
-      # TODO(cais): Implement stepper loop.
-      raise NotImplementedError(
-          "OnRunStartAction INVOKE_STEPPER has not been implemented.")
     else:
       raise ValueError(
           "Invalid OnRunStartAction value: %s" % run_start_resp.action)
@@ -431,7 +460,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
     raise NotImplementedError(
         "partial_run is not implemented for debug-wrapper sessions.")
 
-  def _decorate_run_options(self, run_options, debug_urls):
+  def _decorate_run_options(self,
+                            run_options,
+                            debug_urls,
+                            debug_ops="DebugIdentity",
+                            node_name_regex_whitelist=None,
+                            op_type_regex_whitelist=None):
     """Modify a RunOptions object for debug tensor watching.
 
     Specifies request for outputting partition graphs. Adds
@@ -441,11 +475,20 @@ class BaseDebugWrapperSession(session.SessionInterface):
       run_options: (RunOptions) the modified RunOptions object.
       debug_urls: (list of str) debug URLs to be entered in run_options.
         debug_tensor_watch_opts.
+      debug_ops: (str or list of str) debug op(s) to be used by the debugger.
+      node_name_regex_whitelist: Regular-expression whitelist for node
+        name.
+      op_type_regex_whitelist: Regular-expression whitelist for op type.
     """
 
     run_options.output_partition_graphs = True
     debug_utils.watch_graph(
-        run_options, self._sess.graph, debug_urls=debug_urls)
+        run_options,
+        self._sess.graph,
+        debug_urls=debug_urls,
+        debug_ops=debug_ops,
+        node_name_regex_whitelist=node_name_regex_whitelist,
+        op_type_regex_whitelist=op_type_regex_whitelist)
 
   @abc.abstractmethod
   def on_session_init(self, request):
@@ -455,13 +498,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
     The invocation happens right before the constructor ends.
 
     Args:
-      request: (OnSessionInitRequest) callback request carrying information
+      request: (`OnSessionInitRequest`) callback request carrying information
         such as the session being wrapped.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
     """
-    pass
 
   @abc.abstractmethod
   def on_run_start(self, request):
@@ -472,17 +514,17 @@ class BaseDebugWrapperSession(session.SessionInterface):
     after an increment of run call counter.
 
     Args:
-      request: (OnRunStartRequest) callback request object carrying information
-        about the run call such as the fetches, feed dict, run options, run
-        metadata, and how many run() calls to this wrapper session has occurred.
+      request: (`OnRunStartRequest`) callback request object carrying
+        information about the run call such as the fetches, feed dict, run
+        options, run metadata, and how many `run()` calls to this wrapper
+        session have occurred.
 
     Returns:
-      An instance of OnRunStartResponse, carrying information to
+      An instance of `OnRunStartResponse`, carrying information to
         1) direct the wrapper session to perform a specified action (e.g., run
           with or without debug tensor watching, invoking the stepper.)
         2) debug URLs used to watch the tensors.
     """
-    pass
 
   @abc.abstractmethod
   def on_run_end(self, request):
@@ -492,14 +534,157 @@ class BaseDebugWrapperSession(session.SessionInterface):
     The invocation happens right before the wrapper exits its run() call.
 
     Args:
-      request: (OnRunEndRequest) callback request object carrying information
+      request: (`OnRunEndRequest`) callback request object carrying information
         such as the actual action performed by the session wrapper for the
         run() call.
 
     Returns:
-      An instance of OnRunStartResponse.
+      An instance of `OnRunStartResponse`.
     """
-    pass
+
+  def __enter__(self):
+    return self._sess.__enter__()
+
+  def __exit__(self, exec_type, exec_value, exec_tb):
+    self._sess.__exit__(exec_type, exec_value, exec_tb)
+
+  def close(self):
+    self._sess.close()
 
   # TODO(cais): Add _node_name_regex_whitelist and
   #   _node_op_type_regex_whitelist.
+
+  @abc.abstractmethod
+  def invoke_node_stepper(self,
+                          node_stepper,
+                          restore_variable_values_on_exit=True):
+    """Callback invoked when the client intends to step through graph nodes.
+
+    Args:
+      node_stepper: (stepper.NodeStepper) An instance of NodeStepper to be used
+        in this stepping session.
+      restore_variable_values_on_exit: (bool) Whether any variables whose values
+        have been altered during this node-stepper invocation should be restored
+        to their old values when this invocation ends.
+
+    Returns:
+      The same return values as the `Session.run()` call on the same fetches as
+        the NodeStepper.
+    """
+
+
+class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
+  """Base class for non-interactive (i.e., non-CLI) debug wrapper sessions."""
+
+  def __init__(self, sess, watch_fn=None):
+    """Constructor of DumpingDebugWrapperSession.
+
+    Args:
+      sess: The TensorFlow `Session` object being wrapped.
+      watch_fn: (`Callable`) A Callable of the following signature:
+        ```
+        def watch_fn(fetches, feeds):
+          # Args:
+          #   fetches: the fetches to the `Session.run()` call.
+          #   feeds: the feeds to the `Session.run()` call.
+          #
+          # Returns: (node_name_regex_whitelist, op_type_regex_whitelist)
+          #   debug_ops: (str or list of str) Debug op(s) to be used by the
+          #     debugger in this run() call.
+          #   node_name_regex_whitelist: Regular-expression whitelist for node
+          #     name. Same as the corresponding arg to `debug_util.watch_graph`.
+          #   op_type_regex_whiteslit: Regular-expression whitelist for op type.
+          #     Same as the corresponding arg to `debug_util.watch_graph`.
+          #
+          #   Both or either can be None. If both are set, the two whitelists
+          #   will operate in a logical AND relation. This is consistent with
+          #   `debug_utils.watch_graph()`.
+        ```
+
+    Raises:
+       TypeError: If a non-None `watch_fn` is specified and it is not callable.
+    """
+
+    BaseDebugWrapperSession.__init__(self, sess)
+
+    self._watch_fn = None
+    if watch_fn is not None:
+      if not callable(watch_fn):
+        raise TypeError("watch_fn is not callable")
+      self._watch_fn = watch_fn
+
+  def on_session_init(self, request):
+    """See doc of BaseDebugWrapperSession.on_run_start."""
+
+    return OnSessionInitResponse(OnSessionInitAction.PROCEED)
+
+  @abc.abstractmethod
+  def _prepare_run_debug_urls(self, fetches, feed_dict):
+    """Abstract method to be implemented by concrete subclasses.
+
+    This method prepares the run-specific debug URL(s).
+
+    Args:
+      fetches: Same as the `fetches` argument to `Session.run()`
+      feed_dict: Same as the `feed_dict` argument to `Session.run()`
+
+    Returns:
+      debug_urls: (`str` or `list` of `str`) Debug URLs to be used in
+        this `Session.run()` call.
+    """
+
+  def on_run_start(self, request):
+    """See doc of BaseDebugWrapperSession.on_run_start."""
+
+    (debug_urls, debug_ops, node_name_regex_whitelist,
+     op_type_regex_whitelist) = self._prepare_run_watch_config(
+         request.fetches, request.feed_dict)
+
+    return OnRunStartResponse(
+        OnRunStartAction.DEBUG_RUN,
+        debug_urls,
+        debug_ops=debug_ops,
+        node_name_regex_whitelist=node_name_regex_whitelist,
+        op_type_regex_whitelist=op_type_regex_whitelist)
+
+  def _prepare_run_watch_config(self, fetches, feed_dict):
+    """Get the debug_urls, and node/op whitelists for the current run() call.
+
+    Args:
+      fetches: Same as the `fetches` argument to `Session.run()`.
+      feed_dict: Same as the `feed_dict argument` to `Session.run()`.
+
+    Returns:
+      debug_urls: (str or list of str) Debug URLs for the current run() call.
+        Currently, the list consists of only one URL that is a file:// URL.
+      debug_ops: (str or list of str) Debug op(s) to be used by the
+        debugger.
+      node_name_regex_whitelist: (str or regex) Regular-expression whitelist for
+        node name. Same as the same-name argument to debug_utils.watch_graph.
+      op_type_regex_whitelist: (str or regex) Regular-expression whitelist for
+        op type. Same as the same-name argument to debug_utils.watch_graph.
+    """
+
+    debug_urls = self._prepare_run_debug_urls(fetches, feed_dict)
+    debug_ops = "DebugIdentity"
+    node_name_regex_whitelist = None
+    op_type_regex_whitelist = None
+    if self._watch_fn is not None:
+      debug_ops, node_name_regex_whitelist, op_type_regex_whitelist = (
+          self._watch_fn(fetches, feed_dict))
+
+    return (debug_urls, debug_ops, node_name_regex_whitelist,
+            op_type_regex_whitelist)
+
+  def on_run_end(self, request):
+    """See doc of BaseDebugWrapperSession.on_run_end."""
+
+    return OnRunEndResponse()
+
+  def invoke_node_stepper(self,
+                          node_stepper,
+                          restore_variable_values_on_exit=True):
+    """See doc of BaseDebugWrapperSession.invoke_node_stepper."""
+
+    raise NotImplementedError(
+        "NonInteractiveDebugWrapperSession does not support node-stepper mode.")

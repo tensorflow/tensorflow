@@ -14,7 +14,230 @@
 # ==============================================================================
 """Contains various routines and helper functions for training models.
 
-TODO(nsilberman): Port documentation.
+This script contains various functions for training models. These include
+manipulating gradients, creating a `train_op` (an operation that computes the
+loss and applies the gradients) and a training loop function. The training loop
+allows the user to pass in the `train_op` and runs the optimization according
+to user-specified arguments.
+
+************************************
+* A simple working training script *
+************************************
+
+  # Load data and create the model:
+  images, labels = LoadData(...)
+  predictions = MyModel(images)
+
+  # Define the loss:
+  tf.contrib.losses.log_loss(predictions, labels)
+  total_loss = tf.contrib.losses.get_total_loss()
+
+  # Define the optimizer:
+  optimizer = tf.train.MomentumOptimizer(FLAGS.learning_rate, FLAGS.momentum)
+
+  # Create the train_op
+  train_op = tf.contrib.training.create_train_op(total_loss, optimizer)
+
+  # Run training.
+  tf.contrib.training.train(train_op, my_log_dir)
+
+*************************
+* Creating the train_op *
+*************************
+
+In order to use the `train` function, one needs a train_op: an `Operation` that
+(a) computes the loss, (b) applies the gradients to update the weights and
+(c) returns the value of the loss. tf.contrib.training.create_train_op creates
+such an `Operation`. This function also provides the ability to manipulate
+the gradients using a few arguments:
+
+  # Create the train_op and clip the gradient norms:
+  train_op = tf.contrib.training.create_train_op(
+      total_loss,
+      optimizer,
+      clip_gradient_norm=4)
+
+  # Create the train_op and scale the gradients by providing a map from variable
+  # name (or variable) to a scaling coefficient:
+  def transform_grads_fn(grads):
+    gradient_multipliers = {
+      'conv0/weights': 1.2,
+      'fc8/weights': 3.4,
+    }
+    return tf.contrib.training.multiply_gradients(
+            grads, gradient_multipliers)
+
+  train_op = tf.contrib.training.create_train_op(
+      total_loss,
+      optimizer,
+      transform_grads_fn=transform_grads_fn)
+
+****************************************************************
+* Performing additional (non-gradient) updates during training *
+****************************************************************
+
+Many networks utilize modules, like BatchNorm, that require performing a series
+of non-gradient updates during training. tf.contrib.training.create_train_op
+allows a user to pass in a list of update_ops to call along with the gradient
+updates.
+
+  train_op = tf.contrib.training.create_train_op(
+      total_loss, optimizer, update_ops)
+
+By default, tf.contrib.training.create_train_op includes all update ops that are
+part of the `tf.GraphKeys.UPDATE_OPS` collection. Additionally, the
+tf.contrib.layers.batch_norm function adds the moving mean and moving variance
+updates to this collection. Consequently, users who want to use
+tf.contrib.layers.batch_norm will not need to take any additional steps in order
+to have the moving mean and moving variance updates be computed.
+
+However, users with additional, specialized updates can either override the
+default update ops or simply add additional update ops to the
+`tf.GraphKeys.UPDATE_OPS` collection:
+
+  # Force `create_train_op` to NOT use ANY update_ops:
+  train_op = tf.contrib.training.create_train_op(
+     total_loss,
+     optimizer,
+     update_ops=[])
+
+  # Use an alternative set of update ops:
+  train_op = tf.contrib.training.create_train_op(
+     total_loss,
+     optimizer,
+     update_ops=my_other_update_ops)
+
+  # Use a set of update ops in addition to the default updates:
+  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update0)
+  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update1)
+
+  train_op = tf.contrib.training.create_train_op(
+     total_loss,
+     optimizer)
+
+  # Which is the same as:
+  train_op = tf.contrib.training.create_train_op(
+     total_loss,
+     optimizer,
+     update_ops=tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+
+******************************************
+* Initializing a model from a checkpoint *
+******************************************
+
+It is common to want to 'warm-start' a model from a pre-trained checkpoint.
+One can use a tf.Scaffold and an initializing function to do so.
+
+  ...
+
+  # Create the train_op
+  train_op = tf.contrib.training.create_train_op(total_loss, optimizer)
+
+  # Create the initial assignment op
+  checkpoint_path = '/path/to/old_model_checkpoint'
+  variables_to_restore = tf.contrib.framework.get_model_variables()
+  init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+      checkpoint_path, variables_to_restore)
+
+  # Run training.
+  scaffold = tf.Scaffold(init_fn=init_fn)
+  tf.contrib.training.train(train_op, my_log_dir, scaffold=scaffold)
+
+***************************************************************************
+* Initializing a model from a checkpoint whose variable names don't match *
+***************************************************************************
+
+At times, a user may want to initialize a new model with values from a
+checkpoint whose variable names do not match those of the current model. In this
+case, one needs to create a mapping from the checkpoint variable names to the
+current model variables. This requires only a small modification of the code
+above:
+  ...
+  # Creates a model with two variables, var0 and var1
+  predictions = MyModel(images)
+  ...
+
+  # Create the train_op
+  train_op = tf.contrib.training.create_train_op(total_loss, optimizer)
+
+  checkpoint_path = '/path/to/old_model_checkpoint'
+
+  # Create the mapping:
+  variables_to_restore = {
+      'name_var_0_in_checkpoint':
+          tf.contrib.framework.get_unique_variable('var0'),
+      'name_var_1_in_checkpoint':
+          tf.contrib.framework.get_unique_variable('var1')
+  }
+  init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+        checkpoint_path, variables_to_restore)
+  scaffold = tf.Scaffold(init_fn=init_fn)
+
+  # Run training.
+  tf.contrib.training.train(train_op, my_log_dir, scaffold=scaffold)
+
+
+*************************************************
+* Fine-Tuning Part of a model from a checkpoint *
+*************************************************
+
+Rather than initializing all of the weights of a given model, we sometimes
+only want to restore some of the weights from a checkpoint. To do this, one
+need only filter those variables to initialize as follows:
+
+  ...
+
+  # Create the train_op
+  train_op = tf.contrib.training.create_train_op(total_loss, optimizer)
+
+  checkpoint_path = '/path/to/old_model_checkpoint'
+
+  # Specify the variables to restore via a list of inclusion or exclusion
+  # patterns:
+  variables_to_restore = tf.contrib.framework.get_variables_to_restore(
+      include=["conv"], exclude=["fc8", "fc9])
+  # or
+  variables_to_restore = tf.contrib.framework.get_variables_to_restore(
+      exclude=["conv"])
+
+  init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+      checkpoint_path, variables_to_restore)
+  scaffold = tf.Scaffold(init_fn=init_fn)
+
+  # Run training.
+  tf.contrib.training.train(train_op, my_log_dir, scaffold=scaffold)
+
+******************************************************
+* Initializing model variables from values in memory *
+******************************************************
+
+One may want to initialize the weights of a model from values coming from an
+arbitrary source (a text document, matlab file, etc). While this is technically
+feasible using assign operations, this strategy results in the values of your
+weights being stored in the graph. For large models, this becomes prohibitively
+large. However, it's possible to perform this initial assignment without having
+to store the values of the initial model in the graph itself by using
+placeholders and a feed dictionary:
+
+  ...
+
+  # Create the train_op
+  train_op = tf.contrib.training.create_train_op(total_loss, optimizer)
+
+  # Create the mapping from variable names to values:
+  var0_initial_value = ReadFromDisk(...)
+  var1_initial_value = ReadFromDisk(...)
+
+  var_names_to_values = {
+    'var0': var0_initial_value,
+    'var1': var1_initial_value,
+  }
+
+  init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
+  scaffold = tf.Scaffold(init_fn=init_fn)
+
+  # Run training.
+  tf.contrib.training.train(train_op, my_log_dir, scaffold=scaffold)
 """
 
 from __future__ import absolute_import
@@ -22,7 +245,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -30,7 +252,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer as tf_optimizer
 
@@ -61,10 +283,11 @@ def add_gradients_summaries(grads_and_vars):
         grad_values = grad.values
       else:
         grad_values = grad
-      summaries.append(summary.histogram_summary(
-          var.op.name + ':gradient', grad_values))
-      summaries.append(summary.histogram_summary(
-          var.op.name + ':gradient_norm', clip_ops.global_norm([grad_values])))
+      summaries.append(
+          summary.histogram(var.op.name + '_gradient', grad_values))
+      summaries.append(
+          summary.histogram(var.op.name + '_gradient_norm',
+                            clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
@@ -133,9 +356,12 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
   return multiplied_grads_and_vars
 
 
+_USE_GLOBAL_STEP = 0
+
+
 def create_train_op(total_loss,
                     optimizer,
-                    global_step=None,
+                    global_step=_USE_GLOBAL_STEP,
                     update_ops=None,
                     variables_to_train=None,
                     transform_grads_fn=None,
@@ -149,7 +375,7 @@ def create_train_op(total_loss,
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `None`, then slim.variables.global_step() is used.
+      `_USE_GLOBAL_STEP`, then tf.contrib.framework.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -172,7 +398,7 @@ def create_train_op(total_loss,
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is None:
+  if global_step is _USE_GLOBAL_STEP:
     global_step = variables.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
@@ -230,17 +456,16 @@ def create_train_op(total_loss,
     return control_flow_ops.with_dependencies([grad_updates], total_loss)
 
 
-def train(
-    train_op,
-    logdir,
-    master='',
-    is_chief=True,
-    scaffold=None,
-    hooks=None,
-    chief_only_hooks=None,
-    save_checkpoint_secs=600,
-    save_summaries_steps=100,
-    config=None):
+def train(train_op,
+          logdir,
+          master='',
+          is_chief=True,
+          scaffold=None,
+          hooks=None,
+          chief_only_hooks=None,
+          save_checkpoint_secs=600,
+          save_summaries_steps=100,
+          config=None):
   """Runs the training loop.
 
   Args:
@@ -271,45 +496,25 @@ def train(
     ValueError: if `logdir` is `None` and either `save_checkpoint_secs` or
     `save_summaries_steps` are `None.
   """
-  # TODO(nsilberman): move this logic into monitored_session.py
-  scaffold = scaffold or monitored_session.Scaffold()
-
-  hooks = hooks or []
-
-  if is_chief:
-    session_creator = monitored_session.ChiefSessionCreator(
-        scaffold=scaffold,
-        checkpoint_dir=logdir,
-        master=master,
-        config=config)
-
-    if chief_only_hooks:
-      hooks.extend(chief_only_hooks)
-
-    hooks.append(basic_session_run_hooks.StepCounterHook(
-        output_dir=logdir))
-
+  if logdir is None and is_chief:
     if save_summaries_steps:
-      if logdir is None:
-        raise ValueError(
-            'logdir cannot be None when save_summaries_steps is None')
-      hooks.append(basic_session_run_hooks.SummarySaverHook(
-          scaffold=scaffold,
-          save_steps=save_summaries_steps,
-          output_dir=logdir))
+      raise ValueError(
+          'logdir cannot be None when save_summaries_steps is not None')
 
     if save_checkpoint_secs:
-      if logdir is None:
-        raise ValueError(
-            'logdir cannot be None when save_checkpoint_secs is None')
-      hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          logdir, save_secs=save_checkpoint_secs, scaffold=scaffold))
-  else:
-    session_creator = monitored_session.WorkerSessionCreator(
-        scaffold=scaffold, master=master, config=config)
+      raise ValueError(
+          'logdir cannot be None when save_checkpoint_secs is not None')
 
-  with monitored_session.MonitoredSession(
-      session_creator=session_creator, hooks=hooks) as session:
+  with monitored_session.MonitoredTrainingSession(
+      master=master,
+      is_chief=is_chief,
+      checkpoint_dir=logdir,
+      scaffold=scaffold,
+      hooks=hooks,
+      chief_only_hooks=chief_only_hooks,
+      save_checkpoint_secs=save_checkpoint_secs,
+      save_summaries_steps=save_summaries_steps,
+      config=config) as session:
     loss = None
     while not session.should_stop():
       loss = session.run(train_op)

@@ -352,7 +352,6 @@ filegroup(
     name = "paper_checkbox",
     srcs = [
         "index.html",
-        "metadata.html",
         "paper-checkbox.html",
     ],
 )
@@ -372,6 +371,14 @@ filegroup(
         "paper-dialog-behavior.html",
         "paper-dialog-common.css",
         "paper-dialog-shared-styles.html",
+    ],
+)
+
+filegroup(
+    name = "paper_dialog_scrollable",
+    srcs = [
+        "index.html",
+        "paper-dialog-scrollable.html",
     ],
 )
 
@@ -504,6 +511,17 @@ filegroup(
     srcs = [
         "index.html",
         "paper-slider.html",
+    ],
+)
+
+filegroup(
+    name = "paper_spinner",
+    srcs = [
+        "index.html",
+        "paper-spinner.html",
+        "paper-spinner-behavior.html",
+        "paper-spinner-lite.html",
+        "paper-spinner-styles.html",
     ],
 )
 

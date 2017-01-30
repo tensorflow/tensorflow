@@ -81,7 +81,7 @@ summary_writer = tf.train.SummaryWriter(LOG_DIR)
 config = projector.ProjectorConfig()
 
 # You can add multiple embeddings. Here we add only one.
-embedding = config.embedding.add()
+embedding = config.embeddings.add()
 embedding.tensor_name = embedding_var.name
 # Link this tensor to its metadata file (e.g. labels).
 embedding.metadata_path = os.path.join(LOG_DIR, 'metadata.tsv')
@@ -166,7 +166,7 @@ to find it:
 ```python
 embedding.sprite.image_path = PATH_TO_SPRITE_IMAGE
 # Specify the width and height of a single thumbnail.
-embedding.single_image_dim.extend([w, h])
+embedding.sprite.single_image_dim.extend([w, h])
 ```
 
 ## Interaction

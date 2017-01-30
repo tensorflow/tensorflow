@@ -2,6 +2,9 @@
 
 Output strings (e.g. filenames) to a queue for an input pipeline.
 
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
+
 ##### Args:
 
 

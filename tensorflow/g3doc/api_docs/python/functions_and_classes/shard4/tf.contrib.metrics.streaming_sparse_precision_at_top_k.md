@@ -2,13 +2,16 @@
 
 Computes precision@k of top-k predictions with respect to sparse labels.
 
+If `class_id` is not specified, we calculate precision as the ratio of
+    true positives (i.e., correct predictions, items in `top_k_predictions`
+    that are found in the corresponding row in `labels`) to positives (all
+    `top_k_predictions`).
 If `class_id` is specified, we calculate precision by considering only the
-    entries in the batch for which `class_id` is in the top-k highest
+    rows in the batch for which `class_id` is in the top `k` highest
     `predictions`, and computing the fraction of them for which `class_id` is
-    indeed a correct label.
-If `class_id` is not specified, we'll calculate precision as how often on
-    average a class among the top-k classes with the highest predicted values
-    of a batch entry is correct and can be found in the label for that entry.
+    in the corresponding row in `labels`.
+
+We expect precision to decrease as `k` increases.
 
 `streaming_sparse_precision_at_top_k` creates two local variables,
 `true_positive_at_k` and `false_positive_at_k`, that are used to compute
@@ -43,8 +46,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     in range [0, num_classes), where num_classes is the last dimension of
     `predictions`. If `class_id` is outside this range, the method returns
     NAN.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to the the first
-    [D1, ... DN] dimensions of `predictions` and `labels`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+    `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+    dimensions must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that values should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should

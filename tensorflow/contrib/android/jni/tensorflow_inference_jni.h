@@ -40,21 +40,31 @@ extern "C" {
       JNIEnv * env, jobject thiz, jstring node_name_jstring, \
       j##JAVA_DTYPE##Array arr)
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(testLoaded)(JNIEnv* env, jobject thiz);
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model);
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
     JNIEnv* env, jobject thiz, jobjectArray output_name_strings);
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(enableStatLogging)(
+    JNIEnv* env, jobject thiz, jboolean enableStatLogging);
+
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(getStatString)(JNIEnv* env,
+                                                           jobject thiz);
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz);
 
 FILL_NODE_SIGNATURE(Float, float);
 FILL_NODE_SIGNATURE(Int, int);
 FILL_NODE_SIGNATURE(Double, double);
+FILL_NODE_SIGNATURE(Byte, byte);
 
 READ_NODE_SIGNATURE(Float, float);
 READ_NODE_SIGNATURE(Int, int);
 READ_NODE_SIGNATURE(Double, double);
+READ_NODE_SIGNATURE(Byte, byte);
 
 #ifdef __cplusplus
 }  // extern "C"

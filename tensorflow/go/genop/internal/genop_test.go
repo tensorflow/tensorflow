@@ -188,7 +188,7 @@ type DecodeJpegAttr func(optionalAttr)
 //
 // value: Number of color channels for the decoded image.
 // If not specified, defaults to i:0
-func DecodeJpegChannels(value int) DecodeJpegAttr {
+func DecodeJpegChannels(value int64) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["channels"] = value
 	}

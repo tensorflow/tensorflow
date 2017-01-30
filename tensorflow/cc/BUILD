@@ -10,9 +10,13 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_gen_op_wrappers_cc",
+    "cc_library_with_android_deps",
+)
 
 cc_library(
     name = "gradients",
@@ -104,10 +108,11 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_android_deps(
     name = "ops",
     srcs = ["framework/ops.cc"],
     hdrs = ["framework/ops.h"],
+    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -117,12 +122,15 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_android_deps(
     name = "scope",
     srcs = ["framework/scope.cc"],
     hdrs = ["framework/scope.h"],
-    deps = [
+    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    common_deps = [
         ":ops",
+    ],
+    deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -143,13 +151,16 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_android_deps(
     name = "client_session",
     srcs = ["client/client_session.cc"],
     hdrs = ["client/client_session.h"],
-    deps = [
+    android_deps = ["//tensorflow/core:android_tensorflow_lib"],
+    common_deps = [
         ":ops",
         ":scope",
+    ],
+    deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -173,13 +184,18 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_android_deps(
     name = "const_op",
     srcs = ["ops/const_op.cc"],
     hdrs = ["ops/const_op.h"],
-    deps = [
+    android_deps = [
+        "//tensorflow/core:android_tensorflow_lib",
+    ],
+    common_deps = [
         ":ops",
         ":scope",
+    ],
+    deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
     ],
@@ -339,6 +355,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "sendrecv_ops",
+    include_internal_ops = 1,
     op_lib_names = [
         "sendrecv_ops",
     ],
@@ -347,6 +364,7 @@ tf_gen_op_wrappers_cc(
 
 tf_gen_op_wrappers_cc(
     name = "function_ops",
+    include_internal_ops = 1,
     op_lib_names = [
         "function_ops",
     ],
@@ -354,12 +372,15 @@ tf_gen_op_wrappers_cc(
     visibility = ["//tensorflow:internal"],
 )
 
-cc_library(
+cc_library_with_android_deps(
     name = "cc_op_gen_main",
     srcs = [
         "framework/cc_op_gen.cc",
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_main.cc",
+    ],
+    android_deps = [
+        "//tensorflow/core:android_tensorflow_lib",
     ],
     copts = tf_copts(),
     deps = [

@@ -83,12 +83,12 @@ A language binding is expected to define the following classes:
 -   `Output`: Represents one of the outputs of an operation in the graph. Has a
     `DataType` (and eventually a shape). May be passed as an input argument to a
     function for adding operations to a graph, or to a `Session`'s `Run()`
-    method to fetch that output as a tensor. Corresponds to a `TF_Port` in the C
-    API.
+    method to fetch that output as a tensor. Corresponds to a `TF_Output` in the
+    C API.
 -   `Session`: Represents a client to a particular instance of the TensorFlow
     runtime. Its main job is to be constructed with a `Graph` and some options
-    and then field calls to `Run()` the graph. Corresponds to a
-    `TF_Session` in the C API.
+    and then field calls to `Run()` the graph. Corresponds to a `TF_Session` in
+    the C API.
 -   `Tensor`: Represents an N-dimensional (rectangular) array with elements all
     the same `DataType`. Gets data into and out of a `Session`'s `Run()` call.
     Corresponds to a `TF_Tensor` in the C API.

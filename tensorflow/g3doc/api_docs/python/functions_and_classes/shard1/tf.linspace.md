@@ -3,7 +3,7 @@
 Generates values in an interval.
 
 A sequence of `num` evenly-spaced values are generated beginning at `start`.
-If `num > 1`, the values in the sequence increase by `(stop - start) / (num - 1)`,
+If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
 so that the last one is exactly `stop`.
 
 For example:

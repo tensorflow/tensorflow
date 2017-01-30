@@ -59,8 +59,7 @@ class DType(object):
   @@name
   @@base_dtype
   @@real_dtype
-  @@is_ref_dtype
-  @@as_ref
+  @@is_bool
   @@is_floating
   @@is_complex
   @@is_integer
@@ -69,7 +68,7 @@ class DType(object):
 
   @@as_numpy_dtype
   @@as_datatype_enum
-  
+
   @@limits
   """
 
@@ -97,14 +96,14 @@ class DType(object):
     self._type_enum = type_enum
 
   @property
-  def is_ref_dtype(self):
+  def _is_ref_dtype(self):
     """Returns `True` if this `DType` represents a reference type."""
     return self._type_enum > 100
 
   @property
-  def as_ref(self):
+  def _as_ref(self):
     """Returns a reference `DType` based on this `DType`."""
-    if self.is_ref_dtype:
+    if self._is_ref_dtype:
       return self
     else:
       return _INTERN_TABLE[self._type_enum + 100]
@@ -112,7 +111,7 @@ class DType(object):
   @property
   def base_dtype(self):
     """Returns a non-reference `DType` based on this `DType`."""
-    if self.is_ref_dtype:
+    if self._is_ref_dtype:
       return _INTERN_TABLE[self._type_enum - 100]
     else:
       return self
@@ -142,6 +141,11 @@ class DType(object):
   def as_datatype_enum(self):
     """Returns a `types_pb2.DataType` enum value based on this `DType`."""
     return self._type_enum
+
+  @property
+  def is_bool(self):
+    """Returns whether this is a boolean data type"""
+    return self.base_dtype == bool
 
   @property
   def is_integer(self):
@@ -269,7 +273,7 @@ class DType(object):
       return False
     try:
       dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype
+      return self._type_enum == dtype  # pylint: disable=protected-access
     except TypeError:
       return False
 
@@ -293,6 +297,8 @@ class DType(object):
 
   @property
   def size(self):
+    if self._type_enum == types_pb2.DT_RESOURCE:
+      return 1
     return np.dtype(self.as_numpy_dtype).itemsize
 
 # Define data type range of numpy dtype

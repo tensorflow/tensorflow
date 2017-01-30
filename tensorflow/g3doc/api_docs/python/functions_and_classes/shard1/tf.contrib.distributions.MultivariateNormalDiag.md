@@ -1,7 +1,7 @@
 The multivariate normal distribution on `R^k`.
 
 This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
-`diag_stdev`, representing the standard deviations.  This distribution
+`diag_stddev`, representing the standard deviations.  This distribution
 assumes the random variables, `(X_1,...,X_k)` are independent, thus no
 non-diagonal terms of the covariance matrix are needed.
 
@@ -10,7 +10,7 @@ This allows for `O(k)` pdf evaluation, sampling, and storage.
 #### Mathematical details
 
 The PDF of this distribution is defined in terms of the diagonal covariance
-determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
+determined by `diag_stddev`: `C_{ii} = diag_stddev[i]**2`.
 
 ```
 f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
@@ -26,16 +26,16 @@ Extra leading dimensions, if provided, allow for batches.
 ```python
 # Initialize a single 3-variate Gaussian with diagonal standard deviation.
 mu = [1, 2, 3.]
-diag_stdev = [4, 5, 6.]
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+diag_stddev = [4, 5, 6.]
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 dist.pdf([-1, 0, 1])
 
 # Initialize a batch of two 3-variate Gaussians.
 mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
-diag_stdev = ...  # shape 2 x 3, positive.
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+diag_stddev = ...  # shape 2 x 3, positive.
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
 # Evaluate this on a two observations, each in R^3, returning a length two
 # tensor.
@@ -44,21 +44,22 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stdev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stddev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
-User must provide means `mu` and standard deviations `diag_stdev`.
+User must provide means `mu` and standard deviations `diag_stddev`.
 Each batch member represents a random vector `(X_1,...,X_k)` of independent
 random normals.
-The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
+The mean of `X_i` is `mu[i]`, and the standard deviation is
+`diag_stddev[i]`.
 
 ##### Args:
 
 
 *  <b>`mu`</b>: Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
-*  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
+*  <b>`diag_stddev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
     representing the standard deviations.  Must be positive.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate
     input with asserts.  If `validate_args` is `False`,
@@ -72,7 +73,7 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `mu` and `diag_stdev` are different dtypes.
+*  <b>`TypeError`</b>: If `mu` and `diag_stddev` are different dtypes.
 
 
 - - -
@@ -233,9 +234,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_reparameterized` {#MultivariateNormalDiag.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiag.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiag.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -425,7 +453,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -443,7 +475,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiag.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -556,6 +596,21 @@ or
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiag.reparameterization_type` {#MultivariateNormalDiag.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiag.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalDiag.sample}
 
 Generate samples of the specified shape.
@@ -579,32 +634,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiag.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiag.sigma` {#MultivariateNormalDiag.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -619,7 +648,7 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.std(name='std')` {#MultivariateNormalDiag.std}
+#### `tf.contrib.distributions.MultivariateNormalDiag.stddev(name='stddev')` {#MultivariateNormalDiag.stddev}
 
 Standard deviation.
 
@@ -647,7 +676,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 

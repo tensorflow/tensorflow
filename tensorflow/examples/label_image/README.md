@@ -1,7 +1,10 @@
 # TensorFlow C++ Image Recognition Demo
 
 This example shows how you can load a pre-trained TensorFlow network and use it
-to recognize objects in images.
+to recognize objects in images in C++. For Java see the [Java
+README](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/java),
+and for Go see the [godoc
+example](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go#ex-package).
 
 ## Description
 
@@ -10,9 +13,9 @@ in on the command line.
 
 ## To build/install/run
 
-The TensorFlow `GraphDef` that contains the model definition and weights
-is not packaged in the repo because of its size. Instead, you must
-first download the file to the `data` directory in the source tree:
+The TensorFlow `GraphDef` that contains the model definition and weights is not
+packaged in the repo because of its size. Instead, you must first download the
+file to the `data` directory in the source tree:
 
 ```bash
 $ wget https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip -O tensorflow/examples/label_image/data/inception_dec_2015.zip
@@ -49,6 +52,7 @@ I tensorflow/examples/label_image/main.cc:207] academic gown (896): 0.0232407
 I tensorflow/examples/label_image/main.cc:207] bow tie (817): 0.0157355
 I tensorflow/examples/label_image/main.cc:207] bolo tie (940): 0.0145023
 ```
+
 In this case, we're using the default image of Admiral Grace Hopper, and you can
 see the network correctly spots she's wearing a military uniform, with a high
 score of 0.6.

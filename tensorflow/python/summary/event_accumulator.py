@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import collections
 import os.path
-import re
 import threading
 
 import numpy as np
@@ -99,18 +98,22 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
     HISTOGRAMS: 0,
 }
 
-# When files on Colossus are deleted, they are actually renamed.
-_CNS_DELETED_FILE_PATTERN = re.compile(r'\.~\d+~(/|$)')
-
 
 def IsTensorFlowEventsFile(path):
-  """Check the path name to see if it is probably a TF Events file."""
-  if 'tfevents' not in compat.as_str_any(os.path.basename(path)):
-    return False
-  if _CNS_DELETED_FILE_PATTERN.search(path):
-    logging.info('Ignoring deleted Colossus file: %s', path)
-    return False
-  return True
+  """Check the path name to see if it is probably a TF Events file.
+
+  Args:
+    path: A file path to check if it is an event file.
+
+  Raises:
+    ValueError: If the path is an empty string.
+
+  Returns:
+    If path is formatted like a TensorFlowEventsFile.
+  """
+  if not path:
+    raise ValueError('Path must be a nonempty string')
+  return 'tfevents' in compat.as_str_any(os.path.basename(path))
 
 
 class EventAccumulator(object):
@@ -671,6 +674,8 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
+  if not path:
+    raise ValueError('path must be a valid string')
   if IsTensorFlowEventsFile(path):
     return event_file_loader.EventFileLoader(path)
   else:
@@ -718,7 +723,10 @@ def _CompressHistogram(histo_ev, bps):
   # See also: Histogram::Percentile() in core/lib/histogram/histogram.cc
   histo = histo_ev.histogram_value
   if not histo.num:
-    return [CompressedHistogramValue(b, 0.0) for b in bps]
+    return CompressedHistogramEvent(
+        histo_ev.wall_time,
+        histo_ev.step,
+        [CompressedHistogramValue(b, 0.0) for b in bps])
   bucket = np.array(histo.bucket)
   weights = (bucket * bps[-1] / (bucket.sum() or 1.0)).cumsum()
   values = []

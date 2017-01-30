@@ -76,7 +76,9 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
       """Body of the resampling loop."""
       # Update the running product
       next_running_products = running_products * random_ops.random_uniform(
-          shape=array_ops.shape(running_products), seed=seed)
+          shape=array_ops.shape(running_products),
+          dtype=running_products.dtype,
+          seed=seed)
 
       # Append inputs which still pass the condition:
       indexes = array_ops.reshape(
@@ -114,7 +116,7 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
   # concatenating zero-size TensorArrays" limitation:
   def _empty_tensor_like(t):
     result = array_ops.zeros(
-        shape=(array_ops.concat(0, [[0], array_ops.shape(t)[1:]])),
+        shape=(array_ops.concat([[0], array_ops.shape(t)[1:]], 0)),
         dtype=t.dtype)
     if t.get_shape().ndims is not None:
       # preserve known shapes
@@ -128,7 +130,7 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
 
 
 def weighted_resample(inputs, weights, overall_rate, scope=None,
-                      mean_decay=0.999, warmup=10, seed=None):
+                      mean_decay=0.999, seed=None):
   """Performs an approximate weighted resampling of `inputs`.
 
   This method chooses elements from `inputs` where each item's rate of
@@ -142,9 +144,6 @@ def weighted_resample(inputs, weights, overall_rate, scope=None,
     overall_rate: Desired overall rate of resampling.
     scope: Scope to use for the op.
     mean_decay: How quickly to decay the running estimate of the mean weight.
-    warmup: Until the resulting tensor has been evaluated `warmup`
-      times, the resampling menthod uses the true mean over all calls
-      as its weight estimate, rather than a decayed mean.
     seed: Random seed.
 
   Returns:
@@ -154,30 +153,22 @@ def weighted_resample(inputs, weights, overall_rate, scope=None,
 
   """
   # Algorithm: Just compute rates as weights/mean_weight *
-  # overall_rate. This way the the average weight corresponds to the
+  # overall_rate. This way the average weight corresponds to the
   # overall rate, and a weight twice the average has twice the rate,
   # etc.
   with ops.name_scope(scope, 'weighted_resample', inputs) as opscope:
-    # First: Maintain a running estimated mean weight, with decay
-    # adjusted (by also maintaining an invocation count) during the
-    # warmup period so that at the beginning, there aren't too many
-    # zeros mixed in, throwing the average off.
+    # First: Maintain a running estimated mean weight, with zero debiasing
+    # enabled (by default) to avoid throwing the average off.
 
     with variable_scope.variable_scope(scope, 'estimate_mean', inputs):
-      count_so_far = variable_scope.get_local_variable(
-          'resample_count', initializer=0)
-
       estimated_mean = variable_scope.get_local_variable(
-          'estimated_mean', initializer=0.0)
-
-      count = count_so_far.assign_add(1)
-      real_decay = math_ops.minimum(
-          math_ops.truediv((count - 1), math_ops.minimum(count, warmup)),
-          mean_decay)
+          'estimated_mean',
+          initializer=math_ops.cast(0, weights.dtype),
+          dtype=weights.dtype)
 
       batch_mean = math_ops.reduce_mean(weights)
       mean = moving_averages.assign_moving_average(
-          estimated_mean, batch_mean, real_decay, zero_debias=False)
+          estimated_mean, batch_mean, mean_decay)
 
     # Then, normalize the weights into rates using the mean weight and
     # overall target rate:

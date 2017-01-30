@@ -143,7 +143,7 @@ class Categorical(distribution.Distribution):
     super(Categorical, self).__init__(
         dtype=dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
@@ -189,7 +189,7 @@ class Categorical(distribution.Distribution):
     samples = math_ops.cast(samples, self.dtype)
     ret = array_ops.reshape(
         array_ops.transpose(samples),
-        array_ops.concat(0, ([n], self.batch_shape())))
+        array_ops.concat(([n], self.batch_shape()), 0))
     return ret
 
   def _log_prob(self, k):
@@ -202,22 +202,15 @@ class Categorical(distribution.Distribution):
       logits_shape = array_ops.shape(logits)[:-1]
       k *= array_ops.ones(logits_shape, dtype=k.dtype)
       k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
-    return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
+    return -nn_ops.sparse_softmax_cross_entropy_with_logits(labels=k,
+                                                            logits=logits)
 
   def _prob(self, k):
     return math_ops.exp(self._log_prob(k))
 
   def _entropy(self):
-    if self.logits.get_shape().ndims == 2:
-      logits_2d = self.logits
-    else:
-      logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
-    histogram_2d = nn_ops.softmax(logits_2d)
-    ret = array_ops.reshape(
-        nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
-        self.batch_shape())
-    ret.set_shape(self.get_batch_shape())
-    return ret
+    return -math_ops.reduce_sum(
+        nn_ops.log_softmax(self.logits) * self.p, axis=-1)
 
   def _mode(self):
     ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
@@ -243,5 +236,6 @@ def _kl_categorical_categorical(a, b, name=None):
     name, "kl_categorical_categorical", [a.logits, b.logits]):
     # sum(p*ln(p/q))
     return math_ops.reduce_sum(
-        nn_ops.softmax(a.logits)*(nn_ops.log_softmax(a.logits)
-            - nn_ops.log_softmax(b.logits)), reduction_indices=[-1])
+        nn_ops.softmax(a.logits) * (
+            nn_ops.log_softmax(a.logits) - nn_ops.log_softmax(b.logits)),
+        axis=-1)

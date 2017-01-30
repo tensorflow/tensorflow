@@ -204,6 +204,13 @@ The connected output tensors of this subgraph view.
 
 Return a Python set of all the consumers of this subgraph view.
 
+A consumer of a subgraph view is a tf.Operation which is a consumer
+of one of the output tensors and is not in the subgraph.
+
+##### Returns:
+
+  A list of `tf.Operation` which are the consumers of this subgraph view.
+
 
 - - -
 

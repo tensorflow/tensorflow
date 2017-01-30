@@ -121,6 +121,7 @@ def einsum(equation, *inputs):
 
   Many common operations can be expressed in this way.  For example:
 
+  ```python
   # Matrix multiplication
   >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
 
@@ -135,6 +136,7 @@ def einsum(equation, *inputs):
 
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+  ```
 
   This function behaves like `numpy.einsum`, but does not support:
   * Ellipses (subscripts like `ij...,jk...->ik...`)
@@ -196,8 +198,8 @@ def einsum(equation, *inputs):
     input_count = sum(1 for s in input_axis_labels if a in s)
     if input_count > 2 and a not in output_axis_labels:
       logging.warn(
-        'Falling back to exponential-space implementation of einsum() because '
-        'index "%s" is summed over more than two inputs.' % a)
+          'Falling back to exponential-space implementation of einsum() because'
+          ' index "%s" is summed over more than two inputs.', a)
       return _exponential_space_einsum(equation, *inputs)
 
   temp = inputs[0]
@@ -306,11 +308,11 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       t0 = array_ops.expand_dims(t0, -1)
     for _ in broadcast_axes[0]:
       t1 = array_ops.expand_dims(t1, len(preserved_axes))
-    product = math_ops.mul(t0, t1)
+    product = math_ops.multiply(t0, t1)
     product_axes = sorted_axes[0] + sorted_axes[1][len(preserved_axes):]
     return product, ''.join(product_axes)
   else:
-    # Reduce to batch_matmul().
+    # Reduce to matmul().
 
     # Reshape both inputs so as to combine multiple broadcast axes
     # into a single axis, and combine multiple summed axes into a
@@ -331,13 +333,29 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
                                                   num_broadcast_elements_t1)
     t1 = _reshape_if_necessary(t1, new_shape)
 
-    product = math_ops.batch_matmul(t0, t1)
+    product = math_ops.matmul(t0, t1)
 
     # Undo compaction of broadcast axes
     uncompacted_shape = (
         t0_shape[:len(preserved_axes)+len(broadcast_axes[0])] +
         t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
+
+    # Check the number of None values and replace them with Tensors containing
+    # corresponding dimensions if there exist two or more None values
+    num_none_dims = sum(1 for d in uncompacted_shape if d is None)
+    if num_none_dims > 1:
+      uncompacted_shape = list(uncompacted_shape)
+      for i in xrange(len(uncompacted_shape)):
+        if uncompacted_shape[i] is None:
+          if i < len(preserved_axes) + len(broadcast_axes[0]):
+            uncompacted_shape[i] = array_ops.shape(inputs[0])[i]
+          else:
+            idx = (i - len(preserved_axes) - len(broadcast_axes[0])
+                   + len(t1_shape) - len(broadcast_axes[1]))
+            uncompacted_shape[i] = array_ops.shape(inputs[1])[idx]
+      uncompacted_shape = tuple(uncompacted_shape)
+
     product = _reshape_if_necessary(product, uncompacted_shape)
 
     product_axes = (
@@ -358,6 +376,8 @@ def _transpose_if_necessary(tensor, perm):
 
 def _reshape_if_necessary(tensor, new_shape):
   """Like reshape(), but avoids creating a new tensor if possible."""
+  # Accept None as an alias for -1 in new_shape.
+  new_shape = tuple(-1 if x is None else x for x in new_shape)
   cur_shape = tuple(x.value for x in tensor.get_shape())
   if (len(new_shape) == len(cur_shape) and
       all(d0 == d1 or d1 == -1 for d0, d1 in zip(cur_shape, new_shape))):

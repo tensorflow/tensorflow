@@ -43,8 +43,13 @@ void ConcatCPUImpl(
   }
 
   auto worker_threads = d->tensorflow_cpu_worker_threads();
-  int num_threads = static_cast<int>(std::min<int64>(
-      std::min(4, worker_threads->num_threads), output->size() / 4096));
+  int num_threads = std::min(4, worker_threads->num_threads);
+  // strings define a different amount of work (generally much more) compared
+  // with standard POD, so we parallelize differently.
+  if (!std::is_same<T, string>::value) {
+    num_threads =
+        static_cast<int>(std::min<int64>(num_threads, output->size() / 4096));
+  }
   // Single threaded mode.
   // TODO(dga):  Deduplicate this code w.r.t. sharded code below.
   if (num_threads == 0) {

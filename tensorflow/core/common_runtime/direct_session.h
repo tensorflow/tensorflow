@@ -24,13 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
-#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -147,10 +147,13 @@ class DirectSession : public Session {
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
-    ResourceMgr step_resource_manager;
+    ScopedStepContainer step_container;
 
-    RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names);
+    RunState(int64 step_id, const std::vector<Device*>* devices);
+
+    RunState(const std::vector<string>& pending_input_names,
+             const std::vector<string>& pending_output_names, int64 step_id,
+             const std::vector<Device*>* devices);
 
     ~RunState();
   };
@@ -159,7 +162,7 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
-    std::unique_ptr<DebuggerState> debugger_state;
+    std::unique_ptr<DebuggerStateInterface> debugger_state;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -211,6 +214,8 @@ class DirectSession : public Session {
   // operation_timeout_in_ms is greater than 0.
   //
   // If the timeout expires, the `cm->StartCancel()` will be called.
+  ::tensorflow::Status WaitForNotification(Notification* n,
+                                           int64 timeout_in_ms);
   void WaitForNotification(RunState* run_state, CancellationManager* cm,
                            int64 timeout_in_ms);
 
@@ -244,7 +249,9 @@ class DirectSession : public Session {
   // Holds mappings from signature to the executors that process
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
-  std::unordered_map<string, std::unique_ptr<ExecutorsAndKeys>> executors_
+  // The map value is a shared_ptr since multiple map keys can point to the
+  // same ExecutorsAndKey object.
+  std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
       GUARDED_BY(executor_lock_);
 
   // Holds mappings from handle to partial run state.

@@ -28,8 +28,13 @@ can have speed penalty, specially in distributed settings.
     `batch_size`. The normalization is over all but the last dimension if
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
-*  <b>`decay`</b>: decay for the moving average.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+    to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
+    Lower `decay` value (recommend trying `decay`=0.9) if model experiences
+    reasonably good training performance but poor validation and/or test
+    performance. Try zero_debias_moving_mean=True for improved stability.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
@@ -60,6 +65,8 @@ can have speed penalty, specially in distributed settings.
     example selection.)
 *  <b>`fused`</b>: Use nn.fused_batch_norm if True, nn.batch_normalization otherwise.
 *  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
+*  <b>`zero_debias_moving_mean`</b>: Use zero_debias for moving_mean. It creates a new
+    pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -71,7 +78,6 @@ can have speed penalty, specially in distributed settings.
 
 *  <b>`ValueError`</b>: if `batch_weights` is not None and `fused` is True.
 *  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
-*  <b>`ValueError`</b>: if `data_format` is `NCHW` while `fused` is False.
 *  <b>`ValueError`</b>: if the rank of `inputs` is undefined.
-*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: if rank or channels dimension of `inputs` is undefined.
 

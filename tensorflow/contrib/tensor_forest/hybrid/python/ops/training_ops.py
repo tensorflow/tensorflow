@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -40,20 +39,6 @@ ops.NotDifferentiable('KFeatureDataGradient')
 ops.NotDifferentiable('KFeatureRoutingGradient')
 ops.NotDifferentiable('KFeatureWeightGradient')
 ops.NotDifferentiable('UnpackPath')
-
-
-ops.RegisterShape('RoutingFunction')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('KFeatureRoutingFunction')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('HardRoutingFunction')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('StochasticHardRoutingFunction')(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('StochasticHardRoutingGradient')(
-    common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('UnpackPath')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('RoutingGradient')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('KFeatureDataGradient')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('KFeatureRoutingGradient')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('KFeatureWeightGradient')(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient('RoutingFunction')

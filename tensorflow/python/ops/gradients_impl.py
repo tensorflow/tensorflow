@@ -212,7 +212,8 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     A list of gradients to use, without None.
 
   Raises:
-    ValueError: If one of the grad_ys is invalid.
+    ValueError: If sizes of gradients and inputs don't match
+    TypeError: If type of any gradient is not valid for its input.
   """
   if len(grad_ys) != len(ys):
     raise ValueError("Passed %d grad_ys for %d ys" % (len(grad_ys), len(ys)))
@@ -221,16 +222,32 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     grad_y = grad_ys[i]
     y = ys[i]
     if grad_y is None:
+      if y.dtype.is_complex:
+        raise TypeError(
+            "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
+            y.dtype)
       with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y), constant_op.constant(
                 1, dtype=y.dtype))
+      continue
+    if y.dtype.is_floating or y.dtype.is_integer:
+      if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
+        raise TypeError("Gradient type %s generated for real or "
+                         "integer-valued tensor %s with type %s must be "
+                         "real or integer" %
+                         (dtypes.as_dtype(grad_y.dtype).name, y,
+                          dtypes.as_dtype(y.dtype).name))
+    elif y.dtype.is_complex:
+      if not grad_y.dtype.is_complex:
+        raise TypeError("Gradient type %s generated for complex-valued "
+                         "tensor %s with type %s must be real" %
+                         (dtypes.as_dtype(grad_y.dtype).name, y,
+                          dtypes.as_dtype(y.dtype).name))
     else:
-      if grad_y.dtype != y.dtype:
-        raise ValueError("Y and ys_grad must be of the same type, "
-                         "not y: %s, ys_grad: %s " %
-                         (dtypes.as_dtype(y.dtype).name,
-                          dtypes.as_dtype(grad_y.dtype).name))
+      raise TypeError("Tensor %s with type %s must be numeric "
+                      "to obtain a default gradient" %
+                      (y, dtypes.as_dtype(y.dtype).name))
   return grad_ys
 
 
@@ -248,18 +265,32 @@ def _VerifyGeneratedGradients(grads, op):
     op: Operation for which the gradients where generated.
 
   Raises:
-    ValueError: if the gradients are invalid.
+    ValueError: if sizes of gradients and inputs don't match.
+    TypeError: if type of any gradient is not valid for its input.
   """
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-  for i in xrange(len(grads)):
-    grad = grads[i]
-    inp = op.inputs[i]
-    if grad is not None:
-      if not grad.dtype.is_compatible_with(inp.dtype):
-        raise ValueError("Gradient type %s generated for op %s does "
-                         "not match input type %s" %
+    for i in xrange(len(grads)):
+      grad = grads[i]
+      inp = op.inputs[i]
+      if grad is None:
+        continue
+      if grad.dtype.is_floating:
+        if not inp.dtype.is_floating:
+          raise TypeError("Gradient type %s generated for real-valued op %s "
+                           "with type %s must be real" %
+                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                            dtypes.as_dtype(inp.dtype).name))
+      elif grad.dtype.is_complex:
+        if not inp.dtype.is_complex:
+          raise TypeError("Gradient type %s generated for complex-valued op %s"
+                           " with type %s must be complex" %
+                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                            dtypes.as_dtype(inp.dtype).name))
+      else:
+        raise TypeError("Gradient type %s generated for op %s "
+                         "with type %s must be either real or complex" %
                          (dtypes.as_dtype(grad.dtype).name, op.node_def,
                           dtypes.as_dtype(inp.dtype).name))
 
@@ -770,11 +801,12 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         # Form IndexedSlices out of the concatenated values and
         # indices.
         out_grads[i] = ops.IndexedSlices(
-            array_ops.concat(0, [x.values for x in out_grad]),
-            array_ops.concat(0, [x.indices for x in out_grad]),
+            array_ops.concat([x.values for x in out_grad], 0),
+            array_ops.concat([x.indices for x in out_grad], 0),
             out_grad[0].dense_shape)
-    else:
-      out_grads[i] = []
+    else:  # not out_grad
+      # out_grads[i] is [], thus its aggregation is simply None.
+      out_grads[i] = None
   return out_grads
 
 
@@ -823,7 +855,7 @@ def _hessian_vector_product(ys, xs, v):
 
   assert len(grads) == length
   elemwise_products = [
-      math_ops.mul(grad_elem, array_ops.stop_gradient(v_elem))
+      math_ops.multiply(grad_elem, array_ops.stop_gradient(v_elem))
       for grad_elem, v_elem in zip(grads, v) if grad_elem is not None
   ]
 
@@ -886,10 +918,10 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       _gradients = gradients(ys, x, **kwargs)[0]
       # Unpack the gradients into a list so we can take derivatives with
       # respect to each element
-      _gradients = array_ops.unpack(_gradients)
+      _gradients = array_ops.unstack(_gradients)
     with ops.name_scope(name + '_second_derivative'):
       # Compute the partial derivatives with respect to each element of the list
       _hess = [gradients(_gradient, x, **kwargs)[0] for _gradient in _gradients]
       # Pack the list into a matrix and add to the list of hessians
-      hessians.append(array_ops.pack(_hess, name=name))
+      hessians.append(array_ops.stack(_hess, name=name))
   return hessians

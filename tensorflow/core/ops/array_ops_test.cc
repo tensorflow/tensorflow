@@ -331,6 +331,7 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
     INFER_OK(op, "?;[3,2]", "[?,?,?]");
+    INFER_OK(op, "?;?", "[?,?,?]");
   }
 }
 
@@ -364,6 +365,18 @@ TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
 
   INFER_OK(op, "[111,222,333];[3,2]", "[100,200,300]");
   INFER_OK(op, "[111,?,333];[3,2]", "[100,?,300]");
+}
+
+TEST(ArrayOpsTest, BroadcastArgs_ShapeFn) {
+  ShapeInferenceTestOp op("BroadcastArgs");
+  INFER_OK(op, "?;?", "[?]");
+  INFER_OK(op, "[123];[1]", "[123]");
+  INFER_OK(op, "[1];[123]", "[123]");
+  INFER_OK(op, "[123];[121]", "[123]");
+
+  // Rank checks
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
 }
 
 TEST(ArrayOpsTest, BroadcastGradientArgs_ShapeFn) {
@@ -556,24 +569,32 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(2);
 
   // Sum dim 0, merge the other two dims.
-  concat_dim_t = test::AsScalar(0);
-  INFER_OK(op, "[];[100,2,?];[10,?,3]", "[110,d1_1,d2_2]");
-  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
-              "[];[100,2,5];[10,?,3]");
-  // concat_dim can't be summed, as one value is unknown.
-  INFER_OK(op, "[];[100,2,?];[?,?,3]", "[?,d1_1,d2_2]");
-  INFER_OK(op, "[];[?,2,?];[10,?,3]", "[?,d1_1,d2_2]");
+  for (int concat_dim : {0, -3}) {
+    concat_dim_t = test::AsScalar(concat_dim);
+    INFER_OK(op, "[];[100,2,?];[10,?,3]", "[110,d1_1,d2_2]");
+    INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
+                "[];[100,2,5];[10,?,3]");
+    // concat_dim can't be summed, as one value is unknown.
+    INFER_OK(op, "[];[100,2,?];[?,?,3]", "[?,d1_1,d2_2]");
+    INFER_OK(op, "[];[?,2,?];[10,?,3]", "[?,d1_1,d2_2]");
+  }
 
   // Test with a higher concat_dim.
-  concat_dim_t = test::AsScalar(1);
-  INFER_OK(op, "[];[1,100,?];[?,10,3]", "[d1_0,110,d2_2]");
-  INFER_OK(op, "[];[1,100];[?,10]", "[d1_0,110]");
-  INFER_OK(op, "[];[?,100];[1,10]", "[d2_0,110]");
-  // concat_dim is too high.
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-              "[];[100];[10,?]");
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-              "[];[100,5];[10]");
+  for (bool use_negative : {false, true}) {
+    concat_dim_t = test::AsScalar(use_negative ? -2 : 1);
+    INFER_OK(op, "[];[1,100,?];[?,10,3]", "[d1_0,110,d2_2]");
+    concat_dim_t = test::AsScalar(use_negative ? -1 : 1);
+    INFER_OK(op, "[];[1,100];[?,10]", "[d1_0,110]");
+    INFER_OK(op, "[];[?,100];[1,10]", "[d2_0,110]");
+
+    // concat_dim is out of bounds.
+    concat_dim_t = test::AsScalar(use_negative ? -2 : 1);
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[];[100];[10,?]");
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[];[100,5];[10]");
+  }
+
   // concat_dim is too low.
   concat_dim_t = test::AsScalar(-2);
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
@@ -1044,14 +1065,17 @@ TEST(ArrayOpsTest, Tile_ShapeFn) {
                    .Input("multiples", 1, DT_INT32)
                    .Finalize(&op.node_def));
 
-  // If multiples rank is unknown, output is unknown.
-  INFER_OK(op, "[2,3,1,4];?", "?");
+  // If both are unknown, output is unknown.
+  INFER_OK(op, "?;?", "?");
+
+  // If multiples rank is unknown but input is, output rank is known.
+  INFER_OK(op, "[2,3,1,4];?", "[?,?,?,?]");
 
   // Bad rank for 'multiples'
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[2,3,1,4];[4,1]");
 
-  // No multiples tensor available, but output rank is known.
-  INFER_OK(op, "[2,3,1,4];[4]", "[?,?,?,?]");
+  // No multiples tensor available, but output rank is known from multiples.
+  INFER_OK(op, "?;[4]", "[?,?,?,?]");
 
   // Test a tile of a 4D input.
   Tensor multiples = test::AsTensor<int32>({2, 3, 4, 5});
@@ -1472,17 +1496,9 @@ TEST(ArrayOpsTest, Slice_ShapeFn) {
   sizes = test::AsTensor<int32>({-1, -1, 1, -1});
   INFER_OK(op, "[2,3,4,5];[4];[4]", "[d0_0,2,1,4]");
 
-  // sizes too large on one dimension
-  sizes = test::AsTensor<int32>({1, 2, 1, 5});
-  INFER_ERROR("Out of bounds slicing", op, "[2,3,4,5];[4];[4]");
-
   begin = test::AsTensor<int32>({0, 1, 2, 6});
   sizes = test::AsTensor<int32>({-1, -1, -1, -1});
   INFER_ERROR("Negative dimension size", op, "[2,3,4,5];[4];[4]");
-
-  begin = test::AsTensor<int32>({0, 1, 2, 6});
-  sizes = test::AsTensor<int32>({-1, -1, -1, 0});
-  INFER_ERROR("cannot start after end", op, "[2,3,4,5];[4];[4]");
 
   begin = test::AsTensor<int32>({0, 1, 2, 5});
   sizes = test::AsTensor<int32>({-1, -1, -1, -2});
@@ -1550,6 +1566,52 @@ TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient) {
   // Vectors must match each other, and match last dim of input.
   INFER_ERROR("must be equal", op, "[1,3];[1,3];[2];[3]");
   INFER_ERROR("must be equal", op, "[1,3];[1,3];[3];[2]");
+}
+
+TEST(ArrayOpsTest, QuantizedConcat_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizedConcat");
+  auto set_n = [&op](int n) {
+    std::vector<NodeDefBuilder::NodeOut> src_list;
+    std::vector<NodeDefBuilder::NodeOut> limit_list;
+    for (int i = 0; i < n; ++i) {
+      src_list.emplace_back("a", 0, DT_QUINT8);
+      limit_list.emplace_back("b", 0, DT_FLOAT);
+    }
+    TF_ASSERT_OK(NodeDefBuilder("test", "QuantizedConcat")
+                     .Input({"concat_dim", 0, DT_INT32})
+                     .Input(src_list)
+                     .Input(limit_list)
+                     .Input(limit_list)
+                     .Attr("N", n)
+                     .Finalize(&op.node_def));
+  };
+
+  // Confirm dimension[0] of the input (the concat_dim) is a scalar.
+  set_n(1);
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];?;?;?");
+
+  // Last 2*<N> are all scalars.
+  set_n(2);
+  INFER_ERROR("must be rank 0", op, "[];?;?;?;?;?;[1]");
+  INFER_ERROR("must be rank 0", op, "[];?;?;?;?;[1];?");
+  INFER_ERROR("must be rank 0", op, "[];?;?;?;[1];?;?");
+  INFER_ERROR("must be rank 0", op, "[];?;?;[1];?;?;?");
+
+  // First is concat dim; next N must be compatible for concat.
+  set_n(2);
+  INFER_ERROR("must be rank 2", op, "[];[1,2];[1,2,3];?;?;?;?");
+  INFER_OK(op, "[];[1,2];[1,3];?;?;?;?", "[?,?];[];[]");
+
+  // Test when the concat_dim tensor is known. The concatenated dimension is
+  // summed across all input tensors, and other dimensions are merged.
+  Tensor concat_dim_t;
+  op.input_tensors.push_back(&concat_dim_t);
+  set_n(2);
+  concat_dim_t = test::AsScalar(0);  // Sum dim 0, merge the other two dims.
+  INFER_OK(op, "[];[100,2,?];[10,?,3];?;?;?;?", "[110,d1_1,d2_2];[];[]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
+              "[];[100,2,5];[10,?,3];?;?;?;?");
+  // Note that other cases of concat are covered in the Concat tests.
 }
 
 }  // end namespace tensorflow

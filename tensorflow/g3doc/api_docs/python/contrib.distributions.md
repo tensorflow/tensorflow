@@ -1,6 +1,6 @@
 <!-- This file is machine generated: DO NOT EDIT! -->
 
-# Statistical distributions (contrib)
+# Statistical Distributions (contrib)
 [TOC]
 
 Classes representing statistical distributions and ops for working with them.
@@ -11,6 +11,58 @@ Classes that represent batches of statistical distributions.  Each class is
 initialized with parameters that define the distributions.
 
 ## Base classes
+
+- - -
+
+### `class tf.contrib.distributions.ReparameterizationType` {#ReparameterizationType}
+
+Instances of this class represent how sampling is reparameterized.
+
+Two static instances exist in the distritributions library, signifying
+one of two possible properties for samples from a distribution:
+
+`FULLY_REPARAMETERIZED`: Samples from the distribution are fully
+  reparameterized, and straight-through gradients are supported.
+
+`NOT_REPARAMETERIZED`: Samples from the distribution are not fully
+  reparameterized, and straight-through gradients are either partially
+  unsupported or are not supported at all.  In this case, for purposes of
+  e.g. RL or variational inference, it is generally safest to wrap the
+  sample results in a `stop_gradients` call and instead use policy
+  gradients / surrogate loss instead.
+- - -
+
+#### `tf.contrib.distributions.ReparameterizationType.__eq__(other)` {#ReparameterizationType.__eq__}
+
+Determine if this `ReparameterizationType` is equal to another.
+
+Since RepaparameterizationType instances are constant static global
+instances, equality checks if two instances' id() values are equal.
+
+##### Args:
+
+
+*  <b>`other`</b>: Object to compare against.
+
+##### Returns:
+
+  `self is other`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ReparameterizationType.__init__(rep_type)` {#ReparameterizationType.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ReparameterizationType.__repr__()` {#ReparameterizationType.__repr__}
+
+
+
+
 
 - - -
 
@@ -130,7 +182,7 @@ dist.mean().eval()
 ```
 - - -
 
-#### `tf.contrib.distributions.Distribution.__init__(dtype, is_continuous, is_reparameterized, validate_args, allow_nan_stats, parameters=None, graph_parents=None, name=None)` {#Distribution.__init__}
+#### `tf.contrib.distributions.Distribution.__init__(dtype, is_continuous, reparameterization_type, validate_args, allow_nan_stats, parameters=None, graph_parents=None, name=None)` {#Distribution.__init__}
 
 Constructs the `Distribution`.
 
@@ -142,10 +194,12 @@ Constructs the `Distribution`.
 *  <b>`dtype`</b>: The type of the event samples. `None` implies no type-enforcement.
 *  <b>`is_continuous`</b>: Python boolean. If `True` this
     `Distribution` is continuous over its supported domain.
-*  <b>`is_reparameterized`</b>: Python boolean. If `True` this
+*  <b>`reparameterization_type`</b>: Instance of `ReparameterizationType`.
+    If `distributions.FULLY_REPARAMETERIZED`, this
     `Distribution` can be reparameterized in terms of some standard
     distribution with a function whose Jacobian is constant for the support
-    of the standard distribution.
+    of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+    then no such reparameterization is available.
 *  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
@@ -322,9 +376,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.is_reparameterized` {#Distribution.is_reparameterized}
+#### `tf.contrib.distributions.Distribution.is_scalar_batch(name='is_scalar_batch')` {#Distribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.is_scalar_event(name='is_scalar_event')` {#Distribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -484,7 +565,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -502,7 +587,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Distribution.param_static_shapes(cls, sample_shape)` {#Distribution.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -599,6 +692,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Distribution.reparameterization_type` {#Distribution.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Distribution.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Distribution.sample}
 
 Generate samples of the specified shape.
@@ -622,33 +730,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Distribution.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.std(name='std')` {#Distribution.std}
+#### `tf.contrib.distributions.Distribution.stddev(name='stddev')` {#Distribution.stddev}
 
 Standard deviation.
 
@@ -676,7 +758,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -954,9 +1036,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.is_reparameterized` {#Binomial.is_reparameterized}
+#### `tf.contrib.distributions.Binomial.is_scalar_batch(name='is_scalar_batch')` {#Binomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_scalar_event(name='is_scalar_event')` {#Binomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -1156,7 +1265,11 @@ Probability of success.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -1174,7 +1287,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Binomial.param_static_shapes(cls, sample_shape)` {#Binomial.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -1284,6 +1405,21 @@ values.
 
 - - -
 
+#### `tf.contrib.distributions.Binomial.reparameterization_type` {#Binomial.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Binomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Binomial.sample}
 
 Generate samples of the specified shape.
@@ -1307,33 +1443,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Binomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.std(name='std')` {#Binomial.std}
+#### `tf.contrib.distributions.Binomial.stddev(name='stddev')` {#Binomial.stddev}
 
 Standard deviation.
 
@@ -1361,7 +1471,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -1579,9 +1689,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.is_reparameterized` {#Bernoulli.is_reparameterized}
+#### `tf.contrib.distributions.Bernoulli.is_scalar_batch(name='is_scalar_batch')` {#Bernoulli.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.is_scalar_event(name='is_scalar_event')` {#Bernoulli.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -1759,7 +1896,11 @@ Probability of success.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -1777,7 +1918,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Bernoulli.param_static_shapes(cls, sample_shape)` {#Bernoulli.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -1881,6 +2030,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.reparameterization_type` {#Bernoulli.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Bernoulli.sample}
 
 Generate samples of the specified shape.
@@ -1904,33 +2068,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Bernoulli.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Bernoulli.std(name='std')` {#Bernoulli.std}
+#### `tf.contrib.distributions.Bernoulli.stddev(name='stddev')` {#Bernoulli.stddev}
 
 Standard deviation.
 
@@ -1958,7 +2096,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -2147,9 +2285,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_reparameterized` {#BernoulliWithSigmoidP.is_reparameterized}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch(name='is_scalar_batch')` {#BernoulliWithSigmoidP.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event(name='is_scalar_event')` {#BernoulliWithSigmoidP.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -2327,7 +2492,11 @@ Probability of success.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -2345,7 +2514,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.param_static_shapes(cls, sample_shape)` {#BernoulliWithSigmoidP.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -2449,6 +2626,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.reparameterization_type` {#BernoulliWithSigmoidP.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#BernoulliWithSigmoidP.sample}
 
 Generate samples of the specified shape.
@@ -2472,33 +2664,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#BernoulliWithSigmoidP.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.std(name='std')` {#BernoulliWithSigmoidP.std}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.stddev(name='stddev')` {#BernoulliWithSigmoidP.stddev}
 
 Standard deviation.
 
@@ -2526,7 +2692,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -2825,9 +2991,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.is_reparameterized` {#Beta.is_reparameterized}
+#### `tf.contrib.distributions.Beta.is_scalar_batch(name='is_scalar_batch')` {#Beta.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_scalar_event(name='is_scalar_event')` {#Beta.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -3002,7 +3195,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -3020,7 +3217,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Beta.param_static_shapes(cls, sample_shape)` {#Beta.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -3125,6 +3330,21 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
+#### `tf.contrib.distributions.Beta.reparameterization_type` {#Beta.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Beta.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Beta.sample}
 
 Generate samples of the specified shape.
@@ -3148,33 +3368,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Beta.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.std(name='std')` {#Beta.std}
+#### `tf.contrib.distributions.Beta.stddev(name='stddev')` {#Beta.stddev}
 
 Standard deviation.
 
@@ -3202,7 +3396,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -3412,9 +3606,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_reparameterized` {#BetaWithSoftplusAB.is_reparameterized}
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusAB.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusAB.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -3589,7 +3810,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -3607,7 +3832,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.BetaWithSoftplusAB.param_static_shapes(cls, sample_shape)` {#BetaWithSoftplusAB.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -3712,6 +3945,21 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
+#### `tf.contrib.distributions.BetaWithSoftplusAB.reparameterization_type` {#BetaWithSoftplusAB.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.BetaWithSoftplusAB.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#BetaWithSoftplusAB.sample}
 
 Generate samples of the specified shape.
@@ -3735,33 +3983,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#BetaWithSoftplusAB.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.std(name='std')` {#BetaWithSoftplusAB.std}
+#### `tf.contrib.distributions.BetaWithSoftplusAB.stddev(name='stddev')` {#BetaWithSoftplusAB.stddev}
 
 Standard deviation.
 
@@ -3789,7 +4011,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -4038,9 +4260,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.is_reparameterized` {#Categorical.is_reparameterized}
+#### `tf.contrib.distributions.Categorical.is_scalar_batch(name='is_scalar_batch')` {#Categorical.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_scalar_event(name='is_scalar_event')` {#Categorical.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -4223,7 +4472,11 @@ Each element is the probability of drawing that coordinate.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -4241,7 +4494,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Categorical.param_static_shapes(cls, sample_shape)` {#Categorical.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -4338,6 +4599,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.reparameterization_type` {#Categorical.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Categorical.sample}
 
 Generate samples of the specified shape.
@@ -4361,33 +4637,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Categorical.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.std(name='std')` {#Categorical.std}
+#### `tf.contrib.distributions.Categorical.stddev(name='stddev')` {#Categorical.stddev}
 
 Standard deviation.
 
@@ -4415,7 +4665,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -4658,9 +4908,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.is_reparameterized` {#Chi2.is_reparameterized}
+#### `tf.contrib.distributions.Chi2.is_scalar_batch(name='is_scalar_batch')` {#Chi2.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.is_scalar_event(name='is_scalar_event')` {#Chi2.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -4826,7 +5103,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -4844,7 +5125,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Chi2.param_static_shapes(cls, sample_shape)` {#Chi2.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -4941,6 +5230,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.reparameterization_type` {#Chi2.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Chi2.sample}
 
 Generate samples of the specified shape.
@@ -4964,38 +5268,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Chi2.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
+#### `tf.contrib.distributions.Chi2.stddev(name='stddev')` {#Chi2.stddev}
 
 Standard deviation.
 
@@ -5023,7 +5296,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -5244,9 +5517,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.is_reparameterized` {#Chi2WithAbsDf.is_reparameterized}
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_batch(name='is_scalar_batch')` {#Chi2WithAbsDf.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.is_scalar_event(name='is_scalar_event')` {#Chi2WithAbsDf.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -5412,7 +5712,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -5430,7 +5734,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Chi2WithAbsDf.param_static_shapes(cls, sample_shape)` {#Chi2WithAbsDf.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -5527,6 +5839,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Chi2WithAbsDf.reparameterization_type` {#Chi2WithAbsDf.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2WithAbsDf.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Chi2WithAbsDf.sample}
 
 Generate samples of the specified shape.
@@ -5550,38 +5877,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Chi2WithAbsDf.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2WithAbsDf.std(name='std')` {#Chi2WithAbsDf.std}
+#### `tf.contrib.distributions.Chi2WithAbsDf.stddev(name='stddev')` {#Chi2WithAbsDf.stddev}
 
 Standard deviation.
 
@@ -5609,7 +5905,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -5845,9 +6141,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
+#### `tf.contrib.distributions.Exponential.is_scalar_batch(name='is_scalar_batch')` {#Exponential.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.is_scalar_event(name='is_scalar_event')` {#Exponential.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -6020,7 +6343,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -6038,7 +6365,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Exponential.param_static_shapes(cls, sample_shape)` {#Exponential.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -6135,6 +6470,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.reparameterization_type` {#Exponential.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Exponential.sample}
 
 Generate samples of the specified shape.
@@ -6158,38 +6508,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Exponential.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.std(name='std')` {#Exponential.std}
+#### `tf.contrib.distributions.Exponential.stddev(name='stddev')` {#Exponential.stddev}
 
 Standard deviation.
 
@@ -6217,7 +6536,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -6431,9 +6750,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_reparameterized` {#ExponentialWithSoftplusLam.is_reparameterized}
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusLam.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusLam.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -6606,7 +6952,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -6624,7 +6974,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_static_shapes(cls, sample_shape)` {#ExponentialWithSoftplusLam.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -6721,6 +7079,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.reparameterization_type` {#ExponentialWithSoftplusLam.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#ExponentialWithSoftplusLam.sample}
 
 Generate samples of the specified shape.
@@ -6744,38 +7117,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#ExponentialWithSoftplusLam.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.std(name='std')` {#ExponentialWithSoftplusLam.std}
+#### `tf.contrib.distributions.ExponentialWithSoftplusLam.stddev(name='stddev')` {#ExponentialWithSoftplusLam.stddev}
 
 Standard deviation.
 
@@ -6803,7 +7145,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -7066,9 +7408,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
+#### `tf.contrib.distributions.Gamma.is_scalar_batch(name='is_scalar_batch')` {#Gamma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.is_scalar_event(name='is_scalar_event')` {#Gamma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -7234,7 +7603,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -7252,7 +7625,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Gamma.param_static_shapes(cls, sample_shape)` {#Gamma.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -7349,6 +7730,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.reparameterization_type` {#Gamma.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Gamma.sample}
 
 Generate samples of the specified shape.
@@ -7372,38 +7768,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Gamma.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Gamma.std(name='std')` {#Gamma.std}
+#### `tf.contrib.distributions.Gamma.stddev(name='stddev')` {#Gamma.stddev}
 
 Standard deviation.
 
@@ -7431,7 +7796,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -7645,9 +8010,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_reparameterized` {#GammaWithSoftplusAlphaBeta.is_reparameterized}
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#GammaWithSoftplusAlphaBeta.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#GammaWithSoftplusAlphaBeta.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -7813,7 +8205,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -7831,7 +8227,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.param_static_shapes(cls, sample_shape)` {#GammaWithSoftplusAlphaBeta.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -7928,6 +8332,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.reparameterization_type` {#GammaWithSoftplusAlphaBeta.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#GammaWithSoftplusAlphaBeta.sample}
 
 Generate samples of the specified shape.
@@ -7951,38 +8370,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#GammaWithSoftplusAlphaBeta.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `Gamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.std(name='std')` {#GammaWithSoftplusAlphaBeta.std}
+#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.stddev(name='stddev')` {#GammaWithSoftplusAlphaBeta.stddev}
 
 Standard deviation.
 
@@ -8010,7 +8398,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -8269,9 +8657,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.is_reparameterized` {#InverseGamma.is_reparameterized}
+#### `tf.contrib.distributions.InverseGamma.is_scalar_batch(name='is_scalar_batch')` {#InverseGamma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.is_scalar_event(name='is_scalar_event')` {#InverseGamma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -8441,7 +8856,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -8459,7 +8878,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.InverseGamma.param_static_shapes(cls, sample_shape)` {#InverseGamma.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -8556,6 +8983,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.InverseGamma.reparameterization_type` {#InverseGamma.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.InverseGamma.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#InverseGamma.sample}
 
 Generate samples of the specified shape.
@@ -8579,38 +9021,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#InverseGamma.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `InverseGamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGamma.std(name='std')` {#InverseGamma.std}
+#### `tf.contrib.distributions.InverseGamma.stddev(name='stddev')` {#InverseGamma.stddev}
 
 Standard deviation.
 
@@ -8638,7 +9049,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -8858,9 +9269,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_reparameterized` {#InverseGammaWithSoftplusAlphaBeta.is_reparameterized}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -9030,7 +9468,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -9048,7 +9490,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.param_static_shapes(cls, sample_shape)` {#InverseGammaWithSoftplusAlphaBeta.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -9145,6 +9595,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.reparameterization_type` {#InverseGammaWithSoftplusAlphaBeta.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#InverseGammaWithSoftplusAlphaBeta.sample}
 
 Generate samples of the specified shape.
@@ -9168,38 +9633,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#InverseGammaWithSoftplusAlphaBeta.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `InverseGamma`:
-
-See the documentation for tf.random_gamma for more details.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.std(name='std')` {#InverseGammaWithSoftplusAlphaBeta.std}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.stddev(name='stddev')` {#InverseGammaWithSoftplusAlphaBeta.stddev}
 
 Standard deviation.
 
@@ -9227,7 +9661,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -9455,9 +9889,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.is_reparameterized` {#Laplace.is_reparameterized}
+#### `tf.contrib.distributions.Laplace.is_scalar_batch(name='is_scalar_batch')` {#Laplace.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.is_scalar_event(name='is_scalar_event')` {#Laplace.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -9624,7 +10085,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -9642,7 +10107,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Laplace.param_static_shapes(cls, sample_shape)` {#Laplace.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -9739,6 +10212,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Laplace.reparameterization_type` {#Laplace.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Laplace.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Laplace.sample}
 
 Generate samples of the specified shape.
@@ -9762,32 +10250,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Laplace.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Laplace.scale` {#Laplace.scale}
 
 Distribution parameter for scale.
@@ -9795,7 +10257,7 @@ Distribution parameter for scale.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.std(name='std')` {#Laplace.std}
+#### `tf.contrib.distributions.Laplace.stddev(name='stddev')` {#Laplace.stddev}
 
 Standard deviation.
 
@@ -9823,7 +10285,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -10012,9 +10474,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_reparameterized` {#LaplaceWithSoftplusScale.is_reparameterized}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#LaplaceWithSoftplusScale.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.is_scalar_event(name='is_scalar_event')` {#LaplaceWithSoftplusScale.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -10181,7 +10670,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -10199,7 +10692,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.param_static_shapes(cls, sample_shape)` {#LaplaceWithSoftplusScale.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -10296,6 +10797,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.reparameterization_type` {#LaplaceWithSoftplusScale.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#LaplaceWithSoftplusScale.sample}
 
 Generate samples of the specified shape.
@@ -10319,32 +10835,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#LaplaceWithSoftplusScale.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.scale` {#LaplaceWithSoftplusScale.scale}
 
 Distribution parameter for scale.
@@ -10352,7 +10842,7 @@ Distribution parameter for scale.
 
 - - -
 
-#### `tf.contrib.distributions.LaplaceWithSoftplusScale.std(name='std')` {#LaplaceWithSoftplusScale.std}
+#### `tf.contrib.distributions.LaplaceWithSoftplusScale.stddev(name='stddev')` {#LaplaceWithSoftplusScale.stddev}
 
 Standard deviation.
 
@@ -10380,7 +10870,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -10633,9 +11123,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.is_reparameterized` {#Normal.is_reparameterized}
+#### `tf.contrib.distributions.Normal.is_scalar_batch(name='is_scalar_batch')` {#Normal.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.is_scalar_event(name='is_scalar_event')` {#Normal.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -10802,7 +11319,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -10820,7 +11341,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Normal.param_static_shapes(cls, sample_shape)` {#Normal.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -10917,6 +11446,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Normal.reparameterization_type` {#Normal.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Normal.sample}
 
 Generate samples of the specified shape.
@@ -10940,32 +11484,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Normal.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
 
 Distribution parameter for standard deviation.
@@ -10973,7 +11491,7 @@ Distribution parameter for standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.std(name='std')` {#Normal.std}
+#### `tf.contrib.distributions.Normal.stddev(name='stddev')` {#Normal.stddev}
 
 Standard deviation.
 
@@ -11001,7 +11519,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -11190,9 +11708,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_reparameterized` {#NormalWithSoftplusSigma.is_reparameterized}
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#NormalWithSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#NormalWithSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -11359,7 +11904,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -11377,7 +11926,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.param_static_shapes(cls, sample_shape)` {#NormalWithSoftplusSigma.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -11474,6 +12031,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.reparameterization_type` {#NormalWithSoftplusSigma.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#NormalWithSoftplusSigma.sample}
 
 Generate samples of the specified shape.
@@ -11497,32 +12069,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#NormalWithSoftplusSigma.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.NormalWithSoftplusSigma.sigma` {#NormalWithSoftplusSigma.sigma}
 
 Distribution parameter for standard deviation.
@@ -11530,7 +12076,7 @@ Distribution parameter for standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.std(name='std')` {#NormalWithSoftplusSigma.std}
+#### `tf.contrib.distributions.NormalWithSoftplusSigma.stddev(name='stddev')` {#NormalWithSoftplusSigma.stddev}
 
 Standard deviation.
 
@@ -11558,7 +12104,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -11771,9 +12317,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.is_reparameterized` {#Poisson.is_reparameterized}
+#### `tf.contrib.distributions.Poisson.is_scalar_batch(name='is_scalar_batch')` {#Poisson.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.is_scalar_event(name='is_scalar_event')` {#Poisson.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -11953,7 +12526,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -11971,7 +12548,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Poisson.param_static_shapes(cls, sample_shape)` {#Poisson.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -12075,6 +12660,21 @@ legal if it is non-negative and its components are equal to integer values.
 
 - - -
 
+#### `tf.contrib.distributions.Poisson.reparameterization_type` {#Poisson.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Poisson.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Poisson.sample}
 
 Generate samples of the specified shape.
@@ -12098,33 +12698,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Poisson.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Poisson.std(name='std')` {#Poisson.std}
+#### `tf.contrib.distributions.Poisson.stddev(name='stddev')` {#Poisson.stddev}
 
 Standard deviation.
 
@@ -12152,7 +12726,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -12179,9 +12753,19 @@ Student's t distribution with degree-of-freedom parameter df.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+Write `sigma` for the scale and `mu` for the mean (both are scalars). The PDF
+of this distribution is:
 
-`f(t) = gamma((df+1)/2)/sqrt(df*pi)/gamma(df/2)*(1+t^2/df)^(-(df+1)/2)`
+```none
+f(x) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
+where,
+y(x) = (x - mu) / sigma
+Z    = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
+```
+
+Notice that `sigma` has semantics more similar to standard deviation than
+variance.  (Recall that the variance of the Student's t-distribution is
+`sigma**2 df / (df - 2)` when `df > 2`.)
 
 #### Examples
 
@@ -12234,12 +12818,13 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 ##### Args:
 
 
-*  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
-    distribution(s). `df` must contain only positive values.
-*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
-    distribution(s). `sigma` must contain only positive values.
-    Note that `sigma` is not the standard deviation of this distribution.
+*  <b>`df`</b>: Numeric `Tensor`. The degrees of freedom of the distribution(s).
+    `df` must contain only positive values.
+*  <b>`mu`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
+*  <b>`sigma`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
+    Note that `sigma` is not technically the standard deviation of this
+    distribution but has semantics more similar to standard deviation than
+    variance.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
     `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
     invalid, correct behavior is not guaranteed.
@@ -12420,9 +13005,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
+#### `tf.contrib.distributions.StudentT.is_scalar_batch(name='is_scalar_batch')` {#StudentT.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.is_scalar_event(name='is_scalar_event')` {#StudentT.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -12595,7 +13207,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -12613,7 +13229,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.StudentT.param_static_shapes(cls, sample_shape)` {#StudentT.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -12710,6 +13334,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.reparameterization_type` {#StudentT.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#StudentT.sample}
 
 Generate samples of the specified shape.
@@ -12733,32 +13372,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#StudentT.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.StudentT.sigma` {#StudentT.sigma}
 
 Scaling factors of these Student's t distribution(s).
@@ -12766,7 +13379,7 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.std(name='std')` {#StudentT.std}
+#### `tf.contrib.distributions.StudentT.stddev(name='stddev')` {#StudentT.stddev}
 
 Standard deviation.
 
@@ -12794,7 +13407,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -13000,9 +13613,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_reparameterized` {#StudentTWithAbsDfSoftplusSigma.is_reparameterized}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -13175,7 +13815,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -13193,7 +13837,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.param_static_shapes(cls, sample_shape)` {#StudentTWithAbsDfSoftplusSigma.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -13290,6 +13942,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.reparameterization_type` {#StudentTWithAbsDfSoftplusSigma.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#StudentTWithAbsDfSoftplusSigma.sample}
 
 Generate samples of the specified shape.
@@ -13313,32 +13980,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#StudentTWithAbsDfSoftplusSigma.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sigma` {#StudentTWithAbsDfSoftplusSigma.sigma}
 
 Scaling factors of these Student's t distribution(s).
@@ -13346,7 +13987,7 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.std(name='std')` {#StudentTWithAbsDfSoftplusSigma.std}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.stddev(name='stddev')` {#StudentTWithAbsDfSoftplusSigma.stddev}
 
 Standard deviation.
 
@@ -13374,7 +14015,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -13629,9 +14270,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
+#### `tf.contrib.distributions.Uniform.is_scalar_batch(name='is_scalar_batch')` {#Uniform.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.is_scalar_event(name='is_scalar_event')` {#Uniform.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -13791,7 +14459,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -13809,7 +14481,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Uniform.param_static_shapes(cls, sample_shape)` {#Uniform.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -13913,6 +14593,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.reparameterization_type` {#Uniform.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Uniform.sample}
 
 Generate samples of the specified shape.
@@ -13936,33 +14631,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Uniform.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.std(name='std')` {#Uniform.std}
+#### `tf.contrib.distributions.Uniform.stddev(name='stddev')` {#Uniform.stddev}
 
 Standard deviation.
 
@@ -13990,7 +14659,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -14021,7 +14690,7 @@ Variance.
 The multivariate normal distribution on `R^k`.
 
 This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
-`diag_stdev`, representing the standard deviations.  This distribution
+`diag_stddev`, representing the standard deviations.  This distribution
 assumes the random variables, `(X_1,...,X_k)` are independent, thus no
 non-diagonal terms of the covariance matrix are needed.
 
@@ -14030,7 +14699,7 @@ This allows for `O(k)` pdf evaluation, sampling, and storage.
 #### Mathematical details
 
 The PDF of this distribution is defined in terms of the diagonal covariance
-determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
+determined by `diag_stddev`: `C_{ii} = diag_stddev[i]**2`.
 
 ```
 f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
@@ -14046,16 +14715,16 @@ Extra leading dimensions, if provided, allow for batches.
 ```python
 # Initialize a single 3-variate Gaussian with diagonal standard deviation.
 mu = [1, 2, 3.]
-diag_stdev = [4, 5, 6.]
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+diag_stddev = [4, 5, 6.]
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 dist.pdf([-1, 0, 1])
 
 # Initialize a batch of two 3-variate Gaussians.
 mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
-diag_stdev = ...  # shape 2 x 3, positive.
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+diag_stddev = ...  # shape 2 x 3, positive.
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
 # Evaluate this on a two observations, each in R^3, returning a length two
 # tensor.
@@ -14064,21 +14733,22 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stdev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stddev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
-User must provide means `mu` and standard deviations `diag_stdev`.
+User must provide means `mu` and standard deviations `diag_stddev`.
 Each batch member represents a random vector `(X_1,...,X_k)` of independent
 random normals.
-The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
+The mean of `X_i` is `mu[i]`, and the standard deviation is
+`diag_stddev[i]`.
 
 ##### Args:
 
 
 *  <b>`mu`</b>: Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
-*  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
+*  <b>`diag_stddev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
     representing the standard deviations.  Must be positive.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate
     input with asserts.  If `validate_args` is `False`,
@@ -14092,7 +14762,7 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `mu` and `diag_stdev` are different dtypes.
+*  <b>`TypeError`</b>: If `mu` and `diag_stddev` are different dtypes.
 
 
 - - -
@@ -14253,9 +14923,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_reparameterized` {#MultivariateNormalDiag.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiag.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiag.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -14445,7 +15142,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -14463,7 +15164,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiag.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -14576,6 +15285,21 @@ or
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiag.reparameterization_type` {#MultivariateNormalDiag.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiag.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalDiag.sample}
 
 Generate samples of the specified shape.
@@ -14599,32 +15323,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiag.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiag.sigma` {#MultivariateNormalDiag.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -14639,7 +15337,7 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.std(name='std')` {#MultivariateNormalDiag.std}
+#### `tf.contrib.distributions.MultivariateNormalDiag.stddev(name='stddev')` {#MultivariateNormalDiag.stddev}
 
 Standard deviation.
 
@@ -14667,7 +15365,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -14917,9 +15615,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.is_reparameterized` {#MultivariateNormalFull.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalFull.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalFull.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -15109,7 +15834,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -15127,7 +15856,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalFull.param_static_shapes(cls, sample_shape)` {#MultivariateNormalFull.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -15240,6 +15977,21 @@ or
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalFull.reparameterization_type` {#MultivariateNormalFull.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalFull.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalFull.sample}
 
 Generate samples of the specified shape.
@@ -15263,32 +16015,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalFull.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalFull.sigma` {#MultivariateNormalFull.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -15303,7 +16029,7 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.std(name='std')` {#MultivariateNormalFull.std}
+#### `tf.contrib.distributions.MultivariateNormalFull.stddev(name='stddev')` {#MultivariateNormalFull.stddev}
 
 Standard deviation.
 
@@ -15331,7 +16057,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -15590,9 +16316,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.is_reparameterized` {#MultivariateNormalCholesky.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalCholesky.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalCholesky.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -15782,7 +16535,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -15800,7 +16557,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.param_static_shapes(cls, sample_shape)` {#MultivariateNormalCholesky.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -15913,6 +16678,21 @@ or
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalCholesky.reparameterization_type` {#MultivariateNormalCholesky.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalCholesky.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalCholesky.sample}
 
 Generate samples of the specified shape.
@@ -15936,32 +16716,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalCholesky.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalCholesky.sigma` {#MultivariateNormalCholesky.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -15976,7 +16730,7 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.std(name='std')` {#MultivariateNormalCholesky.std}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.stddev(name='stddev')` {#MultivariateNormalCholesky.stddev}
 
 Standard deviation.
 
@@ -16004,7 +16758,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -16289,9 +17043,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_reparameterized` {#MultivariateNormalDiagPlusVDVT.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -16481,7 +17262,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -16499,7 +17284,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiagPlusVDVT.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -16612,6 +17405,21 @@ or
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.reparameterization_type` {#MultivariateNormalDiagPlusVDVT.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.sample}
 
 Generate samples of the specified shape.
@@ -16635,32 +17443,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sigma` {#MultivariateNormalDiagPlusVDVT.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -16675,7 +17457,7 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.std(name='std')` {#MultivariateNormalDiagPlusVDVT.std}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.stddev(name='stddev')` {#MultivariateNormalDiagPlusVDVT.stddev}
 
 Standard deviation.
 
@@ -16703,7 +17485,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -16729,7 +17511,7 @@ Variance.
 MultivariateNormalDiag with `diag_stddev = softplus(diag_stddev)`.
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.__init__(mu, diag_stdev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagWithSoftplusStdDev')` {#MultivariateNormalDiagWithSoftplusStDev.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.__init__(mu, diag_stddev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagWithSoftplusStdDev')` {#MultivariateNormalDiagWithSoftplusStDev.__init__}
 
 
 
@@ -16892,9 +17674,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_reparameterized` {#MultivariateNormalDiagWithSoftplusStDev.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -17084,7 +17893,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -17102,7 +17915,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiagWithSoftplusStDev.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -17215,6 +18036,21 @@ or
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.reparameterization_type` {#MultivariateNormalDiagWithSoftplusStDev.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalDiagWithSoftplusStDev.sample}
 
 Generate samples of the specified shape.
@@ -17238,32 +18074,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#MultivariateNormalDiagWithSoftplusStDev.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sigma` {#MultivariateNormalDiagWithSoftplusStDev.sigma}
 
 Dense (batch) covariance matrix, if available.
@@ -17278,7 +18088,7 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.std(name='std')` {#MultivariateNormalDiagWithSoftplusStDev.std}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.stddev(name='stddev')` {#MultivariateNormalDiagWithSoftplusStDev.stddev}
 
 Standard deviation.
 
@@ -17306,7 +18116,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -17599,9 +18409,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.is_reparameterized` {#Dirichlet.is_reparameterized}
+#### `tf.contrib.distributions.Dirichlet.is_scalar_batch(name='is_scalar_batch')` {#Dirichlet.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_scalar_event(name='is_scalar_event')` {#Dirichlet.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -17776,7 +18613,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -17794,7 +18635,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Dirichlet.param_static_shapes(cls, sample_shape)` {#Dirichlet.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -17899,6 +18748,21 @@ in `self.alpha`. `x` is only legal if it sums up to one.
 
 - - -
 
+#### `tf.contrib.distributions.Dirichlet.reparameterization_type` {#Dirichlet.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Dirichlet.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Dirichlet.sample}
 
 Generate samples of the specified shape.
@@ -17922,33 +18786,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Dirichlet.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.std(name='std')` {#Dirichlet.std}
+#### `tf.contrib.distributions.Dirichlet.stddev(name='stddev')` {#Dirichlet.stddev}
 
 Standard deviation.
 
@@ -17976,7 +18814,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -18278,9 +19116,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.is_reparameterized` {#DirichletMultinomial.is_reparameterized}
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch(name='is_scalar_batch')` {#DirichletMultinomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_scalar_event(name='is_scalar_event')` {#DirichletMultinomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -18462,7 +19327,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -18480,7 +19349,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.DirichletMultinomial.param_static_shapes(cls, sample_shape)` {#DirichletMultinomial.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -18592,6 +19469,21 @@ it sums up to `n` and its components are equal to integer values.
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.reparameterization_type` {#DirichletMultinomial.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#DirichletMultinomial.sample}
 
 Generate samples of the specified shape.
@@ -18615,33 +19507,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#DirichletMultinomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.std(name='std')` {#DirichletMultinomial.std}
+#### `tf.contrib.distributions.DirichletMultinomial.stddev(name='stddev')` {#DirichletMultinomial.stddev}
 
 Standard deviation.
 
@@ -18669,7 +19535,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -18972,9 +19838,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.is_reparameterized` {#Multinomial.is_reparameterized}
+#### `tf.contrib.distributions.Multinomial.is_scalar_batch(name='is_scalar_batch')` {#Multinomial.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_scalar_event(name='is_scalar_event')` {#Multinomial.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -19172,7 +20065,11 @@ Each element is the probability of drawing that coordinate.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -19190,7 +20087,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Multinomial.param_static_shapes(cls, sample_shape)` {#Multinomial.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -19302,6 +20207,21 @@ if it sums up to `n` and its components are equal to integer values.
 
 - - -
 
+#### `tf.contrib.distributions.Multinomial.reparameterization_type` {#Multinomial.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Multinomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Multinomial.sample}
 
 Generate samples of the specified shape.
@@ -19325,33 +20245,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Multinomial.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Multinomial.std(name='std')` {#Multinomial.std}
+#### `tf.contrib.distributions.Multinomial.stddev(name='stddev')` {#Multinomial.stddev}
 
 Standard deviation.
 
@@ -19379,7 +20273,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -19668,9 +20562,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.is_reparameterized` {#WishartCholesky.is_reparameterized}
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_batch(name='is_scalar_batch')` {#WishartCholesky.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.is_scalar_event(name='is_scalar_event')` {#WishartCholesky.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -19844,7 +20765,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -19862,7 +20787,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.WishartCholesky.param_static_shapes(cls, sample_shape)` {#WishartCholesky.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -19959,6 +20892,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.WishartCholesky.reparameterization_type` {#WishartCholesky.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartCholesky.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#WishartCholesky.sample}
 
 Generate samples of the specified shape.
@@ -19982,32 +20930,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#WishartCholesky.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartCholesky.scale()` {#WishartCholesky.scale}
 
 Wishart distribution scale matrix.
@@ -20022,7 +20944,7 @@ Wishart distribution scale matrix as an OperatorPD.
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.std(name='std')` {#WishartCholesky.std}
+#### `tf.contrib.distributions.WishartCholesky.stddev(name='stddev')` {#WishartCholesky.stddev}
 
 Standard deviation.
 
@@ -20050,7 +20972,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -20335,9 +21257,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.is_reparameterized` {#WishartFull.is_reparameterized}
+#### `tf.contrib.distributions.WishartFull.is_scalar_batch(name='is_scalar_batch')` {#WishartFull.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.is_scalar_event(name='is_scalar_event')` {#WishartFull.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -20511,7 +21460,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -20529,7 +21482,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.WishartFull.param_static_shapes(cls, sample_shape)` {#WishartFull.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -20626,6 +21587,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.WishartFull.reparameterization_type` {#WishartFull.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartFull.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#WishartFull.sample}
 
 Generate samples of the specified shape.
@@ -20649,32 +21625,6 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#WishartFull.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartFull.scale()` {#WishartFull.scale}
 
 Wishart distribution scale matrix.
@@ -20689,7 +21639,7 @@ Wishart distribution scale matrix as an OperatorPD.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.std(name='std')` {#WishartFull.std}
+#### `tf.contrib.distributions.WishartFull.stddev(name='stddev')` {#WishartFull.stddev}
 
 Standard deviation.
 
@@ -20717,7 +21667,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -20815,14 +21765,18 @@ A `Bijector` is expected to implement the following functions:
 - `inverse_log_det_jacobian`.
 The semantics of these functions are outlined in the `Bijector` documentation.
 
-Shapes, type, and reparameterization are taken from the base distribution.
+We now describe how a `TransformedDistribution` alters the input/outputs of a
+`Distribution` associated with a random variable (rv) `X`.
 
-Write `P(Y=y)` for cumulative density function of random variable (rv) `Y` and
-`p` for its derivative wrt to `Y`.  Assume that `Y=g(X)` where `g` is
-continuous and `X=g^{-1}(Y)`. Write `J` for the Jacobian (of some function).
+Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
+of random variable `Y`; write the probability density function `pdf(Y=y) :=
+d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
+`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+i.e., a non-random, continuous, differentiable, and invertible function.
+Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
+of `g` evaluated at `x`.
 
-A `TransformedDistribution` alters the input/outputs of a `Distribution`
-associated with rv `X` in the following ways:
+A `TransformedDistribution` implements the following operations:
 
   * `sample`:
 
@@ -20843,14 +21797,15 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
+    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
+                         (log o abs o det o J o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return (bijector.inverse_log_det_jacobian(x) +
-            distribution.log_prob(bijector.inverse(x))
+    return (distribution.log_prob(bijector.inverse(x)) +
+            bijector.inverse_log_det_jacobian(x))
     ```
 
   * `log_cdf`:
@@ -20858,13 +21813,13 @@ associated with rv `X` in the following ways:
     Mathematically:
 
     ```none
-    (log o P o g^{-1})(y)
+    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
     ```
 
     Programmatically:
 
     ```python
-    return distribution.log_prob(bijector.inverse(x))
+    return distribution.log_cdf(bijector.inverse(x))
     ```
 
   * and similarly for: `cdf`, `prob`, `log_survival_function`,
@@ -20891,7 +21846,7 @@ log_normal = ds.TransformedDistribution(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(x), reduction_indices=-1)),
+      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
   name="LogNormalTransformedDistribution")
 ```
 
@@ -20904,20 +21859,51 @@ normal = ds.TransformedDistribution(
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
+
+A `TransformedDistribution`'s batch- and event-shape are implied by the base
+distribution unless explicitly overridden by `batch_shape` or `event_shape`
+arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+permitted only if the base distribution has scalar batch-shape (event-shape).
+The bijector is applied to the distribution as if the distribution possessed
+the overridden shape(s). The following example demonstrates how to construct a
+multivariate Normal as a `TransformedDistribution`.
+
+```python
+bs = tf.contrib.distributions.bijector
+ds = tf.contrib.distributions
+# We will create two MVNs with batch_shape = event_shape = 2.
+mean = [[-1., 0],      # batch:0
+        [0., 1]]       # batch:1
+chol_cov = [[[1., 0],
+             [0, 1]],  # batch:0
+            [[1, 0],
+             [2, 2]]]  # batch:1
+mvn1 = ds.TransformedDistribution(
+    distribution=ds.Normal(mu=0., sigma=1.),
+    bijector=bs.Affine(shift=mean, tril=chol_cov),
+    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
+    event_shape=[2])  # Valid because base_distribution.event_shape == [].
+mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+# mvn1.log_prob(x) == mvn2.log_prob(x)
+```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution class to transform. Typically an
+*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
     instance of `Distribution`.
 *  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    Typically an instance of `Bijector`. `None` means `Identity()`.
+*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
+*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `event_shape`; valid only if `distribution.is_scalar_event()`.
+*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`name`</b>: The name for the distribution. Default:
@@ -20987,10 +21973,10 @@ cdf(x) := P[X <= x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21104,9 +22090,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_reparameterized` {#TransformedDistribution.is_reparameterized}
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -21128,10 +22141,10 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21206,16 +22219,16 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21251,10 +22264,10 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21296,7 +22309,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -21314,7 +22331,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.TransformedDistribution.param_static_shapes(cls, sample_shape)` {#TransformedDistribution.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -21404,10 +22429,10 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
       Also raises a `ValueError` if `inverse` was not provided to the
       distribution and `y` was not returned from `sample`.
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21421,6 +22446,21 @@ Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.reparameterization_type` {#TransformedDistribution.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
 
 
 - - -
@@ -21448,44 +22488,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#TransformedDistribution.sample_n}
-
-Generate `n` samples.
-
-
-Additional documentation from `TransformedDistribution`:
-
-Samples from the base distribution and then passes through
-      the bijector's forward transform.
-
-##### <b>`condition_kwargs`</b>:
-
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.std(name='std')` {#TransformedDistribution.std}
+#### `tf.contrib.distributions.TransformedDistribution.stddev(name='stddev')` {#TransformedDistribution.stddev}
 
 Standard deviation.
 
@@ -21507,10 +22510,10 @@ survival_function(x) = P[X > x]
 
 Additional documentation from `TransformedDistribution`:
 
-##### <b>`condition_kwargs`</b>:
+##### `condition_kwargs`:
 
-*  <b>`bijector_kwargs`</b>: Python dictionary of arg names/values forwarded to the bijector.
-*  <b>`distribution_kwargs`</b>: Python dictionary of arg names/values forwarded to the distribution.
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
 
 ##### Args:
 
@@ -21521,7 +22524,7 @@ Additional documentation from `TransformedDistribution`:
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -21814,9 +22817,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.is_reparameterized` {#QuantizedDistribution.is_reparameterized}
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_batch(name='is_scalar_batch')` {#QuantizedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.is_scalar_event(name='is_scalar_event')` {#QuantizedDistribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -22030,7 +23060,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -22048,7 +23082,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.QuantizedDistribution.param_static_shapes(cls, sample_shape)` {#QuantizedDistribution.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -22163,6 +23205,21 @@ also be defined on `y - 1`.
 
 - - -
 
+#### `tf.contrib.distributions.QuantizedDistribution.reparameterization_type` {#QuantizedDistribution.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.QuantizedDistribution.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#QuantizedDistribution.sample}
 
 Generate samples of the specified shape.
@@ -22186,33 +23243,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#QuantizedDistribution.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.std(name='std')` {#QuantizedDistribution.std}
+#### `tf.contrib.distributions.QuantizedDistribution.stddev(name='stddev')` {#QuantizedDistribution.stddev}
 
 Standard deviation.
 
@@ -22258,7 +23289,7 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -22557,9 +23588,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Mixture.is_reparameterized` {#Mixture.is_reparameterized}
+#### `tf.contrib.distributions.Mixture.is_scalar_batch(name='is_scalar_batch')` {#Mixture.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.is_scalar_event(name='is_scalar_event')` {#Mixture.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -22726,7 +23784,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -22744,7 +23806,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Mixture.param_static_shapes(cls, sample_shape)` {#Mixture.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -22841,6 +23911,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.Mixture.reparameterization_type` {#Mixture.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Mixture.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Mixture.sample}
 
 Generate samples of the specified shape.
@@ -22864,33 +23949,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Mixture.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Mixture.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Mixture.std(name='std')` {#Mixture.std}
+#### `tf.contrib.distributions.Mixture.stddev(name='stddev')` {#Mixture.stddev}
 
 Standard deviation.
 
@@ -22918,7 +23977,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -23143,5 +24202,31 @@ Initialize the KL registrar.
 *  <b>`dist_cls_a`</b>: the class of the first argument of the KL divergence.
 *  <b>`dist_cls_b`</b>: the class of the second argument of the KL divergence.
 
+
+
+
+## Utilities
+
+- - -
+
+### `tf.contrib.distributions.softplus_inverse(x, name=None)` {#softplus_inverse}
+
+Computes the inverse softplus, i.e., x = softplus_inverse(softplus(x)).
+
+Mathematically this op is equivalent to:
+
+```none
+softplus_inverse = log(exp(x) - 1.)
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor`. Non-negative (not enforced), floating-point.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  `Tensor`. Has the same type/shape as input `x`.
 
 

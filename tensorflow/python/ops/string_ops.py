@@ -46,19 +46,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
+import numpy as np
 
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-
-# pylint: disable=unused-import
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
+from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
@@ -71,7 +72,8 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
-  multibyte sequences of UTF-8.)
+  multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+  treated as a set of delimiters with each considered a potential split point.
 
   For example:
   N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -90,17 +92,14 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
 
+  Raises:
+    ValueError: If delimiter is not a string.
+
   Returns:
     A `SparseTensor` of rank `2`, the strings split according to the delimiter.
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
-
-  Raises:
-    ValueError: If delimiter is not a single-byte character.
   """
-  if isinstance(delimiter, six.string_types) and len(delimiter) > 1:
-    raise ValueError("delimiter must be a single byte-character, got %s" %
-                     delimiter)
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -114,6 +113,43 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
+def _reduce_join_reduction_dims(x, axis, reduction_indices):
+  """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
+  # TODO(aselle): Remove this after deprecation
+  if reduction_indices is not None:
+    if axis is not None:
+      raise ValueError("Can't specify both 'axis' and 'reduction_indices'.")
+    axis = reduction_indices
+  if axis is not None:
+    return axis
+  else:
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+      return constant_op.constant(
+          np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
+
+    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+    return math_ops.range(array_ops.rank(x) - 1, -1, -1)
+
+
+def reduce_join(inputs, axis=None,
+                keep_dims=False,
+                separator="",
+                name=None,
+                reduction_indices=None):
+  reduction_indices = _reduce_join_reduction_dims(
+      inputs, axis, reduction_indices)
+  return gen_string_ops.reduce_join(
+      inputs=inputs,
+      reduction_indices=reduction_indices,
+      keep_dims=keep_dims,
+      separator=separator,
+      name=name)
+
+
+reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
+    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
+
 ops.NotDifferentiable("StringToHashBucket")
 ops.NotDifferentiable("StringToHashBucketFast")
 ops.NotDifferentiable("StringToHashBucketStrong")
@@ -123,20 +159,3 @@ ops.NotDifferentiable("StringSplit")
 ops.NotDifferentiable("AsString")
 ops.NotDifferentiable("EncodeBase64")
 ops.NotDifferentiable("DecodeBase64")
-
-ops.RegisterShape("StringToHashBucket")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringToHashBucketFast")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringToHashBucketStrong")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AsString")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("EncodeBase64")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeBase64")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("ReduceJoin")
-def _ReduceJoinShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringSplit")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("Substr")(common_shapes.call_cpp_shape_fn)

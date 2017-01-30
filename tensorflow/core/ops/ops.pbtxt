@@ -8,7 +8,14 @@ op {
     }
     description: "A string which is the message associated with the exception."
   }
-  summary: "Raise a exception to abort the process when called."
+  attr {
+    name: "exit_without_error"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal."
   description: "Returns nothing but an exception."
 }
 op {
@@ -437,6 +444,26 @@ op {
   }
   summary: "Adjust the hue of one or more images."
   description: "`images` is a tensor of at least 3 dimensions.  The last dimension is\ninterpretted as channels, and must be three.\n\nThe input image is considered in the RGB colorspace. Conceptually, the RGB\ncolors are first mapped into HSV. A delta is then applied all the hue values,\nand then remapped back to RGB colorspace."
+}
+op {
+  name: "AdjustSaturation"
+  input_arg {
+    name: "images"
+    description: "Images to adjust.  At least 3-D."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scale"
+    description: "A float scale to add to the saturation."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    description: "The hue-adjusted image or images."
+    type: DT_FLOAT
+  }
+  summary: "Adjust the saturation of one or more images."
+  description: "`images` is a tensor of at least 3 dimensions.  The last dimension is\ninterpretted as channels, and must be three.\n\nThe input image is considered in the RGB colorspace. Conceptually, the RGB\ncolors are first mapped into HSV. A scale is then applied all the saturation\nvalues, and then remapped back to RGB colorspace."
 }
 op {
   name: "All"
@@ -3422,6 +3449,36 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
+  name: "BroadcastArgs"
+  input_arg {
+    name: "s0"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "s1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r0"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Return the shape of s0 op s1 with broadcast."
+  description: "Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the\nbroadcasted shape. `s0`, `s1` and `r0` are all integer vectors."
+}
+op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
@@ -3816,7 +3873,7 @@ op {
     }
   }
   summary: "Computes the complex absolute value of a tensor."
-  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\).\n\nFor example:\n\n```\n# tensor \'x\' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]\ntf.complex_abs(x) ==> [5.25594902, 6.60492229]\n```"
+  description: "Given a tensor `x` of complex numbers, this operation returns a tensor of type\n`float` or `double` that is the absolute value of each element in `x`. All\nelements in `x` must be complex numbers of the form \\\\(a + bj\\\\). The absolute\nvalue is computed as \\\\( \\sqrt{a^2 + b^2}\\\\)."
 }
 op {
   name: "ComputeAccidentalHits"
@@ -3937,7 +3994,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "0-D.  The dimension along which to concatenate.  Must be in the\nrange [0, rank(values))."
+    description: "0-D.  The dimension along which to concatenate.  Must be in the\nrange [-rank(values), rank(values))."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5135,6 +5192,43 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DebugNumericSummary"
+  input_arg {
+    name: "input"
+    description: "Input tensor, non-Reference type, float or double."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    type: DT_DOUBLE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Name of the input tensor."
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  summary: "Debug Numeric Summary Op."
+  description: "Provide a basic summary of numeric value types, range and distribution."
+  allows_uninitialized_input: true
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -5273,6 +5367,14 @@ op {
     }
     description: "The minimum required fraction of lines before a truncated\ninput is accepted."
   }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
+  }
   summary: "Decode a JPEG-encoded image to a uint8 tensor."
   description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later."
 }
@@ -5358,6 +5460,128 @@ op {
     type: DT_STRING
   }
   summary: "Delete the tensor specified by its handle in the session."
+}
+op {
+  name: "DenseToDenseSetOperation"
+  input_arg {
+    name: "set1"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set1`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of 2 `Tensor` inputs."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
+}
+op {
+  name: "DenseToSparseSetOperation"
+  input_arg {
+    name: "set1"
+    description: "`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.\nDimension `n` contains values in a set, duplicates are allowed but ignored."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must\nbe the same as the 1st `n-1` dimensions of `set1`, `result_shape[n]` is the\nmax set size across `n-1` dimensions."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of `Tensor` and `SparseTensor`."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nInput `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,\nand `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same\nas `set1`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set2`\nindices.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
 }
 op {
   name: "DepthToSpace"
@@ -6514,6 +6738,32 @@ op {
   description: "Given a tensor `input`, this operation inserts a dimension of 1 at the\ndimension index `dim` of `input`\'s shape. The dimension index `dim` starts at\nzero; if you specify a negative number for `dim` it is counted backward from\nthe end.\n\nThis operation is useful if you want to add a batch dimension to a single\nelement. For example, if you have a single image of shape `[height, width,\nchannels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,\nwhich will make the shape `[1, height, width, channels]`.\n\nOther examples:\n\n```prettyprint\n# \'t\' is a tensor of shape [2]\nshape(expand_dims(t, 0)) ==> [1, 2]\nshape(expand_dims(t, 1)) ==> [2, 1]\nshape(expand_dims(t, -1)) ==> [2, 1]\n\n# \'t2\' is a tensor of shape [2, 3, 5]\nshape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]\nshape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]\nshape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]\n```\n\nThis operation requires that:\n\n`-1-input.dims() <= dim <= input.dims()`\n\nThis operation is related to `squeeze()`, which removes dimensions of\nsize 1."
 }
 op {
+  name: "Expm1"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes exponential of x - 1 element-wise."
+  description: "I.e., \\\\(y = (\\exp x) - 1\\\\)."
+}
+op {
   name: "ExtractGlimpse"
   input_arg {
     name: "input"
@@ -6591,7 +6841,7 @@ op {
   attr {
     name: "rates"
     type: "list(int)"
-    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by\nsubsampling them spatially by a factor of `rates`."
+    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by\nsubsampling them spatially by a factor of `rates`."
     has_minimum: true
     minimum: 4
   }
@@ -6649,7 +6899,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
@@ -6664,7 +6914,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
@@ -6677,6 +6927,57 @@ op {
     description: "The handle to the queue."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements in first-in first-out order."
+  is_stateful: true
+}
+op {
+  name: "FIFOQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
   }
   attr {
     name: "component_types"
@@ -6907,6 +7208,20 @@ op {
   summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
 }
 op {
+  name: "FakeQueue"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  summary: "Deprecated. Do not use."
+  is_stateful: true
+}
+op {
   name: "Fill"
   input_arg {
     name: "dims"
@@ -6915,7 +7230,7 @@ op {
   }
   input_arg {
     name: "value"
-    description: "0-D (scalar). Value to fill the returned tensor."
+    description: "0-D (scalar). Value to fill the returned tensor.\n\n@compatibility(numpy)\nEquivalent to np.full\n@end_compatibility"
     type_attr: "T"
   }
   output_arg {
@@ -6936,6 +7251,50 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "header_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "record_bytes"
+    type: "int"
+  }
+  attr {
+    name: "footer_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs fixed-length records from a file."
+  is_stateful: true
+}
+op {
+  name: "FixedLengthRecordReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "header_bytes"
@@ -8107,7 +8466,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.ifft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
@@ -8122,7 +8481,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
@@ -8151,6 +8510,33 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the queued work as both the key and value."
+  description: "To use, enqueue strings in a Queue.  ReaderRead will take the front\nwork string and output (work, work)."
+  is_stateful: true
+}
+op {
+  name: "IdentityReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "container"
@@ -8493,6 +8879,10 @@ op {
   }
   summary: "Computes the reciprocal of x element-wise."
   description: "I.e., \\\\(y = 1 / x\\\\)."
+  deprecation {
+    version: 17
+    explanation: "Use Reciprocal"
+  }
 }
 op {
   name: "InvGrad"
@@ -8523,6 +8913,10 @@ op {
   }
   summary: "Computes the gradient for the inverse of `x` wrt its input."
   description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
+  deprecation {
+    version: 17
+    explanation: "Use ReciprocalGrad"
+  }
 }
 op {
   name: "InvertPermutation"
@@ -8574,6 +8968,7 @@ op {
     }
   }
   summary: "Returns which elements of x are finite."
+  description: "@compatibility(numpy)\nEquivalent to np.isfinite\n@end_compatibility"
 }
 op {
   name: "IsInf"
@@ -8597,6 +8992,7 @@ op {
     }
   }
   summary: "Returns which elements of x are Inf."
+  description: "@compatibility(numpy)\nEquivalent to np.isinf\n@end_compatibility"
 }
 op {
   name: "IsNan"
@@ -8620,6 +9016,7 @@ op {
     }
   }
   summary: "Returns which elements of x are NaN."
+  description: "@compatibility(numpy)\nEquivalent to np.isnan\n@end_compatibility"
 }
 op {
   name: "IsVariableInitialized"
@@ -9560,7 +9957,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, M]`."
+    description: "Shape is `[..., M, M]`.\n\n@compatibility(numpy)\nEquivalent to np.linalg.inv\n@end_compatibility"
     type_attr: "T"
   }
   attr {
@@ -9661,7 +10058,7 @@ op {
   }
   input_arg {
     name: "l2_regularizer"
-    description: "Scalar tensor."
+    description: "Scalar tensor.\n\n@compatibility(numpy)\nEquivalent to np.linalg.lstsq\n@end_compatibility"
     type: DT_DOUBLE
   }
   output_arg {
@@ -9687,7 +10084,7 @@ op {
     }
   }
   summary: "Solves one or more linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k} } ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach} } }\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "MatrixTriangularSolve"
@@ -9720,7 +10117,7 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\n         adjoint.\n\n@compatibility(numpy)\nEquivalent to np.linalg.triangular_solve\n@end_compatibility"
   }
   attr {
     name: "T"
@@ -10934,6 +11331,10 @@ op {
     description: "Number of negative samples per example."
   }
   summary: "Training via negative sampling."
+  deprecation {
+    version: 19
+    explanation: "Moving word2vec into tensorflow_models/tutorials and deprecating its ops here as a result"
+  }
   is_stateful: true
 }
 op {
@@ -11208,6 +11609,89 @@ op {
   summary: "A queue that produces elements in first-in first-out order."
   description: "Variable-size shapes are allowed by setting the corresponding shape dimensions\nto 0 in the shape attr.  In this case DequeueMany will pad up to the maximum\nsize of any given element in the minibatch.  See below for details."
   is_stateful: true
+}
+op {
+  name: "PaddingFIFOQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types.\nShapes of fixed rank but variable size are allowed by setting\nany shape dimension to -1.  In this case, the inputs\' shape may vary along\nthe given dimension, and DequeueMany will pad the given dimension with\nzeros up to the maximum shape of all elements in the given batch.\nIf the length of this attr is 0, different queue elements may have\ndifferent ranks and shapes, but only one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements in first-in first-out order."
+  description: "Variable-size shapes are allowed by setting the corresponding shape dimensions\nto 0 in the shape attr.  In this case DequeueMany will pad up to the maximum\nsize of any given element in the minibatch.  See below for details."
+  is_stateful: true
+}
+op {
+  name: "ParallelConcat"
+  input_arg {
+    name: "values"
+    description: "Tensors to be concatenated. All must have size 1 in the first dimension\nand same shape."
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    description: "The concatenated tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "the final shape of the result; should be equal to the shapes of any input\nbut with the number of input values in the first dimension."
+  }
+  summary: "Concatenates a list of `N` tensors along the first dimension."
+  description: "The input tensors are all required to have size 1 in the first dimension.\n\nFor example:\n\n```prettyprint\n# \'x\' is [[1, 4]]\n# \'y\' is [[2, 5]]\n# \'z\' is [[3, 6]]\nparallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\n```\n\nThe difference between concat and parallel_concat is that concat requires all\nof the inputs be computed before the operation will begin but doesn\'t require\nthat the input shapes be known during graph construction.  Parallel concat\nwill copy pieces of the input into the output as they become available, in\nsome situations this can provide a performance benefit."
 }
 op {
   name: "ParameterizedTruncatedNormal"
@@ -11660,7 +12144,7 @@ op {
     type: "shape"
     description: "The (possibly partial) shape of the tensor."
   }
-  summary: "A placeholder op that passes though `input` when its output is not fed."
+  summary: "A placeholder op that passes through `input` when its output is not fed."
 }
 op {
   name: "Polygamma"
@@ -11720,6 +12204,23 @@ op {
   }
   summary: "Computes the power of one value to another."
   description: "Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for\ncorresponding elements in `x` and `y`. For example:\n\n```\n# tensor \'x\' is [[2, 2]], [3, 3]]\n# tensor \'y\' is [[8, 16], [2, 3]]\ntf.pow(x, y) ==> [[256, 65536], [9, 27]]\n```"
+}
+op {
+  name: "PreventGradient"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "An identity op that triggers an error if a gradient is requested."
+  description: "When executed in a graph, this op outputs its input tensor as-is.\n\nWhen building ops to compute gradients, the TensorFlow gradient system\nwill return an error when trying to lookup the gradient of this op,\nbecause no gradient must ever be registered for this function.  This\nop exists to prevent subtle bugs from silently returning unimplemented\ngradients in some corner cases."
 }
 op {
   name: "Print"
@@ -11783,6 +12284,57 @@ op {
     description: "The handle to the queue."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "The type of each component in a value."
+    has_minimum: true
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements sorted by the first component value."
+  description: "Note that the PriorityQueue requires the first component of any element\nto be a scalar int64, in addition to the other elements declared by\ncomponent_types.  Therefore calls to Enqueue and EnqueueMany (resp. Dequeue\nand DequeueMany) on a PriorityQueue will all require (resp. output) one extra\nentry in their input (resp. output) lists."
+  is_stateful: true
+}
+op {
+  name: "PriorityQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
   }
   attr {
     name: "component_types"
@@ -11949,6 +12501,46 @@ op {
     has_minimum: true
   }
   summary: "A stateless version of PyFunc."
+}
+op {
+  name: "Qr"
+  input_arg {
+    name: "input"
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "q"
+    description: "Orthonormal basis for range of `a`. If `full_matrices` is `False` then\nshape is `[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r"
+    description: "Triangular factor. If `full_matrices` is `False` then shape is\n`[..., P, N]`. If `full_matrices` is `True` then shape is `[..., M, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, compute full-sized `q` and `r`. If false\n(the default), compute only the leading `P` columns of `q`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the QR decompositions of one or more matrices."
+  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```prettyprint\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
 }
 op {
   name: "QuantizeAndDequantize"
@@ -12576,6 +13168,93 @@ op {
   description: "The inputs are quantized tensors where the lowest value represents the real\nnumber of the associated minimum, and the highest represents the maximum.\nThis means that you can only interpret the quantized output in the same way, by\ntaking the returned minimum and maximum values into account."
 }
 op {
+  name: "QuantizedInstanceNorm"
+  input_arg {
+    name: "x"
+    description: "A 4D input Tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x_min"
+    description: "The value represented by the lowest quantized input."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "x_max"
+    description: "The value represented by the highest quantized input."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y"
+    description: "A 4D Tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y_min"
+    description: "The value represented by the lowest quantized output."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "y_max"
+    description: "The value represented by the highest quantized output."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "output_range_given"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, `given_y_min` and `given_y_min`\nand `given_y_max` are used as the output range. Otherwise,\nthe implementation computes the output range."
+  }
+  attr {
+    name: "given_y_min"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Output in `y_min` if `output_range_given` is True."
+  }
+  attr {
+    name: "given_y_max"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Output in `y_max` if `output_range_given` is True."
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+    default_value {
+      f: 1e-05
+    }
+    description: "A small float number to avoid dividing by 0."
+  }
+  attr {
+    name: "min_separation"
+    type: "float"
+    default_value {
+      f: 0.001
+    }
+    description: "Minimum value of `y_max - y_min`"
+  }
+  summary: "Quantized Instance normalization."
+}
+op {
   name: "QuantizedMatMul"
   input_arg {
     name: "a"
@@ -12679,6 +13358,23 @@ op {
     }
     description: "If true, `b` is transposed before multiplication."
   }
+  attr {
+    name: "Tactivation"
+    type: "type"
+    default_value {
+      type: DT_QUINT8
+    }
+    description: "The type of output produced by activation function\nfollowing this operation."
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
   summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b`."
   description: "The inputs must be two-dimensional matrices and the inner dimension of\n`a` (after being transposed if `transpose_a` is non-zero) must match the\nouter dimension of `b` (after being transposed if `transposed_b` is\nnon-zero)."
 }
@@ -12748,6 +13444,95 @@ op {
     }
   }
   summary: "Produces the max pool of the input tensor for quantized types."
+}
+op {
+  name: "QuantizedMul"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    description: "The float value that the lowest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    description: "The float value that the highest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    description: "The float value that the lowest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    description: "The float value that the highest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    description: "The float value that the highest quantized output value represents.\n\n*NOTE*: `QuantizedMul` supports limited forms of broadcasting. More about\nbroadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Returns x * y element-wise, working on quantized buffers."
+  is_commutative: true
 }
 op {
   name: "QuantizedRelu"
@@ -13014,6 +13799,24 @@ op {
   description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."
 }
 op {
+  name: "QueueCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "cancel_pending_enqueues"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, all pending enqueue requests that are\nblocked on the given queue will be cancelled."
+  }
+  summary: "Closes the given queue."
+  description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."
+}
+op {
   name: "QueueDequeue"
   input_arg {
     name: "handle"
@@ -13081,6 +13884,41 @@ op {
   description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
+  name: "QueueDequeueManyV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "n"
+    description: "The number of tuples to dequeue."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues n tuples of one or more tensors from the given queue."
+  description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
   name: "QueueDequeueUpTo"
   input_arg {
     name: "handle"
@@ -13115,6 +13953,71 @@ op {
   }
   summary: "Dequeues n tuples of one or more tensors from the given queue."
   description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+}
+op {
+  name: "QueueDequeueUpToV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "n"
+    description: "The number of tuples to dequeue."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues n tuples of one or more tensors from the given queue."
+  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+}
+op {
+  name: "QueueDequeueV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "components"
+    description: "One or more tensors that were dequeued as a tuple."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a tuple."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is empty, this operation will block for up to\ntimeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Dequeues a tuple of one or more tensors from the given queue."
+  description: "This operation has k outputs, where k is the number of components\nin the tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until an element\nhas been dequeued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
   name: "QueueEnqueue"
@@ -13177,12 +14080,84 @@ op {
   description: "This operation slices each component tensor along the 0th dimension to\nmake multiple queue elements. All of the tuple components must have the\nsame size in the 0th dimension.\n\nThe components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelements have been enqueued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
+  name: "QueueEnqueueManyV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "components"
+    description: "One or more tensors from which the enqueued tensors should\nbe taken."
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is too full, this operation will block for up\nto timeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Enqueues zero or more tuples of one or more tensors in the given queue."
+  description: "This operation slices each component tensor along the 0th dimension to\nmake multiple queue elements. All of the tuple components must have the\nsame size in the 0th dimension.\n\nThe components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelements have been enqueued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
+  name: "QueueEnqueueV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "components"
+    description: "One or more tensors from which the enqueued tensors should be taken."
+    type_list_attr: "Tcomponents"
+  }
+  attr {
+    name: "Tcomponents"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is full, this operation will block for up to\ntimeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Enqueues a tuple of one or more tensors in the given queue."
+  description: "The components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelement has been enqueued (or \'timeout_ms\' elapses, if specified)."
+}
+op {
   name: "QueueSize"
   input_arg {
     name: "handle"
     description: "The handle to a queue."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "size"
+    description: "The number of elements in the given queue."
+    type: DT_INT32
+  }
+  summary: "Computes the number of elements in the given queue."
+}
+op {
+  name: "QueueSizeV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "size"
@@ -13376,6 +14351,81 @@ op {
     description: "The handle to the queue."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "min_after_dequeue"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Dequeue will block unless there would be this\nmany elements after the dequeue or the queue is closed. This\nensures a minimum level of mixing of elements."
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either seed or seed2 is set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, a random seed is used."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that randomizes the order of elements."
+  is_stateful: true
+}
+op {
+  name: "RandomShuffleQueueV2"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_RESOURCE
   }
   attr {
     name: "component_types"
@@ -13700,12 +14750,39 @@ op {
   description: "This is the same as the number of ReaderRead executions that have\nsucceeded."
 }
 op {
+  name: "ReaderNumRecordsProducedV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "records_produced"
+    type: DT_INT64
+  }
+  summary: "Returns the number of records this Reader has produced."
+  description: "This is the same as the number of ReaderRead executions that have\nsucceeded."
+}
+op {
   name: "ReaderNumWorkUnitsCompleted"
   input_arg {
     name: "reader_handle"
     description: "Handle to a Reader."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "units_completed"
+    type: DT_INT64
+  }
+  summary: "Returns the number of work units this Reader has finished processing."
+}
+op {
+  name: "ReaderNumWorkUnitsCompletedV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "units_completed"
@@ -13773,12 +14850,76 @@ op {
   description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file).\nIt may return less than `num_records` even before the last batch."
 }
 op {
+  name: "ReaderReadUpToV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a `Reader`."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "queue_handle"
+    description: "Handle to a `Queue`, with string work items."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "num_records"
+    description: "number of records to read from `Reader`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "keys"
+    description: "A 1-D tensor."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "values"
+    description: "A 1-D tensor."
+    type: DT_STRING
+  }
+  summary: "Returns up to `num_records` (key, value) pairs produced by a Reader."
+  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file).\nIt may return less than `num_records` even before the last batch."
+}
+op {
+  name: "ReaderReadV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "queue_handle"
+    description: "Handle to a Queue, with string work items."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "key"
+    description: "A scalar."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    description: "A scalar."
+    type: DT_STRING
+  }
+  summary: "Returns the next record (key, value pair) produced by a Reader."
+  description: "Will dequeue from the input queue if necessary (e.g. when the\nReader needs to start reading from a new file since it has finished\nwith the previous file)."
+}
+op {
   name: "ReaderReset"
   input_arg {
     name: "reader_handle"
     description: "Handle to a Reader."
     type: DT_STRING
     is_ref: true
+  }
+  summary: "Restore a Reader to its initial clean state."
+}
+op {
+  name: "ReaderResetV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
   }
   summary: "Restore a Reader to its initial clean state."
 }
@@ -13799,12 +14940,41 @@ op {
   description: "Not all Readers support being restored, so this can produce an\nUnimplemented error."
 }
 op {
+  name: "ReaderRestoreStateV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "state"
+    description: "Result of a ReaderSerializeState of a Reader with type\nmatching reader_handle."
+    type: DT_STRING
+  }
+  summary: "Restore a reader to a previously saved state."
+  description: "Not all Readers support being restored, so this can produce an\nUnimplemented error."
+}
+op {
   name: "ReaderSerializeState"
   input_arg {
     name: "reader_handle"
     description: "Handle to a Reader."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "state"
+    type: DT_STRING
+  }
+  summary: "Produce a string tensor that encodes the state of a Reader."
+  description: "Not all Readers support being serialized, so this can produce an\nUnimplemented error."
+}
+op {
+  name: "ReaderSerializeStateV2"
+  input_arg {
+    name: "reader_handle"
+    description: "Handle to a Reader."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "state"
@@ -13947,6 +15117,61 @@ op {
   description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
 }
 op {
+  name: "RecordInput"
+  output_arg {
+    name: "records"
+    description: "A tensor of shape [batch_size]."
+    type: DT_STRING
+  }
+  attr {
+    name: "file_pattern"
+    type: "string"
+    description: "Glob pattern for the data files."
+  }
+  attr {
+    name: "file_random_seed"
+    type: "int"
+    default_value {
+      i: 301
+    }
+    description: "Random seeds used to produce randomized records."
+  }
+  attr {
+    name: "file_shuffle_shift_ratio"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "Shifts the list of files after the list is randomly\nshuffled."
+  }
+  attr {
+    name: "file_buffer_size"
+    type: "int"
+    default_value {
+      i: 10000
+    }
+    description: "The randomization shuffling buffer."
+  }
+  attr {
+    name: "file_parallelism"
+    type: "int"
+    default_value {
+      i: 16
+    }
+    description: "How many sstables are opened and concurrently iterated over."
+  }
+  attr {
+    name: "batch_size"
+    type: "int"
+    default_value {
+      i: 32
+    }
+    description: "The batch size."
+  }
+  summary: "Emits randomized records."
+  is_stateful: true
+}
+op {
   name: "ReduceJoin"
   input_arg {
     name: "inputs"
@@ -13980,7 +15205,7 @@ op {
     description: "The separator to use when joining."
   }
   summary: "Joins a string Tensor across the given dimensions."
-  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing\nan empty `reduction_indices` joins all strings in linear index order and outputs\na scalar string.\n\n\nFor example:\n\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
+  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.\n\nFor example:\n\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
 }
 op {
   name: "RefEnter"
@@ -14716,6 +15941,1513 @@ op {
   summary: "Computes the gradient of nearest neighbor interpolation."
 }
 op {
+  name: "ResourceApplyAdadelta"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum_update"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Constant factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var, accum and update_accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' according to the adadelta scheme."
+  description: "accum = rho() * accum + (1 - rho()) * grad.square();\nupdate = (update_accum + epsilon).sqrt() * (accum + epsilon()).rsqrt() * grad;\nupdate_accum = rho() * update_accum + (1 - rho()) * update.square();\nvar -= update;"
+}
+op {
+  name: "ResourceApplyAdagrad"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the adagrad scheme."
+  description: "accum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
+}
+op {
+  name: "ResourceApplyAdagradDA"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    description: "Training step number. Must be a scalar."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' according to the proximal adagrad scheme."
+}
+op {
+  name: "ResourceApplyAdam"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "m"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "v"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "beta1_power"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2_power"
+    description: "Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta1"
+    description: "Momentum factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta2"
+    description: "Momentum factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, m, and v tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the Adam algorithm."
+  description: "lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)\nm_t <- beta1 * m_{t-1} + (1 - beta1) * g_t\nv_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t\nvariable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)"
+}
+op {
+  name: "ResourceApplyCenteredRMSProp"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mg"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, mg, ms, and mom tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the centered RMSProp algorithm."
+  description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\n\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nmg <- rho * mg_{t-1} + (1-rho) * grad\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)\nvar <- var - mom"
+}
+op {
+  name: "ResourceApplyFtrl"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regulariation. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the Ftrl-proximal scheme."
+  description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+}
+op {
+  name: "ResourceApplyGradientDescent"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "delta"
+    description: "The change."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' by subtracting \'alpha\' * \'delta\' from it."
+}
+op {
+  name: "ResourceApplyMomentum"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    description: "Momentum. Must be a scalar."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, the tensor passed to compute grad will be\nvar - lr * momentum * accum, so in the end, the var you get is actually\nvar - lr * momentum * accum."
+  }
+  summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
+  description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+}
+op {
+  name: "ResourceApplyProximalAdagrad"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' and \'*accum\' according to FOBOS with Adagrad learning rate."
+  description: "accum += grad * grad\nprox_v = var - lr * grad * (1 / sqrt(accum))\nvar = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}"
+}
+op {
+  name: "ResourceApplyProximalGradientDescent"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "delta"
+    description: "The change."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' as FOBOS algorithm with fixed learning rate."
+  description: "prox_v = var - alpha * delta\nvar = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}"
+}
+op {
+  name: "ResourceApplyRMSProp"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, ms, and mom tensors is protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the RMSProp algorithm."
+  description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+}
+op {
+  name: "ResourceSparseApplyAdadelta"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum_update"
+    description: ": Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Learning rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Constant factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "var: Should be from a Variable()."
+}
+op {
+  name: "ResourceSparseApplyAdagrad"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Learning rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
+  description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
+}
+op {
+  name: "ResourceSparseApplyAdagradDA"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    description: "Learning rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    description: "Training step number. Must be a scalar."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update entries in \'*var\' and \'*accum\' according to the proximal adagrad scheme."
+}
+op {
+  name: "ResourceSparseApplyCenteredRMSProp"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mg"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var, ms and mom."
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, mg, ms, and mom tensors is\nprotected by a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the centered RMSProp algorithm."
+  description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+}
+op {
+  name: "ResourceSparseApplyFtrl"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "linear"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr_power"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update relevant entries in \'*var\' according to the Ftrl-proximal scheme."
+  description: "That is for rows we have grad for, we update var, accum and linear as follows:\naccum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+}
+op {
+  name: "ResourceSparseApplyMomentum"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Learning rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "momentum"
+    description: "Momentum. Must be a scalar."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, the tensor passed to compute grad will be\nvar - lr * momentum * accum, so in the end, the var you get is actually\nvar - lr * momentum * accum."
+  }
+  summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
+  description: "Set use_nesterov = True if you want to use Nesterov momentum.\n\nThat is for rows we have grad for, we update var and accum as follows:\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+}
+op {
+  name: "ResourceSparseApplyProximalAdagrad"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Learning rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Sparse update entries in \'*var\' and \'*accum\' according to FOBOS algorithm."
+  description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nprox_v = var\nprox_v -= lr * grad * (1 / sqrt(accum))\nvar = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}"
+}
+op {
+  name: "ResourceSparseApplyProximalGradientDescent"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Sparse update \'*var\' as FOBOS algorithm with fixed learning rate."
+  description: "That is for rows we have grad for, we update var as follows:\nprox_v = var - alpha * grad\nvar = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}"
+}
+op {
+  name: "ResourceSparseApplyRMSProp"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "ms"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mom"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rho"
+    description: "Decay rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "momentum"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    description: "Ridge term. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var, ms and mom."
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, updating of the var, ms, and mom tensors is protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
+  }
+  summary: "Update \'*var\' according to the RMSProp algorithm."
+  description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+}
+op {
   name: "Restore"
   input_arg {
     name: "file_pattern"
@@ -14865,7 +17597,7 @@ op {
   }
   input_arg {
     name: "seq_lengths"
-    description: "1-D with length `input.dims(batch_dim)` and\n`max(seq_lengths) < input.dims(seq_dim)`"
+    description: "1-D with length `input.dims(batch_dim)` and\n`max(seq_lengths) <= input.dims(seq_dim)`"
     type_attr: "Tlen"
   }
   output_arg {
@@ -14904,7 +17636,7 @@ op {
     }
   }
   summary: "Reverses variable length slices."
-  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
+  description: "This op first slices `input` along the dimension `batch_dim`, and for each\nslice `i`, reverses the first `seq_lengths[i]` elements along\nthe dimension `seq_dim`.\n\nThe elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,\nand `seq_lengths` must be a vector of length `input.dims[batch_dim]`.\n\nThe output slice `i` along dimension `batch_dim` is then given by input\nslice `i`, with the first `seq_lengths[i]` slices along dimension\n`seq_dim` reversed.\n\nFor example:\n\n```prettyprint\n# Given this:\nbatch_dim = 0\nseq_dim = 1\ninput.dims = (4, 8, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]\noutput[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]\noutput[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]\noutput[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[0, 7:, :, ...] = input[0, 7:, :, ...]\noutput[1, 2:, :, ...] = input[1, 2:, :, ...]\noutput[2, 3:, :, ...] = input[2, 3:, :, ...]\noutput[3, 2:, :, ...] = input[3, 2:, :, ...]\n```\n\nIn contrast, if:\n\n```prettyprint\n# Given this:\nbatch_dim = 2\nseq_dim = 0\ninput.dims = (8, ?, 4, ...)\nseq_lengths = [7, 2, 3, 5]\n\n# then slices of input are reversed on seq_dim, but only up to seq_lengths:\noutput[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]\noutput[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]\noutput[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]\noutput[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]\n\n# while entries past seq_lens are copied through:\noutput[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]\noutput[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]\noutput[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]\noutput[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]\n```"
 }
 op {
   name: "ReverseV2"
@@ -14955,7 +17687,30 @@ op {
     }
   }
   summary: "Reverses specific dimensions of a tensor."
-  description: "Given a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+  description: "NOTE `tf.reverse` has now changed behavior in preparation for 1.0.\n`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.\n\nGiven a `tensor`, and a `int32` tensor `axis` representing the set of\ndimensions of `tensor` to reverse. This operation reverses each dimension\n`i` for which there exists `j` s.t. `axis[j] == i`.\n\n`tensor` can have up to 8 dimensions. The number of dimensions specified\nin `axis` may be 0 or more entries. If an index is specified more than\nonce, a InvalidArgument error is raised.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [[[[ 0,  1,  2,  3],\n#                  [ 4,  5,  6,  7],\n#                  [ 8,  9, 10, 11]],\n#                 [[12, 13, 14, 15],\n#                  [16, 17, 18, 19],\n#                  [20, 21, 22, 23]]]]\n# tensor \'t\' shape is [1, 2, 3, 4]\n\n# \'dims\' is [3] or \'dims\' is -1\nreverse(t, dims) ==> [[[[ 3,  2,  1,  0],\n                        [ 7,  6,  5,  4],\n                        [ 11, 10, 9, 8]],\n                       [[15, 14, 13, 12],\n                        [19, 18, 17, 16],\n                        [23, 22, 21, 20]]]]\n\n# \'dims\' is \'[1]\' (or \'dims\' is \'[-3]\')\nreverse(t, dims) ==> [[[[12, 13, 14, 15],\n                        [16, 17, 18, 19],\n                        [20, 21, 22, 23]\n                       [[ 0,  1,  2,  3],\n                        [ 4,  5,  6,  7],\n                        [ 8,  9, 10, 11]]]]\n\n# \'dims\' is \'[2]\' (or \'dims\' is \'[-2]\')\nreverse(t, dims) ==> [[[[8, 9, 10, 11],\n                        [4, 5, 6, 7],\n                        [0, 1, 2, 3]]\n                       [[20, 21, 22, 23],\n                        [16, 17, 18, 19],\n                        [12, 13, 14, 15]]]]\n```"
+}
+op {
+  name: "Rint"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Returns element-wise integer closest to x."
+  description: "If the result is midway between two representable values,\nthe even representable is chosen.\nFor example:\n\n```\nrint(-1.5) ==> -2.0\nrint(0.5000001) ==> 1.0\nrint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]\n```"
 }
 op {
   name: "Round"
@@ -15103,7 +17858,7 @@ op {
     default_value {
       f: 0.1
     }
-    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied."
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
   }
   attr {
     name: "aspect_ratio_range"
@@ -15809,7 +18564,7 @@ op {
     description: "If True, the assignment will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Applies sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entires in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entries in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
 }
 op {
   name: "SdcaFprint"
@@ -16385,6 +19140,53 @@ op {
   summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
 }
 op {
+  name: "SetSize"
+  input_arg {
+    name: "set_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set_values"
+    description: "1D `Tensor`, values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "size"
+    description: "For `set` ranked `n`, this is a `Tensor` with rank `n-1`, and the same 1st\n`n-1` dimensions as `set`. Each value is the number of unique elements in\nthe corresponding `[0...n-1]` dimension of `set`."
+    type: DT_INT32
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Number of unique elements along last dimension of input `set`."
+  description: "Input `set` is a `SparseTensor` represented by `set_indices`, `set_values`,\nand `set_shape`. The last dimension contains values in a set, duplicates are\nallowed but ignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set`\nindices."
+}
+op {
   name: "Shape"
   input_arg {
     name: "input"
@@ -16700,6 +19502,10 @@ op {
     description: "Threshold for word occurrence. Words that appear with higher\nfrequency will be randomly down-sampled. Set to 0 to disable."
   }
   summary: "Parses a text file and creates a batch of examples."
+  deprecation {
+    version: 19
+    explanation: "Moving word2vec into tensorflow_models/tutorials and deprecating its ops here as a result"
+  }
   is_stateful: true
 }
 op {
@@ -19350,6 +22156,82 @@ op {
   description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
 }
 op {
+  name: "SparseToSparseSetOperation"
+  input_arg {
+    name: "set1_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set1_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set1_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set1_shape[0...n-1]` must\nbe the same as `set2_shape[0...n-1]`, `set1_shape[n]` is the\nmax set size across `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_indices"
+    description: "2D `Tensor`, indices of a `SparseTensor`. Must be in row-major\norder."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "set2_values"
+    description: "1D `Tensor`, values of a `SparseTensor`. Must be in row-major\norder."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "set2_shape"
+    description: "1D `Tensor`, shape of a `SparseTensor`. `set2_shape[0...n-1]` must\nbe the same as `set1_shape[0...n-1]`, `set2_shape[n]` is the\nmax set size across `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_indices"
+    description: "2D indices of a `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "result_values"
+    description: "1D values of a `SparseTensor`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "result_shape"
+    description: "1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is\nthe same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`\nis the max result set size across all `0...n-1` dimensions."
+    type: DT_INT64
+  }
+  attr {
+    name: "set_operation"
+    type: "string"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Applies set operation along last dimension of 2 `SparseTensor` inputs."
+  description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nIf `validate_indices` is `True`, `SparseToSparseSetOperation` validates the\norder and range of `set1` and `set2` indices.\n\nInput `set1` is a `SparseTensor` represented by `set1_indices`, `set1_values`,\nand `set1_shape`. For `set1` ranked `n`, 1st `n-1` dimensions must be the same\nas `set2`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nInput `set2` is a `SparseTensor` represented by `set2_indices`, `set2_values`,\nand `set2_shape`. For `set2` ranked `n`, 1st `n-1` dimensions must be the same\nas `set1`. Dimension `n` contains values in a set, duplicates are allowed but\nignored.\n\nIf `validate_indices` is `True`, this op validates the order and range of `set1`\nand `set2` indices.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
+}
+op {
   name: "Split"
   input_arg {
     name: "split_dim"
@@ -19377,6 +22259,54 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  summary: "Splits a tensor into `num_split` tensors along one dimension."
+}
+op {
+  name: "SplitV"
+  input_arg {
+    name: "value"
+    description: "The tensor to split."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size_splits"
+    description: "list containing the sizes of each output tensor along the split\ndimension. Must sum to the dimension of value along split_dim.\nCan contain one -1 indicating that dimension is to be inferred."
+    type_attr: "Tlen"
+  }
+  input_arg {
+    name: "split_dim"
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "Tensors whose shape matches that of `value`\nexcept along `split_dim`, where their sizes are\n`size_splits[i]`."
+    type_attr: "T"
+    number_attr: "num_split"
+  }
+  attr {
+    name: "num_split"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tlen"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Splits a tensor into `num_split` tensors along one dimension."
 }
@@ -19611,6 +22541,39 @@ op {
     description: "Swap `elem` to CPU. Default to false."
   }
   summary: "Push an element onto the stack."
+}
+op {
+  name: "Stage"
+  input_arg {
+    name: "values"
+    description: "a list of tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "It is necessary to match this name to the matching Unstage Op."
+  }
+  summary: "Stage values similar to a lightweight Enqueue.  The basic functionality of this"
+  description: "Op is similar to a queue with many fewer capabilities and options.  This Op is\noptimized for performance."
+  is_stateful: true
 }
 op {
   name: "StopGradient"
@@ -19907,7 +22870,7 @@ op {
   }
   input_arg {
     name: "delimiter"
-    description: "0-D. Delimiter character, or empty string."
+    description: "0-D. Delimiter characters (bytes), or empty string."
     type: DT_STRING
   }
   output_arg {
@@ -19926,7 +22889,7 @@ op {
     type: DT_INT64
   }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
-  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single-byte character. If `delimiter` is an empty\n string, each element of `input` is split into individual single-byte character\n strings, including splitting of UTF-8 multibyte sequences.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty, or a string of split characters. If `delimiter` is an\n empty string, each element of `input` is split into individual single-byte\n character strings, including splitting of UTF-8 multibyte sequences. Otherwise\n every character of `delimiter` is a potential split point.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"
@@ -20170,12 +23133,12 @@ op {
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, P]`; if `full_matrices` is `True` then shape is\n`[..., M, M]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, P]`. If `full_matrices` is `True` then shape is `[..., N, N]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {
@@ -20278,6 +23241,39 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "A Reader that outputs the records from a TensorFlow Records file."
+  is_stateful: true
+}
+op {
+  name: "TFRecordReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "container"
@@ -20468,19 +23464,16 @@ op {
   name: "TensorArray"
   input_arg {
     name: "size"
-    description: "The size of the array."
     type: DT_INT32
   }
   output_arg {
     name: "handle"
-    description: "The handle to the TensorArray."
     type: DT_STRING
     is_ref: true
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of the elements on the tensor_array."
   }
   attr {
     name: "dynamic_size"
@@ -20488,7 +23481,6 @@ op {
     default_value {
       b: false
     }
-    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
   }
   attr {
     name: "clear_after_read"
@@ -20496,7 +23488,6 @@ op {
     default_value {
       b: true
     }
-    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
   }
   attr {
     name: "tensor_array_name"
@@ -20504,19 +23495,48 @@ op {
     default_value {
       s: ""
     }
-    description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
   }
-  summary: "An array of Tensors of given size, with data written via Write and read"
-  description: "via Read or Pack."
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayV3"
+  }
   is_stateful: true
 }
 op {
   name: "TensorArrayClose"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
     is_ref: true
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayCloseV3"
+  }
+}
+op {
+  name: "TensorArrayCloseV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  summary: "Deprecated. Use TensorArrayCloseV3"
+}
+op {
+  name: "TensorArrayCloseV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_RESOURCE
   }
   summary: "Delete the TensorArray from its resource container.  This enables"
   description: "the user to close and release the resource in the middle of a step/run."
@@ -20525,9 +23545,78 @@ op {
   name: "TensorArrayConcat"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGradV3"
+  }
+}
+op {
+  name: "TensorArrayConcatV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  summary: "Deprecated. Use TensorArrayConcatV3"
+}
+op {
+  name: "TensorArrayConcatV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -20566,9 +23655,78 @@ op {
   name: "TensorArrayGather"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGatherV3"
+  }
+}
+op {
+  name: "TensorArrayGatherV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  summary: "Deprecated. Use TensorArrayGatherV3"
+}
+op {
+  name: "TensorArrayGatherV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "indices"
@@ -20607,8 +23765,54 @@ op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
-    description: "The handle to the forward TensorArray."
     type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGradV3"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to the forward TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -20617,8 +23821,11 @@ op {
   }
   output_arg {
     name: "grad_handle"
-    type: DT_STRING
-    is_ref: true
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
   }
   attr {
     name: "source"
@@ -20633,24 +23840,20 @@ op {
   name: "TensorArrayPack"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "flow_in"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
     name: "value"
-    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
     type_attr: "dtype"
   }
   attr {
     name: "dtype"
     type: "type"
-    description: "The type of the elem that is returned."
   }
   attr {
     name: "element_shape"
@@ -20660,18 +23863,70 @@ op {
         unknown_rank: true
       }
     }
-    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
   }
-  summary: "Pack the elements from the TensorArray into output `value`."
-  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayGather` with\n`indices = RangeOp(0, TensorArraySizeOp)`.\n\nAll elements must have the same shape."
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayGatherV3 with RangeOp"
+  }
 }
 op {
   name: "TensorArrayRead"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayReadV3"
+  }
+}
+op {
+  name: "TensorArrayReadV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayReadV3"
+}
+op {
+  name: "TensorArrayReadV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "index"
@@ -20698,9 +23953,68 @@ op {
   name: "TensorArrayScatter"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 19
+    explanation: "Use TensorArrayGradV3"
+  }
+}
+op {
+  name: "TensorArrayScatterV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayScatterV3"
+}
+op {
+  name: "TensorArrayScatterV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "indices"
@@ -20733,9 +24047,44 @@ op {
   name: "TensorArraySize"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArraySizeV3"
+  }
+}
+op {
+  name: "TensorArraySizeV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  summary: "Deprecated. Use TensorArraySizeV3"
+}
+op {
+  name: "TensorArraySizeV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "flow_in"
@@ -20753,9 +24102,68 @@ op {
   name: "TensorArraySplit"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArraySplitV3"
+  }
+}
+op {
+  name: "TensorArraySplitV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArraySplitV3"
+}
+op {
+  name: "TensorArraySplitV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "value"
@@ -20788,39 +24196,203 @@ op {
   name: "TensorArrayUnpack"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "value"
-    description: "The concatenated tensor to write to the TensorArray."
     type_attr: "T"
   }
   input_arg {
     name: "flow_in"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
     name: "flow_out"
-    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Unpack the data from the input value into TensorArray elements."
-  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayScatter` with\n`indices = RangeOp(0, SizeOp(value)[0])`."
+  deprecation {
+    version: 20
+    explanation: "Use TensorArrayScatterV3 with RangeOp"
+  }
+}
+op {
+  name: "TensorArrayV2"
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Deprecated. Use TensorArrayV3"
+  is_stateful: true
+}
+op {
+  name: "TensorArrayV3"
+  input_arg {
+    name: "size"
+    description: "The size of the array."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the TensorArray."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow"
+    description: "A scalar used to control gradient flow."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elements on the tensor_array."
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, gathering zero-size TensorArrays is an error."
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "A boolean that determines whether writes to the TensorArray\nare allowed to grow the size.  By default, this is not allowed."
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true (default), Tensors in the TensorArray are cleared\nafter being read.  This disables multiple read semantics but allows early\nrelease of memory."
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
+  }
+  summary: "An array of Tensors of given size, with data written via Write and read"
+  description: "via Read or Pack."
+  is_stateful: true
 }
 op {
   name: "TensorArrayWrite"
   input_arg {
     name: "handle"
-    description: "The handle to a TensorArray."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 16
+    explanation: "Use TensorArrayWriteV3"
+  }
+}
+op {
+  name: "TensorArrayWriteV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+}
+op {
+  name: "TensorArrayWriteV3"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "index"
@@ -20897,6 +24469,40 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "skip_header_lines"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Number of lines to skip from the beginning of every file."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the lines of a file delimited by \'\\n\'."
+  is_stateful: true
+}
+op {
+  name: "TextLineReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "skip_header_lines"
@@ -21546,7 +25152,69 @@ op {
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such\nthat `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\nrange of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/UnsortedSegmentSum.png\" alt>\n</div>"
 }
 op {
+  name: "Unstage"
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op is similar to a lightweight Dequeue.  The basic funtionality is similar to"
+  description: "dequeue with many fewer capabilities and options.  This Op is optimized for\nperformance."
+  is_stateful: true
+}
+op {
   name: "Variable"
+  output_arg {
+    name: "ref"
+    type_attr: "dtype"
+    is_ref: true
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Use VariableV2 instead."
+  is_stateful: true
+}
+op {
+  name: "VariableV2"
   output_arg {
     name: "ref"
     description: "A reference to the variable tensor."
@@ -21603,6 +25271,33 @@ op {
     description: "The handle to reference the Reader."
     type: DT_STRING
     is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the entire contents of a file as a value."
+  description: "To use, enqueue filenames in a Queue.  The output of ReaderRead will\nbe a filename (key) and the contents of that file (value)."
+  is_stateful: true
+}
+op {
+  name: "WholeFileReaderV2"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_RESOURCE
   }
   attr {
     name: "container"

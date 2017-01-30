@@ -16,19 +16,18 @@ limitations under the License.
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
 namespace perftools {
 namespace gputools {
 
-/* static */ mutex MultiPlatformManager::platforms_mutex_(LINKER_INITIALIZED);
-
 /* static */ port::Status MultiPlatformManager::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   CHECK(platform != nullptr);
   string key = port::Lowercase(platform->Name());
-  mutex_lock lock(platforms_mutex_);
+  mutex_lock lock(GetPlatformsMutex());
   if (GetPlatformMap()->find(key) != GetPlatformMap()->end()) {
     return port::Status(port::error::INTERNAL,
                         "platform is already registered with name: \"" +
@@ -46,7 +45,7 @@ namespace gputools {
 
 /* static */ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithName(
     const string& target) {
-  mutex_lock lock(platforms_mutex_);
+  mutex_lock lock(GetPlatformsMutex());
   auto it = GetPlatformMap()->find(port::Lowercase(target));
 
   if (it == GetPlatformMap()->end()) {
@@ -60,7 +59,7 @@ namespace gputools {
 
 /* static */ port::StatusOr<Platform*> MultiPlatformManager::PlatformWithId(
     const Platform::Id& id) {
-  mutex_lock lock(platforms_mutex_);
+  mutex_lock lock(GetPlatformsMutex());
   auto it = GetPlatformByIdMap()->find(id);
   if (it == GetPlatformByIdMap()->end()) {
     return port::Status(
@@ -72,10 +71,19 @@ namespace gputools {
 }
 
 /* static */ void MultiPlatformManager::ClearPlatformRegistry() {
-  mutex_lock lock(platforms_mutex_);
+  mutex_lock lock(GetPlatformsMutex());
   GetPlatformMap()->clear();
   GetPlatformByIdMap()->clear();
 }
 
 }  // namespace gputools
 }  // namespace perftools
+
+REGISTER_MODULE_INITIALIZER(
+    multi_platform_manager,
+    {
+        // Nothing -- this is just a module initializer
+        // definition to reference for sequencing
+        // purposes from Platform subclasses that register
+        // themselves with the MultiPlatformManager.
+    });

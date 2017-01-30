@@ -11,7 +11,6 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 """This showcases how simple it is to build image classification networks.
 
 It follows description from this TensorFlow tutorial:
@@ -25,8 +24,9 @@ from __future__ import print_function
 import numpy as np
 from sklearn import metrics
 import tensorflow as tf
-from tensorflow.contrib import layers
-from tensorflow.contrib import learn
+
+layers = tf.contrib.layers
+learn = tf.contrib.learn
 
 
 def max_pool_2x2(tensor_in):
@@ -46,14 +46,14 @@ def conv_model(feature, target, mode):
 
   # First conv layer will compute 32 features for each 5x5 patch
   with tf.variable_scope('conv_layer1'):
-    h_conv1 = layers.convolution(feature, 32, kernel_size=[5, 5],
-                                 activation_fn=tf.nn.relu)
+    h_conv1 = layers.convolution(
+        feature, 32, kernel_size=[5, 5], activation_fn=tf.nn.relu)
     h_pool1 = max_pool_2x2(h_conv1)
 
   # Second conv layer will compute 64 features for each 5x5 patch.
   with tf.variable_scope('conv_layer2'):
-    h_conv2 = layers.convolution(h_pool1, 64, kernel_size=[5, 5],
-                                 activation_fn=tf.nn.relu)
+    h_conv2 = layers.convolution(
+        h_pool1, 64, kernel_size=[5, 5], activation_fn=tf.nn.relu)
     h_pool2 = max_pool_2x2(h_conv2)
     # reshape tensor into a batch of vectors
     h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
@@ -61,7 +61,8 @@ def conv_model(feature, target, mode):
   # Densely connected layer with 1024 neurons.
   h_fc1 = layers.dropout(
       layers.fully_connected(
-          h_pool2_flat, 1024, activation_fn=tf.nn.relu), keep_prob=0.5,
+          h_pool2_flat, 1024, activation_fn=tf.nn.relu),
+      keep_prob=0.5,
       is_training=mode == tf.contrib.learn.ModeKeys.TRAIN)
 
   # Compute logits (1 per class) and compute loss.
@@ -70,7 +71,9 @@ def conv_model(feature, target, mode):
 
   # Create a tensor for training op.
   train_op = layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(), optimizer='SGD',
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='SGD',
       learning_rate=0.001)
 
   return tf.argmax(logits, 1), loss, train_op
@@ -85,18 +88,22 @@ def main(unused_args):
       mnist.train.images)
   classifier = learn.LinearClassifier(
       feature_columns=feature_columns, n_classes=10)
-  classifier.fit(mnist.train.images, mnist.train.labels.astype(np.int32),
-                 batch_size=100, steps=1000)
-  score = metrics.accuracy_score(
-      mnist.test.labels, list(classifier.predict(mnist.test.images)))
+  classifier.fit(mnist.train.images,
+                 mnist.train.labels.astype(np.int32),
+                 batch_size=100,
+                 steps=1000)
+  score = metrics.accuracy_score(mnist.test.labels,
+                                 list(classifier.predict(mnist.test.images)))
   print('Accuracy: {0:f}'.format(score))
 
   ### Convolutional network
   classifier = learn.Estimator(model_fn=conv_model)
-  classifier.fit(mnist.train.images, mnist.train.labels,
-                 batch_size=100, steps=20000)
-  score = metrics.accuracy_score(
-      mnist.test.labels, list(classifier.predict(mnist.test.images)))
+  classifier.fit(mnist.train.images,
+                 mnist.train.labels,
+                 batch_size=100,
+                 steps=20000)
+  score = metrics.accuracy_score(mnist.test.labels,
+                                 list(classifier.predict(mnist.test.images)))
   print('Accuracy: {0:f}'.format(score))
 
 

@@ -8,22 +8,25 @@ Typical usage example:
 
 ```python
 # Define features and transformations
-country = sparse_column_with_vocabulary_file("country", VOCAB_FILE)
-age = real_valued_column("age")
-click_bucket = bucketized_column(real_valued_column("historical_click_ratio"),
-                                 boundaries=[i/10. for i in range(10)])
-country_x_click = crossed_column([country, click_bucket], 10)
+feature_a = sparse_column_with_vocabulary_file(...)
+feature_b = real_valued_column(...)
+feature_c_bucketized = bucketized_column(real_valued_column("feature_c"), ...)
+feature_a_x_feature_c = crossed_column(
+  columns=[feature_a, feature_c_bucketized], ...)
 
-feature_columns = set([age, click_bucket, country_x_click])
+feature_columns = set(
+  [feature_b, feature_c_bucketized, feature_a_x_feature_c])
 batch_examples = tf.parse_example(
-    serialized_examples,
-    create_feature_spec_for_parsing(feature_columns))
+    serialized=serialized_examples,
+    features=create_feature_spec_for_parsing(feature_columns))
 ```
 
 For the above example, create_feature_spec_for_parsing would return the dict:
-{"age": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
- "historical_click_ratio": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
- "country": parsing_ops.VarLenFeature(tf.string)}
+{
+  "feature_a": parsing_ops.VarLenFeature(tf.string),
+  "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+  "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+}
 
 ##### Args:
 

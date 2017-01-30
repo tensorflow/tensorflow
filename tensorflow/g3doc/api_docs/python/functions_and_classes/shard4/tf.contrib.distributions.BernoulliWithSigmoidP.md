@@ -164,9 +164,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_reparameterized` {#BernoulliWithSigmoidP.is_reparameterized}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_batch(name='is_scalar_batch')` {#BernoulliWithSigmoidP.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.is_scalar_event(name='is_scalar_event')` {#BernoulliWithSigmoidP.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -344,7 +371,11 @@ Probability of success.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -362,7 +393,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.param_static_shapes(cls, sample_shape)` {#BernoulliWithSigmoidP.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -466,6 +505,21 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.reparameterization_type` {#BernoulliWithSigmoidP.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#BernoulliWithSigmoidP.sample}
 
 Generate samples of the specified shape.
@@ -489,33 +543,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#BernoulliWithSigmoidP.sample_n}
-
-Generate `n` samples.
-
-##### Args:
-
-
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.BernoulliWithSigmoidP.std(name='std')` {#BernoulliWithSigmoidP.std}
+#### `tf.contrib.distributions.BernoulliWithSigmoidP.stddev(name='stddev')` {#BernoulliWithSigmoidP.stddev}
 
 Standard deviation.
 
@@ -543,7 +571,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 

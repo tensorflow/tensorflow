@@ -163,6 +163,10 @@ class SparseDenseBinaryOpShared : public OpKernel {
   }
 };
 
+// NOTE(aselle): If Div is extended to non-reals, make sure to use the same
+// separation of operator semantics as done for dense cwise ops. I.e. you
+// should make SparseDenseCwiseRealDiv, SparseDenseCwiseTruncateDiv,
+// SparseDenseCwiseFloorDiv, and then deprecate, SparseDenseCwiseDiv.
 // TODO(zongheng): extend to other eligible cwise operations as requested.
 #define REGISTER_KERNELS(T)                                                  \
   REGISTER_KERNEL_BUILDER(                                                   \

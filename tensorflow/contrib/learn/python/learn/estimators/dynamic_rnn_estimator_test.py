@@ -18,14 +18,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+import tempfile
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.contrib import rnn
+from tensorflow.contrib.layers.python.layers import feature_column
+from tensorflow.contrib.layers.python.layers import target_column as target_column_lib
 from tensorflow.contrib.learn.python.learn.estimators import dynamic_rnn_estimator
-from tensorflow.python.ops import rnn_cell
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class IdentityRNNCell(tf.nn.rnn_cell.RNNCell):
+class IdentityRNNCell(rnn.RNNCell):
 
   def __init__(self, state_size, output_size):
     self._state_size = state_size
@@ -40,7 +64,8 @@ class IdentityRNNCell(tf.nn.rnn_cell.RNNCell):
     return self._output_size
 
   def __call__(self, inputs, state):
-    return tf.identity(inputs), tf.identity(state)
+    return array_ops.identity(inputs), array_ops.ones(
+        [array_ops.shape(inputs)[0], self.state_size])
 
 
 class MockTargetColumn(object):
@@ -69,17 +94,6 @@ class MockTargetColumn(object):
     self._num_label_columns = n
 
 
-class MockOptimizer(object):
-
-  def compute_gradients(self, loss, var_list):
-    raise NotImplementedError(
-        'MockOptimizer.compute_gradients called unexpectedly.')
-
-  def apply_gradients(self, processed_gradients, global_step):
-    raise NotImplementedError(
-        'MockOptimizer.apply_gradients called unexpectedly.')
-
-
 def sequence_length_mask(values, lengths):
   masked = values
   for i, length in enumerate(lengths):
@@ -87,58 +101,70 @@ def sequence_length_mask(values, lengths):
   return masked
 
 
-class DynamicRnnEstimatorTest(tf.test.TestCase):
+class DynamicRnnEstimatorTest(test.TestCase):
 
   NUM_RNN_CELL_UNITS = 8
   NUM_LABEL_COLUMNS = 6
-  INPUTS_COLUMN = tf.contrib.layers.real_valued_column(
+  INPUTS_COLUMN = feature_column.real_valued_column(
       'inputs', dimension=NUM_LABEL_COLUMNS)
 
   def setUp(self):
-    self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
+    super(DynamicRnnEstimatorTest, self).setUp()
+    self.rnn_cell = core_rnn_cell_impl.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
 
-    location = tf.contrib.layers.sparse_column_with_keys(
+    location = feature_column.sparse_column_with_keys(
         'location', keys=['west_side', 'east_side', 'nyc'])
-    location_onehot = tf.contrib.layers.one_hot_column(location)
+    location_onehot = feature_column.one_hot_column(location)
     self.context_feature_columns = [location_onehot]
 
-    wire_cast = tf.contrib.layers.sparse_column_with_keys(
+    wire_cast = feature_column.sparse_column_with_keys(
         'wire_cast', ['marlo', 'omar', 'stringer'])
-    wire_cast_embedded = tf.contrib.layers.embedding_column(
-        wire_cast, dimension=8)
-    measurements = tf.contrib.layers.real_valued_column(
+    wire_cast_embedded = feature_column.embedding_column(wire_cast, dimension=8)
+    measurements = feature_column.real_valued_column(
         'measurements', dimension=2)
     self.sequence_feature_columns = [measurements, wire_cast_embedded]
 
-    self.columns_to_tensors = {
-        'location': tf.SparseTensor(
-            indices=[[0, 0], [1, 0], [2, 0]],
-            values=['west_side', 'west_side', 'nyc'],
-            shape=[3, 1]),
-        'wire_cast': tf.SparseTensor(
-            indices=[[0, 0, 0], [0, 1, 0],
-                     [1, 0, 0], [1, 1, 0], [1, 1, 1],
-                     [2, 0, 0]],
-            values=[b'marlo', b'stringer',
-                    b'omar', b'stringer', b'marlo',
-                    b'marlo'],
-            shape=[3, 2, 2]),
-        'measurements': tf.random_uniform([3, 2, 2])}
+  def GetColumnsToTensors(self):
+    """Get columns_to_tensors matching setUp(), in the current default graph."""
+    return {
+        'location':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0], [1, 0], [2, 0]],
+                values=['west_side', 'west_side', 'nyc'],
+                dense_shape=[3, 1]),
+        'wire_cast':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0, 0], [0, 1, 0],
+                         [1, 0, 0], [1, 1, 0], [1, 1, 1],
+                         [2, 0, 0]],
+                values=[b'marlo', b'stringer',
+                        b'omar', b'stringer', b'marlo',
+                        b'marlo'],
+                dense_shape=[3, 2, 2]),
+        'measurements':
+            random_ops.random_uniform(
+                [3, 2, 2], seed=4711)
+    }
+
+  def GetClassificationTargetsOrNone(self, mode):
+    """Get targets matching setUp() and mode, in the current default graph."""
+    return (random_ops.random_uniform(
+        [3, 2, 1], 0, 2, dtype=dtypes.int64, seed=1412) if
+            mode != model_fn_lib.ModeKeys.INFER else None)
 
   def testBuildSequenceInputInput(self):
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
-        self.columns_to_tensors,
-        self.sequence_feature_columns,
+        self.GetColumnsToTensors(), self.sequence_feature_columns,
         self.context_feature_columns)
     with self.test_session() as sess:
-      sess.run(tf.global_variables_initializer())
-      sess.run(tf.initialize_all_tables())
+      sess.run(variables.global_variables_initializer())
+      sess.run(data_flow_ops.tables_initializer())
       sequence_input_val = sess.run(sequence_input)
     expected_shape = np.array([
-        3,         # expected batch size
-        2,         # padded sequence length
+        3,  # expected batch size
+        2,  # padded sequence length
         3 + 8 + 2  # location keys + embedding dim + measurement dimension
     ])
     self.assertAllEqual(expected_shape, sequence_input_val.shape)
@@ -146,49 +172,22 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
   def testConstructRNN(self):
     initial_state = None
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
-        self.columns_to_tensors,
-        self.sequence_feature_columns,
+        self.GetColumnsToTensors(), self.sequence_feature_columns,
         self.context_feature_columns)
     activations_t, final_state_t = dynamic_rnn_estimator.construct_rnn(
-        initial_state,
-        sequence_input,
-        self.rnn_cell,
+        initial_state, sequence_input, self.rnn_cell,
         self.mock_target_column.num_label_columns)
 
     # Obtain values of activations and final state.
-    with tf.Session() as sess:
-      sess.run(tf.global_variables_initializer())
-      sess.run(tf.initialize_all_tables())
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(data_flow_ops.tables_initializer())
       activations, final_state = sess.run([activations_t, final_state_t])
 
     expected_activations_shape = np.array([3, 2, self.NUM_LABEL_COLUMNS])
     self.assertAllEqual(expected_activations_shape, activations.shape)
     expected_state_shape = np.array([3, self.NUM_RNN_CELL_UNITS])
     self.assertAllEqual(expected_state_shape, final_state.shape)
-
-  def testPaddingMask(self):
-    """Test `padding_mask`."""
-    batch_size = 16
-    padded_length = 32
-    np.random.seed(1234)
-    sequence_lengths = np.random.randint(0, padded_length + 1, batch_size)
-
-    padding_mask_t = dynamic_rnn_estimator.padding_mask(
-        tf.constant(sequence_lengths, dtype=tf.int32),
-        tf.constant(padded_length, dtype=tf.int32))
-
-    with tf.Session() as sess:
-      padding_mask = sess.run(padding_mask_t)
-
-    for i in range(batch_size):
-      actual_mask = padding_mask[i]
-      expected_mask = np.concatenate(
-          [np.ones(sequence_lengths[i]),
-           np.zeros(padded_length - sequence_lengths[i])],
-          axis=0)
-      np.testing.assert_equal(actual_mask, expected_mask,
-                              'Mismatch on row {}. Got {}; expected {}.'.format(
-                                  i, actual_mask, expected_mask))
 
   def testMaskActivationsAndLabels(self):
     """Test `mask_activations_and_labels`."""
@@ -201,14 +200,14 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
     labels = np.random.randint(0, num_classes, [batch_size, padded_length])
     (activations_masked_t,
      labels_masked_t) = dynamic_rnn_estimator.mask_activations_and_labels(
-         tf.constant(
-             activations, dtype=tf.float32),
-         tf.constant(
-             labels, dtype=tf.int32),
-         tf.constant(
-             sequence_length, dtype=tf.int32))
+         constant_op.constant(
+             activations, dtype=dtypes.float32),
+         constant_op.constant(
+             labels, dtype=dtypes.int32),
+         constant_op.constant(
+             sequence_length, dtype=dtypes.int32))
 
-    with tf.Session() as sess:
+    with session.Session() as sess:
       activations_masked, labels_masked = sess.run(
           [activations_masked_t, labels_masked_t])
 
@@ -253,10 +252,12 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
     sequence_length = np.random.randint(0, padded_length + 1, batch_size)
     activations = np.random.rand(batch_size, padded_length, num_classes)
     last_activations_t = dynamic_rnn_estimator.select_last_activations(
-        tf.constant(activations, dtype=tf.float32),
-        tf.constant(sequence_length, dtype=tf.int32))
+        constant_op.constant(
+            activations, dtype=dtypes.float32),
+        constant_op.constant(
+            sequence_length, dtype=dtypes.int32))
 
-    with tf.Session() as sess:
+    with session.Session() as sess:
       last_activations = sess.run(last_activations_t)
 
     expected_activations_shape = [batch_size, num_classes]
@@ -275,9 +276,282 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
           '  Expected {}; got {}.'.format(i, expected_activations,
                                           actual_activations))
 
+  # testGetDynamicRnnModelFn{Train,Eval,Infer}() test which fields
+  # of ModelFnOps are set depending on mode.
+  def testGetDynamicRnnModelFnTrain(self):
+    model_fn_ops = self._GetModelFnOpsForMode(model_fn_lib.ModeKeys.TRAIN)
+    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNotNone(model_fn_ops.loss)
+    self.assertIsNotNone(model_fn_ops.train_op)
+    # None may get normalized to {}; we accept neither.
+    self.assertNotEqual(len(model_fn_ops.eval_metric_ops), 0)
 
-class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
-  """Learning tests for dymanic RNN Estimators."""
+  def testGetDynamicRnnModelFnEval(self):
+    model_fn_ops = self._GetModelFnOpsForMode(model_fn_lib.ModeKeys.EVAL)
+    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNotNone(model_fn_ops.loss)
+    self.assertIsNone(model_fn_ops.train_op)
+    # None may get normalized to {}; we accept neither.
+    self.assertNotEqual(len(model_fn_ops.eval_metric_ops), 0)
+
+  def testGetDynamicRnnModelFnInfer(self):
+    model_fn_ops = self._GetModelFnOpsForMode(model_fn_lib.ModeKeys.INFER)
+    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNone(model_fn_ops.loss)
+    self.assertIsNone(model_fn_ops.train_op)
+    # None may get normalized to {}; we accept both.
+    self.assertFalse(model_fn_ops.eval_metric_ops)
+
+  def _GetModelFnOpsForMode(self, mode):
+    """Helper for testGetDynamicRnnModelFn{Train,Eval,Infer}()."""
+    model_fn = dynamic_rnn_estimator._get_dynamic_rnn_model_fn(
+        self.rnn_cell,
+        target_column=target_column_lib.multi_class_target(n_classes=2),
+        # Only CLASSIFICATION yields eval metrics to test for.
+        problem_type=dynamic_rnn_estimator.ProblemType.CLASSIFICATION,
+        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        optimizer='SGD',
+        sequence_feature_columns=self.sequence_feature_columns,
+        context_feature_columns=self.context_feature_columns,
+        learning_rate=0.1)
+    labels = self.GetClassificationTargetsOrNone(mode)
+    model_fn_ops = model_fn(
+        features=self.GetColumnsToTensors(), labels=labels, mode=mode)
+    return model_fn_ops
+
+  def testExport(self):
+    input_feature_key = 'magic_input_feature_key'
+
+    def get_input_fn(mode):
+
+      def input_fn():
+        features = self.GetColumnsToTensors()
+        if mode == model_fn_lib.ModeKeys.INFER:
+          input_examples = array_ops.placeholder(dtypes.string)
+          features[input_feature_key] = input_examples
+          # Real code would now parse features out of input_examples,
+          # but this test can just stick to the constants above.
+        return features, self.GetClassificationTargetsOrNone(mode)
+
+      return input_fn
+
+    model_dir = tempfile.mkdtemp()
+
+    def estimator_fn():
+      return dynamic_rnn_estimator.multi_value_rnn_classifier(
+          num_classes=2,
+          num_units=self.NUM_RNN_CELL_UNITS,
+          sequence_feature_columns=self.sequence_feature_columns,
+          context_feature_columns=self.context_feature_columns,
+          predict_probabilities=True,
+          model_dir=model_dir)
+
+    # Train a bit to create an exportable checkpoint.
+    estimator_fn().fit(input_fn=get_input_fn(model_fn_lib.ModeKeys.TRAIN),
+                       steps=100)
+    # Now export, but from a fresh estimator instance, like you would
+    # in an export binary. That means .export() has to work without
+    # .fit() being called on the same object.
+    export_dir = tempfile.mkdtemp()
+    print('Exporting to', export_dir)
+    estimator_fn().export(
+        export_dir,
+        input_fn=get_input_fn(model_fn_lib.ModeKeys.INFER),
+        use_deprecated_input_fn=False,
+        input_feature_key=input_feature_key)
+
+  def testStateTupleDictConversion(self):
+    """Test `state_tuple_to_dict` and `dict_to_state_tuple`."""
+    cell_sizes = [5, 3, 7]
+    # A MultiRNNCell of LSTMCells is both a common choice and an interesting
+    # test case, because it has two levels of nesting, with an inner class that
+    # is not a plain tuple.
+    cell = core_rnn_cell_impl.MultiRNNCell(
+        [core_rnn_cell_impl.LSTMCell(i) for i in cell_sizes])
+    state_dict = {
+        dynamic_rnn_estimator._get_state_name(i):
+        array_ops.expand_dims(math_ops.range(cell_size), 0)
+        for i, cell_size in enumerate([5, 5, 3, 3, 7, 7])
+    }
+    expected_state = (core_rnn_cell_impl.LSTMStateTuple(
+        np.reshape(np.arange(5), [1, -1]), np.reshape(np.arange(5), [1, -1])),
+                      core_rnn_cell_impl.LSTMStateTuple(
+                          np.reshape(np.arange(3), [1, -1]),
+                          np.reshape(np.arange(3), [1, -1])),
+                      core_rnn_cell_impl.LSTMStateTuple(
+                          np.reshape(np.arange(7), [1, -1]),
+                          np.reshape(np.arange(7), [1, -1])))
+    actual_state = dynamic_rnn_estimator.dict_to_state_tuple(state_dict, cell)
+    flattened_state = dynamic_rnn_estimator.state_tuple_to_dict(actual_state)
+
+    with self.test_session() as sess:
+      (state_dict_val, actual_state_val, flattened_state_val) = sess.run(
+          [state_dict, actual_state, flattened_state])
+
+    def _recursive_assert_equal(x, y):
+      self.assertEqual(type(x), type(y))
+      if isinstance(x, (list, tuple)):
+        self.assertEqual(len(x), len(y))
+        for i, _ in enumerate(x):
+          _recursive_assert_equal(x[i], y[i])
+      elif isinstance(x, np.ndarray):
+        np.testing.assert_array_equal(x, y)
+      else:
+        self.fail('Unexpected type: {}'.format(type(x)))
+
+    for k in state_dict_val.keys():
+      np.testing.assert_array_almost_equal(
+          state_dict_val[k],
+          flattened_state_val[k],
+          err_msg='Wrong value for state component {}.'.format(k))
+    _recursive_assert_equal(expected_state, actual_state_val)
+
+  def testMultiRNNState(self):
+    """Test that state flattening/reconstruction works for `MultiRNNCell`."""
+    batch_size = 11
+    sequence_length = 16
+    train_steps = 5
+    cell_sizes = [4, 8, 7]
+    learning_rate = 0.1
+
+    def get_shift_input_fn(batch_size, sequence_length, seed=None):
+
+      def input_fn():
+        random_sequence = random_ops.random_uniform(
+            [batch_size, sequence_length + 1],
+            0,
+            2,
+            dtype=dtypes.int32,
+            seed=seed)
+        labels = array_ops.slice(random_sequence, [0, 0],
+                                 [batch_size, sequence_length])
+        inputs = array_ops.expand_dims(
+            math_ops.to_float(
+                array_ops.slice(random_sequence, [0, 1],
+                                [batch_size, sequence_length])), 2)
+        input_dict = {
+            dynamic_rnn_estimator._get_state_name(i): random_ops.random_uniform(
+                [batch_size, cell_size], seed=((i + 1) * seed))
+            for i, cell_size in enumerate([4, 4, 8, 8, 7, 7])
+        }
+        input_dict['inputs'] = inputs
+        return input_dict, labels
+
+      return input_fn
+
+    seq_columns = [feature_column.real_valued_column('inputs', dimension=1)]
+    config = run_config.RunConfig(tf_random_seed=21212)
+    cell = core_rnn_cell_impl.MultiRNNCell(
+        [core_rnn_cell_impl.BasicLSTMCell(size) for size in cell_sizes])
+    sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
+        num_classes=2,
+        num_units=None,
+        sequence_feature_columns=seq_columns,
+        cell_type=cell,
+        learning_rate=learning_rate,
+        config=config,
+        predict_probabilities=True)
+
+    train_input_fn = get_shift_input_fn(batch_size, sequence_length, seed=12321)
+    eval_input_fn = get_shift_input_fn(batch_size, sequence_length, seed=32123)
+
+    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
+
+    prediction_dict = sequence_estimator.predict(
+        input_fn=eval_input_fn, as_iterable=False)
+    for i, state_size in enumerate([4, 4, 8, 8, 7, 7]):
+      state_piece = prediction_dict[dynamic_rnn_estimator._get_state_name(i)]
+      self.assertListEqual(list(state_piece.shape), [batch_size, state_size])
+
+  def testMultipleRuns(self):
+    """Tests resuming training by feeding state."""
+    cell_sizes = [4, 7]
+    batch_size = 11
+    learning_rate = 0.1
+    train_sequence_length = 21
+    train_steps = 121
+    prediction_steps = [3, 2, 5, 11, 6]
+
+    def get_input_fn(batch_size, sequence_length, state_dict, starting_step=0):
+
+      def input_fn():
+        sequence = constant_op.constant(
+            [[(starting_step + i + j) % 2 for j in range(sequence_length + 1)]
+             for i in range(batch_size)],
+            dtype=dtypes.int32)
+        labels = array_ops.slice(sequence, [0, 0],
+                                 [batch_size, sequence_length])
+        inputs = array_ops.expand_dims(
+            math_ops.to_float(
+                array_ops.slice(sequence, [0, 1], [batch_size, sequence_length
+                                                  ])), 2)
+        input_dict = state_dict
+        input_dict['inputs'] = inputs
+        return input_dict, labels
+
+      return input_fn
+
+    seq_columns = [feature_column.real_valued_column('inputs', dimension=1)]
+    config = run_config.RunConfig(tf_random_seed=21212)
+    cell = core_rnn_cell_impl.MultiRNNCell(
+        [core_rnn_cell_impl.BasicLSTMCell(size) for size in cell_sizes])
+
+    model_dir = tempfile.mkdtemp()
+    sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
+        num_classes=2,
+        num_units=None,
+        sequence_feature_columns=seq_columns,
+        cell_type=cell,
+        learning_rate=learning_rate,
+        config=config,
+        model_dir=model_dir)
+
+    train_input_fn = get_input_fn(
+        batch_size, train_sequence_length, state_dict={})
+
+    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
+
+    def incremental_predict(estimator, increments):
+      """Run `estimator.predict` for `i` steps for `i` in `increments`."""
+      step = 0
+      incremental_state_dict = {}
+      for increment in increments:
+        input_fn = get_input_fn(
+            batch_size,
+            increment,
+            state_dict=incremental_state_dict,
+            starting_step=step)
+        prediction_dict = estimator.predict(
+            input_fn=input_fn, as_iterable=False)
+        step += increment
+        incremental_state_dict = {
+            k: v
+            for (k, v) in prediction_dict.items()
+            if k.startswith(dynamic_rnn_estimator.RNNKeys.STATE_PREFIX)
+        }
+      return prediction_dict
+
+    pred_all_at_once = incremental_predict(sequence_estimator,
+                                           [sum(prediction_steps)])
+    pred_step_by_step = incremental_predict(sequence_estimator,
+                                            prediction_steps)
+
+    # Check that the last `prediction_steps[-1]` steps give the same
+    # predictions.
+    np.testing.assert_array_equal(
+        pred_all_at_once['predictions'][:, -1 * prediction_steps[-1]:],
+        pred_step_by_step['predictions'],
+        err_msg='Mismatch on last {} predictions.'.format(prediction_steps[-1]))
+    # Check that final states are identical.
+    for k, v in pred_all_at_once.items():
+      if k.startswith(dynamic_rnn_estimator.RNNKeys.STATE_PREFIX):
+        np.testing.assert_array_equal(
+            v, pred_step_by_step[k], err_msg='Mismatch on state {}.'.format(k))
+
+
+# TODO(jamieas): move all tests below to a benchmark test.
+class DynamicRNNEstimatorLearningTest(test.TestCase):
+  """Learning tests for dynamic RNN Estimators."""
 
   def testLearnSineFunction(self):
     """Tests learning a sine function."""
@@ -290,29 +564,38 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
     loss_threshold = 0.02
 
     def get_sin_input_fn(batch_size, sequence_length, increment, seed=None):
+
       def _sin_fn(x):
-        ranger = tf.linspace(
-            tf.reshape(x[0], []),
-            (sequence_length - 1) * increment, sequence_length + 1)
-        return tf.sin(ranger)
+        ranger = math_ops.linspace(
+            array_ops.reshape(x[0], []), (sequence_length - 1) * increment,
+            sequence_length + 1)
+        return math_ops.sin(ranger)
 
       def input_fn():
-        starts = tf.random_uniform([batch_size], maxval=(2 * np.pi), seed=seed)
-        sin_curves = tf.map_fn(_sin_fn, (starts,), dtype=tf.float32)
-        inputs = tf.expand_dims(
-            tf.slice(sin_curves, [0, 0], [batch_size, sequence_length]), 2)
-        labels = tf.slice(sin_curves, [0, 1], [batch_size, sequence_length])
+        starts = random_ops.random_uniform(
+            [batch_size], maxval=(2 * np.pi), seed=seed)
+        sin_curves = functional_ops.map_fn(
+            _sin_fn, (starts,), dtype=dtypes.float32)
+        inputs = array_ops.expand_dims(
+            array_ops.slice(sin_curves, [0, 0], [batch_size, sequence_length]),
+            2)
+        labels = array_ops.slice(sin_curves, [0, 1],
+                                 [batch_size, sequence_length])
         return {'inputs': inputs}, labels
 
       return input_fn
 
-    seq_columns = [tf.contrib.layers.real_valued_column(
-        'inputs', dimension=cell_size)]
-    config = tf.contrib.learn.RunConfig(tf_random_seed=1234)
+    seq_columns = [
+        feature_column.real_valued_column(
+            'inputs', dimension=cell_size)
+    ]
+    config = run_config.RunConfig(tf_random_seed=1234)
     sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_regressor(
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
+        input_keep_probability=0.9,
+        output_keep_probability=0.9,
         config=config)
 
     train_input_fn = get_sin_input_fn(
@@ -324,8 +607,8 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
     loss = sequence_estimator.evaluate(
         input_fn=eval_input_fn, steps=eval_steps)['loss']
     self.assertLess(loss, loss_threshold,
-                    'Loss should be less than {}; got {}'.format(
-                        loss_threshold, loss))
+                    'Loss should be less than {}; got {}'.format(loss_threshold,
+                                                                 loss))
 
   def testLearnShiftByOne(self):
     """Tests that learning a 'shift-by-one' example.
@@ -342,20 +625,29 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
     accuracy_threshold = 0.9
 
     def get_shift_input_fn(batch_size, sequence_length, seed=None):
+
       def input_fn():
-        random_sequence = tf.random_uniform(
-            [batch_size, sequence_length + 1], 0, 2, dtype=tf.int32, seed=seed)
-        labels = tf.slice(
-            random_sequence, [0, 0], [batch_size, sequence_length])
-        inputs = tf.expand_dims(
-            tf.to_float(tf.slice(
-                random_sequence, [0, 1], [batch_size, sequence_length])), 2)
+        random_sequence = random_ops.random_uniform(
+            [batch_size, sequence_length + 1],
+            0,
+            2,
+            dtype=dtypes.int32,
+            seed=seed)
+        labels = array_ops.slice(random_sequence, [0, 0],
+                                 [batch_size, sequence_length])
+        inputs = array_ops.expand_dims(
+            math_ops.to_float(
+                array_ops.slice(random_sequence, [0, 1],
+                                [batch_size, sequence_length])), 2)
         return {'inputs': inputs}, labels
+
       return input_fn
 
-    seq_columns = [tf.contrib.layers.real_valued_column(
-        'inputs', dimension=cell_size)]
-    config = tf.contrib.learn.RunConfig(tf_random_seed=21212)
+    seq_columns = [
+        feature_column.real_valued_column(
+            'inputs', dimension=cell_size)
+    ]
+    config = run_config.RunConfig(tf_random_seed=21212)
     sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
         num_classes=2,
         num_units=cell_size,
@@ -381,9 +673,11 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
         input_fn=eval_input_fn, as_iterable=False)
     self.assertListEqual(
         sorted(list(prediction_dict.keys())),
-        sorted([dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY,
-                dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY,
-                dynamic_rnn_estimator.RNNKeys.FINAL_STATE_KEY]))
+        sorted([
+            dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY,
+            dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY,
+            dynamic_rnn_estimator._get_state_name(0)
+        ]))
     predictions = prediction_dict[dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY]
     probabilities = prediction_dict[
         dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY]
@@ -405,28 +699,32 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
     loss_threshold = 0.1
 
     def get_mean_input_fn(batch_size, sequence_length, seed=None):
+
       def input_fn():
         # Create examples by choosing 'centers' and adding uniform noise.
-        centers = tf.matmul(
-            tf.random_uniform(
-                [batch_size, 1], -0.75, 0.75, dtype=tf.float32, seed=seed),
-            tf.ones([1, sequence_length]))
-        noise = tf.random_uniform(
+        centers = math_ops.matmul(
+            random_ops.random_uniform(
+                [batch_size, 1], -0.75, 0.75, dtype=dtypes.float32, seed=seed),
+            array_ops.ones([1, sequence_length]))
+        noise = random_ops.random_uniform(
             [batch_size, sequence_length],
             -0.25,
             0.25,
-            dtype=tf.float32,
+            dtype=dtypes.float32,
             seed=seed)
         sequences = centers + noise
 
-        inputs = tf.expand_dims(sequences, 2)
-        labels = tf.reduce_mean(sequences, reduction_indices=[1])
+        inputs = array_ops.expand_dims(sequences, 2)
+        labels = math_ops.reduce_mean(sequences, reduction_indices=[1])
         return {'inputs': inputs}, labels
+
       return input_fn
 
-    seq_columns = [tf.contrib.layers.real_valued_column(
-        'inputs', dimension=cell_size)]
-    config = tf.contrib.learn.RunConfig(tf_random_seed=6)
+    seq_columns = [
+        feature_column.real_valued_column(
+            'inputs', dimension=cell_size)
+    ]
+    config = run_config.RunConfig(tf_random_seed=6)
     sequence_regressor = dynamic_rnn_estimator.single_value_rnn_regressor(
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
@@ -444,8 +742,8 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
         input_fn=eval_input_fn, steps=eval_steps)
     loss = evaluation['loss']
     self.assertLess(loss, loss_threshold,
-                    'Loss should be less than {}; got {}'.format(
-                        loss_threshold, loss))
+                    'Loss should be less than {}; got {}'.format(loss_threshold,
+                                                                 loss))
 
   def testLearnMajority(self):
     """Test learning the 'majority' function."""
@@ -461,21 +759,25 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
     accuracy_threshold = 0.9
 
     def get_majority_input_fn(batch_size, sequence_length, seed=None):
-      tf.set_random_seed(seed)
+      random_seed.set_random_seed(seed)
+
       def input_fn():
-        random_sequence = tf.random_uniform(
-            [batch_size, sequence_length], 0, 2, dtype=tf.int32, seed=seed)
-        inputs = tf.expand_dims(tf.to_float(random_sequence), 2)
-        labels = tf.to_int32(
-            tf.squeeze(
-                tf.reduce_sum(
+        random_sequence = random_ops.random_uniform(
+            [batch_size, sequence_length], 0, 2, dtype=dtypes.int32, seed=seed)
+        inputs = array_ops.expand_dims(math_ops.to_float(random_sequence), 2)
+        labels = math_ops.to_int32(
+            array_ops.squeeze(
+                math_ops.reduce_sum(
                     inputs, reduction_indices=[1]) > (sequence_length / 2.0)))
         return {'inputs': inputs}, labels
+
       return input_fn
 
-    seq_columns = [tf.contrib.layers.real_valued_column(
-        'inputs', dimension=cell_size)]
-    config = tf.contrib.learn.RunConfig(tf_random_seed=77)
+    seq_columns = [
+        feature_column.real_valued_column(
+            'inputs', dimension=cell_size)
+    ]
+    config = run_config.RunConfig(tf_random_seed=77)
     sequence_classifier = dynamic_rnn_estimator.single_value_rnn_classifier(
         num_classes=2,
         num_units=cell_size,
@@ -503,14 +805,18 @@ class DynamicRNNEstimatorLearningTest(tf.test.TestCase):
         input_fn=eval_input_fn, as_iterable=False)
     self.assertListEqual(
         sorted(list(prediction_dict.keys())),
-        sorted([dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY,
-                dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY,
-                dynamic_rnn_estimator.RNNKeys.FINAL_STATE_KEY]))
+        sorted([
+            dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY,
+            dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY,
+            dynamic_rnn_estimator._get_state_name(0),
+            dynamic_rnn_estimator._get_state_name(1)
+        ]))
     predictions = prediction_dict[dynamic_rnn_estimator.RNNKeys.PREDICTIONS_KEY]
     probabilities = prediction_dict[
         dynamic_rnn_estimator.RNNKeys.PROBABILITIES_KEY]
     self.assertListEqual(list(predictions.shape), [batch_size])
     self.assertListEqual(list(probabilities.shape), [batch_size, 2])
 
+
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

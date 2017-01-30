@@ -44,9 +44,10 @@ class InterPlanetaryFileSystem : public NullFileSystem {
   Status CreateDir(const string& dirname) override {
     string parsed_path;
     ParsePath(dirname, &parsed_path);
-    // If the directory already exists then ignore.
+    // If the directory already exists, throw an error.
     if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
-      return Status::OK();
+      return Status(tensorflow::error::ALREADY_EXISTS,
+                    "dirname already exists.");
     }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     // If the path is too long then we don't support it.
@@ -89,6 +90,10 @@ class InterPlanetaryFileSystem : public NullFileSystem {
   Status IsDirectory(const string& dirname) override {
     string parsed_path;
     ParsePath(dirname, &parsed_path);
+    // Simulate evil_directory has bad permissions by throwing a LOG(FATAL)
+    if (parsed_path == "evil_directory") {
+      LOG(FATAL) << "evil_directory cannot be accessed";
+    }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     if (split_path.size() > 2) {
       return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
@@ -192,6 +197,16 @@ TEST(TestFileSystem, MatchSimple) {
   EXPECT_EQ(Match(&ipfs, "match-??"), "match-00,match-01,match-0a");
 }
 
+// Create 2 directories abcd and evil_directory. Look for abcd and make sure
+// that evil_directory isn't accessed.
+TEST(TestFileSystem, MatchOnlyNeeded) {
+  InterPlanetaryFileSystem ipfs;
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "abcd")));
+  TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "evil_directory")));
+
+  EXPECT_EQ(Match(&ipfs, "abcd"), "abcd");
+}
+
 TEST(TestFileSystem, MatchDirectory) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
@@ -232,6 +247,16 @@ TEST(TestFileSystem, MatchMultipleWildcards) {
 
   EXPECT_EQ(Match(&ipfs, "match-0[0-1]/abc/0[0-8]"),
             "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
+}
+
+TEST(TestFileSystem, RecursivelyCreateAlreadyExistingDir) {
+  InterPlanetaryFileSystem ipfs;
+  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
+  TF_EXPECT_OK(ipfs.RecursivelyCreateDir(dirname));
+  // Ensure that CreateDir throws an error, to sanity check that this test
+  // actually tests the behavior of RecursivelyCreateDir.
+  EXPECT_EQ(ipfs.CreateDir(dirname).code(), tensorflow::error::ALREADY_EXISTS);
+  TF_EXPECT_OK(ipfs.RecursivelyCreateDir(dirname));
 }
 
 }  // namespace tensorflow

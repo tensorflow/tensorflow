@@ -33,11 +33,13 @@ common machine learning algorithms.
 @@repeat
 @@safe_embedding_lookup_sparse
 @@separable_convolution2d
-@@stack
 @@unit_norm
 
 Aliases for fully_connected which set a default activation function are
 available: `relu`, `relu6` and `linear`.
+
+`stack` operation is also available. It builds a stack of layers by applying
+a layer repeatedly.
 
 ## Regularizers
 
@@ -89,7 +91,7 @@ Feature columns provide a mechanism to map data to a model.
 @@create_feature_spec_for_parsing
 @@crossed_column
 @@embedding_column
-@@hashed_embedding_column
+@@scattered_embedding_column
 @@input_from_feature_columns
 @@joint_weighted_sum_from_feature_columns
 @@make_place_holder_tensors_for_base_features
@@ -117,5 +119,9 @@ from tensorflow.contrib.layers.python.layers import *
 from tensorflow.contrib.layers.python.ops import sparse_ops
 from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,wildcard-import
+
+
+# Note: `stack` operation is available, just excluded from the document above
+# due to collision with tf.stack.
 
 __all__ = make_all(__name__)

@@ -18,7 +18,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
 
 *  <b>`values`</b>: A `Tensor` of arbitrary dimensions.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `values`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `values`, and
+    must be broadcastable to `values` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `values` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `mean`
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`
@@ -28,7 +30,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Returns:
 
 
-*  <b>`mean`</b>: A tensor representing the current mean, the value of `total` divided
+*  <b>`mean`</b>: A `Tensor` representing the current mean, the value of `total` divided
     by `count`.
 *  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
     appropriately and whose value matches `mean_value`.

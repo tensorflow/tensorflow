@@ -299,6 +299,30 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         isinstance(self._observer["tf_error"], errors.InvalidArgumentError))
 
+  def testUsingWrappedSessionShouldWorkAsContextManager(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+
+    with wrapper as sess:
+      sess.run(self._s)
+
+  def testWrapperShouldSupportSessionClose(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+    wrapper.close()
+
+  def testUsingNonDirectSessionRaisesNotImplementedError(self):
+    # TODO(cais): Remove this test once tfdbg is integrated with GrpcSession.
+    fake_non_direct_session = session.Session()
+    fake_non_direct_session._target = "foo"
+
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        r"Non-DirectSession support is not available from TensorFlow Debugger "
+        r"yet \(sess_str=foo\)"):
+      TestDebugWrapperSession(
+          fake_non_direct_session, self._dump_root, self._observer)
+
 
 if __name__ == "__main__":
   googletest.main()

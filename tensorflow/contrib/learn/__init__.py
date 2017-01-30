@@ -22,6 +22,8 @@ Train and evaluate TensorFlow models.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
 @@ModeKeys
 @@DNNClassifier
 @@DNNRegressor
@@ -50,6 +52,8 @@ Queue and read batched input data.
 @@extract_pandas_data
 @@extract_pandas_labels
 @@extract_pandas_matrix
+@@infer_real_valued_columns_from_input
+@@infer_real_valued_columns_from_input_fn
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features

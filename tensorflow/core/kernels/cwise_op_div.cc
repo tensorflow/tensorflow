@@ -24,6 +24,22 @@ REGISTER5(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16, int16,
           int32, int64);
 REGISTER5(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           complex64, complex128);
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Div")                                 \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          BinaryOp<SYCLDevice, functor::div<TYPE>>);  \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("RealDiv")                             \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          BinaryOp<SYCLDevice, functor::div<TYPE>>);
+REGISTER_SYCL_KERNEL(float)
+REGISTER_SYCL_KERNEL(int32)
+#undef REGISTER_SYCL_KERNEL
+#endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
 REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
           uint16, int16, int64, complex64, complex128);

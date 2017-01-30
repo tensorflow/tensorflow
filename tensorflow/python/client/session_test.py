@@ -29,6 +29,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -44,11 +45,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 
-# NOTE(mrry): Dummy shape registration for op used in the tests.
-ops.RegisterShape('ConstructionFails')(None)
+# NOTE(mrry): Dummy shape registration for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
 class SessionTest(test_util.TensorFlowTestCase):
@@ -251,6 +254,18 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(42.0, res['a'])
       self.assertEqual(None, res['b'])
       self.assertEqual(44.0, res['c'])
+
+  def testFetchOrderedDict(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      res = sess.run(collections.OrderedDict([(3, a), (2, b), (1, c)]))
+      self.assertTrue(isinstance(res, collections.OrderedDict))
+      self.assertEqual([3, 2, 1], list(res.keys()))
+      self.assertEqual(42.0, res[3])
+      self.assertEqual(None, res[2])
+      self.assertEqual(44.0, res[1])
 
   def testFetchNestingEmptyOneLevel(self):
     with session.Session() as sess:
@@ -479,7 +494,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run(sp)
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Tuple fetch, use as tuple
       indices_out, values_out, shape_out = s.run(sp)
       self.assertAllEqual(indices_out, indices)
@@ -494,7 +509,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out, = s.run([sp])
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Dict fetch (single value), use as tuple
       indices_out, values_out, shape_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(indices_out, indices)
@@ -509,7 +524,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run({'sp': sp})['sp']
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Nested list fetch use as tuple
       sp_out = s.run([[[sp]], sp])
       indices_out, values_out, shape_out = sp_out[0][0][0]
@@ -524,10 +539,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run([[[sp]], sp])
       self.assertAllEqual(sp_out[0][0][0].indices, indices)
       self.assertAllEqual(sp_out[0][0][0].values, values)
-      self.assertAllEqual(sp_out[0][0][0].shape, shape)
+      self.assertAllEqual(sp_out[0][0][0].dense_shape, shape)
       self.assertAllEqual(sp_out[1].indices, indices)
       self.assertAllEqual(sp_out[1].values, values)
-      self.assertAllEqual(sp_out[1].shape, shape)
+      self.assertAllEqual(sp_out[1].dense_shape, shape)
 
   def testFeedSparseTensor(self):
     with session.Session() as s:
@@ -540,7 +555,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           array_ops.placeholder(dtype=np.int64, shape=(3,)),)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -552,7 +567,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp_out = s.run(sp, {sp: (indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
       # Feed with SparseTensorValue
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape],
@@ -565,13 +580,13 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
       # Feed SparseTensorValue and fetch sp directly.
       sp_out = s.run(
           sp, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp_out.indices, indices)
       self.assertAllEqual(sp_out.values, values)
-      self.assertAllEqual(sp_out.shape, shape)
+      self.assertAllEqual(sp_out.dense_shape, shape)
 
   def testFeedSparsePlaceholder(self):
     with session.Session() as s:
@@ -581,7 +596,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(dtype=np.float32, name='placeholder1')
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -601,7 +616,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderPartialShape(self):
     with session.Session() as s:
@@ -612,7 +627,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           shape=[None, 9, 2], dtype=np.float32, name='placeholder1')
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       sp2 = sparse_tensor.SparseTensor(sp_indices, sp_values, sp_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
@@ -632,7 +647,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           sp2, {sp: sparse_tensor.SparseTensorValue(indices, values, shape)})
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
-      self.assertAllEqual(sp2_out.shape, shape)
+      self.assertAllEqual(sp2_out.dense_shape, shape)
 
   def testFeedSparsePlaceholderConstantShape(self):
     with session.Session() as s:
@@ -642,11 +657,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(dtype=np.float32,
                                         shape=shape,
                                         name='placeholder1')
-      self.assertAllEqual(sp.shape.eval(session=s), shape)
-      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
+      self.assertAllEqual(sp.dense_shape.eval(session=s), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.dense_shape), shape)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
-      sp_shape = array_ops.identity(sp.shape)
+      sp_shape = array_ops.identity(sp.dense_shape)
       # Feed with tuple
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape], {sp: (indices, values)})
@@ -1308,91 +1323,121 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess_2.run(c_1.op)
       self.assertEqual(2.0, sess_2.run(c_2))
 
-  def testPartialRun(self):
-    with session.Session() as sess:
-      a = array_ops.placeholder(dtypes.float32, shape=[])
-      b = array_ops.placeholder(dtypes.float32, shape=[])
-      c = array_ops.placeholder(dtypes.float32, shape=[])
-      r1 = math_ops.add(a, b)
-      r2 = math_ops.mul(r1, c)
+  def runTestPartialRun(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.multiply(r1, c)
 
-      h = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-      self.assertEqual(3, res)
-      temp = res * 17
-      res = sess.partial_run(h, r2, feed_dict={c: temp})
-      self.assertEqual(153, res)
+    h = sess.partial_run_setup([r1, r2], [a, b, c])
+    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+    self.assertEqual(3, res)
+    temp = res * 17
+    res = sess.partial_run(h, r2, feed_dict={c: temp})
+    self.assertEqual(153, res)
 
-      # Call again on the same graph.
-      h2 = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h2, r1, feed_dict={a: 1, b: 2})
-      self.assertEqual(3, res)
-      temp = res * 18
-      res = sess.partial_run(h2, r2, feed_dict={c: temp})
-      self.assertEqual(162, res)
+    # Call again on the same graph.
+    h2 = sess.partial_run_setup([r1, r2], [a, b, c])
+    res = sess.partial_run(h2, r1, feed_dict={a: 1, b: 2})
+    self.assertEqual(3, res)
+    temp = res * 18
+    res = sess.partial_run(h2, r2, feed_dict={c: temp})
+    self.assertEqual(162, res)
 
-  def testPartialRunIncomplete(self):
-    with session.Session() as sess:
-      a = array_ops.placeholder(dtypes.float32, shape=[])
-      b = array_ops.placeholder(dtypes.float32, shape=[])
-      c = array_ops.placeholder(dtypes.float32, shape=[])
-      r1 = math_ops.add(a, b)
-      r2 = math_ops.mul(r1, c)
+  def runTestPartialRunIncomplete(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.multiply(r1, c)
 
-      h = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-      self.assertEqual(3, res)
+    h = sess.partial_run_setup([r1, r2], [a, b, c])
+    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+    self.assertEqual(3, res)
 
-  def testConcurrentPartialRun(self):
-    with session.Session() as sess:
-      a = array_ops.placeholder(dtypes.float32, shape=[])
-      b = array_ops.placeholder(dtypes.float32, shape=[])
-      c = array_ops.placeholder(dtypes.float32, shape=[])
-      r1 = math_ops.add(a, b)
-      r2 = math_ops.mul(r1, c)
+  def runTestConcurrentPartialRun(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.multiply(r1, c)
 
-      h1 = sess.partial_run_setup([r1], [a, b, c])
-      h2 = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h1, r1, feed_dict={a: 1, b: 2})
-      self.assertEqual(3, res)
-      temp = res * 19
-      res = sess.partial_run(h2, r1, feed_dict={a: temp, b: 9})
-      self.assertEqual(66, res)
-      res = sess.partial_run(h2, r2, feed_dict={c: 7})
-      self.assertEqual(462, res)
+    h1 = sess.partial_run_setup([r1], [a, b, c])
+    h2 = sess.partial_run_setup([r1, r2], [a, b, c])
+    res = sess.partial_run(h1, r1, feed_dict={a: 1, b: 2})
+    self.assertEqual(3, res)
+    temp = res * 19
+    res = sess.partial_run(h2, r1, feed_dict={a: temp, b: 9})
+    self.assertEqual(66, res)
+    res = sess.partial_run(h2, r2, feed_dict={c: 7})
+    self.assertEqual(462, res)
 
-  def testManyPartialRun(self):
-    with session.Session() as sess:
-      steps = 200
-      inputs = []
-      outputs = []
-      a = constant_op.constant(2.0, dtypes.float32)
-      for i in xrange(steps):
-        inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
-        a = math_ops.mul(a, inputs[i])
-        outputs.append(a)
+  def runTestManyPartialRun(self, sess):
+    steps = 200
+    inputs = []
+    outputs = []
+    a = constant_op.constant(2.0, dtypes.float32)
+    for i in xrange(steps):
+      inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
+      a = math_ops.multiply(a, inputs[i])
+      outputs.append(a)
 
-      h = sess.partial_run_setup(outputs, inputs)
-      for i in xrange(steps):
-        res = sess.partial_run(h, outputs[i], feed_dict={inputs[i]: 1.0})
-      self.assertEqual(2.0, res)
+    h = sess.partial_run_setup(outputs, inputs)
+    for i in xrange(steps):
+      res = sess.partial_run(h, outputs[i], feed_dict={inputs[i]: 1.0})
+    self.assertEqual(2.0, res)
 
-      feed_dict = {}
-      for i in xrange(steps):
-        feed_dict[inputs[i]] = 1.0
-      res = sess.run(outputs, feed_dict)
-      self.assertEqual(steps, len(res))
-      self.assertEqual(2.0, res[-1])
+    feed_dict = {}
+    for i in xrange(steps):
+      feed_dict[inputs[i]] = 1.0
+    res = sess.run(outputs, feed_dict)
+    self.assertEqual(steps, len(res))
+    self.assertEqual(2.0, res[-1])
 
-  def testRunAndPartialRun(self):
-    with session.Session() as sess:
-      a = constant_op.constant(2.0, dtypes.float32)
-      b = a * 2
-      c = b * 3
-      r1 = sess.run([b, c])
-      h = sess.partial_run_setup([b, c], [])
-      r2 = sess.partial_run(h, [b, c])
-      self.assertEqual(r1, r2)
+  def runTestRunAndPartialRun(self, sess):
+    a = constant_op.constant(2.0, dtypes.float32)
+    b = a * 2
+    c = b * 3
+    r1 = sess.run([b, c])
+    h = sess.partial_run_setup([b, c], [])
+    r2 = sess.partial_run(h, [b, c])
+    self.assertEqual(r1, r2)
+
+  def testPartialRunDirect(self):
+    self.runTestPartialRun(session.Session())
+
+  def testPartialRunIncompleteDirect(self):
+    self.runTestPartialRunIncomplete(session.Session())
+
+  def testConcurrentPartialRunDirect(self):
+    self.runTestConcurrentPartialRun(session.Session())
+
+  def testManyPartialRunDirect(self):
+    self.runTestManyPartialRun(session.Session())
+
+  def testRunAndPartialRunDirect(self):
+    self.runTestRunAndPartialRun(session.Session())
+
+  def testPartialRunDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRun(session.Session(server.target))
+
+  def testPartialRunIncompleteDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunIncomplete(session.Session(server.target))
+
+  def testConcurrentPartialRunDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestConcurrentPartialRun(session.Session(server.target))
+
+  def testManyPartialRunDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestManyPartialRun(session.Session(server.target))
+
+  def testRunAndPartialRunDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestRunAndPartialRun(session.Session(server.target))
 
   def testFeedDictKeyException(self):
     with session.Session() as sess:
@@ -1483,7 +1528,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
         c = array_ops.identity(b)
-        d = math_ops.mul(c, c)
+        d = math_ops.multiply(c, c)
       for step in xrange(120):
         run_metadata = config_pb2.RunMetadata()
         sess.run(d, feed_dict={a: 1.0},

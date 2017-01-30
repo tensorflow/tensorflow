@@ -94,11 +94,6 @@ export function dist2_2D(a: Vector, b: Vector): number {
   return dX * dX + dY * dY;
 }
 
-/** Returns the euclidean distance between 2 2D points. */
-export function dist_2D(a: Vector, b: Vector): number {
-  return Math.sqrt(dist2_2D(a, b));
-}
-
 /** Returns the square euclidean distance between two 3D points. */
 export function dist2_3D(a: Vector, b: Vector): number {
   let dX = a[0] - b[0];

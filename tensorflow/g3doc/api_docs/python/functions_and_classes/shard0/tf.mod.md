@@ -1,8 +1,11 @@
 ### `tf.mod(x, y, name=None)` {#mod}
 
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:

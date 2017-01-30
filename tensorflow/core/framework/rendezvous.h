@@ -80,7 +80,7 @@ class Rendezvous : public core::RefCounted {
   //
   // {val, is_dead} is bundled as a message sent and received.
   // Typically, is_dead is set by some control flow nodes
-  // (e.g., a not-take branch).  args is passed by Send to the
+  // (e.g., a not-taken branch).  args is passed by Send to the
   // Recv function to communicate any information that the Recv
   // function might need.  This is typically only necessary for
   // Send/Recv on the same worker.
@@ -103,6 +103,8 @@ class Rendezvous : public core::RefCounted {
                          DoneCallback done) = 0;
 
   // Synchronous wrapper for RecvAsync.
+  Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
+              bool* is_dead, int64 timeout_ms);
   Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
               bool* is_dead);
 

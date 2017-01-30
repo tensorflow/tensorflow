@@ -114,7 +114,7 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
 Rendezvous::~Rendezvous() {}
 
 Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
-                        Tensor* val, bool* is_dead) {
+                        Tensor* val, bool* is_dead, int64 timeout_ms) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -126,8 +126,22 @@ Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
               *is_dead = dead;
               n.Notify();
             });
-  n.WaitForNotification();
+  if (timeout_ms > 0) {
+    bool notified = WaitForNotificationWithTimeout(&n, timeout_ms);
+    if (!notified) {
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Timed out waiting for notification");
+    }
+  } else {
+    n.WaitForNotification();
+  }
   return ret;
+}
+
+Status Rendezvous::Recv(const ParsedKey& key, const Args& args, Tensor* val,
+                        bool* is_dead) {
+  const int64 no_timeout = 0;
+  return Recv(key, args, val, is_dead, no_timeout);
 }
 
 class LocalRendezvousImpl : public Rendezvous {

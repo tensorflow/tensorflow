@@ -27,10 +27,23 @@ class Evaluable(object):
   """
   __metaclass__ = abc.ABCMeta
 
+  @abc.abstractproperty
+  def model_dir(self):
+    """Returns a path in which the eval process will look for checkpoints."""
+    raise NotImplementedError
+
   @abc.abstractmethod
-  def evaluate(
-      self, x=None, y=None, input_fn=None, feed_fn=None, batch_size=None,
-      steps=None, metrics=None, name=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None,
+               checkpoint_path=None,
+               hooks=None):
     """Evaluates given model with provided evaluation data.
 
     Stop conditions - we evaluate on the given input data until one of the
@@ -46,13 +59,17 @@ class Evaluable(object):
     for which this evaluation was performed.
 
     Args:
-      x: Matrix of shape [n_samples, n_features...] containing the input samples
-         for fitting the model. Can be iterator that returns arrays of features.
-         If set, `input_fn` must be `None`.
+      x: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
+         containing the input samples for fitting the model. Can be iterator that returns
+         arrays of features or dictionary of array of features. If set, `input_fn` must
+         be `None`.
       y: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
          label values (class labels in classification, real numbers in
-         regression). Can be iterator that returns array of labels. If set,
-         `input_fn` must be `None`.
+         regression) or dictionary of multiple vectors/matrices. Can be iterator
+         that returns array of targets or dictionary of array of targets. If set,
+         `input_fn` must be `None`. Note: For classification, label values must
+         be integers representing the class index (i.e. values from 0 to
+         n_classes-1).
       input_fn: Input function returning a tuple of:
           features - Dictionary of string feature name to `Tensor` or `Tensor`.
           labels - `Tensor` or dictionary of `Tensor` with labels.
@@ -79,6 +96,10 @@ class Evaluable(object):
         `../../../metrics/python/ops/metrics_ops.py`.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data.
+      checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
+        latest checkpoint in `model_dir` is used.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the evaluation call.
 
     Returns:
       Returns `dict` with evaluation results.

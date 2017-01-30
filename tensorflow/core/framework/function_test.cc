@@ -48,51 +48,8 @@ y: A scalar in type T.
 
 static InstantiateAttrValueMap kNoAttrs;
 
-TEST(TFunc, SquarePlusOneOld) {
-  auto fdef = FDH::Define(  // Create a FunctionDef using Function::Nodes.
-      // Name
-      "SquarePlusOne",
-      // Args
-      {"x: T"},
-      // Return values
-      {"y: T"},
-      // Attrs
-      {"T: {float, double, int32, int64}"},
-      // Nodes
-      {// a = Square<T>(x)
-       {{"a"}, "Square", {"x"}, {{"T", "$T"}}},
-       // o = One<T>()
-       // NOTE: We can also have a Cast<Tin, Tout>(x) instead.
-       {{"o"}, "One", {}, {{"T", "$T"}}},
-       // y = Add<T>(a, o)
-       {{"y"}, "Add", {"a", "o"}, {{"T", "$T"}}}});
-
-  const char* e = R"P(
-SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
-  a = Square[T=$T](x)
-  o = One[T=$T]()
-  y = Add[T=$T](a, o)
-}
-)P";
-  EXPECT_EQ(DebugString(fdef), e);
-
-  // Instantiate one with T=float
-  InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
-  const char* e2 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Square[T=float](n0)
-  n2 = One[T=float]()
-  n3 = Add[T=float](n1, n2)
-}
-)P";
-  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
-}
-
-TEST(TFunc, SquarePlusOneNodeDef) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, SquarePlusOne) {
+  auto fdef = FDH::Create(
       // Name
       "SquarePlusOne",
       // Inputs
@@ -137,6 +94,51 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
+TEST(TFunc, ControlDep) {
+  auto fdef = FDH::Create(
+      // Name
+      "ControlDep",
+      // Inputs
+      {"x: int32"},
+      // Outputs
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = Identity<int32>(x)
+       {{"a"}, "Identity", {"x"}, {{"T", DT_INT32}}},
+       // o = NoOp(^a)
+       {{"o"}, "NoOp", {"^a"}, {}},
+       // y = Identity<int32>(a, ^o)
+       {{"y"}, "Identity", {"a:output:0", "^o"}, {{"T", DT_INT32}}}},
+      // Returns
+      {{"y", "y:output:0"}});
+
+  const char* e = R"P(
+ControlDep(x:int32) -> (y:int32) {
+  a = Identity[T=int32](x)
+  o = NoOp() @ a
+  y = Identity[T=int32](a:output:0) @ o
+  return y = y:output:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  // Instantiate one with T=float
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
+  const char* e2 = R"P(
+(n0:int32) -> (n3:int32) {
+  n1 = Identity[T=int32](n0)
+  n2 = NoOp() @ n1
+  n3 = Identity[T=int32](n1) @ n2
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
 REGISTER_OP("HasDefaultType")
     .Output("out: T")
     .Attr("T: {float, double, int32, int64} = DT_FLOAT");
@@ -144,43 +146,8 @@ REGISTER_OP("HasDefaultType")
 // This verifies that a function using an op before a type attr (with
 // a default) is added, still works.  This is important for backwards
 // compatibilty.
-TEST(TFunc, MissingTypeAttrOld) {
-  auto fdef = FDH::Define(  // Create a FunctionDef using Function::Nodes.
-      // Name
-      "BackCompat",
-      // Args
-      {},
-      // Return values
-      {"y: float"},
-      // Attrs
-      {},
-      // Nodes
-      {// y = HasDefaultType(x), T missing, defaults to float
-       {{"y"}, "HasDefaultType", {}, {}}});
-
-  const char* e = R"P(
-BackCompat() -> (y:float) {
-  y = HasDefaultType()
-}
-)P";
-  EXPECT_EQ(DebugString(fdef), e);
-
-  InstantiationResult result;
-  TF_ASSERT_OK(
-      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
-  // Should get T=float from Op's default.
-  const char* e2 = R"P(
-() -> (n0:float) {
-  n0 = HasDefaultType[T=float]()
-}
-)P";
-  EXPECT_EQ(result.arg_types, DataTypeVector());
-  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
-}
-
-TEST(TFunc, MissingTypeAttrNodeDef) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, MissingTypeAttr) {
+  auto fdef = FDH::Create(
       // Name
       "BackCompat",
       // Args
@@ -217,11 +184,8 @@ BackCompat() -> (y:float) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
-TEST(TFunc, NTimesTNodeDef) {
-  // Note that the equivalent FunctionDef using FunctionDef::Node requires
-  // using a _ListToArray to package up the two inputs to AddN as a single
-  // N*T edge.
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, NTimesT) {
+  auto fdef = FDH::Create(
       // Name
       "NTimesT",
       // Inputs
@@ -275,7 +239,7 @@ y: N tensors, each of type U;
 )doc");
 
 TEST(TFunc, AddSquared) {
-  auto fdef = FDH::Define(
+  auto fdef = FDH::Create(
       // Name
       "AddSquared",
       // Args
@@ -294,12 +258,14 @@ TEST(TFunc, AddSquared) {
          {"U", "$T"},
          {"N", "$N"}}},
        // y = AddN<N=$N,T=$T>(a)
-       {{"y"}, "AddN", {"a"}, {{"N", "$N"}, {"T", "$T"}}}});
+       {{"y"}, "AddN", {"a:y"}, {{"N", "$N"}, {"T", "$T"}}}},
+      {{"y", "y:sum"}});
 
   const char* e = R"P(
 AddSquared[N:int, T:{float, double, int32, int64}](x:N*T) -> (y:T) {
   a = Map[N=$N, T=$T, U=$T, func=Square[T=$T]](x)
-  y = AddN[N=$N, T=$T](a)
+  y = AddN[N=$N, T=$T](a:y)
+  return y = y:sum
 }
 )P";
   EXPECT_EQ(DebugString(fdef), e);
@@ -368,8 +334,9 @@ TEST(TFunc, XTimesTwo) {
   auto expect = R"P(
 XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
   two = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
-  scale = Cast[DstT=$T, SrcT=int64](two)
-  y = Mul[T=$T](x, scale)
+  scale = Cast[DstT=$T, SrcT=int64](two:output:0)
+  y = Mul[T=$T](x, scale:y:0)
+  return y = y:z:0
 }
 )P";
   EXPECT_EQ(expect, DebugString(test::function::XTimesTwo()));
@@ -379,7 +346,8 @@ TEST(TFunc, WXPlusB) {
   auto expect = R"P(
 WXPlusB[T:{float, double}](w:T, x:T, b:T) -> (y:T) {
   mm = MatMul[T=$T, _kernel="eigen", transpose_a=false, transpose_b=false](w, x)
-  y = Add[T=$T](mm, b)
+  y = Add[T=$T](mm:product:0, b)
+  return y = y:z:0
 }
 )P";
   EXPECT_EQ(expect, DebugString(test::function::WXPlusB()));
@@ -387,7 +355,7 @@ WXPlusB[T:{float, double}](w:T, x:T, b:T) -> (y:T) {
 
 TEST(TFunc, Body_TypeList) {
   const Tensor kZero = test::AsScalar<int32>(0);
-  auto fdef = FDH::Define(
+  auto fdef = FDH::Create(
       // Name
       "Test",
       // Args
@@ -398,32 +366,30 @@ TEST(TFunc, Body_TypeList) {
       {},
       // Nodes
       {{{"zero"}, "Const", {}, {{"value", kZero}, {"dtype", DT_INT32}}},
-       {{"s"}, "Split", {"zero", "i"}, {{"num_split", 4}, {"T", DT_FLOAT}}},
-       {{"lst"},
-        "_ArrayToList",
-        {"s"},
-        {{"N", 4},
-         {"T", DT_FLOAT},
-         {"out_types", DataTypeSlice{DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT}}}},
-       {{"l"}, "Mul", {"lst:0", "lst:1"}, {{"T", DT_FLOAT}}},
-       {{"r"}, "Mul", {"lst:2", "lst:3"}, {{"T", DT_FLOAT}}},
+       {{"s"},
+        "Split",
+        {"zero:output:0", "i"},
+        {{"num_split", 4}, {"T", DT_FLOAT}}},
+       {{"l"}, "Mul", {"s:output:0", "s:output:1"}, {{"T", DT_FLOAT}}},
+       {{"r"}, "Mul", {"s:output:2", "s:output:3"}, {{"T", DT_FLOAT}}},
        {{"x"},
         "_ListToArray",
-        {"l", "r"},
+        {"l:z", "r:z"},
         {{"N", 2},
          {"T", DT_FLOAT},
          {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}}}},
-       {{"o"}, "AddN", {"x"}, {{"N", 2}, {"T", DT_FLOAT}}}});
+       {{"o"}, "AddN", {"x:output"}, {{"N", 2}, {"T", DT_FLOAT}}}},
+      {{"o", "o:sum:0"}});
 
   const char* e = R"P(
 Test(i:float) -> (o:float) {
   zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  s = Split[T=float, num_split=4](zero, i)
-  lst = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](s)
-  l = Mul[T=float](lst:0, lst:1)
-  r = Mul[T=float](lst:2, lst:3)
-  x = _ListToArray[N=2, T=float, Tin={float, float}](l, r)
-  o = AddN[N=2, T=float](x)
+  s = Split[T=float, num_split=4](zero:output:0, i)
+  l = Mul[T=float](s:output:0, s:output:1)
+  r = Mul[T=float](s:output:2, s:output:3)
+  x = _ListToArray[N=2, T=float, Tin={float, float}](l:z, r:z)
+  o = AddN[N=2, T=float](x:output)
+  return o = o:sum:0
 }
 )P";
   EXPECT_EQ(DebugString(fdef), e);
@@ -431,14 +397,13 @@ Test(i:float) -> (o:float) {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:float) -> (n7:float) {
+(n0:float) -> (n6:float) {
   n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
   n2 = Split[T=float, num_split=4](n1, n0)
-  n3 = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](n2, n2:1, n2:2, n2:3)
-  n4 = Mul[T=float](n3, n3:1)
-  n5 = Mul[T=float](n3:2, n3:3)
-  n6 = _ListToArray[N=2, T=float, Tin={float, float}](n4, n5)
-  n7 = AddN[N=2, T=float](n6, n6:1)
+  n3 = Mul[T=float](n2, n2:1)
+  n4 = Mul[T=float](n2:2, n2:3)
+  n5 = _ListToArray[N=2, T=float, Tin={float, float}](n3, n4)
+  n6 = AddN[N=2, T=float](n5, n5:1)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
@@ -495,7 +460,8 @@ TEST(TFunc, Body_Array_List_Converter) {
   const char* e = R"P(
 MySelect(x:float) -> (z:float) {
   y = Cond[Tin={float}, cond=MyCond, else_branch=MyElse, out_types={float}, then_branch=MyThen](x)
-  z = Cond[Tin={float, float}, cond=MyCond2, else_branch=MyElse2, out_types={float}, then_branch=MyThen2](y, y)
+  z = Cond[Tin={float, float}, cond=MyCond2, else_branch=MyElse2, out_types={float}, then_branch=MyThen2](y:output:0, y:output:0)
+  return z = z:output:0
 }
 )P";
   EXPECT_EQ(DebugString(fdef), e);
@@ -563,16 +529,6 @@ TEST(InstantiateErrors, DupArgs) {
            "Duplicated arg name");
 }
 
-TEST(InstantiateErrors, Dup_Arg_Node_Name) {
-  auto fdef = FDH::Define("test", {"x:float"}, {}, {},
-                          {
-                              {{"x"}, "One", {}, {{"T", DT_FLOAT}}},
-                          });
-  InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Duplicated ret name");
-}
-
 TEST(InstantiateErrors, Dup_Node_Names) {
   auto fdef = FDH::Define("test", {"x:float"}, {}, {},
                           {
@@ -584,44 +540,25 @@ TEST(InstantiateErrors, Dup_Node_Names) {
            "Duplicated ret name");
 }
 
-TEST(InstantiateErrors, Node_Signature_Mismatch_NoOp) {
-  auto fdef = FDH::Define("test", {"x:float"}, {}, {},
-                          {
-                              {{"y", "z"}, "NoOp", {}, {{"T", DT_FLOAT}}},
-                          });
-  InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Expect one ret name");
-}
-
-TEST(InstantiateErrors, Node_Signature_Mismatch) {
-  auto fdef = FDH::Define("test", {"x:float"}, {}, {},
-                          {
-                              {{"y", "z"}, "One", {}, {{"T", DT_FLOAT}}},
-                          });
-  InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Malformed function node (#ret)");
-}
-
 TEST(InstantiateErrors, Node_Arg_Notfound) {
-  auto fdef = FDH::Define("test", {"x:float"}, {}, {},
+  auto fdef = FDH::Create("test", {"x:float"}, {}, {},
                           {
                               {{"y"}, "Add", {"x", "z"}, {{"T", DT_FLOAT}}},
-                          });
+                          },
+                          {});
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "arg[1] is not found");
+           "input z is not found");
 }
 
-TEST(InstantiateErrors, Node_Arg_Mismatch) {
+TEST(InstantiateErrors, Node_Arg_TypeMismatch) {
   auto fdef = FDH::Define("test", {"x:float"}, {}, {},
                           {
                               {{"y"}, "Add", {"x", "x"}, {{"T", DT_INT32}}},
                           });
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "Invalid arg(0) for function arg");
+           "input x[0] expected type int32 != float, the type of x[0]");
 }
 
 TEST(InstantiateErrors, Node_Arg_ControlMissing) {
@@ -632,20 +569,55 @@ TEST(InstantiateErrors, Node_Arg_ControlMissing) {
                   });
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "dep[0] is not found");
+           "input[2] == '^z', is not found.");
 }
 
 TEST(InstantiateErrors, FuncRet_Missing) {
-  auto fdef = FDH::Define("test", {}, {"y: float"}, {},
+  auto fdef = FDH::Create("test", {}, {"y: float"}, {},
                           {
                               {{"x"}, "One", {}, {{"T", DT_FLOAT}}},
-                          });
+                          },
+                          {});
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "ret is not found");
+           "Return y missing");
 }
 
-TEST(InstantiateErrors, FuncRet_Mismatch) {
+TEST(InstantiateErrors, FuncRet_NotFound) {
+  auto fdef = FDH::Create("test", {}, {"y: float"}, {},
+                          {
+                              {{"x"}, "One", {}, {{"T", DT_FLOAT}}},
+                          },
+                          {{"y", "z"}});
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "Return y -> z is not found");
+}
+
+TEST(InstantiateErrors, FuncRet_NameMismatch) {
+  auto fdef = FDH::Create("test", {}, {"y: float"}, {},
+                          {
+                              {{"x"}, "One", {}, {{"T", DT_FLOAT}}},
+                          },
+                          {{"z", "x:y:0"}});
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "Return y missing");
+}
+
+// TODO(josh11b): Make this an error.
+// TEST(InstantiateErrors, FuncRet_Extra) {
+//   auto fdef = FDH::Create("test", {}, {"y: float"}, {},
+//                           {
+//                               {{"x"}, "One", {}, {{"T", DT_FLOAT}}},
+//                           },
+//                           {{"y", "x:y:0"}, {"z", "x:y:0"}});
+//   InstantiationResult result;
+//   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+//            "ret is not found");
+// }
+
+TEST(InstantiateErrors, FuncRet_TypeMismatch) {
   auto fdef = FDH::Define("test", {}, {"y: float"}, {},
                           {
                               {{"y"}, "One", {}, {{"T", DT_DOUBLE}}},
@@ -656,7 +628,7 @@ TEST(InstantiateErrors, FuncRet_Mismatch) {
 }
 
 TEST(InstantiateErrors, TypeList_Missing_Retval_Attr) {
-  auto fdef = FDH::Define(
+  auto fdef = FDH::Create(
       // Name
       "MySelect",
       // Args
@@ -674,14 +646,15 @@ TEST(InstantiateErrors, TypeList_Missing_Retval_Attr) {
             {"cond", FDH::FunctionRef("MyCond2")},
             {"then_branch", FDH::FunctionRef("MyThen2")},
             {"else_branch", FDH::FunctionRef("MyElse2")}}},
-      });
+      },
+      {{"y", "y:output"}});
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
            "type attr not found: out_types");
 }
 
 TEST(InstantiateErrors, TypeList_Num_Retval_Mismatch) {
-  auto fdef = FDH::Define(
+  auto fdef = FDH::Create(
       // Name
       "MySelect",
       // Args
@@ -700,14 +673,15 @@ TEST(InstantiateErrors, TypeList_Num_Retval_Mismatch) {
             {"cond", FDH::FunctionRef("MyCond2")},
             {"then_branch", FDH::FunctionRef("MyThen2")},
             {"else_branch", FDH::FunctionRef("MyElse2")}}},
-      });
+      },
+      {{"y", "y:output"}});
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
            "Invalid ret types");
 }
 
 TEST(InstantiateErrors, TypeList_Missing_Arg) {
-  auto fdef = FDH::Define(
+  auto fdef = FDH::Create(
       // Name
       "MySelect",
       // Args
@@ -726,14 +700,15 @@ TEST(InstantiateErrors, TypeList_Missing_Arg) {
             {"cond", FDH::FunctionRef("MyCond2")},
             {"then_branch", FDH::FunctionRef("MyThen2")},
             {"else_branch", FDH::FunctionRef("MyElse2")}}},
-      });
+      },
+      {{"y", "y:output"}});
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
-           "arg[1] is not found");
+           "input unknown is not found");
 }
 
-TEST(InstantiateErrors, NodeDef_TooManyInputs) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooManyInputs) {
+  auto fdef = FDH::Create(
       // Name
       "TooManyInputs",
       // Inputs
@@ -753,8 +728,8 @@ TEST(InstantiateErrors, NodeDef_TooManyInputs) {
            "Expected input[2] == 'x' to be a control input.");
 }
 
-TEST(InstantiateErrors, NodeDef_TooFewInputs) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooFewInputs) {
+  auto fdef = FDH::Create(
       // Name
       "TooFewInputs",
       // Inputs
@@ -774,8 +749,8 @@ TEST(InstantiateErrors, NodeDef_TooFewInputs) {
            "Attempt to access beyond input size: 2 >= 2");
 }
 
-TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray1) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooManyInputsFromArray1) {
+  auto fdef = FDH::Create(
       // Name
       "TooManyInputsFromArray",
       // Inputs
@@ -802,8 +777,8 @@ TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray1) {
            "Expected input[1] == 'y' to be a control input.");
 }
 
-TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray2) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooManyInputsFromArray2) {
+  auto fdef = FDH::Create(
       // Name
       "TooManyInputsFromArray",
       // Inputs
@@ -830,8 +805,8 @@ TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray2) {
            "Input a:output too long for inputs");
 }
 
-TEST(InstantiateErrors, NodeDef_TypeMismatch) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TypeMismatch) {
+  auto fdef = FDH::Create(
       // Name
       "TypeMismatch",
       // Inputs
@@ -923,8 +898,9 @@ TEST(FunctionLibraryDefinitionTest, Find) {
   auto expect = R"P(
 XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
   two = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
-  scale = Cast[DstT=$T, SrcT=int64](two)
-  y = Mul[T=$T](x, scale)
+  scale = Cast[DstT=$T, SrcT=int64](two:output:0)
+  y = Mul[T=$T](x, scale:y:0)
+  return y = y:z:0
 }
 )P";
   auto found = lib_def.Find("XTimesTwo");

@@ -211,6 +211,12 @@ TEST_F(GraphTest, NodeByIndex) {
   EXPECT_EQ(1, e->dst_input());
   EXPECT_EQ(t, e->src());
 
+  std::vector<const Edge*> t_input_edges;
+  TF_ASSERT_OK(t->input_edges(&t_input_edges));
+  ASSERT_EQ(2, t_input_edges.size());
+  EXPECT_EQ(a, t_input_edges[0]->src());
+  EXPECT_EQ(e, t_input_edges[1]);
+
   // Check out of bounds access
   EXPECT_FALSE(c->input_node(1, &a_copy).ok());
   EXPECT_FALSE(c->input_node(-1, &a_copy).ok());
@@ -240,6 +246,11 @@ TEST_F(GraphTest, NodeByIndex) {
 
   // Check that the second edge can still be retrieved
   TF_ASSERT_OK(c->input_edge(0, &b_new_c_edge));
+
+  std::vector<const Edge*> c_input_edges;
+  TF_ASSERT_OK(c->input_edges(&c_input_edges));
+  ASSERT_EQ(1, c_input_edges.size());
+  EXPECT_EQ(b_new_c_edge, c_input_edges[0]);
 }
 
 TEST_F(GraphTest, NodeIteration) {
@@ -364,6 +375,16 @@ TEST_F(GraphTest, NewName) {
   EXPECT_NE(a1, b1);
   EXPECT_NE(a2, b1);
   EXPECT_TRUE(StringPiece(a1).starts_with("A")) << a1;
+}
+
+TEST_F(GraphTest, InputEdges) {
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "TwoInputsOneOutput", 2);
+  graph_.AddEdge(a, 0, b, 0);
+  std::vector<const Edge*> edges;
+  EXPECT_EQ(error::INVALID_ARGUMENT, b->input_edges(&edges).code());
+  graph_.AddEdge(a, 0, b, 1);
+  TF_EXPECT_OK(b->input_edges(&edges));
 }
 
 REGISTER_OP("Input").Output("o: float");

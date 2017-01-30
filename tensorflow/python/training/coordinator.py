@@ -393,6 +393,12 @@ class Coordinator(object):
   def joined(self):
     return self._joined
 
+  def raise_requested_exception(self):
+    """If an exception has been passed to `request_stop`, this raises it."""
+    with self._lock:
+      if self._exc_info_to_raise:
+        six.reraise(*self._exc_info_to_raise)
+
 
 # Threads for the standard services.
 class LooperThread(threading.Thread):

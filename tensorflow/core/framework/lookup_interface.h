@@ -67,8 +67,16 @@ class LookupInterface : public ResourceBase {
   // Returns the number of elements in the table.
   virtual size_t size() const = 0;
 
+  // Exports the values of the table to two tensors named keys and values.
+  // Note that the shape of the tensors is completely up to the implementation
+  // of the table and can be different than the tensors used for the Insert
+  // function above.
   virtual Status ExportValues(OpKernelContext* ctx) = 0;
 
+  // Imports previously exported keys and values.
+  // As mentioned above, the shape of the keys and values tensors are determined
+  // by the ExportValues function above and can be different than for the
+  // Insert function.
   virtual Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
                               const Tensor& values) = 0;
 
@@ -84,14 +92,20 @@ class LookupInterface : public ResourceBase {
   // Returns the shape of a value in the table.
   virtual TensorShape value_shape() const = 0;
 
-  // Check format of the key and value tensors.
+  // Check format of the key and value tensors for the Insert function.
   // Returns OK if all the following requirements are satisfied, otherwise it
   // returns InvalidArgument:
   // - DataType of the tensor keys equals to the table key_dtype
   // - DataType of the tensor values equals to the table value_dtype
   // - the values tensor has the required shape given keys and the tables's
   //   value shape.
-  Status CheckKeyAndValueTensors(const Tensor& keys, const Tensor& values);
+  virtual Status CheckKeyAndValueTensorsForInsert(const Tensor& keys,
+                                                  const Tensor& values);
+
+  // Similar to the function above but instead checks eligibility for the Import
+  // function.
+  virtual Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
+                                                  const Tensor& values);
 
   // Check the arguments of a find operation. Returns OK if all the following
   // requirements are satisfied, otherwise it returns InvalidArgument:
@@ -100,7 +114,9 @@ class LookupInterface : public ResourceBase {
   // - the default_value tensor shape matches the table's value shape.
   Status CheckFindArguments(const Tensor& keys, const Tensor& default_value);
 
-  string DebugString() override { return "A lookup table"; }
+  string DebugString() override {
+    return strings::StrCat("A lookup table of size: ", size());
+  }
 
   // Returns an InitializableLookupTable, a subclass of LookupInterface, if the
   // current object is an InitializableLookupTable. Otherwise, returns nullptr.
@@ -111,8 +127,16 @@ class LookupInterface : public ResourceBase {
  protected:
   virtual ~LookupInterface() = default;
 
- private:
+  // Makes sure that the key and value tensor DataType's match the table
+  // key_dtype and value_dtype.
   Status CheckKeyAndValueTypes(const Tensor& keys, const Tensor& values);
+
+  // Makes sure that the provided shape is consistent with the table keys shape.
+  Status CheckKeyShape(const TensorShape& shape);
+
+ private:
+  Status CheckKeyAndValueTensorsHelper(const Tensor& keys,
+                                       const Tensor& values);
 };
 
 }  // namespace lookup

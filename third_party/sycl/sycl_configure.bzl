@@ -102,7 +102,7 @@ def _tpl(repository_ctx, tpl, substitutions={}, out=None):
 def _file(repository_ctx, label):
   repository_ctx.template(
       label.replace(":", "/"),
-      Label("//third_party/sycl/%s.tpl" % label),
+      Label("//third_party/sycl/%s" % label),
       {})
 
 _DUMMY_CROSSTOOL_BZL_FILE = """
@@ -133,9 +133,10 @@ error_sycl_disabled()
 
 def _create_dummy_repository(repository_ctx):
   # Set up BUILD file for sycl/.
-  _file(repository_ctx, "sycl:build_defs.bzl")
-  _file(repository_ctx, "sycl:BUILD")
-  _file(repository_ctx, "sycl:platform.bzl")
+  _tpl(repository_ctx, "sycl:build_defs.bzl")
+  _tpl(repository_ctx, "sycl:BUILD")
+  _file(repository_ctx, "sycl:LICENSE.text")
+  _tpl(repository_ctx, "sycl:platform.bzl")
 
   # Create dummy files for the SYCL toolkit since they are still required by
   # tensorflow/sycl/platform/default/build_config:sycl.
@@ -156,10 +157,11 @@ def _sycl_autoconf_imp(repository_ctx):
     _create_dummy_repository(repository_ctx)
   else:
     # copy template files
-    _file(repository_ctx, "sycl:build_defs.bzl")
-    _file(repository_ctx, "sycl:BUILD")
-    _file(repository_ctx, "sycl:platform.bzl")
-    _file(repository_ctx, "crosstool:BUILD")
+    _tpl(repository_ctx, "sycl:build_defs.bzl")
+    _tpl(repository_ctx, "sycl:BUILD")
+    _tpl(repository_ctx, "sycl:platform.bzl")
+    _tpl(repository_ctx, "crosstool:BUILD")
+    _file(repository_ctx, "sycl:LICENSE.text")
     _tpl(repository_ctx, "crosstool:computecpp",
     {
       "%{host_cxx_compiler}" : find_cc(repository_ctx),

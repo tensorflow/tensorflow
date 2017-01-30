@@ -138,48 +138,57 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
                        new FakeHttpRequestFactory(&requests)),
                    5 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
-
   char scratch[100];
   StringPiece result;
+  {
+    // We are instantiating this in an enclosed scope to make sure after the
+    // unique ptr goes out of scope, we can still access result.
+    std::unique_ptr<RandomAccessFile> file;
+    TF_EXPECT_OK(
+        fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
-  // Read the first chunk. The buffer will be updated with 4 + 5 = 9 bytes.
-  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
-  EXPECT_EQ("0123", result);
+    // Read the first chunk. The buffer will be updated with 4 + 5 = 9 bytes.
+    scratch[5] = 'x';
+    TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+    EXPECT_EQ("0123", result);
+    EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
 
-  // The second chunk will be fully loaded from the buffer, no requests are
-  // made.
-  TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
-  EXPECT_EQ("4567", result);
+    // The second chunk will be fully loaded from the buffer, no requests are
+    // made.
+    TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
+    EXPECT_EQ("4567", result);
 
-  // The chunk is only partially buffered -- the request will be made to
-  // reload the buffer. 9 bytes will be requested (same as initial buffer size).
-  TF_EXPECT_OK(file->Read(6, 5, &result, scratch));
-  EXPECT_EQ("6789a", result);
+    // The chunk is only partially buffered -- the request will be made to
+    // reload the buffer. 9 bytes will be requested (same as initial buffer
+    // size).
+    TF_EXPECT_OK(file->Read(6, 5, &result, scratch));
+    EXPECT_EQ("6789a", result);
 
-  // The range can only be partially satisfied. An attempt to fill the buffer
-  // with 10 + 5 = 15 bytes will be made (buffer is resized for this request).
-  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
-            file->Read(6, 10, &result, scratch).code());
-  EXPECT_EQ("6789abcd", result);
+    // The range can only be partially satisfied. An attempt to fill the buffer
+    // with 10 + 5 = 15 bytes will be made (buffer is resized for this request).
+    EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+              file->Read(6, 10, &result, scratch).code());
+    EXPECT_EQ("6789abcd", result);
 
-  // The range cannot be satisfied, and the requested offset lies within the
-  // buffer, but the end of the range is outside of the buffer.
-  // A new request will be made to read 10 + 5 = 15 bytes.
-  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
-            file->Read(7, 10, &result, scratch).code());
-  EXPECT_EQ("789abcdef", result);
+    // The range cannot be satisfied, and the requested offset lies within the
+    // buffer, but the end of the range is outside of the buffer.
+    // A new request will be made to read 10 + 5 = 15 bytes.
+    EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+              file->Read(7, 10, &result, scratch).code());
+    EXPECT_EQ("789abcdef", result);
 
-  // The range cannot be satisfied, and the requested offset is greater than the
-  // buffered range. A new request will be made to read 10 + 5 = 15 bytes.
-  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
-            file->Read(20, 10, &result, scratch).code());
-  EXPECT_TRUE(result.empty());
+    // The range cannot be satisfied, and the requested offset is greater than
+    // the
+    // buffered range. A new request will be made to read 10 + 5 = 15 bytes.
+    EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+              file->Read(20, 10, &result, scratch).code());
+    EXPECT_TRUE(result.empty());
+
+    TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+  }
 
   // The beginning of the file is not in the buffer. This call will result
   // in another request. The buffer size is still 15.
-  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
   EXPECT_EQ("0123", result);
 }
 
@@ -219,6 +228,11 @@ TEST(GcsFileSystemTest, NewWritableFile) {
 
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
+  TF_EXPECT_OK(file->Flush());
+  // The calls to flush, sync, and close below should not cause uploads because
+  // the file is not dirty.
+  TF_EXPECT_OK(file->Flush());
+  TF_EXPECT_OK(file->Sync());
   TF_EXPECT_OK(file->Close());
 }
 

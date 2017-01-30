@@ -81,6 +81,21 @@ func TestOperationOutputListSize(t *testing.T) {
 	}
 }
 
+func TestOperationShapeAttribute(t *testing.T) {
+	g := NewGraph()
+	_, err := g.AddOperation(OpSpec{
+		Type: "Placeholder",
+		Attrs: map[string]interface{}{
+			"dtype": Float,
+			"shape": MakeShape(-1, 3),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// If and when the API to get attributes is added, check that here.
+}
+
 func TestOutputShape(t *testing.T) {
 	graph := NewGraph()
 	testdata := []struct {

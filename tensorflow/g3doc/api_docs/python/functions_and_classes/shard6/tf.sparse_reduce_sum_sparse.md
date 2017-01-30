@@ -1,4 +1,4 @@
-### `tf.sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False)` {#sparse_reduce_sum_sparse}
+### `tf.sparse_reduce_sum_sparse(sp_input, axis=None, keep_dims=False, reduction_axes=None)` {#sparse_reduce_sum_sparse}
 
 Computes the sum of elements across dimensions of a SparseTensor.
 
@@ -19,9 +19,10 @@ which are interpreted according to the indexing rules in Python.
 
 
 *  <b>`sp_input`</b>: The SparseTensor to reduce. Should have numeric type.
-*  <b>`reduction_axes`</b>: The dimensions to reduce; list or scalar. If `None` (the
+*  <b>`axis`</b>: The dimensions to reduce; list or scalar. If `None` (the
     default), reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retain reduced dimensions with length 1.
+*  <b>`reduction_axes`</b>: Deprecated name of axis
 
 ##### Returns:
 

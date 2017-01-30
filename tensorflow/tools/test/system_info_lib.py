@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Library for getting system information during TensorFlow tests."""
 
 from __future__ import absolute_import
@@ -24,8 +23,6 @@ import platform
 import re
 import socket
 
-import tensorflow as tf
-
 # pylint: disable=g-bad-import-order
 # Note: cpuinfo and psutil are not installed for you in the TensorFlow
 # OSS tree.  They are installable via pip.
@@ -36,6 +33,7 @@ import psutil
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import gfile
 from tensorflow.tools.test import gpu_info_lib
 
 
@@ -81,7 +79,7 @@ def gather_cpu_info():
 
   # Gather num_cores_allowed
   try:
-    with tf.gfile.GFile('/proc/self/status') as fh:
+    with gfile.GFile('/proc/self/status') as fh:
       nc = re.search(r'(?m)^Cpus_allowed:\s*(.*)$', fh.read())
     if nc:  # e.g. 'ff' => 8, 'fff' => 12
       cpu_info.num_cores_allowed = (
@@ -105,9 +103,10 @@ def gather_cpu_info():
   # Try to get the CPU governor
   try:
     cpu_governors = set([
-        tf.gfile.GFile(f, 'r').readline().rstrip()
-        for f in tf.gfile.Glob(
-            '/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor')])
+        gfile.GFile(f, 'r').readline().rstrip()
+        for f in gfile.Glob(
+            '/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor')
+    ])
     if cpu_governors:
       if len(cpu_governors) > 1:
         cpu_info.cpu_governor = 'mixed'

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA
@@ -40,12 +41,17 @@ class LaunchConv2DOp {
 };
 
 // Used to keep track of persistent memory buffers used within the op.
+// It uses malloc and free to avoid the time cost of initializing the memory.
 template <class T, size_t size>
 struct Im2ColBufferResource : public ResourceBase {
+  Im2ColBufferResource<T, size>() {
+    data = static_cast<T*>(port::Malloc(size * sizeof(T)));
+  }
+  ~Im2ColBufferResource<T, size>() { port::Free(data); }
   // This mutex ensures that only a single operation at a time is able to use
   // the buffer memory held by this resource.
   mutex mu;
-  T data[size];
+  T* data;
   string DebugString() { return "Im2ColBufferResource"; }
 };
 

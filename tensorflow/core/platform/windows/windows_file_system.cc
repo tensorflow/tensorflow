@@ -72,7 +72,9 @@ SSIZE_T pread(HANDLE hfile, char* src, size_t num_bytes, uint64_t offset) {
 
   BOOL read_result = ::ReadFile(hfile, src, static_cast<DWORD>(num_bytes),
                                 &bytes_read, &overlapped);
-  if ((FALSE == read_result) &&
+  if (TRUE == read_result) {
+    result = bytes_read;
+  } else if ((FALSE == read_result) &&
       ((last_error = GetLastError()) != ERROR_IO_PENDING)) {
     result = (last_error == ERROR_HANDLE_EOF) ? 0 : -1;
   } else {
@@ -386,7 +388,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   string pattern = translated_dir;
   if (!pattern.empty() && pattern.back() != '\\' && pattern.back() != '/') {
-    pattern += '\\*';
+    pattern += "\\*";
   } else {
     pattern += '*';
   }
@@ -465,6 +467,23 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
     result = IOErrorFromWindowsError(context, ::GetLastError());
   }
   return result;
+}
+
+Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
+                                           std::vector<string>* results) {
+  // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
+  // does not handle Windows paths containing backslashes correctly. Since
+  // Windows APIs will accept forward and backslashes equivalently, we
+  // convert the pattern to use forward slashes exclusively. Note that this
+  // is not ideal, since the API expects backslash as an escape character,
+  // but no code appears to rely on this behavior.
+  string converted_pattern(pattern);
+  std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
+  TF_RETURN_IF_ERROR(FileSystem::GetMatchingPaths(converted_pattern, results));
+  for (string& result : *results) {
+    std::replace(result.begin(), result.end(), '/', '\\');
+  }
+  return Status::OK();
 }
 
 Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {

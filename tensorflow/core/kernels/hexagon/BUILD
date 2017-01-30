@@ -46,7 +46,10 @@ tf_cc_test(
 tf_cc_test(
     name = "graph_transferer_test",
     size = "small",
-    srcs = ["graph_transferer_test.cc"],
+    srcs = [
+        "graph_transferer_test.cc",
+        "hexagon_graph_execution_test.cc",
+    ],
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
@@ -58,25 +61,37 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:reshape_op",
+        "//tensorflow/core/kernels:softmax_op",
     ],
 )
 
 tf_kernel_library(
     name = "graph_transferer",
     srcs = [
+        "graph_transfer_utils.cc",
         "graph_transferer.cc",
+        "hexagon_control_wrapper.cc",
         "hexagon_ops_definitions.cc",
         "i_graph_transfer_ops_definitions.cc",
     ],
     hdrs = [
+        "graph_transfer_utils.h",
         "graph_transferer.h",
+        "hexagon_control_wrapper.h",
         "hexagon_ops_definitions.h",
         "i_graph_transfer_ops_definitions.h",
+        "i_soc_control_wrapper.h",
     ],
+    data = ["//tensorflow/core:example_parser_configuration_testdata"],
     deps = [
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )

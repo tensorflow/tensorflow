@@ -23,7 +23,6 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python import summary as _summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -31,10 +30,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary as _summary
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
-from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
 
 
@@ -132,7 +131,7 @@ class Supervisor(object):
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
-    the RPC interface to a specific , and also allows the in-process
+    the RPC interface to a specific host, and also allows the in-process
     master to access remote tensorflow workers. Often, it is
     appropriate to pass `server.target` (for some `tf.train.Server`
     named `server).
@@ -152,7 +151,7 @@ class Supervisor(object):
     ...
     sv = Supervisor(logdir='/tmp/mydir')
     with sv.managed_session(FLAGS.master) as sess:
-      sv.loop(60, print_loss, (sess))
+      sv.loop(60, print_loss, (sess, ))
       while not sv.should_stop():
         sess.run(my_train_op)
     ```
@@ -248,8 +247,8 @@ class Supervisor(object):
         ready to run the local_init_op.
         The model is considered ready if it returns an empty array.  Defaults to
         the tensor returned from
-        `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
-        model is not checked for readiness before running local_init_op.
+        `tf.report_uninitialized_variables(tf.global_variables())`. If `None`,
+        the model is not checked for readiness before running local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.
@@ -341,7 +340,7 @@ class Supervisor(object):
         self._save_path = os.path.join(self._logdir, checkpoint_basename)
       if summary_writer is Supervisor.USE_DEFAULT:
         if self._logdir:
-          self._summary_writer = summary_io.SummaryWriter(self._logdir)
+          self._summary_writer = _summary.FileWriter(self._logdir)
       else:
         self._summary_writer = summary_writer
       self._graph_added_to_summary = False
@@ -441,7 +440,7 @@ class Supervisor(object):
           ops.GraphKeys.LOCAL_INIT_OP)
       if local_init_op is None:
         op_list = [variables.local_variables_initializer(),
-                   data_flow_ops.initialize_all_tables()]
+                   data_flow_ops.tables_initializer()]
         if op_list:
           local_init_op = control_flow_ops.group(*op_list)
           ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
@@ -890,7 +889,7 @@ class Supervisor(object):
     # In that case all Variables must have their device set.
     if not self._is_chief:
       for op in self._graph.get_operations():
-        if op.type == "Variable" and not op.device:
+        if op.type in ["Variable", "VariableV2"] and not op.device:
           raise ValueError("When using replicas, all Variables must have "
                            "their device set: %s" % op)
 

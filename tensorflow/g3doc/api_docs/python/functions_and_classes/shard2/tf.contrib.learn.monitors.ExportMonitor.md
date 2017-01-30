@@ -9,27 +9,31 @@ SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
 The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will both become required args.
 
-    Args:
-      every_n_steps: Run monitor every N steps.
-      export_dir: str, folder to export.
-      input_fn: A function that takes no argument and returns a tuple of
-        (features, labels), where features is a dict of string key to `Tensor`
-        and labels is a `Tensor` that's currently not used (and so can be
-        `None`).
-      input_feature_key: String key into the features dict returned by
-        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input. Can only be `None` if you're
-        using a custom `signature_fn` that does not use the first arg
-        (examples).
-      exports_to_keep: int, number of exports to keep.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `dict` of `Tensor`s for predictions.
-      default_batch_size: Default batch size of the `Example` placeholder.
+##### Args:
 
-    Raises:
-      ValueError: If `input_fn` and `input_feature_key` are not both defined or
-        are not both `None`.
+
+*  <b>`every_n_steps`</b>: Run monitor every N steps.
+*  <b>`export_dir`</b>: str, folder to export.
+*  <b>`input_fn`</b>: A function that takes no argument and returns a tuple of
+    (features, labels), where features is a dict of string key to `Tensor`
+    and labels is a `Tensor` that's currently not used (and so can be
+    `None`).
+*  <b>`input_feature_key`</b>: String key into the features dict returned by
+    `input_fn` that corresponds to the raw `Example` strings `Tensor` that
+    the exported model will take as input. Should be `None` if and only if
+    you're passing in a `signature_fn` that does not use the first arg
+    (`Tensor` of `Example` strings).
+*  <b>`exports_to_keep`</b>: int, number of exports to keep.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `dict` of `Tensor`s for predictions.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `input_fn` and `input_feature_key` are not both defined or
+    are not both `None`.
 
 
 - - -

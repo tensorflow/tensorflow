@@ -47,8 +47,8 @@ import threading
 
 import six
 
-from tensorflow.contrib import distributions
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators as sge
+from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
@@ -164,7 +164,7 @@ class SampleValue(_StochasticValueType):
   sigma = tf.ones((2, 3))
   with sg.value_type(sg.SampleValue()):
     st = sg.StochasticTensor(
-      distributions.Normal, mu=mu, sigma=sigma)
+      tf.contrib.distributions.Normal, mu=mu, sigma=sigma)
   # draws 1 sample and does not reshape
   assertEqual(st.value().get_shape(), (2, 3))
   ```
@@ -174,7 +174,7 @@ class SampleValue(_StochasticValueType):
   sigma = tf.ones((2, 3))
   with sg.value_type(sg.SampleValue(4)):
     st = sg.StochasticTensor(
-      distributions.Normal, mu=mu, sigma=sigma)
+      tf.contrib.distributions.Normal, mu=mu, sigma=sigma)
   # draws 4 samples each with shape (2, 3) and concatenates
   assertEqual(st.value().get_shape(), (4, 2, 3))
   ```
@@ -218,7 +218,8 @@ def value_type(dist_value_type):
 
   ```
   with sg.value_type(sg.MeanValue(stop_gradients=True)):
-    st = sg.StochasticTensor(distributions.Normal, mu=mu, sigma=sigma)
+    st = sg.StochasticTensor(tf.contrib.distributions.Normal, mu=mu,
+                             sigma=sigma)
   ```
 
   In the example above, `st.value()` (or equivalently, `tf.identity(st)`) will
@@ -311,7 +312,7 @@ class StochasticTensor(BaseStochasticTensor):
       TypeError: if `dist` is not an instance of `Distribution`.
       TypeError: if `loss_fn` is not `callable`.
     """
-    if not isinstance(dist, distributions.Distribution):
+    if not isinstance(dist, distribution.Distribution):
       raise TypeError("dist must be an instance of Distribution")
     if dist_value_type is None:
       try:
@@ -351,8 +352,8 @@ class StochasticTensor(BaseStochasticTensor):
     elif isinstance(self._value_type, SampleValue):
       value_tensor = self._dist.sample(self._value_type.shape)
     else:
-      raise TypeError(
-          "Unrecognized Distribution Value Type: %s", self._value_type)
+      raise TypeError("Unrecognized Distribution Value Type: %s",
+                      self._value_type)
 
     if self._value_type.stop_gradient:
       # stop_gradient is being enforced by the value type
@@ -360,7 +361,9 @@ class StochasticTensor(BaseStochasticTensor):
 
     if isinstance(self._value_type, MeanValue):
       return value_tensor  # Using pathwise-derivative for this one.
-    if self._dist.is_continuous and self._dist.is_reparameterized:
+    if self._dist.is_continuous and (
+        self._dist.reparameterization_type
+        is distribution.FULLY_REPARAMETERIZED):
       return value_tensor  # Using pathwise-derivative for this one.
     else:
       # Will have to perform some variant of score function
@@ -396,8 +399,9 @@ class StochasticTensor(BaseStochasticTensor):
     if self._loss_fn is None:
       return None
 
-    if (self._dist.is_continuous and self._dist.is_reparameterized and
-        not self._value_type.stop_gradient):
+    if (self._dist.is_continuous and
+        self._dist.reparameterization_type is distribution.FULLY_REPARAMETERIZED
+        and not self._value_type.stop_gradient):
       # Can perform pathwise-derivative on this one; no additional loss needed.
       return None
 
@@ -434,7 +438,7 @@ class ObservedStochasticTensor(StochasticTensor):
       TypeError: if `dist` is not an instance of `Distribution`.
       ValueError: if `value` is not compatible with the distribution.
     """
-    if not isinstance(dist, distributions.Distribution):
+    if not isinstance(dist, distribution.Distribution):
       raise TypeError("dist must be an instance of Distribution")
     with ops.name_scope(name, "ObservedStochasticTensor", [value]) as scope:
       self._name = scope

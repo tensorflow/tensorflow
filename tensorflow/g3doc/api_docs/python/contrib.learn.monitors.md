@@ -58,6 +58,8 @@ Example:
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
 ```
 
+## Ops
+
 - - -
 
 ### `tf.contrib.learn.monitors.get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100, output_dir=None, summary_writer=None)` {#get_default_monitors}
@@ -479,7 +481,7 @@ Returns the values captured so far.
 
 ### `class tf.contrib.learn.monitors.CheckpointSaver` {#CheckpointSaver}
 
-Saves checkpoints every N steps.
+Saves checkpoints every N steps or N seconds.
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaver.__init__}
@@ -878,27 +880,31 @@ SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
 The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will both become required args.
 
-    Args:
-      every_n_steps: Run monitor every N steps.
-      export_dir: str, folder to export.
-      input_fn: A function that takes no argument and returns a tuple of
-        (features, labels), where features is a dict of string key to `Tensor`
-        and labels is a `Tensor` that's currently not used (and so can be
-        `None`).
-      input_feature_key: String key into the features dict returned by
-        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input. Can only be `None` if you're
-        using a custom `signature_fn` that does not use the first arg
-        (examples).
-      exports_to_keep: int, number of exports to keep.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `dict` of `Tensor`s for predictions.
-      default_batch_size: Default batch size of the `Example` placeholder.
+##### Args:
 
-    Raises:
-      ValueError: If `input_fn` and `input_feature_key` are not both defined or
-        are not both `None`.
+
+*  <b>`every_n_steps`</b>: Run monitor every N steps.
+*  <b>`export_dir`</b>: str, folder to export.
+*  <b>`input_fn`</b>: A function that takes no argument and returns a tuple of
+    (features, labels), where features is a dict of string key to `Tensor`
+    and labels is a `Tensor` that's currently not used (and so can be
+    `None`).
+*  <b>`input_feature_key`</b>: String key into the features dict returned by
+    `input_fn` that corresponds to the raw `Example` strings `Tensor` that
+    the exported model will take as input. Should be `None` if and only if
+    you're passing in a `signature_fn` that does not use the first arg
+    (`Tensor` of `Example` strings).
+*  <b>`exports_to_keep`</b>: int, number of exports to keep.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `dict` of `Tensor`s for predictions.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `input_fn` and `input_feature_key` are not both defined or
+    are not both `None`.
 
 
 - - -
@@ -2378,7 +2384,7 @@ Can do early stopping on validation metrics if `early_stopping_rounds` is
 provided.
 - - -
 
-#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
+#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, hooks=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
 
 Initializes a ValidationMonitor.
 
@@ -2393,6 +2399,8 @@ Initializes a ValidationMonitor.
 *  <b>`every_n_steps`</b>: Check for new checkpoints to evaluate every N steps. If a
       new checkpoint is found, it is evaluated. See `EveryN`.
 *  <b>`metrics`</b>: See `BaseEstimator.evaluate`.
+*  <b>`hooks`</b>: A list of `SessionRunHook` hooks to pass to the
+    `Estimator`'s `evaluate` function.
 *  <b>`early_stopping_rounds`</b>: `int`. If the metric indicated by
       `early_stopping_metric` does not change according to
       `early_stopping_metric_minimize` for this many steps, then training
@@ -2626,6 +2634,27 @@ Wraps monitors into a SessionRunHook.
 
 - - -
 
+#### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.after_create_session(session, coord)` {#RunHookAdapterForMonitors.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
 #### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.after_run(run_context, run_values)` {#RunHookAdapterForMonitors.after_run}
 
 
@@ -2651,5 +2680,58 @@ Wraps monitors into a SessionRunHook.
 
 
 
+
+
+- - -
+
+### `class tf.contrib.learn.monitors.SummaryWriterCache` {#SummaryWriterCache}
+
+Cache for file writers.
+
+This class caches file writers, one per directory.
+- - -
+
+#### `tf.contrib.learn.monitors.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
+
+Clear cached summary writers. Currently only used for unit tests.
+
+
+- - -
+
+#### `tf.contrib.learn.monitors.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
+
+Returns the FileWriter for the specified directory.
+
+##### Args:
+
+
+*  <b>`logdir`</b>: str, name of the directory.
+
+##### Returns:
+
+  A `FileWriter`.
+
+
+
+- - -
+
+### `tf.contrib.learn.monitors.replace_monitors_with_hooks(monitors_or_hooks, estimator)` {#replace_monitors_with_hooks}
+
+Wraps monitors with a hook.
+
+`Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+monitor, you can wrap it with a hook using function. It is recommended to
+implement hook version of your monitor.
+
+##### Args:
+
+
+*  <b>`monitors_or_hooks`</b>: A `list` may contain both monitors and hooks.
+*  <b>`estimator`</b>: An `Estimator` that monitor will be used with.
+
+##### Returns:
+
+  Returns a list of hooks. If there is any monitor in the given list, it is
+  replaced by a hook.
 
 

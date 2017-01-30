@@ -18,24 +18,11 @@ limitations under the License.
  * rendered next to them.
  */
 export class LabelRenderParams {
-  pointIndices: Float32Array;
-  scaleFactors: Float32Array;
-  useSceneOpacityFlags: Int8Array;  // booleans
-  defaultFontSize: number;
-  fillColor: number;
-  strokeColor: number;
-
   constructor(
-      pointIndices: Float32Array, scaleFactors: Float32Array,
-      useSceneOpacityFlags: Int8Array, defaultFontSize: number,
-      fillColor: number, strokeColor: number) {
-    this.pointIndices = pointIndices;
-    this.scaleFactors = scaleFactors;
-    this.useSceneOpacityFlags = useSceneOpacityFlags;
-    this.defaultFontSize = defaultFontSize;
-    this.fillColor = fillColor;
-    this.strokeColor = strokeColor;
-  }
+      public pointIndices: Float32Array, public labelStrings: string[],
+      public scaleFactors: Float32Array, public useSceneOpacityFlags: Int8Array,
+      public defaultFontSize: number, public fillColors: Uint8Array,
+      public strokeColors: Uint8Array) {}
 }
 
 /** Details about the camera projection being used to render the scene. */
@@ -53,44 +40,13 @@ export enum CameraType {
  * only when they change.
  */
 export class RenderContext {
-  camera: THREE.Camera;
-  cameraType: CameraType;
-  cameraTarget: THREE.Vector3;
-  screenWidth: number;
-  screenHeight: number;
-  nearestCameraSpacePointZ: number;
-  farthestCameraSpacePointZ: number;
-  backgroundColor: number;
-  pointColors: Float32Array;
-  pointScaleFactors: Float32Array;
-  labelAccessor: (index: number) => string;
-  labels: LabelRenderParams;
-  traceColors: {[trace: number]: Float32Array};
-  traceOpacities: Float32Array;
-  traceWidths: Float32Array;
-
   constructor(
-      camera: THREE.Camera, cameraType: CameraType, cameraTarget: THREE.Vector3,
-      screenWidth: number, screenHeight: number,
-      nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
-      backgroundColor: number, pointColors: Float32Array,
-      pointScaleFactors: Float32Array, labelAccessor: (index: number) => string,
-      labels: LabelRenderParams, traceColors: {[trace: number]: Float32Array},
-      traceOpacities: Float32Array, traceWidths: Float32Array) {
-    this.camera = camera;
-    this.cameraType = cameraType;
-    this.cameraTarget = cameraTarget;
-    this.screenWidth = screenWidth;
-    this.screenHeight = screenHeight;
-    this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
-    this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
-    this.backgroundColor = backgroundColor;
-    this.pointColors = pointColors;
-    this.pointScaleFactors = pointScaleFactors;
-    this.labelAccessor = labelAccessor;
-    this.labels = labels;
-    this.traceColors = traceColors;
-    this.traceOpacities = traceOpacities;
-    this.traceWidths = traceWidths;
-  }
+      public camera: THREE.Camera, public cameraType: CameraType,
+      public cameraTarget: THREE.Vector3, public screenWidth: number,
+      public screenHeight: number, public nearestCameraSpacePointZ: number,
+      public farthestCameraSpacePointZ: number, public backgroundColor: number,
+      public pointColors: Float32Array, public pointScaleFactors: Float32Array,
+      public labels: LabelRenderParams,
+      public traceColors: {[trace: number]: Float32Array},
+      public traceOpacities: Float32Array, public traceWidths: Float32Array) {}
 }

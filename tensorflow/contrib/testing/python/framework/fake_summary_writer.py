@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Fake summary writer for unit tests."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
-from tensorflow.python.training import summary_io
 
 
 # TODO(ptucker): Replace with mock framework.
@@ -33,16 +32,16 @@ class FakeSummaryWriter(object):
   def install(cls):
     if cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter already installed.')
-    cls._replaced_summary_writer = summary_io.SummaryWriter
-    summary_io.SummaryWriter = FakeSummaryWriter
-    writer_cache.SummaryWriter = FakeSummaryWriter
+    cls._replaced_summary_writer = writer.FileWriter
+    writer.FileWriter = FakeSummaryWriter
+    writer_cache.FileWriter = FakeSummaryWriter
 
   @classmethod
   def uninstall(cls):
     if not cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter not installed.')
-    summary_io.SummaryWriter = cls._replaced_summary_writer
-    writer_cache.SummaryWriter = cls._replaced_summary_writer
+    writer.FileWriter = cls._replaced_summary_writer
+    writer_cache.FileWriter = cls._replaced_summary_writer
     cls._replaced_summary_writer = None
 
   def __init__(self, logdir, graph=None):
@@ -57,10 +56,14 @@ class FakeSummaryWriter(object):
   def summaries(self):
     return self._summaries
 
-  def assert_summaries(
-      self, test_case, expected_logdir=None, expected_graph=None,
-      expected_summaries=None, expected_added_graphs=None,
-      expected_added_meta_graphs=None, expected_session_logs=None):
+  def assert_summaries(self,
+                       test_case,
+                       expected_logdir=None,
+                       expected_graph=None,
+                       expected_summaries=None,
+                       expected_added_graphs=None,
+                       expected_added_meta_graphs=None,
+                       expected_session_logs=None):
     """Assert expected items have been added to summary writer."""
     if expected_logdir is not None:
       test_case.assertEqual(expected_logdir, self._logdir)
@@ -86,18 +89,18 @@ class FakeSummaryWriter(object):
     if expected_session_logs is not None:
       test_case.assertEqual(expected_session_logs, self._added_session_logs)
 
-  def add_summary(self, summary, current_global_step):
+  def add_summary(self, summ, current_global_step):
     """Add summary."""
-    if isinstance(summary, bytes):
+    if isinstance(summ, bytes):
       summary_proto = summary_pb2.Summary()
-      summary_proto.ParseFromString(summary)
-      summary = summary_proto
+      summary_proto.ParseFromString(summ)
+      summ = summary_proto
     if current_global_step in self._summaries:
       step_summaries = self._summaries[current_global_step]
     else:
       step_summaries = []
       self._summaries[current_global_step] = step_summaries
-    step_summaries.append(summary)
+    step_summaries.append(summ)
 
   # NOTE: Ignore global_step since its value is non-deterministic.
   def add_graph(self, graph, global_step=None, graph_def=None):

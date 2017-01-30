@@ -23,7 +23,31 @@ to be stripped from the image and re-attached using slicing ops.
 
 - - -
 
-### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, name=None)` {#decode_jpeg}
+### `tf.image.decode_gif(contents, name=None)` {#decode_gif}
+
+Decode the first frame of a GIF-encoded image to a uint8 tensor.
+
+GIF with frame or transparency compression are not supported
+convert animated GIF from compressed to uncompressed by:
+
+convert $src.gif -coalesce $dst.gif
+
+##### Args:
+
+
+*  <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The GIF-encoded image.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `uint8`.
+  4-D with shape `[num_frames, height, width, 3]`. RGB order
+
+
+
+- - -
+
+### `tf.image.decode_jpeg(contents, channels=None, ratio=None, fancy_upscaling=None, try_recover_truncated=None, acceptable_fraction=None, dct_method=None, name=None)` {#decode_jpeg}
 
 Decode a JPEG-encoded image to a uint8 tensor.
 
@@ -58,6 +82,13 @@ downscaling the image later.
 *  <b>`acceptable_fraction`</b>: An optional `float`. Defaults to `1`.
     The minimum required fraction of lines before a truncated
     input is accepted.
+*  <b>`dct_method`</b>: An optional `string`. Defaults to `""`.
+    string specifying a hint about the algorithm used for
+    decompression.  Defaults to "" which maps to a system-specific
+    default.  Currently valid values are ["INTEGER_FAST",
+    "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+    jpeg library changes to a version that does not have that specific
+    option.)
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -182,6 +213,36 @@ the smallest output, but is slower.
 ##### Returns:
 
   A `Tensor` of type `string`. 0-D. PNG-encoded image.
+
+
+
+- - -
+
+### `tf.image.decode_image(contents, channels=None, name=None)` {#decode_image}
+
+Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
+Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
+operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
+
+Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
+opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
+`[height, width, num_channels]`. Make sure to take this into account when
+constructing your graph if you are intermixing GIF files with JPEG and/or PNG
+files.
+
+##### Args:
+
+
+*  <b>`contents`</b>: 0-D `string`. The encoded image bytes.
+*  <b>`channels`</b>: An optional `int`. Defaults to `0`. Number of color channels for
+    the decoded image.
+*  <b>`name`</b>: A name for the operation (optional)
+
+##### Returns:
+
+  `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+    JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
+    images.
 
 
 
@@ -356,7 +417,6 @@ Resize `images` to `size` using nearest neighbor interpolation.
 
   A `Tensor`. Has the same type as `images`. 4-D with shape
   `[batch, new_height, new_width, channels]`.
-
 
 
 
@@ -1383,7 +1443,9 @@ false and no bounding boxes are supplied, an error is raised.
     A second seed to avoid seed collision.
 *  <b>`min_object_covered`</b>: An optional `float`. Defaults to `0.1`.
     The cropped area of the image must contain at least this
-    fraction of any bounding box supplied.
+    fraction of any bounding box supplied. The value of this parameter should be
+    non-negative. In the case of 0, the cropped area does not need to overlap
+    any of the bounding boxes supplied.
 *  <b>`aspect_ratio_range`</b>: An optional list of `floats`. Defaults to `[0.75, 1.33]`.
     The cropped area of the image must have an aspect ratio =
     width / height within this range.
@@ -1413,11 +1475,48 @@ false and no bounding boxes are supplied, an error is raised.
 
 
 
-## Other Functions and Classes
+## Denoising
+
 - - -
 
-### `tf.image.per_image_whitening(image)` {#per_image_whitening}
+### `tf.image.total_variation(images, name=None)` {#total_variation}
+
+Calculate and return the total variation for one or more images.
+
+The total variation is the sum of the absolute differences for neighboring
+pixel-values in the input images. This measures how much noise is in the
+images.
+
+This can be used as a loss-function during optimization so as to suppress
+noise in images. If you have a batch of images, then you should calculate
+the scalar loss-value as the sum:
+`loss = tf.reduce_sum(tf.image.total_variation(images))`
+
+This implements the anisotropic 2-D version of the formula described here:
+
+https://en.wikipedia.org/wiki/Total_variation_denoising
+
+##### Args:
 
 
+*  <b>`images`</b>: 4-D Tensor of shape `[batch, height, width, channels]` or
+          3-D Tensor of shape `[height, width, channels]`.
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if images.shape is not a 3-D or 4-D vector.
+
+##### Returns:
+
+  The total variation of `images`.
+
+  If `images` was 4-D, return a 1-D float Tensor of shape `[batch]` with the
+  total variation for each image in the batch.
+  If `images` was 3-D, return a scalar float with the total variation for
+  that image.
 
 

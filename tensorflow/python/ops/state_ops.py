@@ -54,6 +54,7 @@ TensorFlow provides several classes and operations that you can use to
 create variables contingent on certain conditions.
 
 @@get_variable
+@@get_local_variable
 @@VariableScope
 @@variable_scope
 @@variable_op_scope
@@ -69,6 +70,7 @@ create variables contingent on certain conditions.
 @@uniform_unit_scaling_initializer
 @@zeros_initializer
 @@ones_initializer
+@@orthogonal_initializer
 
 ## Variable Partitioners for Sharding
 
@@ -104,6 +106,7 @@ automatically by the optimizers in most cases.
 ### Read-only Lookup Tables
 
 @@initialize_all_tables
+@@tables_initializer
 
 
 ## Exporting and Importing Meta Graphs
@@ -124,9 +127,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -134,29 +137,10 @@ from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
 
 
-# pylint: disable=protected-access
+# pylint: disable=protected-access,g-doc-return-or-yield,g-doc-args
 def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
                 shared_name=""):
-  """Create a variable Operation.
-
-  See also variables.Variable.
-
-  Args:
-    shape: The shape of the tensor managed by this variable
-    dtype: The underlying type of the tensor values.
-    name: optional name to use for the variable op.
-    set_shape: If True, set the shape property of the returned Tensor to
-      the shape argument.
-    container: An optional string. Defaults to "".
-      If non-empty, this variable is placed in the given container.
-      Otherwise, a default container is used.
-    shared_name: An optional string. Defaults to "".
-      If non-empty, this variable is named in the given bucket
-      with this shared_name. Otherwise, the node name is used instead.
-
-  Returns:
-    A variable tensor.
-  """
+  """Deprecated. Used variable_op_v2 instead."""
   if not set_shape:
     shape = tensor_shape.unknown_shape()
   ret = gen_state_ops._variable(shape=shape, dtype=dtype, name=name,
@@ -168,11 +152,30 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
   return ret
 
 
-# NOTE(mrry): Shapes are conditionally set in the Python wrapper.
-ops.RegisterShape("Variable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("IsVariableInitialized")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TemporaryVariable")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DestroyTemporaryVariable")(common_shapes.call_cpp_shape_fn)
+def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
+  """Create a variable Operation.
+
+  See also variables.Variable.
+
+  Args:
+    shape: The shape of the tensor managed by this variable
+    dtype: The underlying type of the tensor values.
+    name: optional name to use for the variable op.
+    container: An optional string. Defaults to "".
+      If non-empty, this variable is placed in the given container.
+      Otherwise, a default container is used.
+    shared_name: An optional string. Defaults to "".
+      If non-empty, this variable is named in the given bucket
+      with this shared_name. Otherwise, the node name is used instead.
+
+  Returns:
+    A variable tensor.1;5A
+  """
+  return gen_state_ops._variable_v2(shape=shape,
+                                    dtype=dtype,
+                                    name=name,
+                                    container=container,
+                                    shared_name=shared_name)
 
 
 def init_variable(v, init, name="init"):
@@ -210,43 +213,22 @@ def init_variable(v, init, name="init"):
           return gen_state_ops.assign(v, init, name=scope)
 
 
-ops.RegisterShape("Assign")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AssignSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CountUpTo")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterDiv")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterMul")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterSub")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ScatterUpdate")(common_shapes.call_cpp_shape_fn)
+def is_variable_initialized(ref, name=None):
+  """Checks whether a tensor has been initialized.
 
+  Outputs boolean scalar indicating whether the tensor has been initialized.
 
-@ops.RegisterShape("ScatterNdAdd")
-@ops.RegisterShape("ScatterNdSub")
-@ops.RegisterShape("ScatterNdMul")
-@ops.RegisterShape("ScatterNdDiv")
-@ops.RegisterShape("ScatterNdUpdate")
-def scatter_nd_update_shape(op):
-  """Shape function for the ScatterNd update ops."""
-  ref_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  updates_shape = op.inputs[2].get_shape()
+  Args:
+    ref: A mutable `Tensor`.
+      Should be from a `Variable` node. May be uninitialized.
+    name: A name for the operation (optional).
 
-  if indices_shape.ndims is not None and ref_shape.ndims is not None:
-    outer_dims = len(indices_shape) - 1
-    ixdim = indices_shape[-1].value or 0
-
-    if not indices_shape[:outer_dims].is_compatible_with(
-        updates_shape[:outer_dims]):
-      raise ValueError("The outer %d dimensions of indices.shape=%s must "
-                       "match the outer %d dimensions of updates.shape=%s" % (
-                           outer_dims, indices_shape, outer_dims,
-                           updates_shape))
-
-    if not ref_shape[ixdim:].is_compatible_with(updates_shape[outer_dims:]):
-      raise ValueError("The inner %d dimensions of ref.shape=%s must match "
-                       "the inner %d dimensions of updates.shape=%s" % (
-                           len(ref_shape)-ixdim, ref_shape,
-                           len(updates_shape)-outer_dims, updates_shape))
-
-  return [ref_shape]
+  Returns:
+    A `Tensor` of type `bool`.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.is_variable_initialized(ref=ref, name=name)
+  # Handle resource variables.
+  if ref.op.type == "VarHandleOp":
+    return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
+                                                           name=name)

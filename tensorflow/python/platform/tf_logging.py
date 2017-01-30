@@ -21,10 +21,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-import os
-import sys
-import time
+import logging as _logging
+import os as _os
+import sys as _sys
+import time as _time
 from logging import DEBUG
 from logging import ERROR
 from logging import FATAL
@@ -33,35 +33,31 @@ from logging import WARN
 
 import six
 
-# Controls which methods from pyglib.logging are available within the project
-# Do not add methods here without also adding to platform/google/_logging.py
-__all__ = ['log', 'debug', 'error', 'fatal', 'info', 'warn', 'warning',
-           'DEBUG', 'ERROR', 'FATAL', 'INFO', 'WARN',
-           'flush', 'log_every_n', 'log_first_n', 'vlog',
-           'TaskLevelStatusMessage', 'get_verbosity', 'set_verbosity']
+from tensorflow.python.util.all_util import remove_undocumented
+
 
 # Determine whether we are in an interactive environment
 try:
   # This is only defined in interactive shells
-  if sys.ps1: _interactive = True
+  if _sys.ps1: _interactive = True
 except AttributeError:
   # Even now, we may be in an interactive shell with `python -i`.
-  _interactive = sys.flags.interactive
+  _interactive = _sys.flags.interactive
 
 # Scope the tensorflow logger to not conflict with users' loggers
-_logger = logging.getLogger('tensorflow')
+_logger = _logging.getLogger('tensorflow')
 
 # If we are in an interactive environment (like jupyter), set loglevel to info
 # and pipe the output to stdout
 if _interactive:
   _logger.setLevel(INFO)
-  _logging_target = sys.stdout
+  _logging_target = _sys.stdout
 else:
-  _logging_target = sys.stderr
+  _logging_target = _sys.stderr
 
 # Add the output handler
-_handler = logging.StreamHandler(_logging_target)
-_handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+_handler = _logging.StreamHandler(_logging_target)
+_handler.setFormatter(_logging.Formatter(_logging.BASIC_FORMAT, None))
 _logger.addHandler(_handler)
 
 log = _logger.log
@@ -82,7 +78,7 @@ _level_names = {
 
 # Mask to convert integer thread ids to unsigned quantities for logging
 # purposes
-_THREAD_ID_MASK = 2 * sys.maxsize + 1
+_THREAD_ID_MASK = 2 * _sys.maxsize + 1
 
 _log_prefix = None  # later set to google2_log_prefix
 
@@ -159,7 +155,7 @@ def _GetFileAndLine():
   """Returns (filename, linenumber) for the stack frame."""
   # Use sys._getframe().  This avoids creating a traceback object.
   # pylint: disable=protected-access
-  f = sys._getframe()
+  f = _sys._getframe()
   # pylint: enable=protected-access
   our_file = f.f_code.co_filename
   f = f.f_back
@@ -175,16 +171,15 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
   """Assemble a logline prefix using the google2 format."""
   # pylint: disable=global-variable-not-assigned
   global _level_names
-  global _logfile_map, _logfile_map_mutex
   # pylint: enable=global-variable-not-assigned
 
   # Record current time
-  now = timestamp or time.time()
-  now_tuple = time.localtime(now)
+  now = timestamp or _time.time()
+  now_tuple = _time.localtime(now)
   now_microsecond = int(1e6 * (now % 1.0))
 
   (filename, line) = file_and_line or _GetFileAndLine()
-  basename = os.path.basename(filename)
+  basename = _os.path.basename(filename)
 
   # Severity string
   severity = 'I'
@@ -225,3 +220,30 @@ def _get_thread_id():
 
 
 _log_prefix = google2_log_prefix
+
+# Controls which methods from pyglib.logging are available within the project.
+# Do not add methods here without also adding to platform/tf_logging.py.
+_allowed_symbols = [
+    'DEBUG',
+    'ERROR',
+    'FATAL',
+    'INFO',
+    'TaskLevelStatusMessage',
+    'WARN',
+    'debug',
+    'error',
+    'fatal',
+    'flush',
+    'get_verbosity',
+    'info',
+    'log',
+    'log_if',
+    'log_every_n',
+    'log_first_n',
+    'set_verbosity',
+    'vlog',
+    'warn',
+    'warning',
+]
+
+remove_undocumented(__name__, _allowed_symbols)

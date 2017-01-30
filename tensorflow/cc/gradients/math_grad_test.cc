@@ -42,7 +42,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
     SQRT,
     RSQRT,
     EXP,
+    EXPM1,
     LOG,
+    LOG1P,
     TANH,
     SIGMOID,
     SIGN,
@@ -84,7 +86,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
         y = Neg(scope_, x);
         break;
       case INV:
-        y = Inv(scope_, x);
+        y = Reciprocal(scope_, x);
         break;
       case SQUARE:
         y = Square(scope_, x);
@@ -98,8 +100,14 @@ class CWiseUnaryGradTest : public ::testing::Test {
       case EXP:
         y = Exp(scope_, x);
         break;
+      case EXPM1:
+        y = Expm1(scope_, x);
+        break;
       case LOG:
         y = Log(scope_, x);
+        break;
+      case LOG1P:
+        y = Log1p(scope_, x);
         break;
       case TANH:
         y = Tanh(scope_, x);
@@ -157,7 +165,7 @@ TEST_F(CWiseUnaryGradTest, Neg) {
   TestCWiseGrad(NEG, x_fn, dy_fn, dx_fn);
 }
 
-TEST_F(CWiseUnaryGradTest, Inv) {
+TEST_F(CWiseUnaryGradTest, Reciprocal) {
   auto x_fn = [this](const int i) { return RV({-1, 1, -2, 2, -3, 3, -4, 4}); };
   auto dy_fn = [this](const float x) { return RV({0, -2, 2, -3, 3, -4, 4}); };
   auto dx_fn = [this](const float x, const float dy) {
@@ -200,11 +208,29 @@ TEST_F(CWiseUnaryGradTest, Exp) {
   TestCWiseGrad(EXP, x_fn, dy_fn, dx_fn);
 }
 
+TEST_F(CWiseUnaryGradTest, Expm1) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1e-6, 1, -2, 3, 100}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * std::exp(x);
+  };
+  TestCWiseGrad(EXPM1, x_fn, dy_fn, dx_fn);
+}
+
 TEST_F(CWiseUnaryGradTest, Log) {
   auto x_fn = [this](const int i) { return RV({-1, 1, -2, 2, -3, 3, -4, 4}); };
   auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
   auto dx_fn = [this](const float x, const float dy) { return dy * (1.0 / x); };
   TestCWiseGrad(LOG, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Log1p) {
+  auto x_fn = [this](const int i) { return RV({0, 1e-6, 1, 2, 3, 4, 100}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * (1.0 / (1.0 + x));
+  };
+  TestCWiseGrad(LOG1P, x_fn, dy_fn, dx_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Tanh) {

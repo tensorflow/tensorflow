@@ -627,6 +627,101 @@ data_format: Specify the data format of the input and output data. With the
         [batch, in_channels, in_height, in_width].
 )doc");
 
+namespace {
+
+Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+  ShapeHandle resized = input;
+  int paddings_index = 1;
+  int filter_index = 2;
+  if (has_resize) {
+    paddings_index = 2;
+    filter_index = 3;
+
+    ShapeHandle unused_size;
+    TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->Vector(2), &unused_size));
+
+    const Tensor* size = c->input_tensor(1);
+    DimensionHandle new_height = c->UnknownDim();
+    DimensionHandle new_width = c->UnknownDim();
+    if (size != nullptr) {
+      new_height = c->MakeDim(size->flat<int32>()(0));
+      new_width = c->MakeDim(size->flat<int32>()(1));
+    }
+    TF_RETURN_IF_ERROR(c->ReplaceDim(resized, 1, new_height, &resized));
+    TF_RETURN_IF_ERROR(c->ReplaceDim(resized, 2, new_width, &resized));
+  }
+
+  ShapeHandle paddings;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(paddings_index), 2, &paddings));
+  TF_RETURN_IF_ERROR(
+      c->WithRank(resized, c->Value(c->Dim(paddings, 0)), &resized));
+  TF_RETURN_IF_ERROR(
+      c->Merge(paddings, c->Matrix(c->Rank(resized), 2), &paddings));
+
+  const Tensor* paddings_t = c->input_tensor(paddings_index);
+  ShapeHandle padded;
+  if (paddings_t != nullptr) {
+    std::vector<DimensionHandle> output_dims;
+    for (int i = 0; i < 4; ++i) {
+      DimensionHandle dim = c->Dim(resized, i);
+      int64 p0 = static_cast<int64>(paddings_t->matrix<int32>()(i, 0));
+      int64 p1 = static_cast<int64>(paddings_t->matrix<int32>()(i, 1));
+      if (p0 < 0 || p1 < 0) {
+        return errors::InvalidArgument("Paddings must be non-negative");
+      }
+
+      TF_RETURN_IF_ERROR(c->Add(dim, p0 + p1, &dim));
+      output_dims.push_back(dim);
+    }
+    padded = c->MakeShape(output_dims);
+  } else {
+    padded = c->UnknownShapeOfRank(4);
+  }
+
+  // Work out the convolution's effect with 'padded' as the input.
+  ShapeHandle filter;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(filter_index), 4, &filter));
+  std::vector<int32> strides;
+  TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  if (strides.size() != 4) {
+    return errors::InvalidArgument(
+        "Operation requires the stride attribute to contain 4 values, but ",
+        "got: ", strides.size());
+  }
+
+  int32 stride_rows = strides[1];
+  int32 stride_cols = strides[2];
+
+  DimensionHandle batch_size_dim = c->Dim(padded, 0);
+  DimensionHandle in_rows_dim = c->Dim(padded, 1);
+  DimensionHandle in_cols_dim = c->Dim(padded, 2);
+  DimensionHandle filter_rows_dim = c->Dim(filter, 0);
+  DimensionHandle filter_cols_dim = c->Dim(filter, 1);
+  DimensionHandle output_depth_dim = c->Dim(filter, 3);
+
+  DimensionHandle unused;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(padded, 3), c->Dim(filter, 2), &unused));
+
+  Padding padding;
+  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+
+  DimensionHandle output_rows, output_cols;
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
+      c, in_rows_dim, filter_rows_dim, stride_rows, padding, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
+      c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
+
+  ShapeHandle output_shape = c->MakeShape(
+      {batch_size_dim, output_rows, output_cols, output_depth_dim});
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("FusedResizeAndPadConv2D")
     .Input("input: T")
     .Input("size: int32")
@@ -638,6 +733,9 @@ REGISTER_OP("FusedResizeAndPadConv2D")
     .Attr(GetMirrorPadModeAttrString())
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      return CommonFusedConvCalculations(c, true /* has_resize */);
+    })
     .Doc(R"doc(
 Performs a resize and padding as a preprocess during a convolution.
 
@@ -676,6 +774,9 @@ REGISTER_OP("FusedPadConv2D")
     .Attr(GetMirrorPadModeAttrString())
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      return CommonFusedConvCalculations(c, false /* has_resize */);
+    })
     .Doc(R"doc(
 Performs a padding as a preprocess during a convolution.
 

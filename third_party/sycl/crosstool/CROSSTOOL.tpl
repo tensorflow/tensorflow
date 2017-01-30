@@ -34,6 +34,7 @@ toolchain {
   # Use "-std=c++11" for nvcc. For consistency, force both the host compiler
   # and the device compiler to use "-std=c++11".
   cxx_flag: "-std=c++11"
+  linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
 
@@ -72,6 +73,9 @@ toolchain {
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
 
+  # Enable SSE instructions by default
+  compiler_flag: "-msse3"
+
   # Anticipated future default.
   linker_flag: "-Wl,-no-as-needed"
   # Stamp the binary with a unique identifier.
@@ -79,4 +83,21 @@ toolchain {
   linker_flag: "-Wl,--hash-style=gnu"
 
   linking_mode_flags { mode: DYNAMIC }
+
+  compilation_mode_flags {
+    mode: FASTBUILD
+    compiler_flag: "-O0"
+  }
+
+  compilation_mode_flags {
+    mode: DBG
+    compiler_flag: "-g"
+  }
+
+  compilation_mode_flags {
+    mode: OPT
+    compiler_flag: "-g0"
+    compiler_flag: "-O2"
+    compiler_flag: "-DNDEBUG"
+  }
 }

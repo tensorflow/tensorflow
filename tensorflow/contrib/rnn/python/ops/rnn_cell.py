@@ -22,6 +22,8 @@ import collections
 import math
 
 from tensorflow.contrib.layers.python.layers import layers
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,10 +31,10 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+
 
 def _get_concat_variable(name, shape, dtype, num_shards):
   """Get a sharded variable concatenated into one tensor."""
@@ -46,7 +48,7 @@ def _get_concat_variable(name, shape, dtype, num_shards):
     if value.name == concat_full_name:
       return value
 
-  concat_variable = array_ops.concat(0, sharded_variable, name=concat_name)
+  concat_variable = array_ops.concat(sharded_variable, 0, name=concat_name)
   ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES,
                         concat_variable)
   return concat_variable
@@ -70,7 +72,7 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
-class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
+class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -130,7 +132,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
     if not state_is_tuple:
       logging.warn(
           "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True." % self)
+          "deprecated.  Use state_is_tuple=True.", self)
     self._num_units = num_units
     self._use_peepholes = use_peepholes
     self._initializer = initializer
@@ -144,12 +146,12 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
 
     if num_proj:
       self._state_size = (
-          rnn_cell.LSTMStateTuple(num_units, num_proj)
+          core_rnn_cell.LSTMStateTuple(num_units, num_proj)
           if state_is_tuple else num_units + num_proj)
       self._output_size = num_proj
     else:
       self._state_size = (
-          rnn_cell.LSTMStateTuple(num_units, num_units)
+          core_rnn_cell.LSTMStateTuple(num_units, num_units)
           if state_is_tuple else 2 * num_units)
       self._output_size = num_units
 
@@ -200,20 +202,22 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    with vs.variable_scope(scope or type(self).__name__,
-                           initializer=self._initializer):  # "LSTMCell"
+    with vs.variable_scope(scope or "coupled_input_forget_gate_lstm_cell",
+                           initializer=self._initializer):
       concat_w = _get_concat_variable(
           "W", [input_size.value + num_proj, 3 * self._num_units],
           dtype, self._num_unit_shards)
 
       b = vs.get_variable(
-          "B", shape=[3 * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B",
+          shape=[3 * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
       # j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat(1, [inputs, m_prev])
+      cell_inputs = array_ops.concat([inputs, m_prev], 1)
       lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
-      j, f, o = array_ops.split(1, 3, lstm_matrix)
+      j, f, o = array_ops.split(value=lstm_matrix, num_or_size_splits=3, axis=1)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -244,12 +248,12 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
           m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
           # pylint: enable=invalid-unary-operand-type
 
-    new_state = (rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple
-                 else array_ops.concat(1, [c, m]))
+    new_state = (core_rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple else
+                 array_ops.concat([c, m], 1))
     return m, new_state
 
 
-class TimeFreqLSTMCell(rnn_cell.RNNCell):
+class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
   """Time-Frequency Long short-term memory unit (LSTM) recurrent network cell.
 
   This implementation is based on:
@@ -328,14 +332,16 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
     freq_inputs = self._make_tf_features(inputs)
     dtype = inputs.dtype
     actual_input_size = freq_inputs[0].get_shape().as_list()[1]
-    with vs.variable_scope(scope or type(self).__name__,
+    with vs.variable_scope(scope or "time_freq_lstm_cell",
                            initializer=self._initializer):  # "TimeFreqLSTMCell"
       concat_w = _get_concat_variable(
           "W", [actual_input_size + 2*self._num_units, 4 * self._num_units],
           dtype, self._num_unit_shards)
       b = vs.get_variable(
-          "B", shape=[4 * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B",
+          shape=[4 * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -355,10 +361,11 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
         m_prev = array_ops.slice(state, [0, (2*fq+1)*self._num_units],
                                  [-1, self._num_units])
         # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-        cell_inputs = array_ops.concat(1, [freq_inputs[fq], m_prev,
-                                           m_prev_freq])
+        cell_inputs = array_ops.concat([freq_inputs[fq], m_prev, m_prev_freq],
+                                       1)
         lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
-        i, j, f, o = array_ops.split(1, 4, lstm_matrix)
+        i, j, f, o = array_ops.split(
+            value=lstm_matrix, num_or_size_splits=4, axis=1)
 
         if self._use_peepholes:
           c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
@@ -377,11 +384,11 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           m = sigmoid(o) * tanh(c)
         m_prev_freq = m
         if fq == 0:
-          state_out = array_ops.concat(1, [c, m])
+          state_out = array_ops.concat([c, m], 1)
           m_out = m
         else:
-          state_out = array_ops.concat(1, [state_out, c, m])
-          m_out = array_ops.concat(1, [m_out, m])
+          state_out = array_ops.concat([state_out, c, m], 1)
+          m_out = array_ops.concat([m_out, m], 1)
     return m_out, state_out
 
   def _make_tf_features(self, input_feat):
@@ -410,7 +417,7 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
     return freq_inputs
 
 
-class GridLSTMCell(rnn_cell.RNNCell):
+class GridLSTMCell(core_rnn_cell.RNNCell):
   """Grid Long short-term memory unit (LSTM) recurrent network cell.
 
   The default is based on:
@@ -546,7 +553,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
     """
     batch_size = int(inputs.get_shape()[0])
     freq_inputs = self._make_tf_features(inputs)
-    with vs.variable_scope(scope or type(self).__name__,
+    with vs.variable_scope(scope or "grid_lstm_cell",
                            initializer=self._initializer):  # "GridLSTMCell"
       m_out_lst = []
       state_out_lst = []
@@ -559,8 +566,8 @@ class GridLSTMCell(rnn_cell.RNNCell):
       if self._state_is_tuple:
         state_out = self._state_tuple_type(*state_out_lst)
       else:
-        state_out = array_ops.concat(1, state_out_lst)
-      m_out = array_ops.concat(1, m_out_lst)
+        state_out = array_ops.concat(state_out_lst, 1)
+      m_out = array_ops.concat(m_out_lst, 1)
     return m_out, state_out
 
   def _compute(self, freq_inputs, block, state, batch_size,
@@ -596,16 +603,20 @@ class GridLSTMCell(rnn_cell.RNNCell):
                            num_gates * self._num_units],
         dtype, self._num_unit_shards)
     b_f = vs.get_variable(
-        "B_f_%d" % block, shape=[num_gates * self._num_units],
-        initializer=init_ops.zeros_initializer, dtype=dtype)
+        "B_f_%d" % block,
+        shape=[num_gates * self._num_units],
+        initializer=init_ops.zeros_initializer(),
+        dtype=dtype)
     if not self._share_time_frequency_weights:
       concat_w_t = _get_concat_variable(
           "W_t_%d" % block, [actual_input_size + 2 * self._num_units,
                              num_gates * self._num_units],
           dtype, self._num_unit_shards)
       b_t = vs.get_variable(
-          "B_t_%d" % block, shape=[num_gates * self._num_units],
-          initializer=init_ops.zeros_initializer, dtype=dtype)
+          "B_t_%d" % block,
+          shape=[num_gates * self._num_units],
+          initializer=init_ops.zeros_initializer(),
+          dtype=dtype)
 
     if self._use_peepholes:
       # Diagonal connections
@@ -654,19 +665,19 @@ class GridLSTMCell(rnn_cell.RNNCell):
             [-1, self._num_units])
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat(1, [freq_inputs[freq_index], m_prev_time,
-                                         m_prev_freq])
+      cell_inputs = array_ops.concat(
+          [freq_inputs[freq_index], m_prev_time, m_prev_freq], 1)
 
       # F-LSTM
       lstm_matrix_freq = nn_ops.bias_add(math_ops.matmul(cell_inputs,
                                                          concat_w_f), b_f)
       if self._couple_input_forget_gates:
-        i_freq, j_freq, o_freq = array_ops.split(1, num_gates,
-                                                 lstm_matrix_freq)
+        i_freq, j_freq, o_freq = array_ops.split(
+            value=lstm_matrix_freq, num_or_size_splits=num_gates, axis=1)
         f_freq = None
       else:
-        i_freq, j_freq, f_freq, o_freq = array_ops.split(1, num_gates,
-                                                         lstm_matrix_freq)
+        i_freq, j_freq, f_freq, o_freq = array_ops.split(
+            value=lstm_matrix_freq, num_or_size_splits=num_gates, axis=1)
       # T-LSTM
       if self._share_time_frequency_weights:
         i_time = i_freq
@@ -677,12 +688,12 @@ class GridLSTMCell(rnn_cell.RNNCell):
         lstm_matrix_time = nn_ops.bias_add(math_ops.matmul(cell_inputs,
                                                            concat_w_t), b_t)
         if self._couple_input_forget_gates:
-          i_time, j_time, o_time = array_ops.split(1, num_gates,
-                                                   lstm_matrix_time)
+          i_time, j_time, o_time = array_ops.split(
+              value=lstm_matrix_time, num_or_size_splits=num_gates, axis=1)
           f_time = None
         else:
-          i_time, j_time, f_time, o_time = array_ops.split(1, 4,
-                                                           lstm_matrix_time)
+          i_time, j_time, f_time, o_time = array_ops.split(
+              value=lstm_matrix_time, num_or_size_splits=num_gates, axis=1)
 
       # F-LSTM c_freq
       # input gate activations
@@ -968,41 +979,41 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       bwd_inputs = fwd_inputs
 
     # Forward processing
-    with vs.variable_scope((scope or type(self).__name__) + "/fwd",
+    with vs.variable_scope(scope or "bidirectional_grid_lstm_cell",
                            initializer=self._initializer):
-      fwd_m_out_lst = []
-      fwd_state_out_lst = []
-      for block in range(len(fwd_inputs)):
-        fwd_m_out_lst_current, fwd_state_out_lst_current = self._compute(
-            fwd_inputs[block], block, state, batch_size,
-            state_prefix="fwd_state", state_is_tuple=True)
-        fwd_m_out_lst.extend(fwd_m_out_lst_current)
-        fwd_state_out_lst.extend(fwd_state_out_lst_current)
-    # Backward processing
-    bwd_m_out_lst = []
-    bwd_state_out_lst = []
-    with vs.variable_scope((scope or type(self).__name__) + "/bwd",
-                           initializer=self._initializer):
-      for block in range(len(bwd_inputs)):
-        # Reverse the blocks
-        bwd_inputs_reverse = bwd_inputs[block][::-1]
-        bwd_m_out_lst_current, bwd_state_out_lst_current = self._compute(
-            bwd_inputs_reverse, block, state, batch_size,
-            state_prefix="bwd_state", state_is_tuple=True)
-        bwd_m_out_lst.extend(bwd_m_out_lst_current)
-        bwd_state_out_lst.extend(bwd_state_out_lst_current)
+      with vs.variable_scope("fwd"):
+        fwd_m_out_lst = []
+        fwd_state_out_lst = []
+        for block in range(len(fwd_inputs)):
+          fwd_m_out_lst_current, fwd_state_out_lst_current = self._compute(
+              fwd_inputs[block], block, state, batch_size,
+              state_prefix="fwd_state", state_is_tuple=True)
+          fwd_m_out_lst.extend(fwd_m_out_lst_current)
+          fwd_state_out_lst.extend(fwd_state_out_lst_current)
+      # Backward processing
+      bwd_m_out_lst = []
+      bwd_state_out_lst = []
+      with vs.variable_scope("bwd"):
+        for block in range(len(bwd_inputs)):
+          # Reverse the blocks
+          bwd_inputs_reverse = bwd_inputs[block][::-1]
+          bwd_m_out_lst_current, bwd_state_out_lst_current = self._compute(
+              bwd_inputs_reverse, block, state, batch_size,
+              state_prefix="bwd_state", state_is_tuple=True)
+          bwd_m_out_lst.extend(bwd_m_out_lst_current)
+          bwd_state_out_lst.extend(bwd_state_out_lst_current)
     state_out = self._state_tuple_type(*(fwd_state_out_lst + bwd_state_out_lst))
     # Outputs are always concated as it is never used separately.
-    m_out = array_ops.concat(1, fwd_m_out_lst + bwd_m_out_lst)
+    m_out = array_ops.concat(fwd_m_out_lst + bwd_m_out_lst, 1)
     return m_out, state_out
 
 
 # pylint: disable=protected-access
-_linear = rnn_cell._linear
+_linear = core_rnn_cell_impl._linear
 # pylint: enable=protected-access
 
 
-class AttentionCellWrapper(rnn_cell.RNNCell):
+class AttentionCellWrapper(core_rnn_cell.RNNCell):
   """Basic attention cell wrapper.
 
   Implementation based on https://arxiv.org/abs/1409.0473.
@@ -1032,7 +1043,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       ValueError: if cell returns a state tuple but the flag
           `state_is_tuple` is `False` or if attn_length is zero or less.
     """
-    if not isinstance(cell, rnn_cell.RNNCell):
+    if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError("Cell returns tuple of states, but the flag "
@@ -1044,7 +1055,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
     if not state_is_tuple:
       logging.warn(
           "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True." % self)
+          "deprecated.  Use state_is_tuple=True.", self)
     if attn_size is None:
       attn_size = cell.output_size
     if attn_vec_size is None:
@@ -1071,7 +1082,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Long short-term memory cell with attention (LSTMA)."""
-    with vs.variable_scope(scope or type(self).__name__):
+    with vs.variable_scope(scope or "attention_cell_wrapper"):
       if self._state_is_tuple:
         state, attns, attn_states = state
       else:
@@ -1090,19 +1101,19 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       inputs = _linear([inputs, attns], input_size, True)
       lstm_output, new_state = self._cell(inputs, state)
       if self._state_is_tuple:
-        new_state_cat = array_ops.concat(1, nest.flatten(new_state))
+        new_state_cat = array_ops.concat(nest.flatten(new_state), 1)
       else:
         new_state_cat = new_state
       new_attns, new_attn_states = self._attention(new_state_cat, attn_states)
-      with vs.variable_scope("AttnOutputProjection"):
+      with vs.variable_scope("attn_output_projection"):
         output = _linear([lstm_output, new_attns], self._attn_size, True)
-      new_attn_states = array_ops.concat(1, [new_attn_states,
-                                             array_ops.expand_dims(output, 1)])
+      new_attn_states = array_ops.concat(
+          [new_attn_states, array_ops.expand_dims(output, 1)], 1)
       new_attn_states = array_ops.reshape(
           new_attn_states, [-1, self._attn_length * self._attn_size])
       new_state = (new_state, new_attns, new_attn_states)
       if not self._state_is_tuple:
-        new_state = array_ops.concat(1, list(new_state))
+        new_state = array_ops.concat(list(new_state), 1)
       return output, new_state
 
   def _attention(self, query, attn_states):
@@ -1111,9 +1122,10 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
     softmax = nn_ops.softmax
     tanh = math_ops.tanh
 
-    with vs.variable_scope("Attention"):
-      k = vs.get_variable("AttnW", [1, 1, self._attn_size, self._attn_vec_size])
-      v = vs.get_variable("AttnV", [self._attn_vec_size])
+    with vs.variable_scope("attention"):
+      k = vs.get_variable(
+          "attn_w", [1, 1, self._attn_size, self._attn_vec_size])
+      v = vs.get_variable("attn_v", [self._attn_vec_size])
       hidden = array_ops.reshape(attn_states,
                                  [-1, self._attn_length, 1, self._attn_size])
       hidden_features = conv2d(hidden, k, [1, 1, 1, 1], "SAME")
@@ -1128,7 +1140,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       return new_attns, new_attn_states
 
 
-class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
+class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
   """LSTM unit with layer normalization and recurrent dropout.
 
   This class adds layer normalization and recurrent dropout to a
@@ -1184,42 +1196,42 @@ class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
     return self._num_units
 
   def _norm(self, inp, scope):
-    with vs.variable_scope(scope) as scope:
-      shape = inp.get_shape()[-1:]
-      gamma_init = init_ops.constant_initializer(self._g)
-      beta_init = init_ops.constant_initializer(self._b)
-      gamma = vs.get_variable("gamma", shape=shape, initializer=gamma_init)  # pylint: disable=unused-variable
-      beta = vs.get_variable("beta", shape=shape, initializer=beta_init)  # pylint: disable=unused-variable
-      normalized = layers.layer_norm(inp, reuse=True, scope=scope)
-      return normalized
+    shape = inp.get_shape()[-1:]
+    gamma_init = init_ops.constant_initializer(self._g)
+    beta_init = init_ops.constant_initializer(self._b)
+    with vs.variable_scope(scope):
+      # Initialize beta and gamma for use by layer_norm.
+      vs.get_variable("gamma", shape=shape, initializer=gamma_init)
+      vs.get_variable("beta", shape=shape, initializer=beta_init)
+    normalized = layers.layer_norm(inp, reuse=True, scope=scope)
+    return normalized
 
-  def _linear(self, args, scope="linear"):
+  def _linear(self, args):
     out_size = 4 * self._num_units
     proj_size = args.get_shape()[-1]
-    with vs.variable_scope(scope) as scope:
-      weights = vs.get_variable("weights", [proj_size, out_size])
-      out = math_ops.matmul(args, weights)
-      if not self._layer_norm:
-        bias = vs.get_variable("b", [out_size])
-        out += bias
-      return out
+    weights = vs.get_variable("weights", [proj_size, out_size])
+    out = math_ops.matmul(args, weights)
+    if not self._layer_norm:
+      bias = vs.get_variable("biases", [out_size])
+      out = nn_ops.bias_add(out, bias)
+    return out
 
   def __call__(self, inputs, state, scope=None):
     """LSTM cell with layer normalization and recurrent dropout."""
 
-    with vs.variable_scope(scope or type(self).__name__) as scope:  # LayerNormBasicLSTMCell  # pylint: disable=unused-variables
+    with vs.variable_scope(scope or "layer_norm_basic_lstm_cell"):
       c, h = state
-      args = array_ops.concat(1, [inputs, h])
+      args = array_ops.concat([inputs, h], 1)
       concat = self._linear(args)
 
-      i, j, f, o = array_ops.split(1, 4, concat)
+      i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
       if self._layer_norm:
         i = self._norm(i, "input")
         j = self._norm(j, "transform")
@@ -1236,5 +1248,5 @@ class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
         new_c = self._norm(new_c, "state")
       new_h = self._activation(new_c) * math_ops.sigmoid(o)
 
-      new_state = rnn_cell.LSTMStateTuple(new_c, new_h)
+      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
       return new_h, new_state

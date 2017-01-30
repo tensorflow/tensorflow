@@ -269,6 +269,24 @@ struct functor_traits<google_floor_div<Scalar>> {
   };
 };
 
+// TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
+template <typename T, typename Enable = void>
+struct google_floor_div_real {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    return Eigen::numext::floor(x / y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<google_floor_div_real<Scalar>> {
+  enum {
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
+           2 * NumTraits<Scalar>::AddCost,
+    PacketAccess = false
+  };
+};
+
 // TODO(b//32239616): This kernel should be moved into Eigen and vectorized.
 template <typename T>
 struct google_floor_fmod {
@@ -421,7 +439,9 @@ struct use_bcast_optimization<double> {
 // sqrt(x) = x^(1/2)
 // rsqrt(x) = x^(-1/2)
 // exp(x) = e^x
+// expm1(x) = e^x - 1
 // log(x) = natural logarithm of x
+// log1p(x) = natural logarithm of 1 + x
 // tanh = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 // sigmoid = 1 / (1 + exp(-x))  // a.k.a, logistic
 //
@@ -452,7 +472,10 @@ template <typename T>
 struct exp : base<T, Eigen::internal::scalar_exp_op<T> > {};
 
 template <typename T>
-struct log : base<T, Eigen::internal::scalar_log_op<T> > {};
+struct expm1 : base<T, Eigen::internal::scalar_expm1_op<T>> {};
+
+template <typename T>
+struct log : base<T, Eigen::internal::scalar_log_op<T>> {};
 
 template <typename T>
 struct log1p : base<T, Eigen::internal::scalar_log1p_op<T> > {};
@@ -520,6 +543,27 @@ struct round : base<T, Eigen::internal::scalar_round_op_google<T>> {};
 
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
+
+/** this should go in Eigen
+  * \brief Template functor to compute the round to int value of a scalar
+  */
+template <typename Scalar>
+struct scalar_rint_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& a) const {
+#if defined(__CUDACC__)
+    return ::rint(a);
+#elif defined(__ANDROID__)
+    return rint(a);
+#else
+    return std::rint(a);
+#endif
+  }
+};
+
+template <typename T>
+struct rint : base<T, scalar_rint_op<T>> {};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Binary functors
@@ -589,6 +633,9 @@ struct safe_floor_div : base<T, Eigen::internal::safe_div_or_mod_op<
                                     T, Eigen::internal::google_floor_div<T>>> {
   static const bool has_errors = true;
 };
+
+template <typename T>
+struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
 
 template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};

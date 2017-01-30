@@ -39,8 +39,8 @@ from tensorflow.python.ops import math_ops
 
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
     "batch_shape", "get_batch_shape", "event_shape", "get_event_shape",
-    "sample_n", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
-    "survival_function", "entropy", "mean", "variance", "std", "mode"]
+    "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
+    "survival_function", "entropy", "mean", "variance", "stddev", "mode"]
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -122,7 +122,7 @@ class _DistributionMeta(abc.ABCMeta):
 
     Raises:
       TypeError: If `Distribution` is not a subclass of `BaseDistribution`, or
-        the the new class is derived via multiple inheritance and the first
+        the new class is derived via multiple inheritance and the first
         parent class is not a subclass of `BaseDistribution`.
       AttributeError:  If `Distribution` does not implement e.g. `log_prob`.
       ValueError:  If a `Distribution` public method lacks a docstring.
@@ -130,7 +130,10 @@ class _DistributionMeta(abc.ABCMeta):
     if not baseclasses:  # Nothing to be done for Distribution
       raise TypeError("Expected non-empty baseclass.  Does Distribution "
                       "not subclass _BaseDistribution?")
-    base = baseclasses[0]
+    which_base = [
+        base for base in baseclasses
+        if base == _BaseDistribution or issubclass(base, Distribution)]
+    base = which_base[0]
     if base == _BaseDistribution:  # Nothing to be done for Distribution
       return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
     if not issubclass(base, Distribution):
@@ -168,6 +171,56 @@ class _DistributionMeta(abc.ABCMeta):
       attrs[attr] = class_attr_value
 
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
+
+
+class ReparameterizationType(object):
+  """Instances of this class represent how sampling is reparameterized.
+
+  Two static instances exist in the distritributions library, signifying
+  one of two possible properties for samples from a distribution:
+
+  `FULLY_REPARAMETERIZED`: Samples from the distribution are fully
+    reparameterized, and straight-through gradients are supported.
+
+  `NOT_REPARAMETERIZED`: Samples from the distribution are not fully
+    reparameterized, and straight-through gradients are either partially
+    unsupported or are not supported at all.  In this case, for purposes of
+    e.g. RL or variational inference, it is generally safest to wrap the
+    sample results in a `stop_gradients` call and instead use policy
+    gradients / surrogate loss instead.
+  """
+
+  def __init__(self, rep_type):
+    self._rep_type = rep_type
+
+  def __repr__(self):
+    return "<Reparameteriation Type: %s>" % self._rep_type
+
+  def __eq__(self, other):
+    """Determine if this `ReparameterizationType` is equal to another.
+
+    Since RepaparameterizationType instances are constant static global
+    instances, equality checks if two instances' id() values are equal.
+
+    Args:
+      other: Object to compare against.
+
+    Returns:
+      `self is other`.
+    """
+    return self is other
+
+
+# Fully reparameterized distribution: samples from a fully
+# reparameterized distribution support straight-through gradients with
+# respect to all parameters.
+FULLY_REPARAMETERIZED = ReparameterizationType("FULLY_REPARAMETERIZED")
+
+
+# Not reparameterized distribution: samples from a non-
+# reparameterized distribution do not support straight-through gradients for
+# at least some of the parameters.
+NOT_REPARAMETERIZED = ReparameterizationType("NOT_REPARAMETERIZED")
 
 
 @six.add_metaclass(_DistributionMeta)
@@ -290,7 +343,7 @@ class Distribution(_BaseDistribution):
   def __init__(self,
                dtype,
                is_continuous,
-               is_reparameterized,
+               reparameterization_type,
                validate_args,
                allow_nan_stats,
                parameters=None,
@@ -304,10 +357,12 @@ class Distribution(_BaseDistribution):
       dtype: The type of the event samples. `None` implies no type-enforcement.
       is_continuous: Python boolean. If `True` this
         `Distribution` is continuous over its supported domain.
-      is_reparameterized: Python boolean. If `True` this
+      reparameterization_type: Instance of `ReparameterizationType`.
+        If `distributions.FULLY_REPARAMETERIZED`, this
         `Distribution` can be reparameterized in terms of some standard
         distribution with a function whose Jacobian is constant for the support
-        of the standard distribution.
+        of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+        then no such reparameterization is available.
       validate_args: Python boolean.  Whether to validate input with asserts.
         If `validate_args` is `False`, and the inputs are invalid,
         correct behavior is not guaranteed.
@@ -330,7 +385,7 @@ class Distribution(_BaseDistribution):
     parameters = parameters or {}
     self._dtype = dtype
     self._is_continuous = is_continuous
-    self._is_reparameterized = is_reparameterized
+    self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._parameters = parameters
@@ -341,7 +396,11 @@ class Distribution(_BaseDistribution):
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
     """Shapes of parameters given the desired shape of a call to `sample()`.
 
-    Subclasses should override static method `_param_shapes`.
+    This is a class method that describes what key/value arguments are required
+    to instantiate the given `Distribution` so that a particular shape is
+    returned for that instance's call to `sample()`.
+
+    Subclasses should override class method `_param_shapes`.
 
     Args:
       sample_shape: `Tensor` or python list/tuple. Desired shape of a call to
@@ -356,7 +415,15 @@ class Distribution(_BaseDistribution):
 
   @classmethod
   def param_static_shapes(cls, sample_shape):
-    """param_shapes with static (i.e. TensorShape) shapes.
+    """param_shapes with static (i.e. `TensorShape`) shapes.
+
+    This is a class method that describes what key/value arguments are required
+    to instantiate the given `Distribution` so that a particular shape is
+    returned for that instance's call to `sample()`.  Assumes that
+    the sample's shape is known statically.
+
+    Subclasses should override class method `_param_shapes` to return
+    constant-valued tensors when constant values are fed.
 
     Args:
       sample_shape: `TensorShape` or python list/tuple. Desired shape of a call
@@ -409,8 +476,17 @@ class Distribution(_BaseDistribution):
     return self._is_continuous
 
   @property
-  def is_reparameterized(self):
-    return self._is_reparameterized
+  def reparameterization_type(self):
+    """Describes how samples from the distribution are reparameterized.
+
+    Currently this is one of the static instances
+    `distributions.FULLY_REPARAMETERIZED`
+    or `distributions.NOT_REPARAMETERIZED`.
+
+    Returns:
+      An instance of `ReparameterizationType`.
+    """
+    return self._reparameterization_type
 
   @property
   def allow_nan_stats(self):
@@ -472,6 +548,10 @@ class Distribution(_BaseDistribution):
       batch_shape: `Tensor`.
     """
     with self._name_scope(name):
+      if self.get_batch_shape().is_fully_defined():
+        return ops.convert_to_tensor(self.get_batch_shape().as_list(),
+                                     dtype=dtypes.int32,
+                                     name="batch_shape")
       return self._batch_shape()
 
   def _get_batch_shape(self):
@@ -500,6 +580,10 @@ class Distribution(_BaseDistribution):
       event_shape: `Tensor`.
     """
     with self._name_scope(name):
+      if self.get_event_shape().is_fully_defined():
+        return ops.convert_to_tensor(self.get_event_shape().as_list(),
+                                     dtype=dtypes.int32,
+                                     name="event_shape")
       return self._event_shape()
 
   def _get_event_shape(self):
@@ -514,6 +598,34 @@ class Distribution(_BaseDistribution):
       event_shape: `TensorShape`, possibly unknown.
     """
     return self._get_event_shape()
+
+  def is_scalar_event(self, name="is_scalar_event"):
+    """Indicates that `event_shape == []`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      is_scalar_event: `Boolean` `scalar` `Tensor`.
+    """
+    with self._name_scope(name):
+      return ops.convert_to_tensor(
+          self._is_scalar_helper(self.get_event_shape, self.event_shape),
+          name="is_scalar_event")
+
+  def is_scalar_batch(self, name="is_scalar_batch"):
+    """Indicates that `batch_shape == []`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      is_scalar_batch: `Boolean` `scalar` `Tensor`.
+    """
+    with self._name_scope(name):
+      return ops.convert_to_tensor(
+          self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+          name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
     raise NotImplementedError("sample_n is not implemented")
@@ -537,60 +649,14 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name, values=[sample_shape]):
       sample_shape = ops.convert_to_tensor(
           sample_shape, dtype=dtypes.int32, name="sample_shape")
-      if sample_shape.get_shape().ndims == 0:
-        return self.sample_n(sample_shape, seed, **condition_kwargs)
-      sample_shape, total = self._expand_sample_shape(sample_shape)
-      samples = self.sample_n(total, seed, **condition_kwargs)
-      output_shape = array_ops.concat(0, [sample_shape, array_ops.slice(
-          array_ops.shape(samples), [1], [-1])])
-      output = array_ops.reshape(samples, output_shape)
-      output.set_shape(tensor_util.constant_value_as_shape(
-          sample_shape).concatenate(samples.get_shape()[1:]))
-      return output
-
-  def sample_n(self, n, seed=None, name="sample_n", **condition_kwargs):
-    """Generate `n` samples.
-
-    Args:
-      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-        observations to sample.
-      seed: Python integer seed for RNG
-      name: name to give to the op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
-
-    Returns:
-      samples: a `Tensor` with a prepended dimension (n,).
-
-    Raises:
-      TypeError: if `n` is not an integer type.
-    """
-    warnings.warn("Please use `sample` instead of `sample_n`. `sample_n` "
-                  "will be deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    with self._name_scope(name, values=[n]):
-      n = ops.convert_to_tensor(n, name="n")
-      if not n.dtype.is_integer:
-        raise TypeError("n.dtype=%s is not an integer type" % n.dtype)
-      x = self._sample_n(n, seed, **condition_kwargs)
-
-      # Set shape hints.
-      sample_shape = tensor_shape.TensorShape(
-          tensor_util.constant_value(n))
-      batch_ndims = self.get_batch_shape().ndims
-      event_ndims = self.get_event_shape().ndims
-      if batch_ndims is not None and event_ndims is not None:
-        inferred_shape = sample_shape.concatenate(
-            self.get_batch_shape().concatenate(
-                self.get_event_shape()))
-        x.set_shape(inferred_shape)
-      elif x.get_shape().ndims is not None and x.get_shape().ndims > 0:
-        x.get_shape()[0].merge_with(sample_shape[0])
-        if batch_ndims is not None and batch_ndims > 0:
-          x.get_shape()[1:1+batch_ndims].merge_with(self.get_batch_shape())
-        if event_ndims is not None and event_ndims > 0:
-          x.get_shape()[-event_ndims:].merge_with(self.get_event_shape())
-
-      return x
+      sample_shape, n = self._expand_sample_shape_to_vector(
+          sample_shape, "sample_shape")
+      samples = self._sample_n(n, seed, **condition_kwargs)
+      batch_event_shape = array_ops.shape(samples)[1:]
+      final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
+      samples = array_ops.reshape(samples, final_shape)
+      samples = self._set_sample_static_shape(samples, sample_shape)
+      return samples
 
   def _log_prob(self, value):
     raise NotImplementedError("log_prob is not implemented")
@@ -763,7 +829,7 @@ class Distribution(_BaseDistribution):
       **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+      `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
         `self.dtype`.
     """
     with self._name_scope(name, values=[value]):
@@ -798,15 +864,27 @@ class Distribution(_BaseDistribution):
   def variance(self, name="variance"):
     """Variance."""
     with self._name_scope(name):
-      return self._variance()
+      try:
+        return self._variance()
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.square(self._stddev())
+        except NotImplementedError:
+          raise original_exception
 
-  def _std(self):
-    raise NotImplementedError("std is not implemented")
+  def _stddev(self):
+    raise NotImplementedError("stddev is not implemented")
 
-  def std(self, name="std"):
+  def stddev(self, name="stddev"):
     """Standard deviation."""
     with self._name_scope(name):
-      return self._std()
+      try:
+        return self._stddev()
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.sqrt(self._variance())
+        except NotImplementedError:
+          raise original_exception
 
   def _mode(self):
     raise NotImplementedError("mode is not implemented")
@@ -909,33 +987,92 @@ class Distribution(_BaseDistribution):
     """Helper function to standardize op scope."""
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=(
-          (values or []) + self._graph_parents)) as scope:
+          ([] if values is None else values) + self._graph_parents)) as scope:
         yield scope
 
-  def _expand_sample_shape(self, sample_shape):
-    """Helper to `sample` which ensures sample_shape is 1D."""
-    sample_shape_static_val = tensor_util.constant_value(sample_shape)
-    ndims = sample_shape.get_shape().ndims
-    if sample_shape_static_val is None:
-      if ndims is None or not sample_shape.get_shape().is_fully_defined():
-        ndims = array_ops.rank(sample_shape)
+  def _expand_sample_shape_to_vector(self, x, name):
+    """Helper to `sample` which ensures input is 1D."""
+    x_static_val = tensor_util.constant_value(x)
+    if x_static_val is None:
+      prod = math_ops.reduce_prod(x)
+    else:
+      prod = np.prod(x_static_val, dtype=x.dtype.as_numpy_dtype())
+
+    ndims = x.get_shape().ndims  # != sample_ndims
+    if ndims is None:
+      # Maybe expand_dims.
+      ndims = array_ops.rank(x)
       expanded_shape = distribution_util.pick_vector(
           math_ops.equal(ndims, 0),
-          np.array((1,), dtype=dtypes.int32.as_numpy_dtype()),
-          array_ops.shape(sample_shape))
-      sample_shape = array_ops.reshape(sample_shape, expanded_shape)
-      total = math_ops.reduce_prod(sample_shape)  # reduce_prod([]) == 1
-    else:
-      if ndims is None:
-        raise ValueError(
-            "Shouldn't be here; ndims cannot be none when we have a "
-            "tf.constant shape.")
-      if ndims == 0:
-        sample_shape_static_val = np.reshape(sample_shape_static_val, [1])
-        sample_shape = ops.convert_to_tensor(
-            sample_shape_static_val,
-            dtype=dtypes.int32,
-            name="sample_shape")
-      total = np.prod(sample_shape_static_val,
-                      dtype=dtypes.int32.as_numpy_dtype())
-    return sample_shape, total
+          np.array([1], dtype=np.int32),
+          array_ops.shape(x))
+      x = array_ops.reshape(x, expanded_shape)
+    elif ndims == 0:
+      # Definitely expand_dims.
+      if x_static_val is not None:
+        x = ops.convert_to_tensor(
+            np.array([x_static_val], dtype=x.dtype.as_numpy_dtype()),
+            name=name)
+      else:
+        x = array_ops.reshape(x, [1])
+    elif ndims != 1:
+      raise ValueError("Input is neither scalar nor vector.")
+
+    return x, prod
+
+  def _set_sample_static_shape(self, x, sample_shape):
+    """Helper to `sample`; sets static shape info."""
+    # Set shape hints.
+    sample_shape = tensor_shape.TensorShape(
+        tensor_util.constant_value(sample_shape))
+
+    ndims = x.get_shape().ndims
+    sample_ndims = sample_shape.ndims
+    batch_ndims = self.get_batch_shape().ndims
+    event_ndims = self.get_event_shape().ndims
+
+    # Infer rank(x).
+    if (ndims is None and
+        sample_ndims is not None and
+        batch_ndims is not None and
+        event_ndims is not None):
+      ndims = sample_ndims + batch_ndims + event_ndims
+      x.set_shape([None] * ndims)
+
+    # Infer sample shape.
+    if ndims is not None and sample_ndims is not None:
+      shape = sample_shape.concatenate([None]*(ndims - sample_ndims))
+      x.set_shape(x.get_shape().merge_with(shape))
+
+    # Infer event shape.
+    if ndims is not None and event_ndims is not None:
+      shape = tensor_shape.TensorShape(
+          [None]*(ndims - event_ndims)).concatenate(self.get_event_shape())
+      x.set_shape(x.get_shape().merge_with(shape))
+
+    # Infer batch shape.
+    if batch_ndims is not None:
+      if ndims is not None:
+        if sample_ndims is None and event_ndims is not None:
+          sample_ndims = ndims - batch_ndims - event_ndims
+        elif event_ndims is None and sample_ndims is not None:
+          event_ndims = ndims - batch_ndims - sample_ndims
+      if sample_ndims is not None and event_ndims is not None:
+        shape = tensor_shape.TensorShape([None]*sample_ndims).concatenate(
+            self.get_batch_shape()).concatenate([None]*event_ndims)
+        x.set_shape(x.get_shape().merge_with(shape))
+
+    return x
+
+  def _is_scalar_helper(self, static_shape_fn, dynamic_shape_fn):
+    """Implementation for `is_scalar_batch` and `is_scalar_event`."""
+    if static_shape_fn().ndims is not None:
+      return static_shape_fn().ndims == 0
+    shape = dynamic_shape_fn()
+    if (shape.get_shape().ndims is not None and
+        shape.get_shape()[0].value is not None):
+      # If the static_shape_fn is correctly written then we should never execute
+      # this branch. We keep it just in case there's some unimagined corner
+      # case.
+      return shape.get_shape().as_list() == [0]
+    return math_ops.equal(array_ops.shape(shape)[0], 0)

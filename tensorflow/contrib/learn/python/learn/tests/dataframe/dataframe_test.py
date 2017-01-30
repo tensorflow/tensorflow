@@ -18,28 +18,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
+from tensorflow.python.framework import dtypes
+from tensorflow.python.platform import test
 
 
 def setup_test_df():
   """Create a dataframe populated with some test columns."""
   df = learn.DataFrame()
   df["a"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor a", tf.int32))],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor a", dtypes.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   df["b"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor b", tf.int32))],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor b", dtypes.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out2")
   df["c"] = learn.TransformedSeries(
-      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor c", tf.int32))],
+      [mocks.MockSeries("foobar", mocks.MockTensor("Tensor c", dtypes.int32))],
       mocks.MockTwoOutputTransform("iue", "eui", "snt"), "out1")
   return df
 
 
-class DataFrameTest(tf.test.TestCase):
+class DataFrameTest(test.TestCase):
   """Test of `DataFrame`."""
 
   def test_create(self):
@@ -59,7 +66,8 @@ class DataFrameTest(tf.test.TestCase):
   def test_get_item(self):
     df = setup_test_df()
     c1 = df["b"]
-    self.assertEqual(mocks.MockTensor("Mock Tensor 2", tf.int32), c1.build())
+    self.assertEqual(
+        mocks.MockTensor("Mock Tensor 2", dtypes.int32), c1.build())
 
   def test_del_item_column(self):
     df = setup_test_df()
@@ -72,7 +80,7 @@ class DataFrameTest(tf.test.TestCase):
     df = setup_test_df()
     self.assertEqual(3, len(df))
     col1 = mocks.MockSeries("QuackColumn",
-                            mocks.MockTensor("Tensor ", tf.int32))
+                            mocks.MockTensor("Tensor ", dtypes.int32))
     df["quack"] = col1
     self.assertEqual(4, len(df))
     col2 = df["quack"]
@@ -101,11 +109,13 @@ class DataFrameTest(tf.test.TestCase):
   def test_build(self):
     df = setup_test_df()
     result = df.build()
-    expected = {"a": mocks.MockTensor("Mock Tensor 1", tf.int32),
-                "b": mocks.MockTensor("Mock Tensor 2", tf.int32),
-                "c": mocks.MockTensor("Mock Tensor 1", tf.int32)}
+    expected = {
+        "a": mocks.MockTensor("Mock Tensor 1", dtypes.int32),
+        "b": mocks.MockTensor("Mock Tensor 2", dtypes.int32),
+        "c": mocks.MockTensor("Mock Tensor 1", dtypes.int32)
+    }
     self.assertEqual(expected, result)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

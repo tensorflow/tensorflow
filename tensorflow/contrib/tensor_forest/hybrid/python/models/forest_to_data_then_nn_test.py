@@ -20,16 +20,13 @@ from __future__ import print_function
 import random
 
 # pylint: disable=unused-import
-import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.hybrid.python.models import forest_to_data_then_nn
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import googletest
 
@@ -56,8 +53,8 @@ class ForestToDataThenNNTest(test_util.TensorFlowTestCase):
     self.params.num_nodes = 2**self.params.hybrid_tree_depth - 1
     self.params.num_leaves = 2**(self.params.hybrid_tree_depth - 1)
 
-    self.params.num_features_per_node = (
-        self.params.feature_bagging_fraction * self.params.num_features)
+    self.params.num_features_per_node = (self.params.feature_bagging_fraction *
+                                         self.params.num_features)
 
   def testInferenceConstruction(self):
     # pylint: disable=W0612

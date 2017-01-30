@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -72,22 +71,6 @@ def _ResizeBilinearGrad(op, grad):
         align_corners=op.get_attr("align_corners"))
     # pylint: enable=protected-access
   return [grad0, None]
-
-
-@ops.RegisterShape("ResizeNearestNeighborGrad")
-def _ResizeShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
-
-
-ops.RegisterShape("ResizeBilinearGrad")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("CropAndResizeGradImage")
-def _CropAndResizeGradImageShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
-
-
-ops.RegisterShape("CropAndResizeGradBoxes")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("CropAndResize")

@@ -1,6 +1,6 @@
 ### `tf.contrib.layers.one_hot_column(sparse_id_column)` {#one_hot_column}
 
-Creates a _OneHotColumn.
+Creates an `_OneHotColumn` for a one-hot or multi-hot repr in a DNN.
 
 ##### Args:
 

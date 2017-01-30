@@ -35,6 +35,17 @@ class TensorSignature(collections.namedtuple(
 
   Useful to check compatibility of tensors.
 
+  Example:
+
+  ```python
+  examples = tf.placeholder(...)
+  inputs = {'a': var_a, 'b': var_b}
+  signatures = tensor_signature.create_signatures(inputs)
+  result = tensor_signature.create_example_parser_from_signatures(
+      signatures, examples)
+  self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+  ```
+
   Attributes:
     dtype: `DType` object.
     shape: `TensorShape` object.

@@ -24,3 +24,5 @@ class PredictionKey(object):
   LOGITS = "logits"
   LOGISTIC = "logistic"
   SCORES = "scores"
+  TOP_K = "top_k"
+  GENERIC = "output"

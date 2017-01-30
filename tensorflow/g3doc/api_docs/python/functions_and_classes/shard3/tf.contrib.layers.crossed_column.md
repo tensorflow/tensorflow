@@ -1,6 +1,6 @@
 ### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
 
-Creates a _CrossedColumn.
+Creates a _CrossedColumn for performing feature crosses.
 
 ##### Args:
 

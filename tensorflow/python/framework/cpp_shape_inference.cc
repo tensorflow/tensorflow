@@ -51,7 +51,8 @@ Status RunCppShapeInferenceImpl(
     const std::vector<string>& input_serialized_shapes,
     const std::vector<PyObject*>& input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,
-    std::vector<string>* output_tensor_shape_protos) {
+    std::vector<string>* output_tensor_shape_protos,
+    string* input_tensors_needed_out) {
   tensorflow::NodeDef node;
   if (!node.ParseFromString(serialized_node_def)) {
     return errors::InvalidArgument(
@@ -132,6 +133,18 @@ Status RunCppShapeInferenceImpl(
     CHECK(out.AppendToString(&(*output_tensor_shape_protos)[i]));
   }
 
+  // Add info about requested inputs.
+  CppShapeInferenceInputsNeeded needed;
+  for (int i = 0; i < c.num_inputs(); ++i) {
+    if (c.requested_input_tensor(i)) {
+      needed.add_input_tensors_needed(i);
+    }
+    if (c.requested_input_tensor_as_partial_shape(i)) {
+      needed.add_input_tensors_as_shapes_needed(i);
+    }
+  }
+  *input_tensors_needed_out = needed.SerializeAsString();
+
   return Status::OK();
 }
 
@@ -155,14 +168,19 @@ std::vector<string> RunCppShapeInference(
         PyList_GetItem(input_constant_tensor_values, i));
   }
 
-  std::vector<string> output_tensor_shape_protos;
+  std::vector<string> output;
+  string input_tensors_needed_out;
   tensorflow::Status status = RunCppShapeInferenceImpl(
       serialized_node_def, input_serialized_shapes,
       input_constant_tensor_values_v, input_constant_tensor_as_shape_values,
-      &output_tensor_shape_protos);
+      &output, &input_tensors_needed_out);
 
   Set_TF_Status_from_Status(out_status, status);
-  return status.ok() ? output_tensor_shape_protos : std::vector<string>();
+  if (!status.ok()) {
+    return std::vector<string>();
+  }
+  output.push_back(input_tensors_needed_out);
+  return output;
 }
 
 }  // namespace swig

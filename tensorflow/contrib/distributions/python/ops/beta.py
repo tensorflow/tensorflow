@@ -157,7 +157,7 @@ class Beta(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         is_continuous=True,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._a, self._b, self._a_b_sum],
         name=ns)
@@ -240,9 +240,6 @@ class Beta(distribution.Distribution):
   def _variance(self):
     return (self.a * self.b) / (self.a_b_sum**2. * (self.a_b_sum + 1.))
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
   @distribution_util.AppendDocstring(
       """Note that the mode for the Beta distribution is only defined
       when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
@@ -252,7 +249,7 @@ class Beta(distribution.Distribution):
     mode = (self.a - 1.)/ (self.a_b_sum - 2.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.logical_and(
               math_ops.greater(self.a, 1.),
               math_ops.greater(self.b, 1.)),
@@ -294,8 +291,8 @@ class BetaWithSoftplusAB(Beta):
     parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       super(BetaWithSoftplusAB, self).__init__(
-          a=nn.softplus(a),
-          b=nn.softplus(b),
+          a=nn.softplus(a, name="softplus_a"),
+          b=nn.softplus(b, name="softplus_b"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

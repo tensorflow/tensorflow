@@ -46,7 +46,7 @@ Log E_q[ f(Z) p(Z) / q(Z) ]
 C := Max[ Log[f(Z)] + Log[p(Z)] - Log[q(Z)] ].
 ```
 
-The maximum value of the exponentiated term will be 0.0, and the the expectation
+The maximum value of the exponentiated term will be 0.0, and the expectation
 can be evaluated in a stable manner.
 
 ## Ops
@@ -71,7 +71,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
 *  <b>`f`</b>: Callable mapping samples from `p` to `Tensors`.
 *  <b>`p`</b>: `tf.contrib.distributions.Distribution`.
-*  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample_n`.
+*  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`name`</b>: A name to give this `Op`.
@@ -145,7 +145,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
     `tf.contrib.distributions.Distribution`.
     `float64` `dtype` recommended.
     `log_p` and `q` should be supported on the same set.
-*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`name`</b>: A name to give this `Op`.
@@ -193,7 +193,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
     `tf.contrib.distributions.Distribution`.
     `float64` `dtype` recommended.
     `log_p` and `q` should be supported on the same set.
-*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`name`</b>: A name to give this `Op`.

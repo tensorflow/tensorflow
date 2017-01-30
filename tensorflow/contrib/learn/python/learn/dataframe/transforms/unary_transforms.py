@@ -27,9 +27,9 @@ from tensorflow.python.ops import math_ops
 # Each entry is a mapping from registered_name to operation. Each operation is
 # wrapped in a transform and then registered as a member function
 # `Series`.registered_name().
-UNARY_TRANSFORMS = [("__neg__", math_ops.neg),
+UNARY_TRANSFORMS = [("__neg__", math_ops.negative),
                     ("sign", math_ops.sign),
-                    ("inv", math_ops.inv),
+                    ("reciprocal", math_ops.reciprocal),
                     ("square", math_ops.square),
                     ("round", math_ops.round),
                     ("sqrt", math_ops.sqrt),
@@ -86,7 +86,7 @@ def register_unary_op(registered_name, operation, ignore_dtype=None):
     if isinstance(input_tensor, sparse_tensor.SparseTensor):
       result = sparse_tensor.SparseTensor(input_tensor.indices,
                                           operation(input_tensor.values),
-                                          input_tensor.shape)
+                                          input_tensor.dense_shape)
     else:
       result = operation(input_tensor)
     # pylint: disable=not-callable

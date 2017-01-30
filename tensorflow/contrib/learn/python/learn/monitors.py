@@ -68,6 +68,8 @@ Example:
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
 ```
 
+## Ops
+
 @@get_default_monitors
 @@BaseMonitor
 @@CaptureVariable
@@ -127,7 +129,6 @@ class BaseMonitor(object):
     self._current_step = None
     self._max_steps = None
     self._estimator = None
-    self._estimator_locked = False
 
   @property
   def run_on_all_workers(self):
@@ -144,20 +145,10 @@ class BaseMonitor(object):
     Raises:
       ValueError: if the estimator is None.
     """
-    if self._estimator_locked:
-      return
     if estimator is None:
       raise ValueError("Missing estimator.")
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
-
-  def _lock_estimator(self):
-    """Locks the estimator until _unlock_estimator is called."""
-    self._estimator_locked = True
-
-  def _unlock_estimator(self):
-    """Unlocks the estimator."""
-    self._estimator_locked = False
 
   def begin(self, max_steps=None):
     """Called at the beginning of training.
@@ -627,7 +618,8 @@ class ValidationMonitor(EveryN):
 
   def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
                eval_steps=None,
-               every_n_steps=100, metrics=None, early_stopping_rounds=None,
+               every_n_steps=100, metrics=None, hooks=None,
+               early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True, name=None):
     """Initializes a ValidationMonitor.
@@ -641,6 +633,8 @@ class ValidationMonitor(EveryN):
       every_n_steps: Check for new checkpoints to evaluate every N steps. If a
           new checkpoint is found, it is evaluated. See `EveryN`.
       metrics: See `BaseEstimator.evaluate`.
+      hooks: A list of `SessionRunHook` hooks to pass to the
+        `Estimator`'s `evaluate` function.
       early_stopping_rounds: `int`. If the metric indicated by
           `early_stopping_metric` does not change according to
           `early_stopping_metric_minimize` for this many steps, then training
@@ -669,6 +663,7 @@ class ValidationMonitor(EveryN):
     self.batch_size = batch_size
     self.eval_steps = eval_steps
     self.metrics = metrics
+    self.hooks = hooks
     self.early_stopping_rounds = early_stopping_rounds
     self.early_stopping_metric = early_stopping_metric
     self.early_stopping_metric_minimize = early_stopping_metric_minimize
@@ -718,7 +713,8 @@ class ValidationMonitor(EveryN):
     # Run evaluation and log it.
     validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        steps=self.eval_steps, metrics=self.metrics, name=self.name)
+        steps=self.eval_steps, metrics=self.metrics, hooks=self.hooks,
+        name=self.name)
     stats = []
     for name in validation_outputs:
       stats.append("%s = %s" % (name, str(validation_outputs[name])))
@@ -935,9 +931,9 @@ class ExportMonitor(EveryN):
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input. Can only be `None` if you're
-        using a custom `signature_fn` that does not use the first arg
-        (examples).
+        the exported model will take as input. Should be `None` if and only if
+        you're passing in a `signature_fn` that does not use the first arg
+        (`Tensor` of `Example` strings).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -1026,7 +1022,7 @@ class ExportMonitor(EveryN):
 
 
 class CheckpointSaver(BaseMonitor):
-  """Saves checkpoints every N steps."""
+  """Saves checkpoints every N steps or N seconds."""
 
   def __init__(self,
                checkpoint_dir,
@@ -1234,6 +1230,48 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
         m.end(session=session)
       else:
         m.end()
+
+
+def replace_monitors_with_hooks(monitors_or_hooks, estimator):
+  """Wraps monitors with a hook.
+
+  `Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+  monitor, you can wrap it with a hook using function. It is recommended to
+  implement hook version of your monitor.
+
+  Args:
+    monitors_or_hooks: A `list` may contain both monitors and hooks.
+    estimator: An `Estimator` that monitor will be used with.
+
+  Returns:
+    Returns a list of hooks. If there is any monitor in the given list, it is
+    replaced by a hook.
+  """
+  monitors_or_hooks = monitors_or_hooks or []
+  hooks = [
+      m for m in monitors_or_hooks
+      if isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  deprecated_monitors = [
+      m for m in monitors_or_hooks
+      if not isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  if not estimator.config.is_chief:
+    # Prune list of monitor to the ones runnable on all workers.
+    deprecated_monitors = [
+        m for m in deprecated_monitors if m.run_on_all_workers
+    ]
+
+  # Setup monitors.
+  for monitor in deprecated_monitors:
+    monitor.set_estimator(estimator)
+
+  if deprecated_monitors:
+    hooks.append(RunHookAdapterForMonitors(deprecated_monitors))
+
+  return hooks
 
 
 def _as_graph_element(obj):

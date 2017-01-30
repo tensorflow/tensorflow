@@ -15,14 +15,15 @@ limitations under the License.
 
 #if TENSORFLOW_USE_SYCL
 
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_device.h"
 
 namespace tensorflow {
 
 class SYCLDeviceFactory : public DeviceFactory {
- public:
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override {
+public:
+  Status CreateDevices(const SessionOptions &options, const string &name_prefix,
+                       std::vector<Device *> *devices) override {
     int n = 1;
     auto iter = options.config.device_count().find("SYCL");
     if (iter != options.config.device_count().end()) {
@@ -30,15 +31,16 @@ class SYCLDeviceFactory : public DeviceFactory {
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:SYCL:", i);
-      devices->push_back(new SYCLDevice(
-          options, name, Bytes(256 << 20), DeviceLocality(),
-          SYCLDevice::GetShortDeviceDescription(), cpu_allocator()));
+      devices->push_back(new SYCLDevice(options, name, Bytes(256 << 20),
+                                        DeviceLocality(),
+                                        SYCLDevice::GetShortDeviceDescription(),
+                                        cl::sycl::gpu_selector(), cpu_allocator()));
     }
     return Status::OK();
   }
 };
 
-REGISTER_LOCAL_DEVICE_FACTORY("SYCL", SYCLDeviceFactory);
+REGISTER_LOCAL_DEVICE_FACTORY("SYCL", SYCLDeviceFactory, 200);
 }
 
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
