@@ -230,11 +230,7 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_GPU),
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {
  public:
-  explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
-    const DataType dt = DataTypeToEnum<T>::v();
-    const DataType index_t = DataTypeToEnum<Index>::v();
-    OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t}, {dt}));
-  }
+  explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
     Var* v = nullptr;

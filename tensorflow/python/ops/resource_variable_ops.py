@@ -241,9 +241,9 @@ class ResourceVariable(object):
 
   def sparse_read(self, indices, collections=None, trainable=True, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
-    with ops.name_scope("Gather" if name is None else name):
+    with ops.name_scope("Gather" if name is None else name) as name:
       value = gen_resource_variable_ops.resource_gather(
-          self._handle, indices, dtype=self._dtype)
+          self._handle, indices, dtype=self._dtype, name=name)
     _register_variable_read(value, collections=collections, trainable=trainable)
     return array_ops.identity(value)
 
