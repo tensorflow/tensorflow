@@ -1,14 +1,14 @@
-StudentT with `df = floor(abs(df))` and `sigma = softplus(sigma)`.
+StudentT with `df = floor(abs(df))` and `scale = softplus(scale)`.
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.__init__(df, mu, sigma, validate_args=False, allow_nan_stats=True, name='StudentTWithAbsDfSoftplusSigma')` {#StudentTWithAbsDfSoftplusSigma.__init__}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.__init__(df, loc, scale, validate_args=False, allow_nan_stats=True, name='StudentTWithAbsDfSoftplusScale')` {#StudentTWithAbsDfSoftplusScale.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.allow_nan_stats` {#StudentTWithAbsDfSoftplusSigma.allow_nan_stats}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.allow_nan_stats` {#StudentTWithAbsDfSoftplusScale.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -29,7 +29,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.batch_shape(name='batch_shape')` {#StudentTWithAbsDfSoftplusSigma.batch_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.batch_shape(name='batch_shape')` {#StudentTWithAbsDfSoftplusScale.batch_shape}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -49,7 +49,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.cdf(value, name='cdf')` {#StudentTWithAbsDfSoftplusSigma.cdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.cdf(value, name='cdf')` {#StudentTWithAbsDfSoftplusScale.cdf}
 
 Cumulative distribution function.
 
@@ -74,7 +74,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.copy(**override_parameters_kwargs)` {#StudentTWithAbsDfSoftplusSigma.copy}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.copy(**override_parameters_kwargs)` {#StudentTWithAbsDfSoftplusScale.copy}
 
 Creates a deep copy of the distribution.
 
@@ -97,7 +97,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.covariance(name='covariance')` {#StudentTWithAbsDfSoftplusSigma.covariance}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.covariance(name='covariance')` {#StudentTWithAbsDfSoftplusScale.covariance}
 
 Covariance.
 
@@ -141,28 +141,28 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.df` {#StudentTWithAbsDfSoftplusSigma.df}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.df` {#StudentTWithAbsDfSoftplusScale.df}
 
 Degrees of freedom in these Student's t distribution(s).
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.dtype` {#StudentTWithAbsDfSoftplusSigma.dtype}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.dtype` {#StudentTWithAbsDfSoftplusScale.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.entropy(name='entropy')` {#StudentTWithAbsDfSoftplusSigma.entropy}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.entropy(name='entropy')` {#StudentTWithAbsDfSoftplusScale.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.event_shape(name='event_shape')` {#StudentTWithAbsDfSoftplusSigma.event_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.event_shape(name='event_shape')` {#StudentTWithAbsDfSoftplusScale.event_shape}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -179,7 +179,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.get_batch_shape()` {#StudentTWithAbsDfSoftplusSigma.get_batch_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.get_batch_shape()` {#StudentTWithAbsDfSoftplusScale.get_batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -193,7 +193,7 @@ Same meaning as `batch_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.get_event_shape()` {#StudentTWithAbsDfSoftplusSigma.get_event_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.get_event_shape()` {#StudentTWithAbsDfSoftplusScale.get_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -207,14 +207,14 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_continuous` {#StudentTWithAbsDfSoftplusSigma.is_continuous}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.is_continuous` {#StudentTWithAbsDfSoftplusScale.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusScale.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -231,7 +231,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusScale.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -248,7 +248,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_cdf(value, name='log_cdf')` {#StudentTWithAbsDfSoftplusSigma.log_cdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.loc` {#StudentTWithAbsDfSoftplusScale.loc}
+
+Locations of these Student's t distribution(s).
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_cdf(value, name='log_cdf')` {#StudentTWithAbsDfSoftplusScale.log_cdf}
 
 Log cumulative distribution function.
 
@@ -277,7 +284,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_pdf(value, name='log_pdf')` {#StudentTWithAbsDfSoftplusSigma.log_pdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_pdf(value, name='log_pdf')` {#StudentTWithAbsDfSoftplusScale.log_pdf}
 
 Log probability density function.
 
@@ -301,7 +308,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_pmf(value, name='log_pmf')` {#StudentTWithAbsDfSoftplusSigma.log_pmf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_pmf(value, name='log_pmf')` {#StudentTWithAbsDfSoftplusScale.log_pmf}
 
 Log probability mass function.
 
@@ -325,7 +332,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_prob(value, name='log_prob')` {#StudentTWithAbsDfSoftplusSigma.log_prob}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_prob(value, name='log_prob')` {#StudentTWithAbsDfSoftplusScale.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -344,7 +351,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_survival_function(value, name='log_survival_function')` {#StudentTWithAbsDfSoftplusSigma.log_survival_function}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_survival_function(value, name='log_survival_function')` {#StudentTWithAbsDfSoftplusScale.log_survival_function}
 
 Log survival function.
 
@@ -373,41 +380,34 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mean(name='mean')` {#StudentTWithAbsDfSoftplusSigma.mean}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.mean(name='mean')` {#StudentTWithAbsDfSoftplusScale.mean}
 
 Mean.
 
 Additional documentation from `StudentT`:
 
-The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
-If `self.allow_nan_stats=True`, then an exception will be raised rather
-than returning `NaN`.
+The mean of Student's T equals `loc` if `df > 1`, otherwise it is
+`NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+rather than returning `NaN`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mode(name='mode')` {#StudentTWithAbsDfSoftplusSigma.mode}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.mode(name='mode')` {#StudentTWithAbsDfSoftplusScale.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mu` {#StudentTWithAbsDfSoftplusSigma.mu}
-
-Locations of these Student's t distribution(s).
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.name` {#StudentTWithAbsDfSoftplusSigma.name}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.name` {#StudentTWithAbsDfSoftplusScale.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#StudentTWithAbsDfSoftplusSigma.param_shapes}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#StudentTWithAbsDfSoftplusScale.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -431,7 +431,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.param_static_shapes(cls, sample_shape)` {#StudentTWithAbsDfSoftplusSigma.param_static_shapes}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.param_static_shapes(cls, sample_shape)` {#StudentTWithAbsDfSoftplusScale.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -461,14 +461,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.parameters` {#StudentTWithAbsDfSoftplusSigma.parameters}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.parameters` {#StudentTWithAbsDfSoftplusScale.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.pdf(value, name='pdf')` {#StudentTWithAbsDfSoftplusSigma.pdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.pdf(value, name='pdf')` {#StudentTWithAbsDfSoftplusScale.pdf}
 
 Probability density function.
 
@@ -492,7 +492,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.pmf(value, name='pmf')` {#StudentTWithAbsDfSoftplusSigma.pmf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.pmf(value, name='pmf')` {#StudentTWithAbsDfSoftplusScale.pmf}
 
 Probability mass function.
 
@@ -516,7 +516,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.prob(value, name='prob')` {#StudentTWithAbsDfSoftplusSigma.prob}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.prob(value, name='prob')` {#StudentTWithAbsDfSoftplusScale.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -535,7 +535,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.reparameterization_type` {#StudentTWithAbsDfSoftplusSigma.reparameterization_type}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.reparameterization_type` {#StudentTWithAbsDfSoftplusScale.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -550,7 +550,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sample(sample_shape=(), seed=None, name='sample')` {#StudentTWithAbsDfSoftplusSigma.sample}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.sample(sample_shape=(), seed=None, name='sample')` {#StudentTWithAbsDfSoftplusScale.sample}
 
 Generate samples of the specified shape.
 
@@ -572,14 +572,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sigma` {#StudentTWithAbsDfSoftplusSigma.sigma}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.scale` {#StudentTWithAbsDfSoftplusScale.scale}
 
 Scaling factors of these Student's t distribution(s).
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.stddev(name='stddev')` {#StudentTWithAbsDfSoftplusSigma.stddev}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.stddev(name='stddev')` {#StudentTWithAbsDfSoftplusScale.stddev}
 
 Standard deviation.
 
@@ -606,7 +606,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.survival_function(value, name='survival_function')` {#StudentTWithAbsDfSoftplusSigma.survival_function}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.survival_function(value, name='survival_function')` {#StudentTWithAbsDfSoftplusScale.survival_function}
 
 Survival function.
 
@@ -632,14 +632,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.validate_args` {#StudentTWithAbsDfSoftplusSigma.validate_args}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.validate_args` {#StudentTWithAbsDfSoftplusScale.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.variance(name='variance')` {#StudentTWithAbsDfSoftplusSigma.variance}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.variance(name='variance')` {#StudentTWithAbsDfSoftplusScale.variance}
 
 Variance.
 

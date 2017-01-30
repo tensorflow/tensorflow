@@ -1,10 +1,25 @@
-The scalar Normal distribution with mean and stddev parameters mu, sigma.
+The Normal distribution with location `loc` and `scale` parameters.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+The probability density function (pdf) is,
 
-```f(x) = sqrt(1/(2*pi*sigma^2)) exp(-(x-mu)^2/(2*sigma^2))```
+```none
+pdf(x; mu, sigma) = exp(-0.5 (x - mu)**2 / sigma**2) / Z
+Z = (2 pi sigma**2)**0.5
+```
+
+where `loc = mu` is the mean, `scale = sigma` is the std. deviation, and, `Z`
+is the normalization constant.
+
+The Normal distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Normal(loc=0, scale=1)
+Y = loc + scale * X
+```
 
 #### Examples
 
@@ -12,14 +27,14 @@ Examples of initialization of one or a batch of distributions.
 
 ```python
 # Define a single scalar Normal distribution.
-dist = tf.contrib.distributions.Normal(mu=0., sigma=3.)
+dist = tf.contrib.distributions.Normal(loc=0., scale=3.)
 
 # Evaluate the cdf at 1, returning a scalar.
 dist.cdf(1.)
 
 # Define a batch of two scalar valued Normals.
 # The first has mean 1 and standard deviation 11, the second 2 and 22.
-dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
 
 # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
 # returning a length two tensor.
@@ -34,7 +49,7 @@ Arguments are broadcast when possible.
 ```python
 # Define a batch of two scalar valued Normals.
 # Both have mean 1, but different standard deviations.
-dist = tf.contrib.distributions.Normal(mu=1., sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(loc=1., scale=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
@@ -42,32 +57,33 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
 
-Construct Normal distributions with mean and stddev `mu` and `sigma`.
+Construct Normal distributions with mean and stddev `loc` and `scale`.
 
-The parameters `mu` and `sigma` must be shaped in a way that supports
-broadcasting (e.g. `mu + sigma` is a valid operation).
+The parameters `loc` and `scale` must be shaped in a way that supports
+broadcasting (e.g. `loc + scale` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: Floating point tensor, the stddevs of the distribution(s).
-    sigma must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `sigma > 0`. If `validate_args` is `False`, correct output is not
-    guaranteed when input is invalid.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`loc`</b>: Floating point tensor; the means of the distribution(s).
+*  <b>`scale`</b>: Floating point tensor; the stddevs of the distribution(s).
+    Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+*  <b>`TypeError`</b>: if `loc` and `scale` have different `dtype`.
 
 
 - - -
@@ -305,6 +321,13 @@ Indicates that `event_shape == []`.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.loc` {#Normal.loc}
+
+Distribution parameter for the mean.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf')` {#Normal.log_cdf}
 
 Log cumulative distribution function.
@@ -440,13 +463,6 @@ Mean.
 #### `tf.contrib.distributions.Normal.mode(name='mode')` {#Normal.mode}
 
 Mode.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.mu` {#Normal.mu}
-
-Distribution parameter for the mean.
 
 
 - - -
@@ -623,7 +639,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
+#### `tf.contrib.distributions.Normal.scale` {#Normal.scale}
 
 Distribution parameter for standard deviation.
 

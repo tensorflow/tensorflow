@@ -1,13 +1,27 @@
-The Laplace distribution with location and scale > 0 parameters.
+The Laplace distribution with location `loc` and `scale` parameters.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+The probability density function (pdf) of this distribution is,
 
-```f(x | mu, b, b > 0) = 0.5 / b exp(-|x - mu| / b)```
+```none
+pdf(x; mu, sigma) = exp(-|x - mu| / sigma) / Z
+Z = 2 sigma
+```
+
+where `loc = mu`, `scale = sigma`, and `Z` is the normalization constant.
 
 Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
+
+The Lpalce distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Laplace(loc=0, scale=1)
+Y = loc + scale * X
+```
 - - -
 
 #### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Laplace')` {#Laplace.__init__}
@@ -24,14 +38,15 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
     the distribution.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
-    with asserts.  If `validate_args` is `False`, and the inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 

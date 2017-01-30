@@ -10780,16 +10780,30 @@ than returning `NaN`.
 
 ### `class tf.contrib.distributions.Laplace` {#Laplace}
 
-The Laplace distribution with location and scale > 0 parameters.
+The Laplace distribution with location `loc` and `scale` parameters.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+The probability density function (pdf) of this distribution is,
 
-```f(x | mu, b, b > 0) = 0.5 / b exp(-|x - mu| / b)```
+```none
+pdf(x; mu, sigma) = exp(-|x - mu| / sigma) / Z
+Z = 2 sigma
+```
+
+where `loc = mu`, `scale = sigma`, and `Z` is the normalization constant.
 
 Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
+
+The Lpalce distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Laplace(loc=0, scale=1)
+Y = loc + scale * X
+```
 - - -
 
 #### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Laplace')` {#Laplace.__init__}
@@ -10806,14 +10820,15 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
     the distribution.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
-    with asserts.  If `validate_args` is `False`, and the inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -12129,13 +12144,28 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.Normal` {#Normal}
 
-The scalar Normal distribution with mean and stddev parameters mu, sigma.
+The Normal distribution with location `loc` and `scale` parameters.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+The probability density function (pdf) is,
 
-```f(x) = sqrt(1/(2*pi*sigma^2)) exp(-(x-mu)^2/(2*sigma^2))```
+```none
+pdf(x; mu, sigma) = exp(-0.5 (x - mu)**2 / sigma**2) / Z
+Z = (2 pi sigma**2)**0.5
+```
+
+where `loc = mu` is the mean, `scale = sigma` is the std. deviation, and, `Z`
+is the normalization constant.
+
+The Normal distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Normal(loc=0, scale=1)
+Y = loc + scale * X
+```
 
 #### Examples
 
@@ -12143,14 +12173,14 @@ Examples of initialization of one or a batch of distributions.
 
 ```python
 # Define a single scalar Normal distribution.
-dist = tf.contrib.distributions.Normal(mu=0., sigma=3.)
+dist = tf.contrib.distributions.Normal(loc=0., scale=3.)
 
 # Evaluate the cdf at 1, returning a scalar.
 dist.cdf(1.)
 
 # Define a batch of two scalar valued Normals.
 # The first has mean 1 and standard deviation 11, the second 2 and 22.
-dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
 
 # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
 # returning a length two tensor.
@@ -12165,7 +12195,7 @@ Arguments are broadcast when possible.
 ```python
 # Define a batch of two scalar valued Normals.
 # Both have mean 1, but different standard deviations.
-dist = tf.contrib.distributions.Normal(mu=1., sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(loc=1., scale=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
@@ -12173,32 +12203,33 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
 
-Construct Normal distributions with mean and stddev `mu` and `sigma`.
+Construct Normal distributions with mean and stddev `loc` and `scale`.
 
-The parameters `mu` and `sigma` must be shaped in a way that supports
-broadcasting (e.g. `mu + sigma` is a valid operation).
+The parameters `loc` and `scale` must be shaped in a way that supports
+broadcasting (e.g. `loc + scale` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: Floating point tensor, the stddevs of the distribution(s).
-    sigma must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `sigma > 0`. If `validate_args` is `False`, correct output is not
-    guaranteed when input is invalid.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`loc`</b>: Floating point tensor; the means of the distribution(s).
+*  <b>`scale`</b>: Floating point tensor; the stddevs of the distribution(s).
+    Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+*  <b>`TypeError`</b>: if `loc` and `scale` have different `dtype`.
 
 
 - - -
@@ -12436,6 +12467,13 @@ Indicates that `event_shape == []`.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.loc` {#Normal.loc}
+
+Distribution parameter for the mean.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf')` {#Normal.log_cdf}
 
 Log cumulative distribution function.
@@ -12571,13 +12609,6 @@ Mean.
 #### `tf.contrib.distributions.Normal.mode(name='mode')` {#Normal.mode}
 
 Mode.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.mu` {#Normal.mu}
-
-Distribution parameter for the mean.
 
 
 - - -
@@ -12754,7 +12785,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
+#### `tf.contrib.distributions.Normal.scale` {#Normal.scale}
 
 Distribution parameter for standard deviation.
 
@@ -12849,19 +12880,19 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 - - -
 
-### `class tf.contrib.distributions.NormalWithSoftplusSigma` {#NormalWithSoftplusSigma}
+### `class tf.contrib.distributions.NormalWithSoftplusScale` {#NormalWithSoftplusScale}
 
-Normal with softplus applied to `sigma`.
+Normal with softplus applied to `scale`.
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='NormalWithSoftplusSigma')` {#NormalWithSoftplusSigma.__init__}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='NormalWithSoftplusScale')` {#NormalWithSoftplusScale.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.allow_nan_stats` {#NormalWithSoftplusSigma.allow_nan_stats}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.allow_nan_stats` {#NormalWithSoftplusScale.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -12882,7 +12913,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.batch_shape(name='batch_shape')` {#NormalWithSoftplusSigma.batch_shape}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.batch_shape(name='batch_shape')` {#NormalWithSoftplusScale.batch_shape}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -12902,7 +12933,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.cdf(value, name='cdf')` {#NormalWithSoftplusSigma.cdf}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.cdf(value, name='cdf')` {#NormalWithSoftplusScale.cdf}
 
 Cumulative distribution function.
 
@@ -12927,7 +12958,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.copy(**override_parameters_kwargs)` {#NormalWithSoftplusSigma.copy}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.copy(**override_parameters_kwargs)` {#NormalWithSoftplusScale.copy}
 
 Creates a deep copy of the distribution.
 
@@ -12950,7 +12981,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.covariance(name='covariance')` {#NormalWithSoftplusSigma.covariance}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.covariance(name='covariance')` {#NormalWithSoftplusScale.covariance}
 
 Covariance.
 
@@ -12994,21 +13025,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.dtype` {#NormalWithSoftplusSigma.dtype}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.dtype` {#NormalWithSoftplusScale.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.entropy(name='entropy')` {#NormalWithSoftplusSigma.entropy}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.entropy(name='entropy')` {#NormalWithSoftplusScale.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.event_shape(name='event_shape')` {#NormalWithSoftplusSigma.event_shape}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.event_shape(name='event_shape')` {#NormalWithSoftplusScale.event_shape}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -13025,7 +13056,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.get_batch_shape()` {#NormalWithSoftplusSigma.get_batch_shape}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.get_batch_shape()` {#NormalWithSoftplusScale.get_batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -13039,7 +13070,7 @@ Same meaning as `batch_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.get_event_shape()` {#NormalWithSoftplusSigma.get_event_shape}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.get_event_shape()` {#NormalWithSoftplusScale.get_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -13053,14 +13084,14 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_continuous` {#NormalWithSoftplusSigma.is_continuous}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.is_continuous` {#NormalWithSoftplusScale.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#NormalWithSoftplusSigma.is_scalar_batch}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#NormalWithSoftplusScale.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -13077,7 +13108,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#NormalWithSoftplusSigma.is_scalar_event}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.is_scalar_event(name='is_scalar_event')` {#NormalWithSoftplusScale.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -13094,7 +13125,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.log_cdf(value, name='log_cdf')` {#NormalWithSoftplusSigma.log_cdf}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.loc` {#NormalWithSoftplusScale.loc}
+
+Distribution parameter for the mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.NormalWithSoftplusScale.log_cdf(value, name='log_cdf')` {#NormalWithSoftplusScale.log_cdf}
 
 Log cumulative distribution function.
 
@@ -13123,7 +13161,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.log_pdf(value, name='log_pdf')` {#NormalWithSoftplusSigma.log_pdf}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.log_pdf(value, name='log_pdf')` {#NormalWithSoftplusScale.log_pdf}
 
 Log probability density function.
 
@@ -13147,7 +13185,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.log_pmf(value, name='log_pmf')` {#NormalWithSoftplusSigma.log_pmf}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.log_pmf(value, name='log_pmf')` {#NormalWithSoftplusScale.log_pmf}
 
 Log probability mass function.
 
@@ -13171,7 +13209,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.log_prob(value, name='log_prob')` {#NormalWithSoftplusSigma.log_prob}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.log_prob(value, name='log_prob')` {#NormalWithSoftplusScale.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -13190,7 +13228,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.log_survival_function(value, name='log_survival_function')` {#NormalWithSoftplusSigma.log_survival_function}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.log_survival_function(value, name='log_survival_function')` {#NormalWithSoftplusScale.log_survival_function}
 
 Log survival function.
 
@@ -13219,35 +13257,28 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.mean(name='mean')` {#NormalWithSoftplusSigma.mean}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.mean(name='mean')` {#NormalWithSoftplusScale.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.mode(name='mode')` {#NormalWithSoftplusSigma.mode}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.mode(name='mode')` {#NormalWithSoftplusScale.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.mu` {#NormalWithSoftplusSigma.mu}
-
-Distribution parameter for the mean.
-
-
-- - -
-
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.name` {#NormalWithSoftplusSigma.name}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.name` {#NormalWithSoftplusScale.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#NormalWithSoftplusSigma.param_shapes}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#NormalWithSoftplusScale.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -13271,7 +13302,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.param_static_shapes(cls, sample_shape)` {#NormalWithSoftplusSigma.param_static_shapes}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.param_static_shapes(cls, sample_shape)` {#NormalWithSoftplusScale.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -13301,14 +13332,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.parameters` {#NormalWithSoftplusSigma.parameters}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.parameters` {#NormalWithSoftplusScale.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.pdf(value, name='pdf')` {#NormalWithSoftplusSigma.pdf}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.pdf(value, name='pdf')` {#NormalWithSoftplusScale.pdf}
 
 Probability density function.
 
@@ -13332,7 +13363,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.pmf(value, name='pmf')` {#NormalWithSoftplusSigma.pmf}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.pmf(value, name='pmf')` {#NormalWithSoftplusScale.pmf}
 
 Probability mass function.
 
@@ -13356,7 +13387,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.prob(value, name='prob')` {#NormalWithSoftplusSigma.prob}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.prob(value, name='prob')` {#NormalWithSoftplusScale.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -13375,7 +13406,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.reparameterization_type` {#NormalWithSoftplusSigma.reparameterization_type}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.reparameterization_type` {#NormalWithSoftplusScale.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -13390,7 +13421,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.sample(sample_shape=(), seed=None, name='sample')` {#NormalWithSoftplusSigma.sample}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.sample(sample_shape=(), seed=None, name='sample')` {#NormalWithSoftplusScale.sample}
 
 Generate samples of the specified shape.
 
@@ -13412,14 +13443,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.sigma` {#NormalWithSoftplusSigma.sigma}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.scale` {#NormalWithSoftplusScale.scale}
 
 Distribution parameter for standard deviation.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.stddev(name='stddev')` {#NormalWithSoftplusSigma.stddev}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.stddev(name='stddev')` {#NormalWithSoftplusScale.stddev}
 
 Standard deviation.
 
@@ -13446,7 +13477,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.survival_function(value, name='survival_function')` {#NormalWithSoftplusSigma.survival_function}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.survival_function(value, name='survival_function')` {#NormalWithSoftplusScale.survival_function}
 
 Survival function.
 
@@ -13472,14 +13503,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.validate_args` {#NormalWithSoftplusSigma.validate_args}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.validate_args` {#NormalWithSoftplusScale.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.NormalWithSoftplusSigma.variance(name='variance')` {#NormalWithSoftplusSigma.variance}
+#### `tf.contrib.distributions.NormalWithSoftplusScale.variance(name='variance')` {#NormalWithSoftplusScale.variance}
 
 Variance.
 
@@ -14204,23 +14235,38 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.StudentT` {#StudentT}
 
-Student's t distribution with degree-of-freedom parameter df.
+Student's t-distribution with degree of freedom `df`, location `loc`, and `scale` parameters.
 
 #### Mathematical details
 
-Write `sigma` for the scale and `mu` for the mean (both are scalars). The PDF
-of this distribution is:
+The probability density function (pdf) is,
 
 ```none
-f(x) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
+pdf(x; df, mu, sigma) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
 where,
-y(x) = (x - mu) / sigma
-Z    = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
+y = (x - mu) / sigma
+Z = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
 ```
 
-Notice that `sigma` has semantics more similar to standard deviation than
-variance.  (Recall that the variance of the Student's t-distribution is
-`sigma**2 df / (df - 2)` when `df > 2`.)
+where:
+* `loc = mu`,
+* `scale = sigma`, and,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The StudentT distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ StudentT(df, loc=0, scale=1)
+Y = loc + scale * X
+```
+
+Notice that `scale` has semantics more similar to standard deviation than
+variance.  However it is not actually the std. deviation; the Student's
+t-distribution std. dev. is `scale sqrt(df / (df - 2))` when `df > 2`.
 
 #### Examples
 
@@ -14237,8 +14283,8 @@ single_dist.pdf(1.)
 # The first has degrees of freedom 2, mean 1, and scale 11.
 # The second 3, 2 and 22.
 multi_dist = tf.contrib.distributions.StudentT(df=[2, 3],
-                                               mu=[1, 2.],
-                                               sigma=[11, 22.])
+                                               loc=[1, 2.],
+                                               scale=[11, 22.])
 
 # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
 # returning a length two tensor.
@@ -14253,7 +14299,7 @@ Arguments are broadcast when possible.
 ```python
 # Define a batch of two Student's t distributions.
 # Both have df 2 and mean 1, but different scales.
-dist = tf.contrib.distributions.StudentT(df=2, mu=1, sigma=[11, 22.])
+dist = tf.contrib.distributions.StudentT(df=2, loc=1, scale=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
@@ -14261,38 +14307,40 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=False, allow_nan_stats=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, loc, scale, validate_args=False, allow_nan_stats=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
-The distributions have degree of freedom `df`, mean `mu`, and scale `sigma`.
+The distributions have degree of freedom `df`, mean `loc`, and scale
+`scale`.
 
-The parameters `df`, `mu`, and `sigma` must be shaped in a way that supports
-broadcasting (e.g. `df + mu + sigma` is a valid operation).
+The parameters `df`, `loc`, and `scale` must be shaped in a way that
+supports broadcasting (e.g. `df + loc + scale` is a valid operation).
 
 ##### Args:
 
 
 *  <b>`df`</b>: Numeric `Tensor`. The degrees of freedom of the distribution(s).
     `df` must contain only positive values.
-*  <b>`mu`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
-*  <b>`sigma`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
-    Note that `sigma` is not technically the standard deviation of this
+*  <b>`loc`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
+*  <b>`scale`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
+    Note that `scale` is not technically the standard deviation of this
     distribution but has semantics more similar to standard deviation than
     variance.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+*  <b>`TypeError`</b>: if loc and scale are different dtypes.
 
 
 - - -
@@ -14537,6 +14585,13 @@ Indicates that `event_shape == []`.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.loc` {#StudentT.loc}
+
+Locations of these Student's t distribution(s).
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf')` {#StudentT.log_cdf}
 
 Log cumulative distribution function.
@@ -14668,9 +14723,9 @@ Mean.
 
 Additional documentation from `StudentT`:
 
-The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
-If `self.allow_nan_stats=True`, then an exception will be raised rather
-than returning `NaN`.
+The mean of Student's T equals `loc` if `df > 1`, otherwise it is
+`NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+rather than returning `NaN`.
 
 
 - - -
@@ -14678,13 +14733,6 @@ than returning `NaN`.
 #### `tf.contrib.distributions.StudentT.mode(name='mode')` {#StudentT.mode}
 
 Mode.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.mu` {#StudentT.mu}
-
-Locations of these Student's t distribution(s).
 
 
 - - -
@@ -14861,7 +14909,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sigma` {#StudentT.sigma}
+#### `tf.contrib.distributions.StudentT.scale` {#StudentT.scale}
 
 Scaling factors of these Student's t distribution(s).
 
@@ -14967,19 +15015,19 @@ NaN, when df <= 1
 
 - - -
 
-### `class tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma` {#StudentTWithAbsDfSoftplusSigma}
+### `class tf.contrib.distributions.StudentTWithAbsDfSoftplusScale` {#StudentTWithAbsDfSoftplusScale}
 
-StudentT with `df = floor(abs(df))` and `sigma = softplus(sigma)`.
+StudentT with `df = floor(abs(df))` and `scale = softplus(scale)`.
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.__init__(df, mu, sigma, validate_args=False, allow_nan_stats=True, name='StudentTWithAbsDfSoftplusSigma')` {#StudentTWithAbsDfSoftplusSigma.__init__}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.__init__(df, loc, scale, validate_args=False, allow_nan_stats=True, name='StudentTWithAbsDfSoftplusScale')` {#StudentTWithAbsDfSoftplusScale.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.allow_nan_stats` {#StudentTWithAbsDfSoftplusSigma.allow_nan_stats}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.allow_nan_stats` {#StudentTWithAbsDfSoftplusScale.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -15000,7 +15048,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.batch_shape(name='batch_shape')` {#StudentTWithAbsDfSoftplusSigma.batch_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.batch_shape(name='batch_shape')` {#StudentTWithAbsDfSoftplusScale.batch_shape}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -15020,7 +15068,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.cdf(value, name='cdf')` {#StudentTWithAbsDfSoftplusSigma.cdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.cdf(value, name='cdf')` {#StudentTWithAbsDfSoftplusScale.cdf}
 
 Cumulative distribution function.
 
@@ -15045,7 +15093,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.copy(**override_parameters_kwargs)` {#StudentTWithAbsDfSoftplusSigma.copy}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.copy(**override_parameters_kwargs)` {#StudentTWithAbsDfSoftplusScale.copy}
 
 Creates a deep copy of the distribution.
 
@@ -15068,7 +15116,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.covariance(name='covariance')` {#StudentTWithAbsDfSoftplusSigma.covariance}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.covariance(name='covariance')` {#StudentTWithAbsDfSoftplusScale.covariance}
 
 Covariance.
 
@@ -15112,28 +15160,28 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.df` {#StudentTWithAbsDfSoftplusSigma.df}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.df` {#StudentTWithAbsDfSoftplusScale.df}
 
 Degrees of freedom in these Student's t distribution(s).
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.dtype` {#StudentTWithAbsDfSoftplusSigma.dtype}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.dtype` {#StudentTWithAbsDfSoftplusScale.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.entropy(name='entropy')` {#StudentTWithAbsDfSoftplusSigma.entropy}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.entropy(name='entropy')` {#StudentTWithAbsDfSoftplusScale.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.event_shape(name='event_shape')` {#StudentTWithAbsDfSoftplusSigma.event_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.event_shape(name='event_shape')` {#StudentTWithAbsDfSoftplusScale.event_shape}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -15150,7 +15198,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.get_batch_shape()` {#StudentTWithAbsDfSoftplusSigma.get_batch_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.get_batch_shape()` {#StudentTWithAbsDfSoftplusScale.get_batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -15164,7 +15212,7 @@ Same meaning as `batch_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.get_event_shape()` {#StudentTWithAbsDfSoftplusSigma.get_event_shape}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.get_event_shape()` {#StudentTWithAbsDfSoftplusScale.get_event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -15178,14 +15226,14 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_continuous` {#StudentTWithAbsDfSoftplusSigma.is_continuous}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.is_continuous` {#StudentTWithAbsDfSoftplusScale.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_batch}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#StudentTWithAbsDfSoftplusScale.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -15202,7 +15250,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusSigma.is_scalar_event}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.is_scalar_event(name='is_scalar_event')` {#StudentTWithAbsDfSoftplusScale.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -15219,7 +15267,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_cdf(value, name='log_cdf')` {#StudentTWithAbsDfSoftplusSigma.log_cdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.loc` {#StudentTWithAbsDfSoftplusScale.loc}
+
+Locations of these Student's t distribution(s).
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_cdf(value, name='log_cdf')` {#StudentTWithAbsDfSoftplusScale.log_cdf}
 
 Log cumulative distribution function.
 
@@ -15248,7 +15303,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_pdf(value, name='log_pdf')` {#StudentTWithAbsDfSoftplusSigma.log_pdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_pdf(value, name='log_pdf')` {#StudentTWithAbsDfSoftplusScale.log_pdf}
 
 Log probability density function.
 
@@ -15272,7 +15327,7 @@ Log probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_pmf(value, name='log_pmf')` {#StudentTWithAbsDfSoftplusSigma.log_pmf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_pmf(value, name='log_pmf')` {#StudentTWithAbsDfSoftplusScale.log_pmf}
 
 Log probability mass function.
 
@@ -15296,7 +15351,7 @@ Log probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_prob(value, name='log_prob')` {#StudentTWithAbsDfSoftplusSigma.log_prob}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_prob(value, name='log_prob')` {#StudentTWithAbsDfSoftplusScale.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -15315,7 +15370,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.log_survival_function(value, name='log_survival_function')` {#StudentTWithAbsDfSoftplusSigma.log_survival_function}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.log_survival_function(value, name='log_survival_function')` {#StudentTWithAbsDfSoftplusScale.log_survival_function}
 
 Log survival function.
 
@@ -15344,41 +15399,34 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mean(name='mean')` {#StudentTWithAbsDfSoftplusSigma.mean}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.mean(name='mean')` {#StudentTWithAbsDfSoftplusScale.mean}
 
 Mean.
 
 Additional documentation from `StudentT`:
 
-The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
-If `self.allow_nan_stats=True`, then an exception will be raised rather
-than returning `NaN`.
+The mean of Student's T equals `loc` if `df > 1`, otherwise it is
+`NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+rather than returning `NaN`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mode(name='mode')` {#StudentTWithAbsDfSoftplusSigma.mode}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.mode(name='mode')` {#StudentTWithAbsDfSoftplusScale.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mu` {#StudentTWithAbsDfSoftplusSigma.mu}
-
-Locations of these Student's t distribution(s).
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.name` {#StudentTWithAbsDfSoftplusSigma.name}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.name` {#StudentTWithAbsDfSoftplusScale.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#StudentTWithAbsDfSoftplusSigma.param_shapes}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#StudentTWithAbsDfSoftplusScale.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -15402,7 +15450,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.param_static_shapes(cls, sample_shape)` {#StudentTWithAbsDfSoftplusSigma.param_static_shapes}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.param_static_shapes(cls, sample_shape)` {#StudentTWithAbsDfSoftplusScale.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -15432,14 +15480,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.parameters` {#StudentTWithAbsDfSoftplusSigma.parameters}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.parameters` {#StudentTWithAbsDfSoftplusScale.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.pdf(value, name='pdf')` {#StudentTWithAbsDfSoftplusSigma.pdf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.pdf(value, name='pdf')` {#StudentTWithAbsDfSoftplusScale.pdf}
 
 Probability density function.
 
@@ -15463,7 +15511,7 @@ Probability density function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.pmf(value, name='pmf')` {#StudentTWithAbsDfSoftplusSigma.pmf}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.pmf(value, name='pmf')` {#StudentTWithAbsDfSoftplusScale.pmf}
 
 Probability mass function.
 
@@ -15487,7 +15535,7 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.prob(value, name='prob')` {#StudentTWithAbsDfSoftplusSigma.prob}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.prob(value, name='prob')` {#StudentTWithAbsDfSoftplusScale.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -15506,7 +15554,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.reparameterization_type` {#StudentTWithAbsDfSoftplusSigma.reparameterization_type}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.reparameterization_type` {#StudentTWithAbsDfSoftplusScale.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -15521,7 +15569,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sample(sample_shape=(), seed=None, name='sample')` {#StudentTWithAbsDfSoftplusSigma.sample}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.sample(sample_shape=(), seed=None, name='sample')` {#StudentTWithAbsDfSoftplusScale.sample}
 
 Generate samples of the specified shape.
 
@@ -15543,14 +15591,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.sigma` {#StudentTWithAbsDfSoftplusSigma.sigma}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.scale` {#StudentTWithAbsDfSoftplusScale.scale}
 
 Scaling factors of these Student's t distribution(s).
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.stddev(name='stddev')` {#StudentTWithAbsDfSoftplusSigma.stddev}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.stddev(name='stddev')` {#StudentTWithAbsDfSoftplusScale.stddev}
 
 Standard deviation.
 
@@ -15577,7 +15625,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.survival_function(value, name='survival_function')` {#StudentTWithAbsDfSoftplusSigma.survival_function}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.survival_function(value, name='survival_function')` {#StudentTWithAbsDfSoftplusScale.survival_function}
 
 Survival function.
 
@@ -15603,14 +15651,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.validate_args` {#StudentTWithAbsDfSoftplusSigma.validate_args}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.validate_args` {#StudentTWithAbsDfSoftplusScale.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.variance(name='variance')` {#StudentTWithAbsDfSoftplusSigma.variance}
+#### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.variance(name='variance')` {#StudentTWithAbsDfSoftplusScale.variance}
 
 Variance.
 
@@ -26593,23 +26641,23 @@ representing the posterior or posterior predictive.
 
 - - -
 
-### `tf.contrib.distributions.normal_conjugates_known_sigma_posterior(prior, sigma, s, n)` {#normal_conjugates_known_sigma_posterior}
+### `tf.contrib.distributions.normal_conjugates_known_scale_posterior(prior, scale, s, n)` {#normal_conjugates_known_scale_posterior}
 
 Posterior Normal distribution with conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
-Normal with unknown mean `mu` (described by the Normal `prior`)
-and known variance `sigma^2`.  The "known sigma posterior" is
-the distribution of the unknown `mu`.
+Normal with unknown mean `loc` (described by the Normal `prior`)
+and known variance `scale^2`.  The "known scale posterior" is
+the distribution of the unknown `loc`.
 
 Accepts a prior Normal distribution object, having parameters
-`mu0` and `sigma0`, as well as known `sigma` values of the predictive
+`loc0` and `scale0`, as well as known `scale` values of the predictive
 distribution(s) (also assumed Normal),
 and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
 
 Returns a posterior (also Normal) distribution object, with parameters
-`(mu', sigma'^2)`, where:
+`(loc', scale'^2)`, where:
 
 ```
 mu ~ N(mu', sigma'^2)
@@ -26617,15 +26665,15 @@ sigma'^2 = 1/(1/sigma0^2 + n/sigma^2),
 mu' = (mu0/sigma0^2 + s/sigma^2) * sigma'^2.
 ```
 
-Distribution parameters from `prior`, as well as `sigma`, `s`, and `n`.
+Distribution parameters from `prior`, as well as `scale`, `s`, and `n`.
 will broadcast in the case of multidimensional sets of parameters.
 
 ##### Args:
 
 
 *  <b>`prior`</b>: `Normal` object of type `dtype`:
-    the prior distribution having parameters `(mu0, sigma0)`.
-*  <b>`sigma`</b>: tensor of type `dtype`, taking values `sigma > 0`.
+    the prior distribution having parameters `(loc0, scale0)`.
+*  <b>`scale`</b>: tensor of type `dtype`, taking values `scale > 0`.
     The known stddev parameter(s).
 *  <b>`s`</b>: Tensor of type `dtype`.  The sum(s) of observations.
 *  <b>`n`</b>: Tensor of type `int`.  The number(s) of observations.
@@ -26633,7 +26681,7 @@ will broadcast in the case of multidimensional sets of parameters.
 ##### Returns:
 
   A new Normal posterior distribution object for the unknown observation
-  mean `mu`.
+  mean `loc`.
 
 ##### Raises:
 
@@ -26644,18 +26692,18 @@ will broadcast in the case of multidimensional sets of parameters.
 
 - - -
 
-### `tf.contrib.distributions.normal_conjugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_conjugates_known_sigma_predictive}
+### `tf.contrib.distributions.normal_conjugates_known_scale_predictive(prior, scale, s, n)` {#normal_conjugates_known_scale_predictive}
 
 Posterior predictive Normal distribution w. conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
-Normal with unknown mean `mu` (described by the Normal `prior`)
-and known variance `sigma^2`.  The "known sigma predictive"
+Normal with unknown mean `loc` (described by the Normal `prior`)
+and known variance `scale^2`.  The "known scale predictive"
 is the distribution of new observations, conditioned on the existing
 observations and our prior.
 
 Accepts a prior Normal distribution object, having parameters
-`mu0` and `sigma0`, as well as known `sigma` values of the predictive
+`loc0` and `scale0`, as well as known `scale` values of the predictive
 distribution(s) (also assumed Normal),
 and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
@@ -26663,12 +26711,12 @@ and statistical estimates `s` (the sum(s) of the observations) and
 Calculates the Normal distribution(s) `p(x | sigma^2)`:
 
 ```
-  p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.mu, prior.sigma^2) dmu
-                 = N(x | prior.mu, 1/(sigma^2 + prior.sigma^2))
+p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.loc, prior.scale**2) dmu
+               = N(x | prior.loc, 1/(sigma^2 + prior.scale**2))
 ```
 
 Returns the predictive posterior distribution object, with parameters
-`(mu', sigma'^2)`, where:
+`(loc', scale'^2)`, where:
 
 ```
 sigma_n^2 = 1/(1/sigma0^2 + n/sigma^2),
@@ -26676,15 +26724,15 @@ mu' = (mu0/sigma0^2 + s/sigma^2) * sigma_n^2.
 sigma'^2 = sigma_n^2 + sigma^2,
 ```
 
-Distribution parameters from `prior`, as well as `sigma`, `s`, and `n`.
+Distribution parameters from `prior`, as well as `scale`, `s`, and `n`.
 will broadcast in the case of multidimensional sets of parameters.
 
 ##### Args:
 
 
 *  <b>`prior`</b>: `Normal` object of type `dtype`:
-    the prior distribution having parameters `(mu0, sigma0)`.
-*  <b>`sigma`</b>: tensor of type `dtype`, taking values `sigma > 0`.
+    the prior distribution having parameters `(loc0, scale0)`.
+*  <b>`scale`</b>: tensor of type `dtype`, taking values `scale > 0`.
     The known stddev parameter(s).
 *  <b>`s`</b>: Tensor of type `dtype`.  The sum(s) of observations.
 *  <b>`n`</b>: Tensor of type `int`.  The number(s) of observations.
