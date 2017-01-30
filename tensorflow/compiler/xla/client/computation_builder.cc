@@ -785,6 +785,29 @@ ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
   return ParseOpResponse(s, &response);
 }
 
+void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                 const string& outfeed_config) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return;
+  }
+
+  OutfeedRequest request;
+  request.set_outfeed_config(outfeed_config);
+  *request.mutable_operand() = operand;
+  OpRequest op_request;
+  *op_request.mutable_outfeed_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  OpResponse response;
+
+  VLOG(2) << "making outfeed op request";
+  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
+
+  if (!s.ok()) {
+    NoteError(s);
+    return;
+  }
+}
+
 ComputationDataHandle ComputationBuilder::Call(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands) {

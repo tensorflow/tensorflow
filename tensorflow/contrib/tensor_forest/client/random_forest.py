@@ -22,6 +22,7 @@ from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
@@ -100,7 +101,7 @@ def get_model_fn(params, graph_builder_class, device_assigner,
                  weights_name=None, keys_name=None, num_trainers=1,
                  trainer_id=0):
   """Return a model function given a way to construct a graph builder."""
-  def _model_fn(features, labels):
+  def _model_fn(features, labels, mode):
     """Function that returns predictions, training loss, and training op."""
     weights = None
     keys = None
@@ -110,23 +111,29 @@ def get_model_fn(params, graph_builder_class, device_assigner,
       keys = features.pop(keys_name)
 
     graph_builder = graph_builder_class(params, device_assigner=device_assigner)
-    inference = {
-        eval_metrics.INFERENCE_PROB_NAME:
-            graph_builder.inference_graph(features)
-    }
-    if not params.regression:
-      inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
-          inference[eval_metrics.INFERENCE_PROB_NAME], 1)
-    if keys:
-      inference[KEYS_NAME] = keys
+    inference = {}
+    if (mode == model_fn_lib.ModeKeys.EVAL or
+        mode == model_fn_lib.ModeKeys.INFER):
+      inference[eval_metrics.INFERENCE_PROB_NAME] = (
+          graph_builder.inference_graph(features))
+
+      if not params.regression:
+        inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
+            inference[eval_metrics.INFERENCE_PROB_NAME], 1)
+      if keys:
+        inference[KEYS_NAME] = keys
+
+    training_loss = None
+    if (mode == model_fn_lib.ModeKeys.EVAL or
+        mode == model_fn_lib.ModeKeys.TRAIN):
+      training_loss = graph_builder.training_loss(
+          features, labels, name=LOSS_NAME)
 
     # labels might be None if we're doing prediction (which brings up the
     # question of why we force everything to adhere to a single model_fn).
-    training_loss = None
     training_graph = None
-    if labels is not None:
-      training_loss = graph_builder.training_loss(
-          features, labels, name=LOSS_NAME)
+    if labels is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
               features, labels, input_weights=weights,

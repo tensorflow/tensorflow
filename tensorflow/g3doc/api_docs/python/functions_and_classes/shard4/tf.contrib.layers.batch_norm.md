@@ -19,7 +19,7 @@ they need to be added as a dependency to the `train_op`, example:
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
 One can set updates_collections=None to force the updates in place, but that
-can have speed penalty, specially in distributed settings.
+can have speed penalty, especially in distributed settings.
 
 ##### Args:
 

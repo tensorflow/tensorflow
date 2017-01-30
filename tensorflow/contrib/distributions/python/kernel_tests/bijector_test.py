@@ -496,7 +496,8 @@ class InlineBijectorTest(test.TestCase):
           forward_fn=math_ops.exp,
           inverse_fn=math_ops.log,
           inverse_log_det_jacobian_fn=(
-              lambda y: -math_ops.reduce_sum(math_ops.log(y), reduction_indices=-1)),
+              lambda y: -math_ops.reduce_sum(  # pylint: disable=g-long-lambda
+                  math_ops.log(y), reduction_indices=-1)),
           forward_log_det_jacobian_fn=(
               lambda x: math_ops.reduce_sum(x, reduction_indices=-1)),
           name="exp")
@@ -1313,8 +1314,8 @@ class AffineBijectorTest(test.TestCase):
       return itertools.chain.from_iterable(
           itertools.combinations(s, r) for r in range(len(s) + 1))
 
-    with self.test_session():
-      for args in _powerset(scale_params.items()):
+    for args in _powerset(scale_params.items()):
+      with self.test_session():
         args = dict(args)
 
         scale_args = dict({"x": x}, **args)

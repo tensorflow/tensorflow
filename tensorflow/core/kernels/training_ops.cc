@@ -1526,7 +1526,11 @@ using GPUDevice = Eigen::GpuDevice;
 #define REGISTER_KERNELS(D, T)                                          \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("ApplyAdagradDA").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdagradDAOp<D##Device, T>);
+      ApplyAdagradDAOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdagradDA")                \
+                              .Device(DEVICE_##D)                       \
+                              .TypeConstraint<T>("T"),                  \
+                          ApplyAdagradDAOp<D##Device, T>);
 
 REGISTER_KERNELS(CPU, float);
 REGISTER_KERNELS(CPU, double);

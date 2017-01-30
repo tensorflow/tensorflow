@@ -207,7 +207,49 @@ class DirichletMultinomialTest(test.TestCase):
         self.assertAllClose(mean2[class_num], 2 * mean1[class_num])
         self.assertTupleEqual((3,), mean1.shape)
 
-  def testVariance(self):
+  def testCovarianceFromSampling(self):
+    # We will test mean, cov, var, stddev on a DirichletMultinomial constructed
+    # via broadcast between alpha, n.
+    alpha = np.array([[1., 2, 3],
+                      [2.5, 4, 0.01]], dtype=np.float32)
+    # Ideally we'd be able to test broadcasting but, the multinomial sampler
+    # doesn't support different total counts.
+    n = np.float32(5)
+    with self.test_session() as sess:
+      # batch_shape=[2], event_shape=[3]
+      dist = ds.DirichletMultinomial(n, alpha)
+      x = dist.sample(int(250e3), seed=1)
+      sample_mean = math_ops.reduce_mean(x, 0)
+      x_centered = x - sample_mean[None, ...]
+      sample_cov = math_ops.reduce_mean(math_ops.matmul(
+          x_centered[..., None], x_centered[..., None, :]), 0)
+      sample_var = array_ops.matrix_diag_part(sample_cov)
+      sample_stddev = math_ops.sqrt(sample_var)
+      [
+          sample_mean_,
+          sample_cov_,
+          sample_var_,
+          sample_stddev_,
+          analytic_mean,
+          analytic_cov,
+          analytic_var,
+          analytic_stddev,
+      ] = sess.run([
+          sample_mean,
+          sample_cov,
+          sample_var,
+          sample_stddev,
+          dist.mean(),
+          dist.covariance(),
+          dist.variance(),
+          dist.stddev(),
+      ])
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.05)
+      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.03)
+      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
+
+  def testCovariance(self):
     # Shape [2]
     alpha = [1., 2]
     ns = [2., 3., 4., 5.]
@@ -234,13 +276,13 @@ class DirichletMultinomialTest(test.TestCase):
       for n in ns:
         # n is shape [] and alpha is shape [2].
         dist = ds.DirichletMultinomial(n, alpha)
-        variance = dist.variance()
-        expected_variance = n * (n + alpha_0) / (1 + alpha_0) * shared_matrix
+        covariance = dist.covariance()
+        expected_covariance = n * (n + alpha_0) / (1 + alpha_0) * shared_matrix
 
-        self.assertEqual((2, 2), variance.get_shape())
-        self.assertAllClose(expected_variance, variance.eval())
+        self.assertEqual((2, 2), covariance.get_shape())
+        self.assertAllClose(expected_covariance, covariance.eval())
 
-  def testVarianceNAlphaBroadcast(self):
+  def testCovarianceNAlphaBroadcast(self):
     alpha_v = [1., 2, 3]
     alpha_0 = 6.
 
@@ -271,14 +313,14 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session():
       # ns is shape [4, 1], and alpha is shape [4, 3].
       dist = ds.DirichletMultinomial(ns, alpha)
-      variance = dist.variance()
-      expected_variance = np.expand_dims(ns * (ns + alpha_0) / (1 + alpha_0),
-                                         -1) * shared_matrix
+      covariance = dist.covariance()
+      expected_covariance = shared_matrix * (
+          ns * (ns + alpha_0) / (1 + alpha_0))[..., None]
 
-      self.assertEqual((4, 3, 3), variance.get_shape())
-      self.assertAllClose(expected_variance, variance.eval())
+      self.assertEqual([4, 3, 3], covariance.get_shape())
+      self.assertAllClose(expected_covariance, covariance.eval())
 
-  def testVarianceMultidimensional(self):
+  def testCovarianceMultidimensional(self):
     alpha = np.random.rand(3, 5, 4).astype(np.float32)
     alpha2 = np.random.rand(6, 3, 3).astype(np.float32)
 
@@ -289,10 +331,10 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(ns, alpha)
       dist2 = ds.DirichletMultinomial(ns2, alpha2)
 
-      variance = dist.variance()
-      variance2 = dist2.variance()
-      self.assertEqual((3, 5, 4, 4), variance.get_shape())
-      self.assertEqual((6, 3, 3, 3), variance2.get_shape())
+      covariance = dist.covariance()
+      covariance2 = dist2.covariance()
+      self.assertEqual([3, 5, 4, 4], covariance.get_shape())
+      self.assertEqual([6, 3, 3, 3], covariance2.get_shape())
 
   def testZeroCountsResultsInPmfEqualToOne(self):
     # There is only one way for zero items to be selected, and this happens with
@@ -390,7 +432,7 @@ class DirichletMultinomialTest(test.TestCase):
           sample_mean,
           sample_covariance,
           dist.mean(),
-          dist.variance(),
+          dist.covariance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
       self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.15)
@@ -417,7 +459,7 @@ class DirichletMultinomialTest(test.TestCase):
           sample_mean,
           sample_covariance,
           dist.mean(),
-          dist.variance(),
+          dist.covariance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
       self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.05)

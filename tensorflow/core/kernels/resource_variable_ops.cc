@@ -149,10 +149,10 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
-template <typename Device, typename T>
-class AssignAddVariableOp : public OpKernel {
+template <typename Device, typename T, DenseUpdateType Op>
+class AssignUpdateVariableOp : public OpKernel {
  public:
-  AssignAddVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit AssignUpdateVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* context) override {
     Var* variable = nullptr;
@@ -167,35 +167,51 @@ class AssignAddVariableOp : public OpKernel {
     // ownership.
     mutex_lock ml(*variable->mu());
     const Tensor& value = context->input(1);
-    functor::DenseUpdate<Device, T, ADD> add_functor;
-    add_functor(context->eigen_device<Device>(), variable->tensor()->flat<T>(),
-                value.flat<T>());
+    functor::DenseUpdate<Device, T, Op> update_functor;
+    update_functor(context->eigen_device<Device>(),
+                   variable->tensor()->flat<T>(), value.flat<T>());
   }
 };
 
-// TODO(apassos) register for the GPU as well.
-#define REGISTER_KERNELS(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")         \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("dtype"), \
-                          AssignAddVariableOp<Eigen::ThreadPoolDevice, type>);
+#define REGISTER_KERNELS(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("AssignAddVariableOp")                                  \
+          .Device(DEVICE_CPU)                                      \
+          .TypeConstraint<type>("dtype"),                          \
+      AssignUpdateVariableOp<Eigen::ThreadPoolDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("AssignSubVariableOp")                                  \
+          .Device(DEVICE_CPU)                                      \
+          .TypeConstraint<type>("dtype"),                          \
+      AssignUpdateVariableOp<Eigen::ThreadPoolDevice, type, SUB>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)                            \
-  namespace functor {                                         \
-  template <>                                                 \
-  void DenseUpdate<GPUDevice, type, ADD>::operator()(         \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs,    \
-      typename TTypes<type>::ConstFlat rhs);                  \
-  extern template struct DenseUpdate<GPUDevice, type, ADD>;   \
-  }                                                           \
-  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")         \
-                              .Device(DEVICE_GPU)             \
-                              .TypeConstraint<type>("dtype"), \
-                          AssignAddVariableOp<GPUDevice, type>);
+#define REGISTER_GPU_KERNELS(type)                                       \
+  namespace functor {                                                    \
+  template <>                                                            \
+  void DenseUpdate<GPUDevice, type, ADD>::operator()(                    \
+      const GPUDevice& d, typename TTypes<type>::Flat lhs,               \
+      typename TTypes<type>::ConstFlat rhs);                             \
+  extern template struct DenseUpdate<GPUDevice, type, ADD>;              \
+  }                                                                      \
+  namespace functor {                                                    \
+  template <>                                                            \
+  void DenseUpdate<GPUDevice, type, SUB>::operator()(                    \
+      const GPUDevice& d, typename TTypes<type>::Flat lhs,               \
+      typename TTypes<type>::ConstFlat rhs);                             \
+  extern template struct DenseUpdate<GPUDevice, type, SUB>;              \
+  }                                                                      \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("dtype"),            \
+                          AssignUpdateVariableOp<GPUDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("dtype"),            \
+                          AssignUpdateVariableOp<GPUDevice, type, SUB>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS

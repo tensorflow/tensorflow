@@ -44,7 +44,7 @@ class Categorical(distribution.Distribution):
 
   ```python
   p = [0.1, 0.5, 0.4]
-  dist = Categorical(p=p)
+  dist = Categorical(probs=p)
   ```
 
   Creates a 3-class distiribution, with the 2nd class the most likely to be
@@ -61,7 +61,7 @@ class Categorical(distribution.Distribution):
   ```python
   # counts is a scalar.
   p = [0.1, 0.4, 0.5]
-  dist = Categorical(p=p)
+  dist = Categorical(probs=p)
   dist.pmf(0)  # Shape []
 
   # p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
@@ -78,7 +78,7 @@ class Categorical(distribution.Distribution):
   def __init__(
       self,
       logits=None,
-      p=None,
+      probs=None,
       dtype=dtypes.int32,
       validate_args=False,
       allow_nan_stats=True,
@@ -87,29 +87,35 @@ class Categorical(distribution.Distribution):
 
     Args:
       logits: An N-D `Tensor`, `N >= 1`, representing the log probabilities
-          of a set of Categorical distributions. The first `N - 1` dimensions
-          index into a batch of independent distributions and the last dimension
-          represents a vector of logits for each class. Only one of `logits` or
-          `p` should be passed in.
-      p: An N-D `Tensor`, `N >= 1`, representing the probabilities
-          of a set of Categorical distributions. The first `N - 1` dimensions
-          index into a batch of independent distributions and the last dimension
-          represents a vector of probabilities for each class. Only one of
-          `logits` or `p` should be passed in.
+        of a set of Categorical distributions. The first `N - 1` dimensions
+        index into a batch of independent distributions and the last dimension
+        represents a vector of logits for each class. Only one of `logits` or
+        `probs` should be passed in.
+      probs: An N-D `Tensor`, `N >= 1`, representing the probabilities
+        of a set of Categorical distributions. The first `N - 1` dimensions
+        index into a batch of independent distributions and the last dimension
+        represents a vector of probabilities for each class. Only one of
+        `logits` or `probs` should be passed in.
       dtype: The type of the event samples (default: int32).
-      validate_args: Unused in this distribution.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: A name for this distribution (optional).
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined.  When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
     parameters.pop("self")
-    with ops.name_scope(name, values=[logits]) as ns:
-      self._logits, self._p = distribution_util.get_logits_and_prob(
-          name=name, logits=logits, p=p, validate_args=validate_args,
-          multidimensional=True)
+    with ops.name_scope(name, values=[logits, probs]) as ns:
+      self._logits, self._probs = distribution_util.get_logits_and_probs(
+          logits=logits,
+          probs=probs,
+          validate_args=validate_args,
+          multidimensional=True,
+          name=name)
 
       logits_shape_static = self._logits.get_shape().with_rank_at_least(1)
       if logits_shape_static.ndims is not None:
@@ -161,11 +167,11 @@ class Categorical(distribution.Distribution):
     return self._logits
 
   @property
-  def p(self):
+  def probs(self):
     """Vector of probabilities summing to one.
 
     Each element is the probability of drawing that coordinate."""
-    return self._p
+    return self._probs
 
   def _batch_shape(self):
     # Use identity to inherit callers "name".
@@ -210,7 +216,7 @@ class Categorical(distribution.Distribution):
 
   def _entropy(self):
     return -math_ops.reduce_sum(
-        nn_ops.log_softmax(self.logits) * self.p, axis=-1)
+        nn_ops.log_softmax(self.logits) * self.probs, axis=-1)
 
   def _mode(self):
     ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
@@ -234,8 +240,8 @@ def _kl_categorical_categorical(a, b, name=None):
   """
   with ops.name_scope(
     name, "kl_categorical_categorical", [a.logits, b.logits]):
-    # sum(p*ln(p/q))
-    return math_ops.reduce_sum(
-        nn_ops.softmax(a.logits) * (
-            nn_ops.log_softmax(a.logits) - nn_ops.log_softmax(b.logits)),
-        axis=-1)
+    # sum(probs log(probs / (1 - probs)))
+    delta_log_probs1 = (nn_ops.log_softmax(a.logits) -
+                        nn_ops.log_softmax(b.logits))
+    return math_ops.reduce_sum(nn_ops.softmax(a.logits) * delta_log_probs1,
+                               axis=-1)

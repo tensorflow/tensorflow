@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad_da
@@ -29,12 +30,16 @@ from tensorflow.python.training import adagrad_da
 
 class AdagradDAOptimizerTest(test.TestCase):
 
-  def testAdagradDAwithoutRegularizationBasic1(self):
+  def doTestAdagradDAwithoutRegularizationBasic1(self, use_resource=False):
     for dtype in [dtypes.float64, dtypes.float32]:
       with self.test_session() as sess:
         global_step = variables.Variable(0, dtype=dtypes.int64)
-        var0 = variables.Variable([0.0, 0.0], dtype=dtype)
-        var1 = variables.Variable([0.0, 0.0], dtype=dtype)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([0.0, 0.0], dtype=dtype)
+          var1 = variables.Variable([0.0, 0.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
         opt = adagrad_da.AdagradDAOptimizer(
@@ -65,6 +70,12 @@ class AdagradDAOptimizerTest(test.TestCase):
             np.array([-0.904534, -1.603567]), v0_val)
         self.assertAllCloseAccordingToType(
             np.array([-0.094821, -0.189358]), v1_val)
+
+  def testAdagradDAWithoutRegularizationBasic1(self):
+    self.doTestAdagradDAwithoutRegularizationBasic1()
+
+  def testResourceAdagradDAWithoutRegularizationBasic1(self):
+    self.doTestAdagradDAwithoutRegularizationBasic1(use_resource=True)
 
   def testAdagradDAwithoutRegularizationBasic2(self):
     for dtype in [dtypes.float64, dtypes.float32]:
