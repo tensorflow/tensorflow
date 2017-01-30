@@ -95,7 +95,10 @@ class APIChangeSpec(object):
         "tf.split": {
             "split_dim": "axis",
             "num_split": "num_or_size_splits"
-        }
+        },
+        "tf.concat": {
+            "concat_dim": "axis"
+        },
     }
 
     # Mapping from function to the new name of the function
@@ -142,6 +145,8 @@ class APIChangeSpec(object):
         "tf.select": "tf.where",
         "tf.complex_abs": "tf.abs",
         "tf.batch_matmul": "tf.matmul",
+        "tf.pack": "tf.stack",
+        "tf.unpack": "tf.unstack",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -356,16 +361,21 @@ class TensorFlowCallVisitor(ast.NodeVisitor):
       # Examine any non-keyword argument and make it into a keyword argument
       # if reordering required.
       function_reorders = self._api_change_spec.function_reorders
+      function_keyword_renames = (
+          self._api_change_spec.function_keyword_renames)
+
       if full_name in function_reorders:
         reordered = function_reorders[full_name]
         for idx, arg in enumerate(node.args):
+          keyword_arg = reordered[idx]
+          if (full_name in function_keyword_renames and
+              keyword_arg in function_keyword_renames[full_name]):
+            keyword_arg = function_keyword_renames[full_name][keyword_arg]
           self._file_edit.add("Added keyword %r to reordered function %r"
                               % (reordered[idx], full_name), arg.lineno,
-                              arg.col_offset, "", reordered[idx] + "=")
+                              arg.col_offset, "", keyword_arg + "=")
 
       # Examine each keyword argument and convert it to the final renamed form
-      function_keyword_renames = (
-          self._api_change_spec.function_keyword_renames)
       renamed_keywords = ({} if full_name not in function_keyword_renames else
                           function_keyword_renames[full_name])
       for keyword in node.keywords:
