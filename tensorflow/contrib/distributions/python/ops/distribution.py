@@ -22,7 +22,6 @@ import abc
 import contextlib
 import inspect
 import types
-import warnings
 
 import numpy as np
 import six
@@ -986,90 +985,6 @@ class Distribution(_BaseDistribution):
     """Mode."""
     with self._name_scope(name):
       return self._mode()
-
-  def log_pdf(self, value, name="log_pdf"):
-    """Log probability density function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-
-    Returns:
-      log_prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if not `is_continuous`.
-    """
-    warnings.warn("Please use `log_prob` instead of `log_pdf`. `log_pdf` "
-                  "will be deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if not self.is_continuous:
-      raise TypeError("log_pdf is undefined for non-continuous distributions.")
-    return self.log_prob(value, name=name)
-
-  def pdf(self, value, name="pdf"):
-    """Probability density function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-
-    Returns:
-      prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if not `is_continuous`.
-    """
-    warnings.warn("Please use `prob` instead of `pdf`. `pdf` will be "
-                  "deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if not self.is_continuous:
-      raise TypeError("pdf is undefined for non-continuous distributions.")
-    return self.prob(value, name)
-
-  def log_pmf(self, value, name="log_pmf"):
-    """Log probability mass function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-
-    Returns:
-      log_pmf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if `is_continuous`.
-    """
-    warnings.warn("Please use `log_prob` instead of `log_pmf`. `log_pmf` will "
-                  "be deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if self.is_continuous:
-      raise TypeError("log_pmf is undefined for continuous distributions.")
-    return self.log_prob(value, name=name)
-
-  def pmf(self, value, name="pmf"):
-    """Probability mass function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-
-    Returns:
-      pmf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if `is_continuous`.
-    """
-    warnings.warn("Please use `prob` instead of `pmf`. `pmf` will be "
-                  "deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if self.is_continuous:
-      raise TypeError("pmf is undefined for continuous distributions.")
-    return self.prob(value, name=name)
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):

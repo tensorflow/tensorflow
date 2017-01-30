@@ -47,7 +47,7 @@ class NormalTest(test.TestCase):
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
-      posterior_log_pdf = posterior.log_pdf(x).eval()
+      posterior_log_pdf = posterior.log_prob(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6,))
 
   def testNormalConjugateKnownSigmaPosteriorND(self):
@@ -68,7 +68,7 @@ class NormalTest(test.TestCase):
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
-      posterior_log_pdf = posterior.log_pdf(x).eval()
+      posterior_log_pdf = posterior.log_prob(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6, 2))
 
   def testNormalConjugateKnownSigmaNDPosteriorND(self):
@@ -93,7 +93,7 @@ class NormalTest(test.TestCase):
       self.assertTrue(isinstance(posterior, distributions.Normal))
 
       # Calculate log_pdf under the 2 models
-      posterior_log_pdf = posterior.log_pdf(x)
+      posterior_log_pdf = posterior.log_prob(x)
       self.assertEqual(posterior_log_pdf.get_shape(), (6, 2))
       self.assertEqual(posterior_log_pdf.eval().shape, (6, 2))
 
@@ -112,7 +112,7 @@ class NormalTest(test.TestCase):
 
       # Smoke test
       self.assertTrue(isinstance(predictive, distributions.Normal))
-      predictive_log_pdf = predictive.log_pdf(x).eval()
+      predictive_log_pdf = predictive.log_prob(x).eval()
       self.assertEqual(predictive_log_pdf.shape, (6,))
 
 

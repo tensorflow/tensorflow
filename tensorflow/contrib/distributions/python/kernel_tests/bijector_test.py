@@ -77,7 +77,7 @@ def assert_scalar_congruency(bijector,
   3. the jacobian is the correct change of measure.
 
   This can only be used for a Bijector mapping open subsets of the real line
-  to themselves.  This is due to the fact that this test compares the pdf
+  to themselves.  This is due to the fact that this test compares the `prob`
   before/after transformation with the Lebesgue measure on the line.
 
   Args:

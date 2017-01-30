@@ -110,8 +110,9 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[loss],
           expected_addl_terms=[
-              likelihood.distribution.log_pdf(likelihood.value()) * loss_nograd,
-              prior.distribution.log_pdf(prior.value()) * loss_nograd
+              likelihood.distribution.log_prob(
+                  likelihood.value()) * loss_nograd,
+              prior.distribution.log_prob(prior.value()) * loss_nograd
           ],
           xs=[mu, sigma])
 
@@ -119,8 +120,9 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[loss, part_loss],
           expected_addl_terms=[
-              likelihood.distribution.log_pdf(likelihood.value()) * loss_nograd,
-              (prior.distribution.log_pdf(prior.value()) *
+              likelihood.distribution.log_prob(
+                  likelihood.value()) * loss_nograd,
+              (prior.distribution.log_prob(prior.value()) *
                array_ops.stop_gradient(part_loss + loss))
           ],
           xs=[mu, sigma])
@@ -129,8 +131,8 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[sum_loss * array_ops.ones_like(loss)],
           expected_addl_terms=[(
-              likelihood.distribution.log_pdf(likelihood.value()) *
-              sum_loss_nograd), prior.distribution.log_pdf(prior.value()) *
+              likelihood.distribution.log_prob(likelihood.value()) *
+              sum_loss_nograd), prior.distribution.log_prob(prior.value()) *
                                sum_loss_nograd],
           xs=[mu, sigma])
 
@@ -138,9 +140,9 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[loss, sum_loss * array_ops.ones_like(loss)],
           expected_addl_terms=[(
-              likelihood.distribution.log_pdf(likelihood.value()) *
+              likelihood.distribution.log_prob(likelihood.value()) *
               array_ops.stop_gradient(loss + sum_loss)),
-                               (prior.distribution.log_pdf(prior.value()) *
+                               (prior.distribution.log_prob(prior.value()) *
                                 array_ops.stop_gradient(loss + sum_loss))],
           xs=[mu, sigma])
 
@@ -148,7 +150,7 @@ class TestSurrogateLosses(test.TestCase):
       self._testSurrogateLoss(
           session=sess,
           losses=[loss_nodeps],
-          expected_addl_terms=[(prior_2.distribution.log_pdf(prior_2.value()) *
+          expected_addl_terms=[(prior_2.distribution.log_prob(prior_2.value()) *
                                 loss_nodeps_nograd)],
           xs=[mu, sigma])
 
@@ -158,10 +160,10 @@ class TestSurrogateLosses(test.TestCase):
           losses=[loss, loss_nodeps],
           # We can't guarantee ordering of output losses in this case.
           expected_addl_terms=[(
-              likelihood.distribution.log_pdf(likelihood.value()) *
-              loss_nograd), prior.distribution.log_pdf(prior.value()) *
+              likelihood.distribution.log_prob(likelihood.value()) *
+              loss_nograd), prior.distribution.log_prob(prior.value()) *
                                loss_nograd,
-                               (prior_2.distribution.log_pdf(prior_2.value()) *
+                               (prior_2.distribution.log_prob(prior_2.value()) *
                                 loss_nodeps_nograd)],
           xs=[mu, sigma])
 
@@ -188,8 +190,8 @@ class TestSurrogateLosses(test.TestCase):
         sl_dt1 = sg.surrogate_loss([loss], stochastic_tensors=[dt1])
         sl_dt2 = sg.surrogate_loss([loss], stochastic_tensors=[dt2])
 
-        dt1_term = dt1.distribution.log_pdf(dt1) * loss
-        dt2_term = dt2.distribution.log_pdf(dt2) * loss
+        dt1_term = dt1.distribution.log_prob(dt1) * loss
+        dt2_term = dt2.distribution.log_prob(dt2) * loss
 
         self.assertAllClose(*sess.run(
             [sl_all, sum([loss, dt1_term, dt2_term])]))

@@ -74,12 +74,12 @@ class BinomialTest(test.TestCase):
     n = [[5.]]
     with self.test_session():
       binom = binomial.Binomial(total_count=n, probs=p, validate_args=True)
-      binom.pmf([2., 3, 2]).eval()
-      binom.pmf([3., 1, 2]).eval()
+      binom.prob([2., 3, 2]).eval()
+      binom.prob([3., 1, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
-        binom.pmf([-1., 4, 2]).eval()
+        binom.prob([-1., 4, 2]).eval()
       with self.assertRaisesOpError("Condition x <= y.*"):
-        binom.pmf([7., 3, 0]).eval()
+        binom.prob([7., 3, 0]).eval()
 
   def testPmfNonIntegerCounts(self):
     p = [[0.1, 0.2, 0.7]]
@@ -104,7 +104,7 @@ class BinomialTest(test.TestCase):
       # Both zero-batches.  No broadcast
       p = 0.5
       counts = 1.
-      pmf = binomial.Binomial(total_count=1., probs=p).pmf(counts)
+      pmf = binomial.Binomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose(0.5, pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -114,7 +114,7 @@ class BinomialTest(test.TestCase):
       p = 0.1
       counts = 3.
       binom = binomial.Binomial(total_count=5., probs=p)
-      pmf = binom.pmf(counts)
+      pmf = binom.prob(counts)
       self.assertAllClose(stats.binom.pmf(counts, n=5., p=p), pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -122,7 +122,7 @@ class BinomialTest(test.TestCase):
     with self.test_session():
       p = [[0.1, 0.9]]
       counts = [[1., 2.]]
-      pmf = binomial.Binomial(total_count=3., probs=p).pmf(counts)
+      pmf = binomial.Binomial(total_count=3., probs=p).prob(counts)
       self.assertAllClose(stats.binom.pmf(counts, n=3., p=p), pmf.eval())
       self.assertEqual((1, 2), pmf.get_shape())
 
@@ -130,7 +130,7 @@ class BinomialTest(test.TestCase):
     with self.test_session():
       p = [0.1, 0.4]
       counts = [[1.], [0.]]
-      pmf = binomial.Binomial(total_count=1., probs=p).pmf(counts)
+      pmf = binomial.Binomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose([[0.1, 0.4], [0.9, 0.6]], pmf.eval())
       self.assertEqual((2, 2), pmf.get_shape())
 

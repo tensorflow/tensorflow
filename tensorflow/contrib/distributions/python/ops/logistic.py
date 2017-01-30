@@ -72,7 +72,7 @@ class _Logistic(distribution.Distribution):
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
-  dist.pdf([0, 1.5])
+  dist.prob([0, 1.5])
 
   # Get 3 samples, returning a 3 x 2 tensor.
   dist.sample([3])
@@ -87,7 +87,7 @@ class _Logistic(distribution.Distribution):
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
-  dist.pdf(3.0)
+  dist.prob(3.0)
   ```
 
   """

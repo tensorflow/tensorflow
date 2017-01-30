@@ -81,12 +81,12 @@ class MultinomialTest(test.TestCase):
     n = [[5.]]
     with self.test_session():
       dist = ds.Multinomial(total_count=n, probs=p, validate_args=True)
-      dist.pmf([2., 3, 0]).eval()
-      dist.pmf([3., 0, 2]).eval()
+      dist.prob([2., 3, 0]).eval()
+      dist.prob([3., 0, 2]).eval()
       with self.assertRaisesOpError("counts must be non-negative"):
-        dist.pmf([-1., 4, 2]).eval()
+        dist.prob([-1., 4, 2]).eval()
       with self.assertRaisesOpError("counts must sum to `self.total_count`"):
-        dist.pmf([3., 3, 0]).eval()
+        dist.prob([3., 3, 0]).eval()
 
   def testPmfNonIntegerCounts(self):
     p = [[0.1, 0.2, 0.7]]
@@ -94,27 +94,27 @@ class MultinomialTest(test.TestCase):
     with self.test_session():
       # No errors with integer n.
       multinom = ds.Multinomial(total_count=n, probs=p, validate_args=True)
-      multinom.pmf([2., 1, 2]).eval()
-      multinom.pmf([3., 0, 2]).eval()
+      multinom.prob([2., 1, 2]).eval()
+      multinom.prob([3., 0, 2]).eval()
       # Counts don't sum to n.
       with self.assertRaisesOpError("counts must sum to `self.total_count`"):
-        multinom.pmf([2., 3, 2]).eval()
+        multinom.prob([2., 3, 2]).eval()
       # Counts are non-integers.
       with self.assertRaisesOpError(
           "counts cannot contain fractional components."):
-        multinom.pmf([1.0, 2.5, 1.5]).eval()
+        multinom.prob([1.0, 2.5, 1.5]).eval()
 
       multinom = ds.Multinomial(total_count=n, probs=p, validate_args=False)
-      multinom.pmf([1., 2., 2.]).eval()
+      multinom.prob([1., 2., 2.]).eval()
       # Non-integer arguments work.
-      multinom.pmf([1.0, 2.5, 1.5]).eval()
+      multinom.prob([1.0, 2.5, 1.5]).eval()
 
   def testPmfBothZeroBatches(self):
     with self.test_session():
       # Both zero-batches.  No broadcast
       p = [0.5, 0.5]
       counts = [1., 0]
-      pmf = ds.Multinomial(total_count=1., probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose(0.5, pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -124,7 +124,7 @@ class MultinomialTest(test.TestCase):
       p = [0.1, 0.9]
       counts = [3., 2]
       dist = ds.Multinomial(total_count=5., probs=p)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       # 5 choose 3 = 5 choose 2 = 10. 10 * (.9)^2 * (.1)^3 = 81/10000.
       self.assertAllClose(81. / 10000, pmf.eval())
       self.assertEqual((), pmf.get_shape())
@@ -133,7 +133,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session():
       p = [[0.1, 0.9]]
       counts = [[1., 0], [0, 1]]
-      pmf = ds.Multinomial(total_count=1., probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose([0.1, 0.9], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -141,7 +141,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session():
       p = [0.1, 0.9]
       counts = [[1., 0], [0, 1]]
-      pmf = ds.Multinomial(total_count=1., probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose([0.1, 0.9], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -149,7 +149,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session():
       p = [[0.1, 0.9], [0.7, 0.3]]
       counts = [[1., 0]]
-      pmf = ds.Multinomial(total_count=1., probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose(pmf.eval(), [0.1, 0.7])
       self.assertEqual((2), pmf.get_shape())
 
@@ -157,7 +157,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session():
       p = [[0.1, 0.9], [0.7, 0.3]]
       counts = [1., 0]
-      pmf = ds.Multinomial(total_count=1., probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose(pmf.eval(), [0.1, 0.7])
       self.assertEqual(pmf.get_shape(), (2))
 
@@ -169,7 +169,7 @@ class MultinomialTest(test.TestCase):
       n = [[3., 3], [3, 3]]
       # [2]
       counts = [2., 1]
-      pmf = ds.Multinomial(total_count=n, probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=n, probs=p).prob(counts)
       pmf.eval()
       self.assertEqual(pmf.get_shape(), (2, 2))
 
@@ -178,7 +178,7 @@ class MultinomialTest(test.TestCase):
       p = [0.1, 0.9]
       counts = [3., 2]
       n = np.full([4, 3], 5., dtype=np.float32)
-      pmf = ds.Multinomial(total_count=n, probs=p).pmf(counts)
+      pmf = ds.Multinomial(total_count=n, probs=p).prob(counts)
       pmf.eval()
       self.assertEqual((4, 3), pmf.get_shape())
 

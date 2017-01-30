@@ -70,28 +70,28 @@ class DirichletMultinomialTest(test.TestCase):
     n = [[5.]]
     with self.test_session():
       dist = ds.DirichletMultinomial(n, alpha, validate_args=True)
-      dist.pmf([2., 3, 0]).eval()
-      dist.pmf([3., 0, 2]).eval()
+      dist.prob([2., 3, 0]).eval()
+      dist.prob([3., 0, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
-        dist.pmf([-1., 4, 2]).eval()
+        dist.prob([-1., 4, 2]).eval()
       with self.assertRaisesOpError("counts do not sum to n"):
-        dist.pmf([3., 3, 0]).eval()
+        dist.prob([3., 3, 0]).eval()
 
   def testPmfNonIntegerCounts(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
       dist = ds.DirichletMultinomial(n, alpha, validate_args=True)
-      dist.pmf([2., 3, 0]).eval()
-      dist.pmf([3., 0, 2]).eval()
-      dist.pmf([3.0, 0, 2.0]).eval()
+      dist.prob([2., 3, 0]).eval()
+      dist.prob([3., 0, 2]).eval()
+      dist.prob([3.0, 0, 2.0]).eval()
       # Both equality and integer checking fail.
       with self.assertRaisesOpError("Condition x == y.*"):
-        dist.pmf([1.0, 2.5, 1.5]).eval()
+        dist.prob([1.0, 2.5, 1.5]).eval()
       dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
-      dist.pmf([1., 2., 3.]).eval()
+      dist.prob([1., 2., 3.]).eval()
       # Non-integer arguments work.
-      dist.pmf([1.0, 2.5, 1.5]).eval()
+      dist.prob([1.0, 2.5, 1.5]).eval()
 
   def testPmfBothZeroBatches(self):
     # The probabilities of one vote falling into class k is the mean for class
@@ -101,7 +101,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = [1., 2]
       counts = [1., 0]
       dist = ds.DirichletMultinomial(1., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(1 / 3., pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -113,7 +113,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = [1., 2]
       counts = [3., 2]
       dist = ds.DirichletMultinomial(5., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(1 / 7., pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -125,7 +125,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [3., 2]
       n = np.full([4, 3], 5., dtype=np.float32)
       dist = ds.DirichletMultinomial(n, alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose([[1 / 7., 1 / 7., 1 / 7.]] * 4, pmf.eval())
       self.assertEqual((4, 3), pmf.get_shape())
 
@@ -136,7 +136,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = [[1., 2]]
       counts = [[1., 0], [0., 1]]
       dist = ds.DirichletMultinomial([1.], alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose([1 / 3., 2 / 3.], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -146,7 +146,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session():
       alpha = [1., 2]
       counts = [[1., 0], [0., 1]]
-      pmf = ds.DirichletMultinomial(1., alpha).pmf(counts)
+      pmf = ds.DirichletMultinomial(1., alpha).prob(counts)
       self.assertAllClose([1 / 3., 2 / 3.], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -156,7 +156,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       counts = [[1., 0]]
-      pmf = ds.DirichletMultinomial([1., 1.], alpha).pmf(counts)
+      pmf = ds.DirichletMultinomial([1., 1.], alpha).prob(counts)
       self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -166,7 +166,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       counts = [1., 0]
-      pmf = ds.DirichletMultinomial(1., alpha).pmf(counts)
+      pmf = ds.DirichletMultinomial(1., alpha).prob(counts)
       self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
       self.assertEqual((2), pmf.get_shape())
 
@@ -180,7 +180,7 @@ class DirichletMultinomialTest(test.TestCase):
         counts[class_num] = 1
         dist = ds.DirichletMultinomial(1., alpha)
         mean = dist.mean().eval()
-        pmf = dist.pmf(counts).eval()
+        pmf = dist.prob(counts).eval()
 
         self.assertAllClose(mean[class_num], pmf)
         self.assertTupleEqual((3,), mean.shape)
@@ -343,7 +343,7 @@ class DirichletMultinomialTest(test.TestCase):
     counts = [0., 0]
     with self.test_session():
       dist = ds.DirichletMultinomial(0., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(1.0, pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -358,7 +358,7 @@ class DirichletMultinomialTest(test.TestCase):
     counts = [0., 0, 1]
     with self.test_session():
       dist = ds.DirichletMultinomial(1., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(0.8, pmf.eval(), atol=1e-4)
       self.assertEqual((), pmf.get_shape())
 
@@ -366,7 +366,7 @@ class DirichletMultinomialTest(test.TestCase):
     counts = [0., 0, 2]
     with self.test_session():
       dist = ds.DirichletMultinomial(2., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(0.8**2, pmf.eval(), atol=1e-2)
       self.assertEqual((), pmf.get_shape())
 
@@ -374,7 +374,7 @@ class DirichletMultinomialTest(test.TestCase):
     counts = [1., 0, 2]
     with self.test_session():
       dist = ds.DirichletMultinomial(3., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(3 * 0.1 * 0.8 * 0.8, pmf.eval(), atol=1e-2)
       self.assertEqual((), pmf.get_shape())
 
@@ -389,7 +389,7 @@ class DirichletMultinomialTest(test.TestCase):
     counts = [1., 0]
     with self.test_session():
       dist = ds.DirichletMultinomial(1., alpha)
-      pmf = dist.pmf(counts)
+      pmf = dist.prob(counts)
       self.assertAllClose(0.5, pmf.eval())
       self.assertEqual((), pmf.get_shape())
 
@@ -398,8 +398,8 @@ class DirichletMultinomialTest(test.TestCase):
     counts_different = [1, 1.]
     with self.test_session():
       dist = ds.DirichletMultinomial(2., alpha)
-      pmf_same = dist.pmf(counts_same)
-      pmf_different = dist.pmf(counts_different)
+      pmf_same = dist.prob(counts_same)
+      pmf_different = dist.prob(counts_different)
       self.assertLess(5 * pmf_different.eval(), pmf_same.eval())
       self.assertEqual((), pmf_same.get_shape())
 
@@ -410,7 +410,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [[1., 0], [0., -1]]  # counts should be non-negative.
       n = [-5.3]  # n should be a non negative integer equal to counts.sum.
       dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
-      dist.pmf(counts).eval()  # Should not raise.
+      dist.prob(counts).eval()  # Should not raise.
 
   def testSampleUnbiasedNonScalarBatch(self):
     with self.test_session() as sess:

@@ -220,9 +220,9 @@ class Bijector(object):
     - Computing a log-likelihood:
 
     ```python
-    def transformed_log_pdf(bijector, log_pdf, x):
+    def transformed_log_prob(bijector, log_prob, x):
       return (bijector.inverse_log_det_jacobian(x) +
-              log_pdf(bijector.inverse(x)))
+              log_prob(bijector.inverse(x)))
     ```
 
     - Transforming a random outcome:

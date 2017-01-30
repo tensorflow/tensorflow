@@ -86,7 +86,7 @@ class StudentT(distribution.Distribution):
   single_dist = tf.contrib.distributions.StudentT(df=3)
 
   # Evaluate the pdf at 1, returning a scalar Tensor.
-  single_dist.pdf(1.)
+  single_dist.prob(1.)
 
   # Define a batch of two scalar valued Student t's.
   # The first has degrees of freedom 2, mean 1, and scale 11.
@@ -97,7 +97,7 @@ class StudentT(distribution.Distribution):
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
-  multi_dist.pdf([0, 1.5])
+  multi_dist.prob([0, 1.5])
 
   # Get 3 samples, returning a 3 x 2 tensor.
   multi_dist.sample(3)
@@ -112,7 +112,7 @@ class StudentT(distribution.Distribution):
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
-  dist.pdf(3.0)
+  dist.prob(3.0)
   ```
 
   """

@@ -72,11 +72,11 @@ class _OneHotCategorical(distribution.Distribution):
   # counts is a scalar.
   p = [0.1, 0.4, 0.5]
   dist = OneHotCategorical(probs=p)
-  dist.pmf([0,1,0])  # Shape []
+  dist.prob([0,1,0])  # Shape []
 
   # p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match.
   samples = [[0,1,0], [1,0,0]]
-  dist.pmf(samples)  # Shape [2]
+  dist.prob(samples)  # Shape [2]
   ```
 
   """
@@ -161,9 +161,7 @@ class _OneHotCategorical(distribution.Distribution):
 
   @property
   def probs(self):
-    """Vector of probabilities summing to one.
-
-    Each element is the probability of drawing that coordinate."""
+    """Vector of coordinatewise probabilities."""
     return self._probs
 
   def _batch_shape(self):

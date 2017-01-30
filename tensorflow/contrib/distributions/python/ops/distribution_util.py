@@ -118,20 +118,19 @@ def same_dynamic_shape(a, b):
   a = ops.convert_to_tensor(a, name="a")
   b = ops.convert_to_tensor(b, name="b")
 
+  # Here we can't just do math_ops.equal(a.shape, b.shape), since
+  # static shape inference may break the equality comparison between
+  # shape(a) and shape(b) in math_ops.equal.
+  def all_shapes_equal():
+    return math_ops.reduce_all(math_ops.equal(
+        array_ops.concat([array_ops.shape(a), array_ops.shape(b)], 0),
+        array_ops.concat([array_ops.shape(b), array_ops.shape(a)], 0)))
+
   # One of the shapes isn't fully defined, so we need to use the dynamic
   # shape.
   return control_flow_ops.cond(
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
-      # Here we can't just do math_ops.equal(a.shape, b.shape), since
-      # static shape inference may break the equality comparison between
-      # shape(a) and shape(b) in math_ops.equal.
-      lambda: math_ops.reduce_all(math_ops.equal(
-          array_ops.concat((
-              array_ops.shape(a),
-              array_ops.shape(b)), 0),
-          array_ops.concat((
-              array_ops.shape(b),
-              array_ops.shape(a)), 0))),
+      all_shapes_equal,
       lambda: constant_op.constant(False))
 
 
@@ -267,7 +266,7 @@ def matrix_diag_transform(matrix, transform=None, name=None):
 
   # Standard log loss.  Minimizing this will "train" mu and chol, and then dist
   # will be a distribution predicting labels as multivariate Gaussians.
-  loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+  loss = -1 * tf.reduce_mean(dist.log_prob(labels))
   ```
 
   Args:

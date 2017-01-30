@@ -64,7 +64,7 @@ class QuantizedDistributionTest(test.TestCase):
 
         # pmf
         pmf_n1, pmf_0, pmf_1, pmf_2, pmf_3, pmf_4, pmf_5 = sess.run(
-            qdist.pmf([-1., 0., 1., 2., 3., 4., 5.]))
+            qdist.prob([-1., 0., 1., 2., 3., 4., 5.]))
         # uniform had no mass below -1.
         self.assertAllClose(0., pmf_n1)
         # uniform had no mass below 0.
@@ -151,11 +151,11 @@ class QuantizedDistributionTest(test.TestCase):
       x = rng.randint(-3, 13, size=batch_shape).astype(np.float32)
 
       # pmf
-      # qdist.pmf(j) = 1 / 10 for j in {1,...,10}, and 0 otherwise,
+      # qdist.prob(j) = 1 / 10 for j in {1,...,10}, and 0 otherwise,
       expected_pmf = (1 / 10) * np.ones(batch_shape)
       expected_pmf[x < 1] = 0.
       expected_pmf[x > 10] = 0.
-      self.assertAllClose(expected_pmf, qdist.pmf(x).eval())
+      self.assertAllClose(expected_pmf, qdist.prob(x).eval())
 
       # cdf
       # qdist.cdf(j)
@@ -237,7 +237,7 @@ class QuantizedDistributionTest(test.TestCase):
       # the interval (0, 1].  Recall we use ceiling in the sampling definition.
       self.assertLess(0.5, samps.min())
       x_vals = np.arange(1, 11).astype(np.float32)
-      pmf_vals = qdist.pmf(x_vals).eval()
+      pmf_vals = qdist.prob(x_vals).eval()
       for ii in range(10):
         self.assertAllClose(
             pmf_vals[ii], (samps == x_vals[ii]).mean(), atol=stddev_err_bound)

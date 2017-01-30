@@ -62,15 +62,15 @@ class Categorical(distribution.Distribution):
   # counts is a scalar.
   p = [0.1, 0.4, 0.5]
   dist = Categorical(probs=p)
-  dist.pmf(0)  # Shape []
+  dist.prob(0)  # Shape []
 
   # p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
   counts = [1, 0]
-  dist.pmf(counts)  # Shape [2]
+  dist.prob(counts)  # Shape [2]
 
   # p will be broadcast to shape [3, 5, 7, 3] to match counts.
   counts = [[...]] # Shape [5, 7, 3]
-  dist.pmf(counts)  # Shape [5, 7, 3]
+  dist.prob(counts)  # Shape [5, 7, 3]
   ```
 
   """
@@ -168,9 +168,7 @@ class Categorical(distribution.Distribution):
 
   @property
   def probs(self):
-    """Vector of probabilities summing to one.
-
-    Each element is the probability of drawing that coordinate."""
+    """Vector of coordinatewise probabilities."""
     return self._probs
 
   def _batch_shape(self):
@@ -238,8 +236,8 @@ def _kl_categorical_categorical(a, b, name=None):
   Returns:
     Batchwise KL(a || b)
   """
-  with ops.name_scope(
-    name, "kl_categorical_categorical", [a.logits, b.logits]):
+  with ops.name_scope(name, "kl_categorical_categorical",
+                      values=[a.logits, b.logits]):
     # sum(probs log(probs / (1 - probs)))
     delta_log_probs1 = (nn_ops.log_softmax(a.logits) -
                         nn_ops.log_softmax(b.logits))

@@ -94,10 +94,10 @@ class CategoricalTest(test.TestCase):
     self.assertEqual(dist.logits.dtype, dtypes.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
     self.assertEqual(
-        dist.logits.dtype, dist.pmf(np.array(
+        dist.logits.dtype, dist.prob(np.array(
             0, dtype=np.int64)).dtype)
     self.assertEqual(
-        dist.logits.dtype, dist.log_pmf(np.array(
+        dist.logits.dtype, dist.log_prob(np.array(
             0, dtype=np.int64)).dtype)
 
   def testUnknownShape(self):
@@ -118,19 +118,19 @@ class CategoricalTest(test.TestCase):
     histograms = [[0.2, 0.8], [0.6, 0.4]]
     dist = categorical.Categorical(math_ops.log(histograms) - 50.)
     with self.test_session():
-      self.assertAllClose(dist.pmf([0, 1]).eval(), [0.2, 0.4])
+      self.assertAllClose(dist.prob([0, 1]).eval(), [0.2, 0.4])
 
   def testPMFNoBatch(self):
     histograms = [0.2, 0.8]
     dist = categorical.Categorical(math_ops.log(histograms) - 50.)
     with self.test_session():
-      self.assertAllClose(dist.pmf(0).eval(), 0.2)
+      self.assertAllClose(dist.prob(0).eval(), 0.2)
 
   def testLogPMF(self):
     logits = np.log([[0.2, 0.8], [0.6, 0.4]]) - 50.
     dist = categorical.Categorical(logits)
     with self.test_session():
-      self.assertAllClose(dist.log_pmf([0, 1]).eval(), np.log([0.2, 0.4]))
+      self.assertAllClose(dist.log_prob([0, 1]).eval(), np.log([0.2, 0.4]))
 
   def testEntropyNoBatch(self):
     logits = np.log([0.2, 0.8]) - 50.

@@ -84,7 +84,7 @@ class TransformedDistributionTest(test.TestCase):
           bijector=bs.Exp(event_ndims=0))
 
       sample = log_normal.sample(1)
-      sample_val, log_pdf_val = sess.run([sample, log_normal.log_pdf(sample)])
+      sample_val, log_pdf_val = sess.run([sample, log_normal.log_prob(sample)])
       self.assertAllClose(
           stats.lognorm.logpdf(sample_val, s=sigma, scale=np.exp(mu)),
           log_pdf_val,

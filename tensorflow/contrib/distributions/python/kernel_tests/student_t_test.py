@@ -47,10 +47,10 @@ class StudentTTest(test.TestCase):
       t = np.array([-2.5, 2.5, 8., 0., -1., 2.], dtype=np.float32)
       student = ds.StudentT(df, loc=mu, scale=-sigma)
 
-      log_pdf = student.log_pdf(t)
+      log_pdf = student.log_prob(t)
       self.assertEquals(log_pdf.get_shape(), (6,))
       log_pdf_values = log_pdf.eval()
-      pdf = student.pdf(t)
+      pdf = student.prob(t)
       self.assertEquals(pdf.get_shape(), (6,))
       pdf_values = pdf.eval()
 
@@ -73,10 +73,10 @@ class StudentTTest(test.TestCase):
       sigma_v = np.array([np.sqrt(10.), np.sqrt(15.)])
       t = np.array([[-2.5, 2.5, 4., 0., -1., 2.]], dtype=np.float32).T
       student = ds.StudentT(df, loc=mu, scale=sigma)
-      log_pdf = student.log_pdf(t)
+      log_pdf = student.log_prob(t)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
-      pdf = student.pdf(t)
+      pdf = student.prob(t)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       expected_log_pdf = stats.t.logpdf(t, df_v, loc=mu_v, scale=sigma_v)
@@ -243,8 +243,8 @@ class StudentTTest(test.TestCase):
       self.assertEqual(student.mean().get_shape(), (3,))
       self.assertEqual(student.variance().get_shape(), (3,))
       self.assertEqual(student.entropy().get_shape(), (3,))
-      self.assertEqual(student.log_pdf(2.).get_shape(), (3,))
-      self.assertEqual(student.pdf(2.).get_shape(), (3,))
+      self.assertEqual(student.log_prob(2.).get_shape(), (3,))
+      self.assertEqual(student.prob(2.).get_shape(), (3,))
       self.assertEqual(student.sample(37, seed=123456).get_shape(), (37, 3,))
 
     _check(ds.StudentT(df=[2., 3., 4.,], loc=2., scale=1.))
@@ -254,8 +254,8 @@ class StudentTTest(test.TestCase):
   def testBroadcastingPdfArgs(self):
 
     def _assert_shape(student, arg, shape):
-      self.assertEqual(student.log_pdf(arg).get_shape(), shape)
-      self.assertEqual(student.pdf(arg).get_shape(), shape)
+      self.assertEqual(student.log_prob(arg).get_shape(), shape)
+      self.assertEqual(student.prob(arg).get_shape(), shape)
 
     def _check(student):
       _assert_shape(student, 2., (3,))
@@ -400,9 +400,9 @@ class StudentTTest(test.TestCase):
       student = ds.StudentT(df=3., loc=np.pi, scale=1.)
       num = 20000
       samples = student.sample(num, seed=123456)
-      pdfs = student.pdf(samples)
+      pdfs = student.prob(samples)
       mean = student.mean()
-      mean_pdf = student.pdf(student.mean())
+      mean_pdf = student.prob(student.mean())
       sample_vals, pdf_vals, mean_val, mean_pdf_val = sess.run(
           [samples, pdfs, student.mean(), mean_pdf])
       self.assertEqual(samples.get_shape(), (num,))
@@ -423,7 +423,7 @@ class StudentTTest(test.TestCase):
       self.assertAllEqual([2, 2], student.batch_shape().eval())
       num = 50000
       samples = student.sample(num, seed=123456)
-      pdfs = student.pdf(samples)
+      pdfs = student.prob(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))

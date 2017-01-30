@@ -73,9 +73,9 @@ class DirichletMultinomial(distribution.Distribution):
   Multinomial distributions.  If the provided `alpha` is rank 2 or higher, for
   every fixed set of leading dimensions, the last dimension represents one
   single Dirichlet Multinomial distribution.  When calling distribution
-  functions (e.g. `dist.pmf(counts)`), `alpha` and `counts` are broadcast to the
-  same shape (if possible).  In all cases, the last dimension of alpha/counts
-  represents single Dirichlet Multinomial distributions.
+  functions (e.g. `dist.prob(counts)`), `alpha` and `counts` are broadcast to
+  the same shape (if possible).  In all cases, the last dimension of
+  alpha/counts represents single Dirichlet Multinomial distributions.
 
   #### Examples
 
@@ -91,15 +91,15 @@ class DirichletMultinomial(distribution.Distribution):
   ```python
   # counts same shape as alpha.
   counts = [0, 0, 2]
-  dist.pmf(counts)  # Shape []
+  dist.prob(counts)  # Shape []
 
   # alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match counts.
   counts = [[1, 1, 0], [1, 0, 1]]
-  dist.pmf(counts)  # Shape [2]
+  dist.prob(counts)  # Shape [2]
 
   # alpha will be broadcast to shape [5, 7, 3] to match counts.
   counts = [[...]]  # Shape [5, 7, 3]
-  dist.pmf(counts)  # Shape [5, 7]
+  dist.prob(counts)  # Shape [5, 7]
   ```
 
   Creates a 2-batch of 3-class distributions.
@@ -111,7 +111,7 @@ class DirichletMultinomial(distribution.Distribution):
 
   # counts will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
   counts = [2, 1, 0]
-  dist.pmf(counts)  # Shape [2]
+  dist.prob(counts)  # Shape [2]
   ```
 
   """

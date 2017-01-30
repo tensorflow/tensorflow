@@ -91,14 +91,14 @@ class NormalTest(test.TestCase):
       normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_log_pdf = stats.norm(mu.eval(), sigma.eval()).logpdf(x)
 
-      log_pdf = normal.log_pdf(x)
+      log_pdf = normal.log_prob(x)
       self.assertAllClose(expected_log_pdf, log_pdf.eval())
       self.assertAllEqual(normal.batch_shape().eval(), log_pdf.get_shape())
       self.assertAllEqual(normal.batch_shape().eval(), log_pdf.eval().shape)
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
 
-      pdf = normal.pdf(x)
+      pdf = normal.prob(x)
       self.assertAllClose(np.exp(expected_log_pdf), pdf.eval())
       self.assertAllEqual(normal.batch_shape().eval(), pdf.get_shape())
       self.assertAllEqual(normal.batch_shape().eval(), pdf.eval().shape)
@@ -115,7 +115,7 @@ class NormalTest(test.TestCase):
       normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_log_pdf = stats.norm(mu.eval(), sigma.eval()).logpdf(x)
 
-      log_pdf = normal.log_pdf(x)
+      log_pdf = normal.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(expected_log_pdf, log_pdf_values)
@@ -124,7 +124,7 @@ class NormalTest(test.TestCase):
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
 
-      pdf = normal.pdf(x)
+      pdf = normal.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)

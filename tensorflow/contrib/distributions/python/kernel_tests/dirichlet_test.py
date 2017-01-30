@@ -57,22 +57,22 @@ class DirichletTest(test.TestCase):
     alpha = [[1., 2, 3]]
     with self.test_session():
       dist = dirichlet_lib.Dirichlet(alpha, validate_args=True)
-      dist.pdf([.1, .3, .6]).eval()
-      dist.pdf([.2, .3, .5]).eval()
+      dist.prob([.1, .3, .6]).eval()
+      dist.prob([.2, .3, .5]).eval()
       # Either condition can trigger.
       with self.assertRaisesOpError("Condition x > 0.*|Condition x < y.*"):
-        dist.pdf([-1., 1, 1]).eval()
+        dist.prob([-1., 1, 1]).eval()
       with self.assertRaisesOpError("Condition x > 0.*"):
-        dist.pdf([0., .1, .9]).eval()
+        dist.prob([0., .1, .9]).eval()
       with self.assertRaisesOpError("Condition x ~= y.*"):
-        dist.pdf([.1, .2, .8]).eval()
+        dist.prob([.1, .2, .8]).eval()
 
   def testPdfZeroBatches(self):
     with self.test_session():
       alpha = [1., 2]
       x = [.5, .5]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose(1., pdf.eval())
       self.assertEqual((), pdf.get_shape())
 
@@ -81,7 +81,7 @@ class DirichletTest(test.TestCase):
       alpha = [1., 2]
       x = [.3, .7]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose(7. / 5, pdf.eval())
       self.assertEqual((), pdf.get_shape())
 
@@ -91,7 +91,7 @@ class DirichletTest(test.TestCase):
       alpha = [1., 1, 1]
       x = [[.2, .5, .3], [.3, .4, .3]]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([2., 2.], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -100,7 +100,7 @@ class DirichletTest(test.TestCase):
       alpha = [[1., 2]]
       x = [[.5, .5], [.3, .7]]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1., 7. / 5], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -108,7 +108,7 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [1., 2]
       x = [[.5, .5], [.2, .8]]
-      pdf = dirichlet_lib.Dirichlet(alpha).pdf(x)
+      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
       self.assertAllClose([1., 8. / 5], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -116,7 +116,7 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       x = [[.5, .5]]
-      pdf = dirichlet_lib.Dirichlet(alpha).pdf(x)
+      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
       self.assertAllClose([1., 3. / 2], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -124,7 +124,7 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       x = [.5, .5]
-      pdf = dirichlet_lib.Dirichlet(alpha).pdf(x)
+      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
       self.assertAllClose([1., 3. / 2], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
