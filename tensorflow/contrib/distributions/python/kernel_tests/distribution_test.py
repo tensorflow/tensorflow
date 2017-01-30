@@ -63,7 +63,7 @@ class DistributionTest(test.TestCase):
     with self.test_session():
       # Note: we cannot easily test all distributions since each requires
       # different initialization arguments. We therefore spot test a few.
-      normal = ds.Normal(mu=1., sigma=2., validate_args=True)
+      normal = ds.Normal(loc=1., scale=2., validate_args=True)
       self.assertEqual(normal.parameters, normal.copy().parameters)
       wishart = ds.WishartFull(df=2, scale=[[1., 2], [2, 5]],
                                validate_args=True)
@@ -71,7 +71,7 @@ class DistributionTest(test.TestCase):
 
   def testCopyOverride(self):
     with self.test_session():
-      normal = ds.Normal(mu=1., sigma=2., validate_args=True)
+      normal = ds.Normal(loc=1., scale=2., validate_args=True)
       unused_normal_copy = normal.copy(validate_args=False)
       base_params = normal.parameters.copy()
       copy_params = normal.copy(validate_args=False).parameters.copy()

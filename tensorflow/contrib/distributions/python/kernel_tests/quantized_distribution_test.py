@@ -171,9 +171,9 @@ class QuantizedDistributionTest(test.TestCase):
     batch_shape = (2,)
     with self.test_session():
       normal = distributions.Normal(
-          mu=array_ops.zeros(
+          loc=array_ops.zeros(
               batch_shape, dtype=dtypes.float32),
-          sigma=array_ops.ones(
+          scale=array_ops.ones(
               batch_shape, dtype=dtypes.float32))
 
       qdist = distributions.QuantizedDistribution(
@@ -250,7 +250,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=mu, sigma=sigma))
+              loc=mu, scale=sigma))
       sp_normal = stats.norm(mu, sigma)
 
       x = rng.randint(-5, 5, size=batch_shape).astype(np.float64)
@@ -267,7 +267,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=mu, sigma=sigma))
+              loc=mu, scale=sigma))
       sp_normal = stats.norm(mu, sigma)
 
       x = rng.randint(-10, 10, size=batch_shape).astype(np.float64)
@@ -282,7 +282,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=-2.,
           upper_cutoff=2.)
       sm_normal = stats.norm(0., 1.)
@@ -305,7 +305,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=-2.,
           upper_cutoff=2.)
       sm_normal = stats.norm(0., 1.)
@@ -337,7 +337,7 @@ class QuantizedDistributionTest(test.TestCase):
         sigma = variables.Variable(1., name="sigma", dtype=dtype)
         qdist = distributions.QuantizedDistribution(
             distribution=distributions.Normal(
-                mu=mu, sigma=sigma))
+                loc=mu, scale=sigma))
         x = np.arange(-100, 100, 2).astype(dtype)
         proba = qdist.log_prob(x)
         grads = gradients_impl.gradients(proba, [mu, sigma])
@@ -353,7 +353,7 @@ class QuantizedDistributionTest(test.TestCase):
       sigma = variables.Variable(1.0, name="sigma")
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=mu, sigma=sigma))
+              loc=mu, scale=sigma))
       x = math_ops.ceil(4 * rng.rand(100).astype(np.float32) - 2)
 
       variables.global_variables_initializer().run()
@@ -369,7 +369,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=1.,  # not strictly less than upper_cutoff.
           upper_cutoff=1.,
           validate_args=True)
@@ -382,7 +382,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=1.5,
           upper_cutoff=10.,
           validate_args=True)
@@ -395,7 +395,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1., validate_args=False),
+              loc=0., scale=1., validate_args=False),
           lower_cutoff=1.5,
           upper_cutoff=10.11)
 
@@ -409,8 +409,8 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=array_ops.zeros(batch_shape),
-              sigma=array_ops.zeros(batch_shape)),
+              loc=array_ops.zeros(batch_shape),
+              scale=array_ops.zeros(batch_shape)),
           lower_cutoff=1.0,
           upper_cutoff=10.0)
 

@@ -43,10 +43,10 @@ initialized with parameters that define the distributions.
 @@Laplace
 @@LaplaceWithSoftplusScale
 @@Normal
-@@NormalWithSoftplusSigma
+@@NormalWithSoftplusScale
 @@Poisson
 @@StudentT
-@@StudentTWithAbsDfSoftplusSigma
+@@StudentTWithAbsDfSoftplusScale
 @@Uniform
 
 ## Multivariate distributions
@@ -87,8 +87,8 @@ representing the posterior or posterior predictive.
 
 ## Normal likelihood with conjugate prior.
 
-@@normal_conjugates_known_sigma_posterior
-@@normal_conjugates_known_sigma_predictive
+@@normal_conjugates_known_scale_posterior
+@@normal_conjugates_known_scale_predictive
 
 ## Kullback-Leibler Divergence
 

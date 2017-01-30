@@ -70,7 +70,7 @@ class ConditionalTransformedDistributionTest(
   def testConditioning(self):
     with self.test_session():
       conditional_normal = ds.ConditionalTransformedDistribution(
-          distribution=ds.Normal(mu=0., sigma=1.),
+          distribution=ds.Normal(loc=0., scale=1.),
           bijector=_ChooseLocation(loc=[-100., 100.]))
       z = [-1, +1, -1, -1, +1]
       self.assertAllClose(

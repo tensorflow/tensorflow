@@ -41,9 +41,9 @@ class NormalTest(test.TestCase):
       x = constant_op.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = math_ops.reduce_sum(x)
       n = array_ops.size(x)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      posterior = distributions.normal_conjugates_known_sigma_posterior(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      posterior = distributions.normal_conjugates_known_scale_posterior(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
@@ -62,9 +62,9 @@ class NormalTest(test.TestCase):
               [[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=dtypes.float32))
       s = math_ops.reduce_sum(x)
       n = array_ops.size(x)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      posterior = distributions.normal_conjugates_known_sigma_posterior(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      posterior = distributions.normal_conjugates_known_scale_posterior(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
@@ -85,9 +85,9 @@ class NormalTest(test.TestCase):
       s = math_ops.reduce_sum(x, reduction_indices=[1])
       x = array_ops.transpose(x)  # Reshape to shape (6, 2)
       n = constant_op.constant([6] * 2)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      posterior = distributions.normal_conjugates_known_sigma_posterior(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      posterior = distributions.normal_conjugates_known_scale_posterior(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
@@ -106,9 +106,9 @@ class NormalTest(test.TestCase):
       x = constant_op.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = math_ops.reduce_sum(x)
       n = array_ops.size(x)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      predictive = distributions.normal_conjugates_known_sigma_predictive(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      predictive = distributions.normal_conjugates_known_scale_predictive(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(predictive, distributions.Normal))

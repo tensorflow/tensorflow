@@ -49,7 +49,7 @@ class TransformedDistributionTest(test.TestCase):
       # Note: the Jacobian callable only works for this example; more generally
       # you may or may not need a reduce_sum.
       log_normal = self._cls()(
-          distribution=ds.Normal(mu=mu, sigma=sigma),
+          distribution=ds.Normal(loc=mu, scale=sigma),
           bijector=bs.Exp(event_ndims=0))
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
@@ -80,7 +80,7 @@ class TransformedDistributionTest(test.TestCase):
       mu = 3.0
       sigma = 0.02
       log_normal = self._cls()(
-          distribution=ds.Normal(mu=mu, sigma=sigma),
+          distribution=ds.Normal(loc=mu, scale=sigma),
           bijector=bs.Exp(event_ndims=0))
 
       sample = log_normal.sample(1)
@@ -93,7 +93,7 @@ class TransformedDistributionTest(test.TestCase):
   def testShapeChangingBijector(self):
     with self.test_session():
       softmax = bs.SoftmaxCentered()
-      standard_normal = ds.Normal(mu=0., sigma=1.)
+      standard_normal = ds.Normal(loc=0., scale=1.)
       multi_logit_normal = self._cls()(
           distribution=standard_normal,
           bijector=softmax)
@@ -257,7 +257,7 @@ class ScalarToMultiTest(test.TestCase):
   def testScalarBatchScalarEvent(self):
     self._testMVN(
         base_distribution_class=ds.Normal,
-        base_distribution_kwargs={"mu": 0., "sigma": 1.},
+        base_distribution_kwargs={"loc": 0., "scale": 1.},
         batch_shape=[2],
         event_shape=[3],
         not_implemented_message="not implemented when overriding event_shape")
@@ -283,7 +283,7 @@ class ScalarToMultiTest(test.TestCase):
   def testNonScalarBatchScalarEvent(self):
     self._testMVN(
         base_distribution_class=ds.Normal,
-        base_distribution_kwargs={"mu": [0., 0], "sigma": [1., 1]},
+        base_distribution_kwargs={"loc": [0., 0], "scale": [1., 1]},
         event_shape=[3],
         not_implemented_message="not implemented when overriding event_shape")
 
@@ -291,7 +291,7 @@ class ScalarToMultiTest(test.TestCase):
       # Can't override batch_shape for non-scalar batch, scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         self._cls()(
-            distribution=ds.Normal(mu=[0.], sigma=[1.]),
+            distribution=ds.Normal(loc=[0.], scale=[1.]),
             bijector=bs.Affine(shift=self._shift, scale_tril=self._tril),
             batch_shape=[2],
             event_shape=[3],
