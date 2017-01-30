@@ -225,7 +225,6 @@ Status TransposeSyclOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                               .HostMemory("perm"),            \
                           TransposeSyclOp);
 REGISTER(float);
-REGISTER(double);
 REGISTER(bool);
 REGISTER(int32);
 #undef REGISTER

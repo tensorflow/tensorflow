@@ -226,6 +226,8 @@ class SyclCastOp : public CastOpBase {
       work_ = GetSyclCastFromBool(dst_dtype_);
     } else if (src_dtype_ == DT_INT32) {
       work_ = GetSyclCastFromInt32(dst_dtype_);
+    } else if (src_dtype_ == DT_INT64) {
+      work_ = GetSyclCastFromInt64(dst_dtype_);
     } else if (src_dtype_ == DT_FLOAT) {
       work_ = GetSyclCastFromFloat(dst_dtype_);
     } else if (src_dtype_ == DT_DOUBLE) {
@@ -245,6 +247,7 @@ class SyclCastOp : public CastOpBase {
 
 CURRY_TYPES2(REGISTER_CAST_SYCL, bool);
 CURRY_TYPES2(REGISTER_CAST_SYCL, int32);
+CURRY_TYPES2(REGISTER_CAST_SYCL, int64);
 CURRY_TYPES2(REGISTER_CAST_SYCL, float);
 CURRY_TYPES2(REGISTER_CAST_SYCL, double);
 

@@ -40,7 +40,7 @@ def main():
 
   if(compiling_cpp == 1):
       # create a blacklist of folders that will be skipped when compiling with ComputeCpp
-      _skip = ["external", "llvm"]
+      _skip = ["external", "llvm", ".cu.cc"]
       # if compiling external project skip computecpp
       if any(_folder in _skip for _folder in output_file_name):
         return subprocess.call([CPU_CXX_COMPILER] + compiler_flags)
@@ -70,11 +70,12 @@ def main():
       x = subprocess.call([COMPUTECPP_DRIVER] + computecpp_device_compiler_flags )
       if(x == 0):
           # dont want that in case of compiling with computecpp first
-          host_compiler_flags = [flag for flag in compiler_flags
+          host_compiler_flags = [flag.replace('-c', '--include') for flag in compiler_flags
                                     if not flag.startswith(('-MF', '-MD',))
-                                    if not '.d' in flag]
+                                    if not '.d' in flag
+                                ]
 
-          host_compiler_flags = ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '--include', bc_out] + host_compiler_flags
+          host_compiler_flags = ['-xc++', '-D_GLIBCXX_USE_CXX11_ABI=0', '-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-c', bc_out] + host_compiler_flags
           x = subprocess.call([CPU_CXX_COMPILER] + host_compiler_flags)
       return x
   else:

@@ -19,6 +19,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetCpuCastFromInt64(DataType dst_dtype) {
@@ -33,5 +36,14 @@ GetGpuCastFromInt64(DataType dst_dtype) {
   return nullptr;
 }
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromInt64(DataType dst_dtype) {
+  CURRY_TYPES3(CAST_CASE, SYCLDevice, int64);
+  return nullptr;
+}
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

@@ -727,7 +727,6 @@ and copy the files into e.g. `/usr/local/computecpp`:
 
 ```bash
 tar -xvzf ComputeCpp-CE-0.1.1-Ubuntu.14.04-64bit.tar.gz
-sudo mkdir /usr/local/computecpp
 sudo cp -R ComputeCpp-CE-0.1.1-Linux /usr/local/computecpp
 sudo chmod -R a+r /usr/local/computecpp/
 sudo chmod -R a+x /usr/local/computecpp/bin
