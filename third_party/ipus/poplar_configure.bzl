@@ -34,14 +34,10 @@ def _poplar_autoconf_impl(repository_ctx):
     repository_ctx.template("poplar/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_poplar.tpl"), {})
     repository_ctx.template("popnn/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_popnn.tpl"), {})
 
-    repository_ctx.template("poplar/build_defs.bzl", Label("//third_party/ipus/poplar_lib:build_defs.bzl.tpl"), {})
-
     return
 
   repository_ctx.template("poplar/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_nopoplar.tpl"), {})
   repository_ctx.template("popnn/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_nopopnn.tpl"), {})
-
-  repository_ctx.template("poplar/build_defs.bzl", Label("//third_party/ipus/poplar_lib:build_defs_nopoplar.bzl.tpl"), {})
 
 
 poplar_configure = repository_rule(
