@@ -64,8 +64,8 @@ class AdamOptimizer(optimizer.Optimizer):
     general. For example, when training an Inception network on ImageNet a
     current good choice is 1.0 or 0.1.
 
-    Note that in dense implement of this algorithm, m_t, v_t and variable will 
-    update even if g is zero, but in sparse implement, m_t, v_t and variable 
+    Note that in dense implement of this algorithm, m_t, v_t and variable will
+    update even if g is zero, but in sparse implement, m_t, v_t and variable
     will not update in iterations g is zero.
 
     Args:
@@ -165,13 +165,13 @@ class AdamOptimizer(optimizer.Optimizer):
     m_t = state_ops.assign(m, m * beta1_t,
                            use_locking=self._use_locking)
     m_t = state_ops.scatter_add(m_t, grad.indices, m_scaled_g_values,
-                               use_locking=self._use_locking)
+                                use_locking=self._use_locking)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad.values * grad.values) * (1 - beta2_t)
     v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     v_t = state_ops.scatter_add(v_t, grad.indices, v_scaled_g_values,
-                               use_locking=self._use_locking)
+                                use_locking=self._use_locking)
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(var,
                                       lr * m_t / (v_sqrt + epsilon_t),
