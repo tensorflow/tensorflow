@@ -2253,6 +2253,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["matmul_op_test.cc"],
     deps = [
+        ":matmul_op",
         ":ops_testutil",
         ":ops_util",
         ":quantized_ops",
@@ -3294,6 +3295,7 @@ tf_cc_test(
     size = "small",
     srcs = ["training_ops_test.cc"],
     deps = [
+        ":dense_update_ops",
         ":ops_util",
         ":training_ops",
         "//tensorflow/core:core_cpu",
