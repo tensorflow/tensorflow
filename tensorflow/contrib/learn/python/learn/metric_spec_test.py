@@ -39,27 +39,27 @@ class MetricSpecTest(test.TestCase):
     predictions_ = {"p1": "p1_value", "p2": "p2_value"}
 
     def _fn0(predictions, labels, weights=None):
-      self.assertEquals("p1_value", predictions)
-      self.assertEquals("l1_value", labels)
-      self.assertEquals("f2_value", weights)
+      self.assertEqual("p1_value", predictions)
+      self.assertEqual("l1_value", labels)
+      self.assertEqual("f2_value", weights)
       return "metric_fn_result"
 
     def _fn1(predictions, targets, weights=None):
-      self.assertEquals("p1_value", predictions)
-      self.assertEquals("l1_value", targets)
-      self.assertEquals("f2_value", weights)
+      self.assertEqual("p1_value", predictions)
+      self.assertEqual("l1_value", targets)
+      self.assertEqual("f2_value", weights)
       return "metric_fn_result"
 
     def _fn2(prediction, label, weight=None):
-      self.assertEquals("p1_value", prediction)
-      self.assertEquals("l1_value", label)
-      self.assertEquals("f2_value", weight)
+      self.assertEqual("p1_value", prediction)
+      self.assertEqual("l1_value", label)
+      self.assertEqual("f2_value", weight)
       return "metric_fn_result"
 
     def _fn3(prediction, target, weight=None):
-      self.assertEquals("p1_value", prediction)
-      self.assertEquals("l1_value", target)
-      self.assertEquals("f2_value", weight)
+      self.assertEqual("p1_value", prediction)
+      self.assertEqual("l1_value", target)
+      self.assertEqual("f2_value", weight)
       return "metric_fn_result"
 
     for fn in (_fn0, _fn1, _fn2, _fn3):
@@ -74,7 +74,7 @@ class MetricSpecTest(test.TestCase):
       self.fail("Expected failure before metric_fn.")
 
     spec = MetricSpec(metric_fn=_fn)
-    with self.assertRaisesRegexp(TypeError, "takes no arguments"):
+    with self.assertRaises(TypeError):
       spec.create_metric_ops(
           {"f1": "f1_value"}, "labels_value", "predictions_value")
 
@@ -84,11 +84,11 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(**kwargs):
-      self.assertEquals({}, kwargs)
+      self.assertEqual({}, kwargs)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
-    with self.assertRaisesRegexp(TypeError, "takes exactly 0 arguments"):
+    with self.assertRaises(TypeError):
       spec.create_metric_ops(features, labels_, predictions_)
 
   def test_named_labels_no_predictions(self):
@@ -97,11 +97,11 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(labels):
-      self.assertEquals(labels_, labels)
+      self.assertEqual(labels_, labels)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
-    with self.assertRaisesRegexp(TypeError, "takes exactly 1 argument"):
+    with self.assertRaises(TypeError):
       spec.create_metric_ops(features, labels_, predictions_)
 
   def test_named_labels_no_predictions_with_kwargs(self):
@@ -110,12 +110,12 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(labels, **kwargs):
-      self.assertEquals(labels_, labels)
-      self.assertEquals({}, kwargs)
+      self.assertEqual(labels_, labels)
+      self.assertEqual({}, kwargs)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
-    with self.assertRaisesRegexp(TypeError, "takes exactly 1 argument"):
+    with self.assertRaises(TypeError):
       spec.create_metric_ops(features, labels_, predictions_)
 
   def test_no_named_predictions_named_labels_first_arg(self):
@@ -124,8 +124,8 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(labels, predictions_by_another_name):
-      self.assertEquals(predictions_, predictions_by_another_name)
-      self.assertEquals(labels_, labels)
+      self.assertEqual(predictions_, predictions_by_another_name)
+      self.assertEqual(labels_, labels)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
@@ -139,8 +139,8 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(predictions_by_another_name, labels):
-      self.assertEquals(predictions_, predictions_by_another_name)
-      self.assertEquals(labels_, labels)
+      self.assertEqual(predictions_, predictions_by_another_name)
+      self.assertEqual(labels_, labels)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
@@ -154,7 +154,7 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(predictions):
-      self.assertEquals(predictions_, predictions)
+      self.assertEqual(predictions_, predictions)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
@@ -168,7 +168,7 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "predictions_value"
 
     def _fn(a):
-      self.assertEquals(predictions_, a)
+      self.assertEqual(predictions_, a)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn)
@@ -186,7 +186,7 @@ class MetricSpecTest(test.TestCase):
       self.fail("Expected failure before metric_fn.")
 
     spec = MetricSpec(metric_fn=_fn)
-    with self.assertRaisesRegexp(TypeError, "takes exactly 2 arguments"):
+    with self.assertRaises(TypeError):
       spec.create_metric_ops(features, labels_, predictions_)
 
   def test_named_args_no_weights(self):
@@ -195,23 +195,23 @@ class MetricSpecTest(test.TestCase):
     predictions_ = {"p1": "p1_value", "p2": "p2_value"}
 
     def _fn0(predictions, labels):
-      self.assertEquals("p1_value", predictions)
-      self.assertEquals("l1_value", labels)
+      self.assertEqual("p1_value", predictions)
+      self.assertEqual("l1_value", labels)
       return "metric_fn_result"
 
     def _fn1(predictions, targets):
-      self.assertEquals("p1_value", predictions)
-      self.assertEquals("l1_value", targets)
+      self.assertEqual("p1_value", predictions)
+      self.assertEqual("l1_value", targets)
       return "metric_fn_result"
 
     def _fn2(prediction, label):
-      self.assertEquals("p1_value", prediction)
-      self.assertEquals("l1_value", label)
+      self.assertEqual("p1_value", prediction)
+      self.assertEqual("l1_value", label)
       return "metric_fn_result"
 
     def _fn3(prediction, target):
-      self.assertEquals("p1_value", prediction)
-      self.assertEquals("l1_value", target)
+      self.assertEqual("p1_value", prediction)
+      self.assertEqual("l1_value", target)
       return "metric_fn_result"
 
     for fn in (_fn0, _fn1, _fn2, _fn3):
@@ -258,9 +258,9 @@ class MetricSpecTest(test.TestCase):
     predictions_ = "p1_value"
 
     def _fn(predictions, labels, weights=None):
-      self.assertEquals(predictions_, predictions)
-      self.assertEquals("l1_value", labels)
-      self.assertEquals("f2_value", weights)
+      self.assertEqual(predictions_, predictions)
+      self.assertEqual("l1_value", labels)
+      self.assertEqual("f2_value", weights)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn, label_key="l1", weight_key="f2")
@@ -274,9 +274,9 @@ class MetricSpecTest(test.TestCase):
     predictions_ = {"p1": "p1_value", "p2": "p2_value"}
 
     def _fn(predictions, labels, weights=None):
-      self.assertEquals("p1_value", predictions)
-      self.assertEquals(labels_, labels)
-      self.assertEquals("f2_value", weights)
+      self.assertEqual("p1_value", predictions)
+      self.assertEqual(labels_, labels)
+      self.assertEqual("f2_value", weights)
       return "metric_fn_result"
 
     spec = MetricSpec(metric_fn=_fn, prediction_key="p1", weight_key="f2")
@@ -350,9 +350,9 @@ class MetricSpecTest(test.TestCase):
     predictions = {"p1": "p1_value", "p2": "p2_value"}
 
     def custom_metric(predictions, labels, stuff, weights=None):
-      self.assertEquals("p1_value", predictions)
-      self.assertEquals("l1_value", labels)
-      self.assertEquals("f2_value", weights)
+      self.assertEqual("p1_value", predictions)
+      self.assertEqual("l1_value", labels)
+      self.assertEqual("f2_value", weights)
       if stuff:
         return "metric_fn_result"
       raise ValueError("No stuff.")
@@ -362,7 +362,7 @@ class MetricSpecTest(test.TestCase):
         label_key="l1",
         prediction_key="p1",
         weight_key="f2")
-    self.assertEquals(
+    self.assertEqual(
         "metric_fn_result",
         spec.create_metric_ops(features, labels, predictions))
 
