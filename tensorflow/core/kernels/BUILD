@@ -40,13 +40,6 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
-# INTEL_MKL start
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-)
-# INTEL_MKL end
-
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
     # convolutions (and possibly more in the future). You will also need
@@ -4093,14 +4086,6 @@ tf_cc_test(
     ],
 )
 
-if_mkl(
-  tf_kernel_library(
-      name = "mkl_ops",
-      prefix = "mkl_matmul",
-      deps = [":math",
-            "//third_party/mkl:intel_binary_blob",],
-  )
-)
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 
