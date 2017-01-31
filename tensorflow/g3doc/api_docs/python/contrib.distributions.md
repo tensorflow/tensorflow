@@ -13585,61 +13585,71 @@ NaN, when df <= 1
 
 ### `class tf.contrib.distributions.Uniform` {#Uniform}
 
-Uniform distribution with `a` and `b` parameters.
+Uniform distribution with `low` and `high` parameters.
 
-The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
+### Mathematical Details
+
+The probability density function (pdf) is,
+
+```none
+pdf(x; a, b) = I[a <= x < b] / Z
+Z = b - a
+```
+
+where:
+* `low = a`,
+* `high = b`,
+* `Z` is the normalizing constant, and,
+* `I[predicate]` is the [indicator function](
+  https://en.wikipedia.org/wiki/Indicator_function) for `predicate`.
+
+The parameters `low` and `high` must be shaped in a way that supports
+broadcasting (e.g., `high - low` is a valid operation).
+
+### Examples
+
+```python
+# Without broadcasting:
+u1 = Uniform(low=3.0, high=4.0)  # a single uniform distribution [3, 4]
+u2 = Uniform(low=[1.0, 2.0],
+             high=[3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
+u3 = Uniform(low=[[1.0, 2.0],
+                  [3.0, 4.0]],
+             high=[[1.5, 2.5],
+                   [3.5, 4.5]])  # 4 distributions
+```
+
+```python
+# With broadcasting:
+u1 = Uniform(low=3.0, high=[5.0, 6.0, 7.0])  # 3 distributions
+```
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(low=0.0, high=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
 
-Construct Uniform distributions with `a` and `b`.
-
-The parameters `a` and `b` must be shaped in a way that supports
-broadcasting (e.g. `b - a` is a valid operation).
-
-Here are examples without broadcasting:
-
-```python
-# Without broadcasting
-u1 = Uniform(3.0, 4.0)  # a single uniform distribution [3, 4]
-u2 = Uniform([1.0, 2.0], [3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
-u3 = Uniform([[1.0, 2.0],
-              [3.0, 4.0]],
-             [[1.5, 2.5],
-              [3.5, 4.5]])  # 4 distributions
-```
-
-And with broadcasting:
-
-```python
-u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
-```
+Initialize a batch of Uniform distributions.
 
 ##### Args:
 
 
-*  <b>`a`</b>: Floating point tensor, the minimum endpoint.
-*  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+*  <b>`low`</b>: Floating point tensor, lower boundary of the output interval. Must
+    have `low < high`.
+*  <b>`high`</b>: Floating point tensor, upper boundary of the output interval. Must
+    have `low < high`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=False`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.a` {#Uniform.a}
-
-
+*  <b>`InvalidArgumentError`</b>: if `low >= high` and `validate_args=False`.
 
 
 - - -
@@ -13661,13 +13671,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.b` {#Uniform.b}
-
-
 
 
 - - -
@@ -13843,6 +13846,13 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.high` {#Uniform.high}
+
+Upper boundary of the output interval.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.is_continuous` {#Uniform.is_continuous}
 
 
@@ -13961,6 +13971,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.low` {#Uniform.low}
+
+Lower boundary of the output interval.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.mean(name='mean')` {#Uniform.mean}
 
 Mean.
@@ -14064,7 +14081,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 #### `tf.contrib.distributions.Uniform.range(name='range')` {#Uniform.range}
 
-`b - a`.
+`high - low`.
 
 
 - - -
@@ -21191,10 +21208,11 @@ Construct a Transformed Distribution.
     `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
     `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`name`</b>: The name for the distribution. Default:
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
     `bijector.name + distribution.name`.
 
 
@@ -21777,8 +21795,8 @@ Distribution representing the quantization `Y = ceiling(X)`.
 ```
 1. Draw X
 2. Set Y <-- ceiling(X)
-3. If Y < lower_cutoff, reset Y <-- lower_cutoff
-4. If Y > upper_cutoff, reset Y <-- upper_cutoff
+3. If Y < low, reset Y <-- low
+4. If Y > high, reset Y <-- high
 5. Return Y
 ```
 
@@ -21788,9 +21806,9 @@ Given scalar random variable `X`, we define a discrete random variable `Y`
 supported on the integers as follows:
 
 ```
-P[Y = j] := P[X <= lower_cutoff],  if j == lower_cutoff,
-         := P[X > upper_cutoff - 1],  j == upper_cutoff,
-         := 0, if j < lower_cutoff or j > upper_cutoff,
+P[Y = j] := P[X <= low],  if j == low,
+         := P[X > high - 1],  j == high,
+         := 0, if j < low or j > high,
          := P[j - 1 < X <= j],  all other j.
 ```
 
@@ -21804,7 +21822,7 @@ j = ...      -1      0     1     2     3     4  ...
 ```
 
 `P[Y = j]` is the mass of `X` within the `jth` interval.
-If `lower_cutoff = 0`, and `upper_cutoff = 2`, then the intervals are redrawn
+If `low = 0`, and `high = 2`, then the intervals are redrawn
 and `j` is re-assigned:
 
 ```
@@ -21822,7 +21840,7 @@ entropy are better done with samples or approximations, and are not
 implemented by this class.
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, lower_cutoff=None, upper_cutoff=None, validate_args=False, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
+#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, low=None, high=None, validate_args=False, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
 
 Construct a Quantized Distribution representing `Y = ceiling(X)`.
 
@@ -21835,19 +21853,20 @@ the `distribution`.
 
 *  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
-*  <b>`lower_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
+*  <b>`low`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's `prob` should be defined at
-    `lower_cutoff`.
-*  <b>`upper_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
+    `low`.
+*  <b>`high`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's `prob` should be defined at
-    `upper_cutoff - 1`.
-    `upper_cutoff` must be strictly greater than `lower_cutoff`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`name`</b>: The name for the distribution.
+    `high - 1`.
+    `high` must be strictly greater than `low`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -21917,8 +21936,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -22138,8 +22157,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -22174,9 +22193,9 @@ Additional documentation from `QuantizedDistribution`:
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
@@ -22223,8 +22242,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
@@ -22340,9 +22359,9 @@ Additional documentation from `QuantizedDistribution`:
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
@@ -22450,8 +22469,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
@@ -23907,10 +23926,11 @@ Construct a Transformed Distribution.
     `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
     `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`name`</b>: The name for the distribution. Default:
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
     `bijector.name + distribution.name`.
 
 

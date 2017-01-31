@@ -1,58 +1,68 @@
-Uniform distribution with `a` and `b` parameters.
+Uniform distribution with `low` and `high` parameters.
 
-The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
+### Mathematical Details
+
+The probability density function (pdf) is,
+
+```none
+pdf(x; a, b) = I[a <= x < b] / Z
+Z = b - a
+```
+
+where:
+* `low = a`,
+* `high = b`,
+* `Z` is the normalizing constant, and,
+* `I[predicate]` is the [indicator function](
+  https://en.wikipedia.org/wiki/Indicator_function) for `predicate`.
+
+The parameters `low` and `high` must be shaped in a way that supports
+broadcasting (e.g., `high - low` is a valid operation).
+
+### Examples
+
+```python
+# Without broadcasting:
+u1 = Uniform(low=3.0, high=4.0)  # a single uniform distribution [3, 4]
+u2 = Uniform(low=[1.0, 2.0],
+             high=[3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
+u3 = Uniform(low=[[1.0, 2.0],
+                  [3.0, 4.0]],
+             high=[[1.5, 2.5],
+                   [3.5, 4.5]])  # 4 distributions
+```
+
+```python
+# With broadcasting:
+u1 = Uniform(low=3.0, high=[5.0, 6.0, 7.0])  # 3 distributions
+```
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(low=0.0, high=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
 
-Construct Uniform distributions with `a` and `b`.
-
-The parameters `a` and `b` must be shaped in a way that supports
-broadcasting (e.g. `b - a` is a valid operation).
-
-Here are examples without broadcasting:
-
-```python
-# Without broadcasting
-u1 = Uniform(3.0, 4.0)  # a single uniform distribution [3, 4]
-u2 = Uniform([1.0, 2.0], [3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
-u3 = Uniform([[1.0, 2.0],
-              [3.0, 4.0]],
-             [[1.5, 2.5],
-              [3.5, 4.5]])  # 4 distributions
-```
-
-And with broadcasting:
-
-```python
-u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
-```
+Initialize a batch of Uniform distributions.
 
 ##### Args:
 
 
-*  <b>`a`</b>: Floating point tensor, the minimum endpoint.
-*  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+*  <b>`low`</b>: Floating point tensor, lower boundary of the output interval. Must
+    have `low < high`.
+*  <b>`high`</b>: Floating point tensor, upper boundary of the output interval. Must
+    have `low < high`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=False`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.a` {#Uniform.a}
-
-
+*  <b>`InvalidArgumentError`</b>: if `low >= high` and `validate_args=False`.
 
 
 - - -
@@ -74,13 +84,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.b` {#Uniform.b}
-
-
 
 
 - - -
@@ -256,6 +259,13 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.high` {#Uniform.high}
+
+Upper boundary of the output interval.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.is_continuous` {#Uniform.is_continuous}
 
 
@@ -374,6 +384,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.low` {#Uniform.low}
+
+Lower boundary of the output interval.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.mean(name='mean')` {#Uniform.mean}
 
 Mean.
@@ -477,7 +494,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 #### `tf.contrib.distributions.Uniform.range(name='range')` {#Uniform.range}
 
-`b - a`.
+`high - low`.
 
 
 - - -

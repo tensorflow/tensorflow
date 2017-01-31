@@ -5,8 +5,8 @@ Distribution representing the quantization `Y = ceiling(X)`.
 ```
 1. Draw X
 2. Set Y <-- ceiling(X)
-3. If Y < lower_cutoff, reset Y <-- lower_cutoff
-4. If Y > upper_cutoff, reset Y <-- upper_cutoff
+3. If Y < low, reset Y <-- low
+4. If Y > high, reset Y <-- high
 5. Return Y
 ```
 
@@ -16,9 +16,9 @@ Given scalar random variable `X`, we define a discrete random variable `Y`
 supported on the integers as follows:
 
 ```
-P[Y = j] := P[X <= lower_cutoff],  if j == lower_cutoff,
-         := P[X > upper_cutoff - 1],  j == upper_cutoff,
-         := 0, if j < lower_cutoff or j > upper_cutoff,
+P[Y = j] := P[X <= low],  if j == low,
+         := P[X > high - 1],  j == high,
+         := 0, if j < low or j > high,
          := P[j - 1 < X <= j],  all other j.
 ```
 
@@ -32,7 +32,7 @@ j = ...      -1      0     1     2     3     4  ...
 ```
 
 `P[Y = j]` is the mass of `X` within the `jth` interval.
-If `lower_cutoff = 0`, and `upper_cutoff = 2`, then the intervals are redrawn
+If `low = 0`, and `high = 2`, then the intervals are redrawn
 and `j` is re-assigned:
 
 ```
@@ -50,7 +50,7 @@ entropy are better done with samples or approximations, and are not
 implemented by this class.
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, lower_cutoff=None, upper_cutoff=None, validate_args=False, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
+#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, low=None, high=None, validate_args=False, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
 
 Construct a Quantized Distribution representing `Y = ceiling(X)`.
 
@@ -63,19 +63,20 @@ the `distribution`.
 
 *  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
-*  <b>`lower_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
+*  <b>`low`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's `prob` should be defined at
-    `lower_cutoff`.
-*  <b>`upper_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
+    `low`.
+*  <b>`high`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
     If provided, base distribution's `prob` should be defined at
-    `upper_cutoff - 1`.
-    `upper_cutoff` must be strictly greater than `lower_cutoff`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`name`</b>: The name for the distribution.
+    `high - 1`.
+    `high` must be strictly greater than `low`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -145,8 +146,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -366,8 +367,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -402,9 +403,9 @@ Additional documentation from `QuantizedDistribution`:
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
@@ -451,8 +452,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
@@ -568,9 +569,9 @@ Additional documentation from `QuantizedDistribution`:
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
@@ -678,8 +679,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
