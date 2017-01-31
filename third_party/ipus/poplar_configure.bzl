@@ -1,3 +1,5 @@
+# Copyright 2017 Graphcore Ltd
+
 def _poplar_autoconf_impl(repository_ctx):
   if "TF_POPLAR_BASE" in repository_ctx.os.environ:
 
@@ -33,11 +35,13 @@ def _poplar_autoconf_impl(repository_ctx):
 
     repository_ctx.template("poplar/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_poplar.tpl"), {})
     repository_ctx.template("popnn/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_popnn.tpl"), {})
+    repository_ctx.template("poplar/build_defs.bzl", Label("//third_party/ipus/poplar_lib:build_defs_poplar.tpl"), {})
 
     return
 
   repository_ctx.template("poplar/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_nopoplar.tpl"), {})
   repository_ctx.template("popnn/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_nopopnn.tpl"), {})
+  repository_ctx.template("poplar/build_defs.bzl", Label("//third_party/ipus/poplar_lib:build_defs_nopoplar.tpl"), {})
 
 
 poplar_configure = repository_rule(
