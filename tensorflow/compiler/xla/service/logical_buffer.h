@@ -90,6 +90,9 @@ class LogicalBuffer {
   // unique value.
   using Id = int64;
 
+  // Function which returns the size of a logical buffer in bytes.
+  using SizeFunction = std::function<int64(const LogicalBuffer&)>;
+
   LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id)
       : instruction_(instruction), index_(index), id_(id) {}
 

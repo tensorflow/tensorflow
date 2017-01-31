@@ -52,11 +52,11 @@ class InverseGammaTest(test.TestCase):
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
       inv_gamma = inverse_gamma.InverseGamma(alpha=alpha, beta=beta)
       expected_log_pdf = stats.invgamma.logpdf(x, alpha_v, scale=beta_v)
-      log_pdf = inv_gamma.log_pdf(x)
+      log_pdf = inv_gamma.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = inv_gamma.pdf(x)
+      pdf = inv_gamma.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
@@ -70,12 +70,12 @@ class InverseGammaTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       inv_gamma = inverse_gamma.InverseGamma(alpha=alpha, beta=beta)
       expected_log_pdf = stats.invgamma.logpdf(x, alpha_v, scale=beta_v)
-      log_pdf = inv_gamma.log_pdf(x)
+      log_pdf = inv_gamma.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = inv_gamma.pdf(x)
+      pdf = inv_gamma.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -90,12 +90,12 @@ class InverseGammaTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       inv_gamma = inverse_gamma.InverseGamma(alpha=alpha, beta=beta)
       expected_log_pdf = stats.invgamma.logpdf(x, alpha_v, scale=beta_v)
-      log_pdf = inv_gamma.log_pdf(x)
+      log_pdf = inv_gamma.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = inv_gamma.pdf(x)
+      pdf = inv_gamma.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -260,7 +260,7 @@ class InverseGammaTest(test.TestCase):
       inv_gamma = inverse_gamma.InverseGamma(alpha=[7., 11.], beta=[[5.], [6.]])
       num = 50000
       samples = inv_gamma.sample(num, seed=137)
-      pdfs = inv_gamma.pdf(samples)
+      pdfs = inv_gamma.prob(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))

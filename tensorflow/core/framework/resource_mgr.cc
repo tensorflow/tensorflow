@@ -25,6 +25,38 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace internal {
+
+Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
+  if (ctx->device()->attributes().name() != p.device()) {
+    return errors::InvalidArgument(
+        "Trying to access resource located in device ", p.device(),
+        " from device ", ctx->device()->attributes().name());
+  }
+  return Status::OK();
+}
+
+}  // end namespace internal
+
+Status ResourceMgr::InsertDebugTypeName(uint64 hash_code,
+                                        const string& type_name) {
+  auto iter = debug_type_names_.emplace(hash_code, type_name);
+  if (iter.first->second != type_name) {
+    return errors::AlreadyExists("Duplicate hash code found for type ",
+                                 type_name);
+  }
+  return Status::OK();
+}
+
+const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
+  auto type_name_iter = debug_type_names_.find(hash_code);
+  if (type_name_iter == debug_type_names_.end()) {
+    return "<unknown>";
+  } else {
+    return type_name_iter->second.c_str();
+  }
+}
+
 ResourceMgr::ResourceMgr() : default_container_("localhost") {}
 
 ResourceMgr::ResourceMgr(const string& default_container)
@@ -56,7 +88,7 @@ string ResourceMgr::DebugString() const {
     const string& container = p.first;
     for (const auto& q : *p.second) {
       const Key& key = q.first;
-      const char* type = key.first.name();
+      const char* type = DebugTypeName(key.first);
       const string& resource = key.second;
       Line l{&container, port::Demangle(type), &resource,
              q.second->DebugString()};
@@ -81,7 +113,8 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
     if (*b == nullptr) {
       *b = new Container;
     }
-    if ((*b)->insert({{type, name}, resource}).second) {
+    if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
+      TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
       return Status::OK();
     }
   }
@@ -98,7 +131,7 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
   if (b == nullptr) {
     return errors::NotFound("Container ", container, " does not exist.");
   }
-  auto r = gtl::FindPtrOrNull(*b, {type, name});
+  auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
   if (r == nullptr) {
     return errors::NotFound("Resource ", container, "/", name, "/", type.name(),
                             " does not exist.");
@@ -108,8 +141,9 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
   return Status::OK();
 }
 
-Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
-                             const string& name) {
+Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
+                             const string& resource_name,
+                             const string& type_name) {
   ResourceBase* base = nullptr;
   {
     mutex_lock l(mu_);
@@ -117,10 +151,10 @@ Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
     if (b == nullptr) {
       return errors::NotFound("Container ", container, " does not exist.");
     }
-    auto iter = b->find({type, name});
+    auto iter = b->find({type_hash_code, resource_name});
     if (iter == b->end()) {
-      return errors::NotFound("Resource ", container, "/", name, "/",
-                              type.name(), " does not exist.");
+      return errors::NotFound("Resource ", container, "/", resource_name, "/",
+                              type_name, " does not exist.");
     }
     base = iter->second;
     b->erase(iter);
@@ -128,6 +162,16 @@ Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
   CHECK(base != nullptr);
   base->Unref();
   return Status::OK();
+}
+
+Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
+                             const string& resource_name) {
+  return DoDelete(container, type.hash_code(), resource_name, type.name());
+}
+
+Status ResourceMgr::Delete(const ResourceHandle& handle) {
+  return DoDelete(handle.container(), handle.hash_code(), handle.name(),
+                  "<unknown>");
 }
 
 Status ResourceMgr::Cleanup(const string& container) {
@@ -200,6 +244,11 @@ string ContainerInfo::DebugString() const {
 
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
+}
+
+Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
+  TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  return ctx->resource_manager()->Delete(p);
 }
 
 }  //  end namespace tensorflow

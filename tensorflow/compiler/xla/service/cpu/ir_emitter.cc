@@ -406,9 +406,14 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // TODO(b/34359662): Implement outfeed on CPU.
+  return Unimplemented("Outfeed is not supported on CPU (b/34359662).");
+}
+
 Status IrEmitter::HandleSort(HloInstruction* sort, HloInstruction* operand) {
   // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("sort");
+  return Unimplemented("Sort is not supported on GPU (b/26783907).");
 }
 
 Status IrEmitter::HandleTuple(

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -38,36 +37,21 @@ namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
 
-namespace dynload {
+namespace wrap {
 
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define PERFTOOLS_GPUTOOLS_CUFFT_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                           \
-    static const char *kName;                                              \
-    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;       \
-    static void *GetDsoHandle() {                                          \
-      static auto status = internal::CachedDsoLoader::GetCufftDsoHandle(); \
-      return status.ValueOrDie();                                          \
-    }                                                                      \
-    static FuncPointerT DynLoad() {                                        \
-      static void *f;                                                      \
-      port::Status s = port::Env::Default()->GetSymbolFromLibrary(         \
-          GetDsoHandle(), kName, &f);                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in cuFFT DSO; dlerror: " << s.error_message();    \
-      return reinterpret_cast<FuncPointerT>(f);                            \
-    }                                                                      \
-    template <typename... Args>                                            \
-    cufftResult operator()(CUDAExecutor *parent, Args... args) {           \
-      cuda::ScopedActivateExecutorContext sac{parent};                     \
-      return DynLoad()(args...);                                           \
-    }                                                                      \
-  } __name;                                                                \
-  const char *DynLoadShim__##__name::kName = #__name;
+#define PERFTOOLS_GPUTOOLS_CUFFT_WRAP(__name)                    \
+  struct WrapperShim__##__name {                                 \
+    template <typename... Args>                                  \
+    cufftResult operator()(CUDAExecutor *parent, Args... args) { \
+      cuda::ScopedActivateExecutorContext sac{parent};           \
+      return ::__name(args...);                                  \
+    }                                                            \
+  } __name;
 
 #define CUFFT_ROUTINE_EACH(__macro)                                         \
   __macro(cufftDestroy) __macro(cufftSetStream) __macro(cufftPlan1d)        \
@@ -78,7 +62,7 @@ namespace dynload {
 
 CUFFT_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUFFT_WRAP)
 
-}  // namespace dynload
+}  // namespace wrap
 
 namespace {
 
@@ -106,7 +90,7 @@ cufftType CUDAFftType(fft::Type type) {
 
 // Associates the given stream with the given cuFFT plan.
 bool SetStream(CUDAExecutor *parent, cufftHandle plan, Stream *stream) {
-  auto ret = dynload::cufftSetStream(parent, plan, AsCUDAStreamValue(stream));
+  auto ret = wrap::cufftSetStream(parent, plan, AsCUDAStreamValue(stream));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to run cuFFT routine cufftSetStream: " << ret;
     return false;
@@ -118,8 +102,8 @@ bool SetStream(CUDAExecutor *parent, cufftHandle plan, Stream *stream) {
 
 CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, fft::Type type)
     : parent_(parent), fft_type_(type) {
-  auto ret = dynload::cufftPlan1d(parent, &plan_, num_x, CUDAFftType(type),
-                                  1 /* = batch */);
+  auto ret = wrap::cufftPlan1d(parent, &plan_, num_x, CUDAFftType(type),
+                               1 /* = batch */);
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to create cuFFT 1d plan:" << ret;
   }
@@ -128,8 +112,7 @@ CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, fft::Type type)
 CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, uint64 num_y,
                          fft::Type type)
     : parent_(parent), fft_type_(type) {
-  auto ret =
-      dynload::cufftPlan2d(parent, &plan_, num_x, num_y, CUDAFftType(type));
+  auto ret = wrap::cufftPlan2d(parent, &plan_, num_x, num_y, CUDAFftType(type));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to create cuFFT 2d plan:" << ret;
   }
@@ -138,8 +121,8 @@ CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, uint64 num_y,
 CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, uint64 num_y,
                          uint64 num_z, fft::Type type)
     : parent_(parent), fft_type_(type) {
-  auto ret = dynload::cufftPlan3d(parent, &plan_, num_x, num_y, num_z,
-                                  CUDAFftType(type));
+  auto ret =
+      wrap::cufftPlan3d(parent, &plan_, num_x, num_y, num_z, CUDAFftType(type));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to create cuFFT 3d plan:" << ret;
   }
@@ -161,7 +144,7 @@ CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, int rank, uint64 *elem_count,
       output_embed_[i] = output_embed[i];
     }
   }
-  auto ret = dynload::cufftPlanMany(
+  auto ret = wrap::cufftPlanMany(
       parent, &plan_, rank, elem_count_, input_embed ? input_embed_ : nullptr,
       input_stride, input_distance, output_embed ? output_embed_ : nullptr,
       output_stride, output_distance, CUDAFftType(type), batch_count);
@@ -170,7 +153,7 @@ CUDAFftPlan::CUDAFftPlan(CUDAExecutor *parent, int rank, uint64 *elem_count,
   }
 }
 
-CUDAFftPlan::~CUDAFftPlan() { dynload::cufftDestroy(parent_, plan_); }
+CUDAFftPlan::~CUDAFftPlan() { wrap::cufftDestroy(parent_, plan_); }
 
 int CUDAFftPlan::GetFftDirection() const {
   switch (fft_type_) {
@@ -277,25 +260,25 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   return true;
 }
 
-#define PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,   \
-                                           __fft_type3)                        \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
-                      const DeviceMemory<std::complex<__type>> &input,         \
-                      DeviceMemory<std::complex<__type>> *output) {            \
-    return DoFftWithDirectionInternal(                                         \
-        stream, plan, dynload::cufftExec##__fft_type1, input, output);         \
-  }                                                                            \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
-                      const DeviceMemory<__type> &input,                       \
-                      DeviceMemory<std::complex<__type>> *output) {            \
-    return DoFftInternal(stream, plan, dynload::cufftExec##__fft_type2, input, \
-                         output);                                              \
-  }                                                                            \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
-                      const DeviceMemory<std::complex<__type>> &input,         \
-                      DeviceMemory<__type> *output) {                          \
-    return DoFftInternal(stream, plan, dynload::cufftExec##__fft_type3, input, \
-                         output);                                              \
+#define PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2, \
+                                           __fft_type3)                      \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
+                      const DeviceMemory<std::complex<__type>> &input,       \
+                      DeviceMemory<std::complex<__type>> *output) {          \
+    return DoFftWithDirectionInternal(                                       \
+        stream, plan, wrap::cufftExec##__fft_type1, input, output);          \
+  }                                                                          \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
+                      const DeviceMemory<__type> &input,                     \
+                      DeviceMemory<std::complex<__type>> *output) {          \
+    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type2, input,  \
+                         output);                                            \
+  }                                                                          \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
+                      const DeviceMemory<std::complex<__type>> &input,       \
+                      DeviceMemory<__type> *output) {                        \
+    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type3, input,  \
+                         output);                                            \
   }
 
 PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(float, C2C, R2C, C2R)
@@ -330,12 +313,6 @@ REGISTER_MODULE_INITIALIZER(register_cufft, {
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: "
                << status.error_message();
-  }
-
-  // Prime the cuFFT DSO. The loader will log more information.
-  auto statusor = gpu::internal::CachedDsoLoader::GetCufftDsoHandle();
-  if (!statusor.ok()) {
-    LOG(INFO) << "Unable to load cuFFT DSO.";
   }
 
   gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,

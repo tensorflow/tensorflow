@@ -63,7 +63,7 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
   for proto_file in proto_files:
     tf_logging.info('Loading proto file %s', proto_file)
     # Load GraphDef.
-    file_data = gfile.GFile(proto_file).read()
+    file_data = gfile.GFile(proto_file, 'rb').read()
     if proto_fileformat == 'rawproto':
       graph_def = graph_pb2.GraphDef.FromString(file_data)
     else:

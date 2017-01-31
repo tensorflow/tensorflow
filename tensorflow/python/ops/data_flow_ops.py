@@ -1432,6 +1432,11 @@ class StagingArea(object):
     as `dtypes` if provided.  The values at a given index `i` indicate the
     shape and name to use for the corresponding queue component in `dtypes`.
 
+    The device scope at the time of object creation determines where the
+    storage for the `StagingArea` will reside.  Calls to `put` will incur a copy
+    to this memory space, if necessary.  Tensors returned by `get` will be
+    placed according to the device scope when `get` is called.
+
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
@@ -1468,6 +1473,10 @@ class StagingArea(object):
       self._names = names
     else:
       self._names = None
+
+    # all get and put ops must colocate with this op
+    with ops.name_scope("%s_root" % self._name):
+      self._coloc_op = control_flow_ops.no_op()
 
   @property
   def name(self):
@@ -1552,6 +1561,18 @@ class StagingArea(object):
       return [vals]
 
   def put(self, values, name=None):
+    """Create an op that places a value into the staging area.
+
+    Args:
+      values: Tensor (or a tuple of Tensors) to place into the staging area.
+      name: A name for the operation (optional).
+
+    Returns:
+        The created op.
+
+    Raises:
+      ValueError: If the number or type of inputs don't match the staging area.
+    """
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
       vals = self._check_put_dtypes(values)
@@ -1566,7 +1587,11 @@ class StagingArea(object):
       for val, shape in zip(vals, self._shapes):
         val.get_shape().assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops.stage(vals, shared_name=self._name, name=scope)
+      with ops.colocate_with(self._coloc_op):
+        op = gen_data_flow_ops.stage(values=vals, shared_name=self._name,
+                                     name=scope)
+
+      return op
 
   def _get_return_value(self, tensors):
     """Return the value to return from a get op.
@@ -1597,6 +1622,9 @@ class StagingArea(object):
     If the staging area is empty when this operation executes, it will block
     until there is an element to dequeue.
 
+    The placement of the returned tensor will be determined by the current
+    device scope when this function is called.
+
     Args:
       name: A name for the operation (optional).
 
@@ -1606,8 +1634,14 @@ class StagingArea(object):
     if name is None:
       name = "%s_get" % self._name
 
-    ret = gen_data_flow_ops.unstage(self._dtypes, shared_name=self._name,
-                                    name=name)
+    with ops.colocate_with(self._coloc_op):
+      ret = gen_data_flow_ops.unstage(dtypes=self._dtypes,
+                                      shared_name=self._name, name=name)
+
+    curr_device_scope = control_flow_ops.no_op().device
+    if curr_device_scope != self._coloc_op.device:
+      for i in range(len(ret)):
+        ret[i] = array_ops.identity(ret[i])
 
     for output, shape in zip(ret, self._shapes):
       output.set_shape(shape)

@@ -666,7 +666,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     }
     if (rank == 0) {
       return errors::InvalidArgument(
-          "Can't concatenate scalars (use tf.pack instead)");
+          "Can't concatenate scalars (use tf.stack instead)");
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;

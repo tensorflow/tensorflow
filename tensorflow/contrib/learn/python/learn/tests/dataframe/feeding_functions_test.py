@@ -27,7 +27,7 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
 
 import numpy as np
 
-import tensorflow.contrib.learn.python.learn.dataframe.queues.feeding_functions as ff
+from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions as ff
 from tensorflow.python.platform import test
 
 # pylint: disable=g-import-not-at-top

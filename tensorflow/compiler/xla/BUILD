@@ -264,6 +264,18 @@ cc_test(
 )
 
 cc_library(
+    name = "metric_table_report",
+    srcs = ["metric_table_report.cc"],
+    hdrs = ["metric_table_report.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "device_util",
     hdrs = ["device_util.h"],
     visibility = ["//visibility:public"],

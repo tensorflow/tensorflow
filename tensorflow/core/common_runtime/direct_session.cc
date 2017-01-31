@@ -450,10 +450,12 @@ Status DirectSession::Run(const RunOptions& run_options,
         options_.config.graph_options().build_cost_model();
     const int64 build_cost_model_after =
         options_.config.graph_options().build_cost_model_after();
-    update_cost_model =
-        ((executors_and_keys->step_count + 1 - build_cost_model_after) %
-             build_cost_model_every ==
-         0);
+    int measure_step_count =
+        executors_and_keys->step_count - build_cost_model_after;
+    if (measure_step_count >= 0) {
+      update_cost_model =
+          ((measure_step_count + 1) % build_cost_model_every == 0);
+    }
   }
   if (do_trace || update_cost_model) {
     run_state.collector.reset(

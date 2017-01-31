@@ -70,6 +70,16 @@ class MomentumOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking,
         use_nesterov=self._use_nesterov).op
 
+  def _resource_apply_dense(self, grad, var):
+    mom = self.get_slot(var, "momentum")
+    return training_ops.resource_apply_momentum(
+        var, mom.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        grad,
+        math_ops.cast(self._momentum_tensor, grad.dtype.base_dtype),
+        use_locking=self._use_locking,
+        use_nesterov=self._use_nesterov)
+
   def _apply_sparse(self, grad, var):
     mom = self.get_slot(var, "momentum")
     return training_ops.sparse_apply_momentum(

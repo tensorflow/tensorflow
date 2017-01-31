@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -32,11 +33,15 @@ from tensorflow.python.training import gradient_descent
 
 class FtrlOptimizerTest(test.TestCase):
 
-  def testFtrlwithoutRegularization(self):
+  def doTestFtrlwithoutRegularization(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.test_session() as sess:
-        var0 = variables.Variable([0.0, 0.0], dtype=dtype)
-        var1 = variables.Variable([0.0, 0.0], dtype=dtype)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([0.0, 0.0], dtype=dtype)
+          var1 = variables.Variable([0.0, 0.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
         opt = ftrl.FtrlOptimizer(
@@ -60,6 +65,12 @@ class FtrlOptimizerTest(test.TestCase):
             np.array([-2.60260963, -4.29698515]), v0_val)
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]), v1_val)
+
+  def testFtrlWithoutRegularization(self):
+    self.doTestFtrlwithoutRegularization(use_resource=False)
+
+  def testResourceFtrlWithoutRegularization(self):
+    self.doTestFtrlwithoutRegularization(use_resource=True)
 
   def testFtrlwithoutRegularization2(self):
     for dtype in [dtypes.half, dtypes.float32]:
