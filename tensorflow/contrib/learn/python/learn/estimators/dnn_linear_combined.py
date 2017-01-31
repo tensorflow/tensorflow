@@ -580,13 +580,23 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted classes for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_classes, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted classes. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_classes` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns classes.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -596,11 +606,19 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       Numpy array of predicted classes with shape [batch_size] (or an iterable
       of predicted classes if as_iterable is True). Each predicted class is
       represented by its class index (i.e. integer from 0 to n_classes-1).
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_classes(
+    if not outputs:
+      return self.predict_classes(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNLinearCombinedClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -947,13 +965,23 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted scores for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_scores, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted scores. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_scores` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns scores.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -963,11 +991,19 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       Numpy array of predicted scores (or an iterable of predicted scores if
       as_iterable is True). If `label_dimension == 1`, the shape of the output
       is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_scores(
+    if not outputs:
+      return self.predict_scores(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNLinearCombinedRegressor, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
