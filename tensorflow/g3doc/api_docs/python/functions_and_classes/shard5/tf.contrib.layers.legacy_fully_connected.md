@@ -42,7 +42,7 @@ collection.
 
 *  <b>`x`</b>: The input `Tensor`.
 *  <b>`num_output_units`</b>: The size of the output.
-*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
     maintain a linear activation.
 *  <b>`weight_init`</b>: An optional weight initialization, defaults to
     `xavier_initializer`.
@@ -69,5 +69,5 @@ collection.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if x has rank less than 2 or if its last dimension is not set.
+*  <b>`ValueError`</b>: If x has rank less than 2 or if its last dimension is not set.
 

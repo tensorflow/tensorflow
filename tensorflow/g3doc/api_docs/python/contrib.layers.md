@@ -43,7 +43,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
 
 
 - - -
@@ -74,11 +74,11 @@ can have speed penalty, especially in distributed settings.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor with 2 or more dimensions, where the first dimension has
+*  <b>`inputs`</b>: A tensor with 2 or more dimensions, where the first dimension has
     `batch_size`. The normalization is over all but the last dimension if
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
-*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+*  <b>`decay`</b>: Decay for the moving average. Reasonable values for `decay` are close
     to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
     Lower `decay` value (recommend trying `decay`=0.9) if model experiences
     reasonably good training performance but poor validation and/or test
@@ -88,24 +88,24 @@ can have speed penalty, especially in distributed settings.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
-*  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
-*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+*  <b>`epsilon`</b>: Small float added to variance to avoid dividing by zero.
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
     maintain a linear activation.
-*  <b>`param_initializers`</b>: optional initializers for beta, gamma, moving mean and
+*  <b>`param_initializers`</b>: Optional initializers for beta, gamma, moving mean and
     moving variance.
-*  <b>`updates_collections`</b>: collections to collect the update ops for computation.
+*  <b>`updates_collections`</b>: Collections to collect the update ops for computation.
     The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
     computed in place.
-*  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
+*  <b>`is_training`</b>: Whether or not the layer is in training mode. In training mode
     it would accumulate the statistics of the moments into `moving_mean` and
     `moving_variance` using an exponential moving average with the given
     `decay`. When it is not in training mode then it would use the values of
     the `moving_mean` and the `moving_variance`.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional collections for the variables.
-*  <b>`outputs_collections`</b>: collections to add the outputs.
+*  <b>`variables_collections`</b>: Optional collections for the variables.
+*  <b>`outputs_collections`</b>: Collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`batch_weights`</b>: An optional tensor of shape `[batch_size]`,
@@ -126,10 +126,10 @@ can have speed penalty, especially in distributed settings.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `batch_weights` is not None and `fused` is True.
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
-*  <b>`ValueError`</b>: if the rank of `inputs` is undefined.
-*  <b>`ValueError`</b>: if rank or channels dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: If `batch_weights` is not None and `fused` is True.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If the rank of `inputs` is undefined.
+*  <b>`ValueError`</b>: If rank or channels dimension of `inputs` is undefined.
 
 
 - - -
@@ -155,59 +155,59 @@ if a value > 1 for any dimension of `rate` is specified.  In this case
 ##### Args:
 
 
-*  <b>`inputs`</b>: a Tensor of rank N+2 of shape
+*  <b>`inputs`</b>: A Tensor of rank N+2 of shape
     `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
     not start with "NC" (default), or
     `[batch_size, in_channels] + input_spatial_shape` if data_format starts
     with "NC".
-*  <b>`num_outputs`</b>: integer, the number of output filters.
-*  <b>`kernel_size`</b>: a sequence of N positive integers specifying the spatial
+*  <b>`num_outputs`</b>: Integer, the number of output filters.
+*  <b>`kernel_size`</b>: A sequence of N positive integers specifying the spatial
     dimensions of of the filters.  Can be a single integer to specify the same
     value for all spatial dimensions.
-*  <b>`stride`</b>: a sequence of N positive integers specifying the stride at which to
+*  <b>`stride`</b>: A sequence of N positive integers specifying the stride at which to
     compute output.  Can be a single integer to specify the same value for all
     spatial dimensions.  Specifying any `stride` value != 1 is incompatible
     with specifying any `rate` value != 1.
-*  <b>`padding`</b>: one of `"VALID"` or `"SAME"`.
+*  <b>`padding`</b>: One of `"VALID"` or `"SAME"`.
 *  <b>`data_format`</b>: A string or None.  Specifies whether the channel dimension of
     the `input` and output is the last dimension (default, or if `data_format`
     does not start with "NC"), or the second dimension (if `data_format`
     starts with "NC").  For N=1, the valid values are "NWC" (default) and
     "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
     N=3, currently the only valid value is "NDHWC".
-*  <b>`rate`</b>: a sequence of N positive integers specifying the dilation rate to use
+*  <b>`rate`</b>: A sequence of N positive integers specifying the dilation rate to use
     for a'trous convolution.  Can be a single integer to specify the same
     value for all spatial dimensions.  Specifying any `rate` value != 1 is
     incompatible with specifying any `stride` value != 1.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
-  a tensor representing the output of the operation.
+  A tensor representing the output of the operation.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is invalid.
-*  <b>`ValueError`</b>: both 'rate' and `stride` are not uniformly 1.
+*  <b>`ValueError`</b>: If `data_format` is invalid.
+*  <b>`ValueError`</b>: Both 'rate' and `stride` are not uniformly 1.
 
 
 - - -
@@ -230,29 +230,29 @@ operations such as image gradients:
 ##### Args:
 
 
-*  <b>`inputs`</b>: a 4-D tensor with dimensions [batch_size, height, width, channels].
-*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+*  <b>`inputs`</b>: A 4-D tensor with dimensions [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: A list of length 2 holding the [kernel_height, kernel_width] of
     of the pooling. Can be an int if both values are the same.
-*  <b>`stride`</b>: a list of length 2 `[stride_height, stride_width]`.
+*  <b>`stride`</b>: A list of length 2 `[stride_height, stride_width]`.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: the padding type to use, either 'SAME' or 'VALID'.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`padding`</b>: The padding type to use, either 'SAME' or 'VALID'.
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
@@ -282,29 +282,29 @@ operations such as image gradients:
 ##### Args:
 
 
-*  <b>`inputs`</b>: a 4-D tensor with dimensions [batch_size, height, width, channels].
-*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+*  <b>`inputs`</b>: A 4-D tensor with dimensions [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: A list of length 2 holding the [kernel_height, kernel_width] of
     of the pooling. Can be an int if both values are the same.
-*  <b>`stride`</b>: a list of length 2 `[stride_height, stride_width]`.
+*  <b>`stride`</b>: A list of length 2 `[stride_height, stride_width]`.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: the padding type to use, either 'SAME' or 'VALID'.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`padding`</b>: The padding type to use, either 'SAME' or 'VALID'.
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
@@ -370,43 +370,43 @@ second variable called 'biases' is added to the result of the operation.
 *  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
     `[batch, height, width, in_channels]` for `NHWC` data format or
     `[batch, in_channels, height, width]` for `NCHW` data format.
-*  <b>`num_outputs`</b>: integer, the number of output filters.
-*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+*  <b>`num_outputs`</b>: Integer, the number of output filters.
+*  <b>`kernel_size`</b>: A list of length 2 holding the [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
-*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
+*  <b>`stride`</b>: A list of length 2: [stride_height, stride_width].
     Can be an int if both strides are the same.  Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`padding`</b>: One of 'VALID' or 'SAME'.
 *  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`trainable`</b>: whether or not the variables should be trainable or not.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
+*  <b>`trainable`</b>: Whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
-  a tensor representing the output of the operation.
+  A tensor representing the output of the operation.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if 'kernel_size' is not a list of length 2.
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
-*  <b>`ValueError`</b>: if `C` dimension of `inputs` is None.
+*  <b>`ValueError`</b>: If 'kernel_size' is not a list of length 2.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `C` dimension of `inputs` is None.
 
 
 - - -
@@ -461,18 +461,18 @@ Flattens the input while maintaining the batch_size.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, ...].
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`inputs`</b>: A tensor of size [batch_size, ...].
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
-  a flattened tensor with shape [batch_size, k].
+  A flattened tensor with shape [batch_size, k].
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if inputs.dense_shape is wrong.
+*  <b>`ValueError`</b>: If inputs.dense_shape is wrong.
 
 
 - - -
@@ -498,22 +498,22 @@ prior to the initial matrix multiply by `weights`.
 *  <b>`inputs`</b>: A tensor of at least rank 2 and static value for the last dimension;
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
 *  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collections per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for variable_scope.
@@ -525,7 +525,7 @@ prior to the initial matrix multiply by `weights`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if x has rank less than 2 or if its last dimension is not set.
+*  <b>`ValueError`</b>: If x has rank less than 2 or if its last dimension is not set.
 
 
 - - -
@@ -543,19 +543,19 @@ Can be used as a normalizer function for conv2d and fully_connected.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor with 2 or more dimensions. The normalization
+*  <b>`inputs`</b>: A tensor with 2 or more dimensions. The normalization
           occurs over all but the first dimension.
 *  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
     is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
-*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
     maintain a linear activation.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional collections for the variables.
-*  <b>`outputs_collections`</b>: collections to add the outputs.
+*  <b>`variables_collections`</b>: Optional collections for the variables.
+*  <b>`outputs_collections`</b>: Collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
@@ -567,7 +567,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: If rank or last dimension of `inputs` is undefined.
 
 
 - - -
@@ -610,7 +610,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
 *  <b>`ValueError`</b>: If 'kernel_size' is not a 2-D list
 
 
@@ -624,15 +624,15 @@ Transform numeric labels into onehot_labels using `tf.one_hot`.
 
 
 *  <b>`labels`</b>: [batch_size] target labels.
-*  <b>`num_classes`</b>: total number of classes.
+*  <b>`num_classes`</b>: Total number of classes.
 *  <b>`on_value`</b>: A scalar defining the on-value.
 *  <b>`off_value`</b>: A scalar defining the off-value.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
-  one hot encoding of the labels.
+  One-hot encoding of the labels.
 
 
 - - -
@@ -701,12 +701,12 @@ layers are called with `scope='stack'`.
 
 ##### Returns:
 
-  a tensor result of applying the layer, repetitions times.
+  A tensor result of applying the layer, repetitions times.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if the op is unknown or wrong.
+*  <b>`ValueError`</b>: If the op is unknown or wrong.
 
 
 - - -
@@ -836,37 +836,37 @@ to produce the end result.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
-*  <b>`num_outputs`</b>: the number of pointwise convolution output filters. If is
+*  <b>`inputs`</b>: A tensor of size [batch_size, height, width, channels].
+*  <b>`num_outputs`</b>: The number of pointwise convolution output filters. If is
     None, then we skip the pointwise convolution stage.
-*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of
+*  <b>`kernel_size`</b>: A list of length 2: [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
-*  <b>`depth_multiplier`</b>: the number of depthwise convolution output channels for
+*  <b>`depth_multiplier`</b>: The number of depthwise convolution output channels for
     each input channel. The total number of depthwise convolution output
     channels will be equal to `num_filters_in * depth_multiplier`.
-*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
+*  <b>`stride`</b>: A list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
-*  <b>`padding`</b>: one of 'VALID' or 'SAME'.
-*  <b>`rate`</b>: a list of length 2: [rate_height, rate_width], specifying the dilation
+*  <b>`padding`</b>: One of 'VALID' or 'SAME'.
+*  <b>`rate`</b>: A list of length 2: [rate_height, rate_width], specifying the dilation
     rates for a'trous convolution. Can be an int if both rates are the same.
     If any value is larger than one, then both stride values need to be one.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionay containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`trainable`</b>: whether or not the variables should be trainable or not.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
+*  <b>`trainable`</b>: Whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
@@ -2302,7 +2302,7 @@ collection.
 
 *  <b>`x`</b>: The input `Tensor`.
 *  <b>`num_output_units`</b>: The size of the output.
-*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
     maintain a linear activation.
 *  <b>`weight_init`</b>: An optional weight initialization, defaults to
     `xavier_initializer`.
@@ -2329,7 +2329,7 @@ collection.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if x has rank less than 2 or if its last dimension is not set.
+*  <b>`ValueError`</b>: If x has rank less than 2 or if its last dimension is not set.
 
 
 - - -

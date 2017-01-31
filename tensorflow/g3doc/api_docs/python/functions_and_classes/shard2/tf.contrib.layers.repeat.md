@@ -27,10 +27,10 @@ layers are called with `scope='stack'`.
 
 ##### Returns:
 
-  a tensor result of applying the layer, repetitions times.
+  A tensor result of applying the layer, repetitions times.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if the op is unknown or wrong.
+*  <b>`ValueError`</b>: If the op is unknown or wrong.
 
