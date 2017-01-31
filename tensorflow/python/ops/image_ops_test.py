@@ -470,9 +470,7 @@ class ResizeBilinearBenchmark(test.Benchmark):
       print('Variables initalized for resize_bilinear image size: %s.' %
             (image_size,))
       benchmark_values = self.run_op_benchmark(
-          sess,
-          benchmark_op,
-          name=('bilinear_%s_%s' % image_size),)
+          sess, benchmark_op, name=('bilinear_%s_%s' % image_size))
       print('Benchmark values:\n%s' % benchmark_values)
 
   def benchmarkSimilar(self):
@@ -506,9 +504,7 @@ class ResizeBicubicBenchmark(test.Benchmark):
       print('Variables initalized for resize_bicubic image size: %s.' %
             (image_size,))
       benchmark_values = self.run_op_benchmark(
-          sess,
-          benchmark_op,
-          name=('bicubic_%s_%s' % image_size),)
+          sess, benchmark_op, name=('bicubic_%s_%s' % image_size))
       print('Benchmark values:\n%s' % benchmark_values)
 
   def benchmarkSimilar(self):
@@ -519,6 +515,52 @@ class ResizeBicubicBenchmark(test.Benchmark):
 
   def benchmarkScaleDown(self):
     self._benchmarkResize((749, 603))
+
+
+class ResizeAreaBenchmark(test.Benchmark):
+
+  def _benchmarkResize(self, image_size, num_channels):
+    batch_size = 1
+    num_ops = 1000
+    img = variables.Variable(
+        random_ops.random_normal([batch_size, image_size[0],
+                                  image_size[1], num_channels]),
+        name='img')
+
+    deps = []
+    for _ in xrange(num_ops):
+      with ops.control_dependencies(deps):
+        resize_op = image_ops.resize_area(img, [299, 299], align_corners=False)
+        deps = [resize_op]
+      benchmark_op = control_flow_ops.group(*deps)
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      results = self.run_op_benchmark(
+          sess, benchmark_op,
+          name=('resize_area_%s_%s_%s' %
+                (image_size[0], image_size[1], num_channels)))
+      print('%s   : %.2f ms/img' % (
+          results['name'],
+          1000*results['wall_time'] / (batch_size * num_ops)))
+
+  def benchmarkSimilar3Channel(self):
+    self._benchmarkResize((183, 229), 3)
+
+  def benchmarkScaleUp3Channel(self):
+    self._benchmarkResize((141, 186), 3)
+
+  def benchmarkScaleDown3Channel(self):
+    self._benchmarkResize((749, 603), 3)
+
+  def benchmarkSimilar1Channel(self):
+    self._benchmarkResize((183, 229), 1)
+
+  def benchmarkScaleUp1Channel(self):
+    self._benchmarkResize((141, 186), 1)
+
+  def benchmarkScaleDown1Channel(self):
+    self._benchmarkResize((749, 603), 1)
 
 
 class AdjustSaturationTest(test_util.TensorFlowTestCase):
