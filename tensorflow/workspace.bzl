@@ -36,11 +36,17 @@ def check_version(bazel_version):
           native.bazel_version, bazel_version))
   pass
 
+def _repos_are_siblings():
+  return Label("@foo//bar").workspace_root.startswith("../")
+
 # Temporary workaround to support including TensorFlow as a submodule until this
 # use-case is supported in the next Bazel release.
 def _temp_workaround_http_archive_impl(repo_ctx):
    repo_ctx.template("BUILD", repo_ctx.attr.build_file,
-                     {"%ws%": repo_ctx.attr.repository}, False)
+                     {
+                         "%prefix%" : ".." if _repos_are_siblings() else "external",
+                         "%ws%": repo_ctx.attr.repository
+                     }, False)
    repo_ctx.download_and_extract(repo_ctx.attr.urls, "", repo_ctx.attr.sha256,
                                  "", repo_ctx.attr.strip_prefix)
 
@@ -53,30 +59,6 @@ temp_workaround_http_archive = repository_rule(
       "sha256": attr.string(default = ""),
       "strip_prefix": attr.string(default = ""),
    })
-
-def _repos_are_siblings():
-  return Label("@foo//bar").workspace_root.startswith("../")
-
-def _curl_repo_impl(ctx):
-  ctx.download_and_extract(
-      [
-          "http://bazel-mirror.storage.googleapis.com/curl.haxx.se/download/curl-7.49.1.tar.gz",
-          "https://curl.haxx.se/download/curl-7.49.1.tar.gz",
-      ], "", "ff3e80c1ca6a068428726cd7dd19037a47cc538ce58ef61c59587191039b2ca6", "", "curl-7.49.1")
-  prefix = "external"
-  if _repos_are_siblings():
-    prefix = ".."
-  ctx.template(
-      'BUILD',
-      Label("//third_party:curl.BUILD"),
-      substitutions = {"{%prefix%}" : prefix},
-      executable = False
-  )
-
-
-curl_repo = repository_rule(
-    implementation = _curl_repo_impl,
-)
 
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
@@ -294,7 +276,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       build_file = str(Label("//third_party:swig.BUILD")),
   )
 
-  curl_repo(name = "curl")
+  temp_workaround_http_archive(
+      name = "curl",
+      sha256 = "ff3e80c1ca6a068428726cd7dd19037a47cc538ce58ef61c59587191039b2ca6",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/curl.haxx.se/download/curl-7.49.1.tar.gz",
+          "https://curl.haxx.se/download/curl-7.49.1.tar.gz",
+      ],
+      strip_prefix = "curl-7.49.1",
+      build_file = str(Label("//third_party:curl.BUILD")),
+  )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
