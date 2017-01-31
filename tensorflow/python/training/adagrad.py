@@ -96,3 +96,13 @@ class AdagradOptimizer(optimizer.Optimizer):
         grad.values,
         grad.indices,
         use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    acc = self.get_slot(var, "accumulator")
+    return training_ops.resource_sparse_apply_adagrad(
+        var,
+        acc.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype),
+        grad,
+        indices,
+        use_locking=self._use_locking)

@@ -46,6 +46,12 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 
 
+def _is_resource(v):
+  """Returns true if v is something you get from a resource variable."""
+  return (isinstance(v, resource_variable_ops.ResourceVariable) or
+          (isinstance(v, ops.Tensor) and v.op.type == "ResourceGather"))
+
+
 def _create_slot_var(primary, val, scope):
   """Helper function for creating a slot variable."""
 
@@ -55,8 +61,7 @@ def _create_slot_var(primary, val, scope):
   variable_scope.get_variable_scope().set_partitioner(None)
   slot = variable_scope.get_variable(
       scope, initializer=val, trainable=False,
-      use_resource=isinstance(
-          primary, resource_variable_ops.ResourceVariable))
+      use_resource=_is_resource(primary))
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 
   # pylint: disable=protected-access
@@ -99,12 +104,12 @@ def create_slot(primary, val, name, colocate_with_primary=True):
   # optimizer can be shared when reuse is True. Meanwhile when reuse is False
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
-  with variable_scope.variable_scope(None, primary.op.name + '/' + name):
+  with variable_scope.variable_scope(None, primary.op.name + "/" + name):
     if colocate_with_primary:
       with ops.colocate_with(primary):
-        return _create_slot_var(primary, val, '')
+        return _create_slot_var(primary, val, "")
     else:
-      return _create_slot_var(primary, val, '')
+      return _create_slot_var(primary, val, "")
 
 
 def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):

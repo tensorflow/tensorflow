@@ -86,6 +86,16 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
         grad.indices,
         use_locking=self._use_locking).op
 
+  def _resource_apply_sparse(self, grad, var, indices):
+    return training_ops.resource_sparse_apply_proximal_gradient_descent(
+        var,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype),
+        math_ops.cast(self._l1_regularization_strength_tensor, grad.dtype),
+        math_ops.cast(self._l2_regularization_strength_tensor, grad.dtype),
+        grad,
+        indices,
+        use_locking=self._use_locking)
+
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
                                                        name="learning_rate")
