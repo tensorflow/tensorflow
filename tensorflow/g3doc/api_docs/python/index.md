@@ -1091,6 +1091,7 @@
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`BasicLSTMCell`](../../api_docs/python/contrib.rnn.md#BasicLSTMCell)
   * [`BasicRNNCell`](../../api_docs/python/contrib.rnn.md#BasicRNNCell)
+  * [`CompiledWrapper`](../../api_docs/python/contrib.rnn.md#CompiledWrapper)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
   * [`DeviceWrapper`](../../api_docs/python/contrib.rnn.md#DeviceWrapper)
   * [`DropoutWrapper`](../../api_docs/python/contrib.rnn.md#DropoutWrapper)

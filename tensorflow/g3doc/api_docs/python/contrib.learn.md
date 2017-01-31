@@ -1945,7 +1945,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNClassifier.predict(*args, **kwargs)` {#DNNClassifier.predict}
 
-Returns predicted classes for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -1953,12 +1953,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -1969,6 +1978,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted classes with shape [batch_size] (or an iterable
   of predicted classes if as_iterable is True). Each predicted class is
   represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -2005,7 +2015,7 @@ altogether. The behavior of this flag is described below.
 
 #### `tf.contrib.learn.DNNClassifier.predict_proba(*args, **kwargs)` {#DNNClassifier.predict_proba}
 
-Returns prediction probabilities for given features. (deprecated arguments)
+Returns predicted probabilities for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -2371,7 +2381,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNRegressor.predict(*args, **kwargs)` {#DNNRegressor.predict}
 
-Returns predicted scores for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -2379,12 +2389,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -2395,6 +2414,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted scores (or an iterable of predicted scores if
   as_iterable is True). If `label_dimension == 1`, the shape of the output
   is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -2772,7 +2792,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNLinearCombinedRegressor.predict(*args, **kwargs)` {#DNNLinearCombinedRegressor.predict}
 
-Returns predicted scores for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -2780,12 +2800,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -2796,6 +2825,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted scores (or an iterable of predicted scores if
   as_iterable is True). If `label_dimension == 1`, the shape of the output
   is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -3229,7 +3259,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNLinearCombinedClassifier.predict(*args, **kwargs)` {#DNNLinearCombinedClassifier.predict}
 
-Returns predicted classes for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -3237,12 +3267,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -3253,6 +3292,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted classes with shape [batch_size] (or an iterable
   of predicted classes if as_iterable is True). Each predicted class is
   represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -3678,39 +3718,99 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
 
-Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.predict_classes(*args, **kwargs)` {#LinearClassifier.predict_classes}
 
-Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
+Returns predicted classes for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.predict_proba(*args, **kwargs)` {#LinearClassifier.predict_proba}
 
-Runs inference to determine the class probability predictions. (deprecated arguments)
+Returns predicted probabilities for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted probabilities with shape [batch_size, n_classes]
+  (or an iterable of predicted probabilities if as_iterable is True).
 
 
 - - -
@@ -4062,26 +4162,70 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
 
-Runs inference to determine the predicted scores. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.predict_scores(*args, **kwargs)` {#LinearRegressor.predict_scores}
 
-Runs inference to determine the predicted scores. (deprecated arguments)
+Returns predicted scores for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
 
 
 - - -
