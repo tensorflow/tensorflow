@@ -21,6 +21,8 @@ from scipy import stats
 from tensorflow.contrib.distributions.python.ops import dirichlet as dirichlet_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -55,22 +57,22 @@ class DirichletTest(test.TestCase):
     alpha = [[1., 2, 3]]
     with self.test_session():
       dist = dirichlet_lib.Dirichlet(alpha, validate_args=True)
-      dist.pdf([.1, .3, .6]).eval()
-      dist.pdf([.2, .3, .5]).eval()
+      dist.prob([.1, .3, .6]).eval()
+      dist.prob([.2, .3, .5]).eval()
       # Either condition can trigger.
       with self.assertRaisesOpError("Condition x > 0.*|Condition x < y.*"):
-        dist.pdf([-1., 1, 1]).eval()
+        dist.prob([-1., 1, 1]).eval()
       with self.assertRaisesOpError("Condition x > 0.*"):
-        dist.pdf([0., .1, .9]).eval()
+        dist.prob([0., .1, .9]).eval()
       with self.assertRaisesOpError("Condition x ~= y.*"):
-        dist.pdf([.1, .2, .8]).eval()
+        dist.prob([.1, .2, .8]).eval()
 
   def testPdfZeroBatches(self):
     with self.test_session():
       alpha = [1., 2]
       x = [.5, .5]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose(1., pdf.eval())
       self.assertEqual((), pdf.get_shape())
 
@@ -79,7 +81,7 @@ class DirichletTest(test.TestCase):
       alpha = [1., 2]
       x = [.3, .7]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose(7. / 5, pdf.eval())
       self.assertEqual((), pdf.get_shape())
 
@@ -89,7 +91,7 @@ class DirichletTest(test.TestCase):
       alpha = [1., 1, 1]
       x = [[.2, .5, .3], [.3, .4, .3]]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([2., 2.], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -98,7 +100,7 @@ class DirichletTest(test.TestCase):
       alpha = [[1., 2]]
       x = [[.5, .5], [.3, .7]]
       dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1., 7. / 5], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -106,7 +108,7 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [1., 2]
       x = [[.5, .5], [.2, .8]]
-      pdf = dirichlet_lib.Dirichlet(alpha).pdf(x)
+      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
       self.assertAllClose([1., 8. / 5], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -114,7 +116,7 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       x = [[.5, .5]]
-      pdf = dirichlet_lib.Dirichlet(alpha).pdf(x)
+      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
       self.assertAllClose([1., 3. / 2], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -122,7 +124,7 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [[1., 2], [2., 3]]
       x = [.5, .5]
-      pdf = dirichlet_lib.Dirichlet(alpha).pdf(x)
+      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
       self.assertAllClose([1., 3. / 2], pdf.eval())
       self.assertEqual((2), pdf.get_shape())
 
@@ -134,16 +136,52 @@ class DirichletTest(test.TestCase):
       self.assertEqual(dirichlet.mean().get_shape(), (3,))
       self.assertAllClose(dirichlet.mean().eval(), expected_mean)
 
-  def testDirichletVariance(self):
+  def testCovarianceFromSampling(self):
+    alpha = np.array([[1., 2, 3],
+                      [2.5, 4, 0.01]], dtype=np.float32)
+    with self.test_session() as sess:
+      dist = dirichlet_lib.Dirichlet(alpha)  # batch_shape=[2], event_shape=[3]
+      x = dist.sample(int(250e3), seed=1)
+      sample_mean = math_ops.reduce_mean(x, 0)
+      x_centered = x - sample_mean[None, ...]
+      sample_cov = math_ops.reduce_mean(math_ops.matmul(
+          x_centered[..., None], x_centered[..., None, :]), 0)
+      sample_var = array_ops.matrix_diag_part(sample_cov)
+      sample_stddev = math_ops.sqrt(sample_var)
+      [
+          sample_mean_,
+          sample_cov_,
+          sample_var_,
+          sample_stddev_,
+          analytic_mean,
+          analytic_cov,
+          analytic_var,
+          analytic_stddev,
+      ] = sess.run([
+          sample_mean,
+          sample_cov,
+          sample_var,
+          sample_stddev,
+          dist.mean(),
+          dist.covariance(),
+          dist.variance(),
+          dist.stddev(),
+      ])
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.06)
+      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.03)
+      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
+
+  def testDirichletCovariance(self):
     with self.test_session():
       alpha = [1., 2, 3]
       denominator = np.sum(alpha)**2 * (np.sum(alpha) + 1)
-      expected_variance = np.diag(stats.dirichlet.var(alpha))
-      expected_variance += [[0., -2, -3], [-2, 0, -6],
-                            [-3, -6, 0]] / denominator
+      expected_covariance = np.diag(stats.dirichlet.var(alpha))
+      expected_covariance += [[0., -2, -3], [-2, 0, -6],
+                              [-3, -6, 0]] / denominator
       dirichlet = dirichlet_lib.Dirichlet(alpha=alpha)
-      self.assertEqual(dirichlet.variance().get_shape(), (3, 3))
-      self.assertAllClose(dirichlet.variance().eval(), expected_variance)
+      self.assertEqual(dirichlet.covariance().get_shape(), (3, 3))
+      self.assertAllClose(dirichlet.covariance().eval(), expected_covariance)
 
   def testDirichletMode(self):
     with self.test_session():

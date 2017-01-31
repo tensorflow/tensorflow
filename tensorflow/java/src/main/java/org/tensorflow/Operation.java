@@ -79,6 +79,16 @@ public final class Operation {
     return unsafeNativeHandle;
   }
 
+  // Package private, meant primarily for the public Output.shape() method.
+  long[] shape(int output) {
+    Graph.Reference r = graph.ref();
+    try {
+      return shape(r.nativeHandle(), unsafeNativeHandle, output);
+    } finally {
+      r.close();
+    }
+  }
+
   private final long unsafeNativeHandle;
   private final Graph graph;
 
@@ -87,4 +97,6 @@ public final class Operation {
   private static native String type(long handle);
 
   private static native int numOutputs(long handle);
+
+  private static native long[] shape(long graphHandle, long opHandle, int output);
 }

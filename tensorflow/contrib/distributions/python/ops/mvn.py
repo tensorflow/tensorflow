@@ -300,8 +300,11 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
   def _mean(self):
     return array_ops.identity(self._mu)
 
-  def _variance(self):
+  def _covariance(self):
     return self.sigma
+
+  def _variance(self):
+    return array_ops.matrix_diag_part(self.sigma)
 
   def _mode(self):
     return array_ops.identity(self._mu)

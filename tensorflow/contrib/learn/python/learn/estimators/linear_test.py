@@ -610,7 +610,8 @@ class LinearClassifierTest(test.TestCase):
     classifier = linear.LinearClassifier(
         feature_columns=[age, language], enable_centered_bias=True)
     classifier.fit(input_fn=input_fn, steps=100)
-    self.assertIn('centered_bias_weight', classifier.get_variable_names())
+    self.assertIn('linear/binary_logistic_head/centered_bias_weight',
+                  classifier.get_variable_names())
 
   def testTrainOptimizerWithL1Reg(self):
     """Tests l1 regularized model has higher loss."""

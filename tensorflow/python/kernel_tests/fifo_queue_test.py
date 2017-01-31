@@ -125,6 +125,13 @@ class FIFOQueueTest(test.TestCase):
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
 
+  def testMultipleDequeues(self):
+    with self.test_session() as session:
+      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+      q.enqueue_many([[1, 2, 3]]).run()
+      a, b, c = session.run([q.dequeue(), q.dequeue(), q.dequeue()])
+      self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
+
   def testEnqueueDictWithoutNames(self):
     with self.test_session():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)

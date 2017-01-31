@@ -44,6 +44,13 @@ function bazel_clean_and_fetch() {
   bazel fetch "//tensorflow/... -//tensorflow/examples/android/..."
 }
 
+# Delete any leftover BUILD files from the Makefile build, which would interfere
+# with Bazel parsing.
+MAKEFILE_DOWNLOAD_DIR=tensorflow/contrib/makefile/downloads
+if [ -d "${MAKEFILE_DOWNLOAD_DIR}" ]; then
+  find ${MAKEFILE_DOWNLOAD_DIR} -type f -name '*BUILD' -delete
+fi
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""
@@ -168,10 +175,10 @@ done
 
 if [ "$TF_ENABLE_XLA" == "1" ]; then
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = True/" tensorflow/core/platform/default/build_config_root.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = False/" tensorflow/core/platform/default/build_config_root.bzl
 fi
 
 

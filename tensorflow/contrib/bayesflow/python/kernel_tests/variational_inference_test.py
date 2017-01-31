@@ -59,12 +59,12 @@ def generative_net(z, data_size):
 
 def mini_vae():
   x = [[-6., 3., 6.], [-8., 4., 8.]]
-  prior = distributions.Normal(mu=0., sigma=1.)
+  prior = distributions.Normal(loc=0., scale=1.)
   variational = st.StochasticTensor(
       distributions.Normal(
-          mu=inference_net(x, 1), sigma=1.))
+          loc=inference_net(x, 1), scale=1.))
   vi.register_prior(variational, prior)
-  px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
+  px = distributions.Normal(loc=generative_net(variational, 3), scale=1.)
   log_likelihood = math_ops.reduce_sum(px.log_prob(x), 1)
   log_likelihood = array_ops.expand_dims(log_likelihood, -1)
   return x, prior, variational, px, log_likelihood
@@ -84,7 +84,7 @@ class VariationalInferenceTest(test.TestCase):
   def testExplicitVariationalAndPrior(self):
     with self.test_session() as sess:
       _, _, variational, _, log_likelihood = mini_vae()
-      prior = normal.Normal(mu=3., sigma=2.)
+      prior = normal.Normal(loc=3., scale=2.)
       elbo = vi.elbo(
           log_likelihood, variational_with_prior={variational: prior})
       expected_elbo = log_likelihood - kullback_leibler.kl(
@@ -121,9 +121,9 @@ class VariationalInferenceTest(test.TestCase):
     prior = distributions.Bernoulli(0.5)
     variational = st.StochasticTensor(
         NormalNoEntropy(
-            mu=inference_net(x, 1), sigma=1.))
+            loc=inference_net(x, 1), scale=1.))
     vi.register_prior(variational, prior)
-    px = distributions.Normal(mu=generative_net(variational, 3), sigma=1.)
+    px = distributions.Normal(loc=generative_net(variational, 3), scale=1.)
     log_likelihood = math_ops.reduce_sum(px.log_prob(x), 1)
 
     # No analytic KL available between prior and variational distributions.

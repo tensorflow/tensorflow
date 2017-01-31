@@ -77,7 +77,7 @@ def main(unused_args):
     return -1
 
   input_graph_def = graph_pb2.GraphDef()
-  with gfile.Open(FLAGS.input, "r") as f:
+  with gfile.Open(FLAGS.input, "rb") as f:
     data = f.read()
     if FLAGS.frozen_graph:
       input_graph_def.ParseFromString(data)

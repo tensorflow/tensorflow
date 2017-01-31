@@ -67,6 +67,18 @@ java_test(
 )
 
 java_test(
+    name = "ShapeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/ShapeTest.java"],
+    test_class = "org.tensorflow.ShapeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
+)
+
+java_test(
     name = "TensorFlowTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],

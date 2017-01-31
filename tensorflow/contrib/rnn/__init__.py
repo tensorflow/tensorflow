@@ -24,6 +24,7 @@
 @@BasicLSTMCell
 @@GRUCell
 @@LSTMCell
+@@LayerNormBasicLSTMCell
 
 ## Classes storing split `RNNCell` state
 
@@ -32,10 +33,13 @@
 ## RNN Cell wrappers (RNNCells that wrap other RNNCells)
 
 @@MultiRNNCell
+@@LSTMBlockWrapper
 @@DropoutWrapper
 @@EmbeddingWrapper
 @@InputProjectionWrapper
 @@OutputProjectionWrapper
+@@DeviceWrapper
+@@ResidualWrapper
 
 ### Block RNNCells
 @@LSTMBlockCell
@@ -64,6 +68,7 @@ Networks.
 @@static_rnn
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
+@@stack_bidirectional_dynamic_rnn
 """
 
 from __future__ import absolute_import
@@ -76,6 +81,7 @@ from tensorflow.contrib.rnn.python.ops.core_rnn import static_state_saving_rnn
 
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicLSTMCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DeviceWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DropoutWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import EmbeddingWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import GRUCell
@@ -84,12 +90,16 @@ from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMStateTuple
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import MultiRNNCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import OutputProjectionWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import ResidualWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import RNNCell
 
-# pylint: disable=unused-import,wildcard-import, line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.rnn.python.ops.fused_rnn_cell import *
 from tensorflow.contrib.rnn.python.ops.gru_ops import *
 from tensorflow.contrib.rnn.python.ops.lstm_ops import *
 from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 # pylint: enable=unused-import,wildcard-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__, ['core_rnn_cell'])
