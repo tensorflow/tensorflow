@@ -1209,8 +1209,7 @@ Performs the max pooling on the input.
 Performs max pooling on the input and outputs both max values and indices.
 
 The indices in `argmax` are flattened, so that a maximum value at position
-`[b, y, x, c]` becomes flattened index
-`((b * height + y) * width + x) * channels + c`.
+`[b, y, x, c]` becomes flattened index `(y * width + x) * channels + c`.
 
 ##### Args:
 
