@@ -92,13 +92,13 @@ class _DistributionShape(object):
       P(X=x) = integral P(X=x|y) P(Y=y) dy
             ~= 1/n sum_{i=1}^n P(X=x|y_i),   y_i ~iid Laplace(0,1)
              = tf.reduce_mean(Normal(mu=Laplace(0., 1.).sample_n(n=1000),
-                                     sigma=tf.ones(1000)).pdf(x),
+                                     sigma=tf.ones(1000)).prob(x),
                               reduction_indices=batch_dims)
       ```
 
       The `Laplace` distribution generates a `Tensor` of shape `[1000]`. When
       fed to a `Normal`, this is interpreted as 1000 different locations, i.e.,
-      1000 non-identical Normals.  Therefore a single call to `pdf(x)` yields
+      1000 non-identical Normals.  Therefore a single call to `prob(x)` yields
       1000 probabilities, one for every location.  The average over this batch
       yields the marginal.
 

@@ -501,7 +501,7 @@ Status FastParseSerializedExample(
       }
       Tensor& out = (*output_dense)[d];
 
-      const std::size_t num_elements = config.dense[d].shape.num_elements();
+      const std::size_t num_elements = config.dense[d].elements_per_stride;
       const std::size_t offset = example_index * num_elements;
 
       auto shape_error = [&](size_t size, StringPiece type_str) {

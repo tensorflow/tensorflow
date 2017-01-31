@@ -996,8 +996,7 @@ TEST(CAPI, SavedModel) {
 
   // Retrieve the regression signature from meta graph def.
   const auto signature_def_map = metagraph_def.signature_def();
-  const auto signature_def =
-      signature_def_map.at(tensorflow::kRegressMethodName);
+  const auto signature_def = signature_def_map.at("regress_x_to_y");
 
   const string input_name =
       signature_def.inputs().at(tensorflow::kRegressInputs).name();

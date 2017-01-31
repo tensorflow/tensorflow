@@ -35,7 +35,7 @@ struct Keypoint {
 
   Point2f pos_;
   float score_;
-  uint8 type_;
+  uint8_t type_;
 };
 
 inline std::ostream& operator<<(std::ostream& stream, const Keypoint keypoint) {

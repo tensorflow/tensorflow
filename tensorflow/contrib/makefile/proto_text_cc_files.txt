@@ -49,6 +49,7 @@ tensorflow/core/lib/io/block.cc
 tensorflow/core/lib/histogram/histogram.cc
 tensorflow/core/lib/hash/hash.cc
 tensorflow/core/lib/hash/crc32c.cc
+tensorflow/core/lib/hash/crc32c_accelerate.cc
 tensorflow/core/lib/core/threadpool.cc
 tensorflow/core/lib/core/stringpiece.cc
 tensorflow/core/lib/core/status.cc

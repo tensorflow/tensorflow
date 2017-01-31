@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adadelta
@@ -31,7 +32,7 @@ from tensorflow.python.training import adadelta
 
 class AdadeltaOptimizerTest(test.TestCase):
 
-  def testBasic(self):
+  def doTestBasic(self, use_resource=False):
     num_updates = 4  # number of ADADELTA steps to perform
     for dtype in [dtypes.half, dtypes.float32]:
       for grad in [0.2, 0.1, 0.01]:
@@ -39,8 +40,14 @@ class AdadeltaOptimizerTest(test.TestCase):
           with self.test_session():
             var0_init = [1.0, 2.0]
             var1_init = [3.0, 4.0]
-            var0 = variables.Variable(var0_init, dtype=dtype)
-            var1 = variables.Variable(var1_init, dtype=dtype)
+            if use_resource:
+              var0 = resource_variable_ops.ResourceVariable(
+                  var0_init, dtype=dtype)
+              var1 = resource_variable_ops.ResourceVariable(
+                  var1_init, dtype=dtype)
+            else:
+              var0 = variables.Variable(var0_init, dtype=dtype)
+              var1 = variables.Variable(var1_init, dtype=dtype)
 
             grads = constant_op.constant([grad, grad], dtype=dtype)
 
@@ -124,6 +131,30 @@ class AdadeltaOptimizerTest(test.TestCase):
                       dtype=dtype.as_numpy_dtype()),
                   var1.eval(),
                   rtol=1e-3)
+
+  def testBasic(self):
+    self.doTestBasic(use_resource=False)
+
+  def testResourceBasic(self):
+    self.doTestBasic(use_resource=True)
+
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = adadelta.AdadeltaOptimizer(
+            1.0, 1.0, 1.0).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[-111, -138]], var0.eval())
 
 
 if __name__ == "__main__":

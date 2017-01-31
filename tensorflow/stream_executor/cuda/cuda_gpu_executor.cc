@@ -173,10 +173,8 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
     return false;
   }
 
-  // TODO(22689637): Eliminate unnecessary ToString()s when all dependencies
-  // have been migrated.
-  string cc_specific = port::StrCat(filename.ToString(), ".cc", cc_major_,
-                                    cc_minor_, canonical_suffix.ToString());
+  string cc_specific =
+      port::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
   if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
@@ -1059,19 +1057,6 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
 namespace gpu = ::perftools::gputools;
 
 void initialize_cuda_gpu_executor() {
-  port::StatusOr<void *> status =
-      gpu::internal::CachedDsoLoader::GetLibcudaDsoHandle();
-  if (!status.ok()) {
-    gpu::cuda::Diagnostician::LogDriverVersionInformation();
-    LOG(INFO) << "LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
-    LOG(INFO) << "failed to find libcuda.so on this system: "
-              << status.status();
-  }
-
-  // TODO(b/22689637): Temporary until users are migrated off of PlatformKind.
-  gpu::PluginRegistry::Instance()->MapPlatformKindToId(
-      gpu::PlatformKind::kCuda, gpu::cuda::kCudaPlatformId);
-
   *gpu::internal::MakeCUDAExecutorImplementation() = [](
       const gpu::PluginConfig &config) {
     return new gpu::cuda::CUDAExecutor{config};

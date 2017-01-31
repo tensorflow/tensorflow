@@ -4593,7 +4593,7 @@ class StreamingConcatTest(test.TestCase):
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
   def testNextArraySize(self):
-    next_array_size = metrics.python.ops.metric_ops._next_array_size
+    next_array_size = metric_ops._next_array_size  # pylint: disable=protected-access
     with self.test_session():
       self.assertEqual(next_array_size(2, growth_factor=2).eval(), 2)
       self.assertEqual(next_array_size(3, growth_factor=2).eval(), 4)

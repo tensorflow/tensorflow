@@ -50,6 +50,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kLe:
     case HloOpcode::kLogicalAnd:
     case HloOpcode::kLogicalNot:
