@@ -19,15 +19,45 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util.all_util import remove_undocumented
+
+# Subdirectory name containing the asset files.
 ASSETS_DIRECTORY = "assets"
+
+# CollectionDef key containing SavedModel assets.
 ASSETS_KEY = "saved_model_assets"
 
+# CollectionDef key for the legacy init op.
 LEGACY_INIT_OP_KEY = "legacy_init_op"
+
+# CollectionDef key for the SavedModel main op.
 MAIN_OP_KEY = "saved_model_main_op"
 
+# Schema version for SavedModel.
 SAVED_MODEL_SCHEMA_VERSION = 1
+
+# File name for SavedModel protocol buffer.
 SAVED_MODEL_FILENAME_PB = "saved_model.pb"
+
+# File name for text version of SavedModel protocol buffer.
 SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
 
+# Subdirectory name containing the variables/checkpoint files.
 VARIABLES_DIRECTORY = "variables"
+
+# File name used for variables.
 VARIABLES_FILENAME = "variables"
+
+
+_allowed_symbols = [
+    "ASSETS_DIRECTORY",
+    "ASSETS_KEY",
+    "LEGACY_INIT_OP_KEY",
+    "MAIN_OP_KEY",
+    "SAVED_MODEL_SCHEMA_VERSION",
+    "SAVED_MODEL_FILENAME_PB",
+    "SAVED_MODEL_FILENAME_PBTXT",
+    "VARIABLES_DIRECTORY",
+    "VARIABLES_FILENAME",
+]
+remove_undocumented(__name__, _allowed_symbols)
