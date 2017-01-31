@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
+from tensorflow.contrib.distributions.python.ops import special_math
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

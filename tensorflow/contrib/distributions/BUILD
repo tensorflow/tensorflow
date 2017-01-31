@@ -35,20 +35,12 @@ py_library(
     ],
 )
 
-py_library(
-    name = "distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
-    deps = [
-        "//tensorflow/contrib/bayesflow:bayesflow_py",
-    ],
-)
-
 cuda_py_test(
     name = "distribution_test",
     size = "small",
     srcs = ["python/kernel_tests/distribution_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -68,7 +60,6 @@ cuda_py_test(
     ],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -85,7 +76,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/operator_pd_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -104,7 +94,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/operator_pd_cholesky_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -121,7 +110,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/operator_pd_diag_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/python:array_ops",
@@ -137,7 +125,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/operator_pd_full_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
@@ -152,7 +139,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/operator_pd_identity_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -168,7 +154,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/operator_pd_vdvt_update_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -187,7 +172,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/bernoulli_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -203,7 +187,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/beta_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -221,7 +204,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/binomial_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -235,7 +217,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/categorical_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -253,7 +234,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/chi2_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -269,7 +249,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/dirichlet_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -284,7 +263,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/dirichlet_multinomial_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -300,7 +278,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/exponential_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -316,7 +293,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/gamma_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -332,7 +308,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/inverse_gamma_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -348,7 +323,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/laplace_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -364,7 +338,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/multinomial_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -381,7 +354,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/mvn_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -399,7 +371,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/mixture_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -421,7 +392,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/normal_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -440,7 +410,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/poisson_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -455,7 +424,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/student_t_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -474,7 +442,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/vector_student_t_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -491,7 +458,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/uniform_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -508,7 +474,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/wishart_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -527,7 +492,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/kullback_leibler_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
@@ -540,7 +504,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/normal_conjugate_posteriors_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -556,7 +519,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/quantized_distribution_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -574,7 +536,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
@@ -594,7 +555,6 @@ cuda_py_test(
     ],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
@@ -606,12 +566,27 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "special_math_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/special_math_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
     name = "distribution_util_test",
     size = "small",
     srcs = ["python/kernel_tests/distribution_util_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -630,7 +605,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/shape_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -647,7 +621,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/bijector_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/contrib/linalg:linalg_py",
@@ -667,7 +640,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/conditional_bijector_test.py"],
     additional_deps = [
         ":distributions_py",
-        ":distributions_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/contrib/linalg:linalg_py",

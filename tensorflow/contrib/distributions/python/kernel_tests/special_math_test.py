@@ -24,7 +24,7 @@ import numpy as np
 from scipy import special
 from scipy import stats
 
-from tensorflow.contrib.bayesflow.python.ops import special_math
+from tensorflow.contrib.distributions.python.ops import special_math
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
