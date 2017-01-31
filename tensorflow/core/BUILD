@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_ios",
+    "if_x86",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -1064,6 +1065,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
                 "platform/gif.h",
@@ -1086,6 +1088,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
                 "platform/gif.h",
@@ -1152,12 +1155,21 @@ cc_library(
     defines = tf_additional_lib_defines(),
     linkopts = ["-ldl"],
     deps = tf_additional_lib_deps() + [
+        ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@zlib_archive//:zlib",
     ],
+)
+
+# File compiled with extra flags to get cpu-specific acceleration.
+cc_library(
+    name = "lib_hash_crc32c_accelerate_internal",
+    srcs = ["lib/hash/crc32c_accelerate.cc"],
+    # -msse4.2 enables the use of crc32c compiler builtins.
+    copts = tf_copts() + if_x86(["-msse4.2"]),
 )
 
 cc_library(
