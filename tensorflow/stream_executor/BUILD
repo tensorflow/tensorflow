@@ -53,8 +53,10 @@ cc_library(
         "@local_config_cuda//cuda:cufft",
         "@local_config_cuda//cuda:curand",
     ],
-    linkopts = [
-    ],
+    linkopts = select({
+        "//tensorflow:FreeBSD": [],
+        "//conditions:default": ["-ldl"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
