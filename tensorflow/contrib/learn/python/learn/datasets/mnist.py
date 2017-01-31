@@ -157,7 +157,7 @@ class DataSet(object):
   def epochs_completed(self):
     return self._epochs_completed
 
-  def next_batch(self, batch_size, fake_data=False):
+  def next_batch(self, batch_size, fake_data=False, shuffle=True):
     """Return the next `batch_size` examples from this data set."""
     if fake_data:
       fake_image = [1] * 784
@@ -168,22 +168,40 @@ class DataSet(object):
       return [fake_image for _ in xrange(batch_size)], [
           fake_label for _ in xrange(batch_size)
       ]
+
+    """ Get next batch """ 
     start = self._index_in_epoch
-    self._index_in_epoch += batch_size
-    if self._index_in_epoch > self._num_examples:
+    # Shuffle for the first epoch
+    if self._epochs_completed ==0 and start == 0 and shuffle:
+      perm0 = numpy.arange(self._num_examples)
+      numpy.random.shuffle(perm0)
+      self._images = self.images[perm0]
+      self._labels = self.labels[perm0]
+    # Go to the next epoch
+    if start+batch_size > self._num_examples:
       # Finished epoch
       self._epochs_completed += 1
+      # Get the rest examples in this epoch
+      rest_num_examples = self._num_examples - start
+      images_rest_part = self._images[start:self._num_examples]
+      labels_rest_part = self._labels[start:self._num_examples]
       # Shuffle the data
-      perm = numpy.arange(self._num_examples)
-      numpy.random.shuffle(perm)
-      self._images = self._images[perm]
-      self._labels = self._labels[perm]
+      if shuffle:
+        perm = numpy.arange(self._num_examples)
+        numpy.random.shuffle(perm)
+        self._images = self.images[perm]
+        self._labels = self.labels[perm]
       # Start next epoch
       start = 0
-      self._index_in_epoch = batch_size
-      assert batch_size <= self._num_examples
-    end = self._index_in_epoch
-    return self._images[start:end], self._labels[start:end]
+      self._index_in_epoch = batch_size-rest_num_examples
+      end = self._index_in_epoch
+      images_new_part = self.images[start:end]
+      labels_new_part = self.labels[start:end]
+      return tf.concat(0,[images_rest_part,images_new_part]), tf.concat(0,[labels_rest_part,labels_new_part])
+    else:
+      self._index_in_epoch += batch_size
+      end = self._index_in_epoch
+      return self._images[start:end], self._labels[start:end]
 
 
 def read_data_sets(train_dir,
