@@ -100,13 +100,14 @@ class Decoder(object):
     raise NotImplementedError
 
   @abc.abstractmethod
-  def step(self, time, inputs, state):
+  def step(self, time, inputs, state, name=None):
     """Called per step of decoding (but only once for dynamic decoding).
 
     Args:
       time: Scalar `int32` tensor.
       inputs: Input (possibly nested tuple of) tensor[s] for this time step.
       state: State (possibly nested tuple of) tensor[s] from previous time step.
+      name: Name scope for any created operations.
 
     Returns:
       `(outputs, next_state, next_inputs, finished)`.
@@ -179,11 +180,12 @@ def dynamic_decode_rnn(decoder,
       if maximum_iterations.get_shape().ndims != 0:
         raise ValueError("maximum_iterations must be a scalar")
 
+    initial_finished, initial_inputs, initial_state = decoder.initialize()
+
     zero_outputs = _create_zero_outputs(decoder.output_size,
                                         decoder.output_dtype,
                                         decoder.batch_size)
 
-    initial_finished, initial_inputs, initial_state = decoder.initialize()
     if maximum_iterations is not None:
       initial_finished = math_ops.logical_or(
           initial_finished, 0 >= maximum_iterations)

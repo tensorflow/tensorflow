@@ -61,7 +61,6 @@ class BasicSamplingDecoderTest(test.TestCase):
               dtype=dtypes.float32, batch_size=batch_size))
       output_size = my_decoder.output_size
       output_dtype = my_decoder.output_dtype
-      batch_size_t = my_decoder.batch_size
       self.assertEqual(
           sampling_decoder.SamplingDecoderOutput(cell_depth,
                                                  tensor_shape.TensorShape([])),
@@ -74,6 +73,7 @@ class BasicSamplingDecoderTest(test.TestCase):
       (step_outputs, step_state, step_next_inputs,
        step_finished) = my_decoder.step(
            constant_op.constant(0), first_inputs, first_state)
+      batch_size_t = my_decoder.batch_size
 
       self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
@@ -102,7 +102,9 @@ class BasicSamplingDecoderTest(test.TestCase):
                           sess_results["first_finished"])
       self.assertAllEqual([False, False, False, True, True],
                           sess_results["step_finished"])
-      self.assertAllEqual([-1] * 5, sess_results["step_outputs"].sample_id)
+      self.assertAllEqual(
+          np.argmax(sess_results["step_outputs"].rnn_output, -1),
+          sess_results["step_outputs"].sample_id)
 
   def testStepWithGreedyEmbeddingSampler(self):
     batch_size = 5
@@ -125,7 +127,6 @@ class BasicSamplingDecoderTest(test.TestCase):
               dtype=dtypes.float32, batch_size=batch_size))
       output_size = my_decoder.output_size
       output_dtype = my_decoder.output_dtype
-      batch_size_t = my_decoder.batch_size
       self.assertEqual(
           sampling_decoder.SamplingDecoderOutput(cell_depth,
                                                  tensor_shape.TensorShape([])),
@@ -138,6 +139,7 @@ class BasicSamplingDecoderTest(test.TestCase):
       (step_outputs, step_state, step_next_inputs,
        step_finished) = my_decoder.step(
            constant_op.constant(0), first_inputs, first_state)
+      batch_size_t = my_decoder.batch_size
 
       self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
