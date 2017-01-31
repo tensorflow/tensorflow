@@ -68,6 +68,7 @@ Networks.
 @@static_rnn
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
+@@stack_bidirectional_dynamic_rnn
 """
 
 from __future__ import absolute_import
