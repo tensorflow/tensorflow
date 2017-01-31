@@ -40,15 +40,27 @@ class PublicAPIVisitor(object):
   # Each entry maps a module path to a name to ignore in traversal.
   _do_not_descend_map = {
       # TODO(drpng): This can be removed once sealed off.
-      '': ['platform', 'pywrap_tensorflow'],
+      '': ['platform', 'pywrap_tensorflow', 'user_ops'],
 
       # Some implementations have this internal module that we shouldn't expose.
       'flags': ['cpp_flags'],
 
       # Everything below here is legitimate.
-      'app': 'flags',  # It'll stay, but it's not officially part of the API
+      'app': ['flags'],  # It'll stay, but it's not officially part of the API.
       'test': ['mock'],  # Imported for compatibility between py2/3.
   }
+
+  @property
+  def do_not_descend_map(self):
+    """A map from parents to symbols that should not be descended into.
+
+    This map can be edited, but it should not be edited once traversal has
+    begun.
+
+    Returns:
+      The map marking symbols to not explore.
+    """
+    return self._do_not_descend_map
 
   def _isprivate(self, name):
     """Return whether a name is private."""
@@ -61,6 +73,8 @@ class PublicAPIVisitor(object):
 
   def __call__(self, path, parent, children):
     """Visitor interface, see `traverse` for details."""
+
+    # Avoid long waits in cases of pretty unambiguous failure.
     if inspect.ismodule(parent) and len(path.split('.')) > 10:
       raise RuntimeError('Modules nested too deep:\n%s\n\nThis is likely a '
                          'problem with an accidental public import.' % path)
