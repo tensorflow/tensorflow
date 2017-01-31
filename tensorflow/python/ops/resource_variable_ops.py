@@ -33,7 +33,7 @@ from tensorflow.python.util import compat
 def _register_variable_read(read, collections, trainable):
   """Helper function to put a read from a variable in the collections."""
   if collections is None:
-    collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+    collections = []
   if (trainable and ops.GraphKeys.TRAINABLE_VARIABLES
        not in collections):
     collections = (list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES])
@@ -101,6 +101,7 @@ class ResourceVariable(object):
           "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
+    self._save_slice_info = None
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
@@ -163,6 +164,11 @@ class ResourceVariable(object):
     return self._dtype
 
   @property
+  def device(self):
+    """The device this variable is on."""
+    return self._handle.device
+
+  @property
   def name(self):
     """The name of the handle for this variable."""
     return self._handle.name
@@ -181,7 +187,6 @@ class ResourceVariable(object):
     """The handle by which this variable can be accessed."""
     return self._handle
 
-  @property
   def value(self):
     """A cached operation which reads the value of this variable."""
     return self._cached_value
@@ -203,6 +208,17 @@ class ResourceVariable(object):
   def eval(self, session=None):
     """Evaluates and returns the value of this variable."""
     return self._value.eval(session=session)
+
+  def _set_save_slice_info(self, save_slice_info):
+    """Sets the slice info for this `ResourceVariable`.
+
+    Args:
+      save_slice_info: A `Variable.SaveSliceInfo` object.
+    """
+    self._save_slice_info = save_slice_info
+
+  def _get_save_slice_info(self):
+    return self._save_slice_info
 
   def read_value(self, collections=None, trainable=True):
     """Constructs an op which reads the value of this variable.
@@ -242,7 +258,7 @@ class ResourceVariable(object):
     setattr(ResourceVariable, "__getitem__", array_ops._SliceHelperVar)
 
   def _AsTensor(self):
-    return self.value
+    return self.value()
 
   @staticmethod
   def _OverloadOperator(operator):  # pylint: disable=invalid-name
@@ -267,11 +283,35 @@ class ResourceVariable(object):
 
   __array_priority__ = 100
 
+  def assign_sub(self, delta, use_locking=None, name=None):
+    # TODO(apassos): this here and below is not atomic. Consider making it
+    # atomic if there's a way to do so without a performance cost for those who
+    # don't need it.
+    with ops.control_dependencies(
+        [gen_resource_variable_ops.assign_sub_variable_op(
+            self.handle,
+            ops.convert_to_tensor(delta, dtype=self.dtype), name=name)]):
+      return self.read_value()
+
+  def assign_add(self, delta, use_locking=None, name=None):
+    with ops.control_dependencies(
+        [gen_resource_variable_ops.assign_add_variable_op(
+            self.handle,
+            ops.convert_to_tensor(delta, dtype=self.dtype), name=name)]):
+      return self.read_value()
+
+  def assign(self, value, use_locking=None, name=None):
+    with ops.control_dependencies(
+        [gen_resource_variable_ops.assign_variable_op(
+            self.handle,
+            ops.convert_to_tensor(value, dtype=self.dtype), name=name)]):
+      return self.read_value()
+
 
 # pylint: disable=unused-argument,protected-access
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
-  if dtype is not None and dtype != var.value.dtype:
-    print("trying to switch the dtype to ", dtype, " from ", var.value.dtype)
+  if dtype is not None and dtype != var.value().dtype:
+    print("trying to switch the dtype to ", dtype, " from ", var.value().dtype)
     return NotImplemented
   if as_ref:
     return var._value

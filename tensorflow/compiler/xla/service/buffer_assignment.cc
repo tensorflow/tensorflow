@@ -170,20 +170,26 @@ BufferAssignment::GetUniqueTopLevelOutputAllocation() const {
 
 BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
                                                   int64 size,
-                                                  bool is_thread_local) {
+                                                  bool is_thread_local,
+                                                  bool is_reusable) {
   BufferAllocation::Index index = allocations_.size();
-  allocations_.emplace_back(index, size, is_thread_local);
+  allocations_.emplace_back(index, size, is_thread_local, is_reusable);
   BufferAllocation* allocation = &allocations_.back();
-  AddAssignment(buffer, allocation);
+  AddAssignment(buffer, allocation, /*colocated_buffer=*/false);
   allocation_index_for_buffer_[&buffer] = index;
   return allocation;
 }
 
 // Adds an instruction to the set assigned to the given buffer.
 void BufferAssignment::AddAssignment(const LogicalBuffer& buffer,
-                                     BufferAllocation* allocation) {
+                                     BufferAllocation* allocation,
+                                     bool colocated_buffer) {
   CHECK_EQ(0, allocation_index_for_buffer_.count(&buffer))
       << "LogicalBuffer " << buffer << " already has an allocation.";
+  CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty() ||
+        colocated_buffer)
+      << "Non-reusable allocation already assigned a buffer";
+
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
 
   allocation->AddAssignment(buffer);
@@ -310,7 +316,7 @@ tensorflow::Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    BufferSizeFunction buffer_size, bool colocate_related_buffers,
+    LogicalBuffer::SizeFunction buffer_size, bool colocate_related_buffers,
     const std::vector<const HloInstruction*>* hlos_to_allocate) {
   BufferAssigner assigner(std::move(buffer_size), colocate_related_buffers);
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
@@ -351,6 +357,11 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
+  if (!allocation->is_reusable()) {
+    VLOG(4) << "Can't assign: allocation is not reusable";
+    return false;
+  }
+
   for (const LogicalBuffer* assigned_buffer : allocation->assigned_buffers()) {
     if (assignment->liveness().MayInterfere(*assigned_buffer, buffer)) {
       VLOG(4) << "Can't assign: assignee " << assigned_buffer->ToString()
@@ -369,7 +380,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  assignment->AddAssignment(buffer, allocation);
+  assignment->AddAssignment(buffer, allocation, /*colocated_buffer=*/false);
   return true;
 }
 
@@ -455,7 +466,8 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       // callers.
       BufferAllocation* allocation =
           assignment->NewAllocation(*buffer, buffer_size_(*buffer),
-                                    /*is_thread_local=*/false);
+                                    /*is_thread_local=*/false,
+                                    /*is_reusable=*/false);
       allocation->set_entry_computation_parameter(
           buffer->instruction()->parameter_number());
       VLOG(3) << "New allocation for entry computation parameter: "
@@ -470,8 +482,8 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       // Custom call operations never have reusable buffers. Also we do not
       // reuse thread-local buffers for now, because they are dynamically
       // allocated and their lifetimes are hard to compute.
-      assignment->NewAllocation(*buffer, buffer_size_(*buffer),
-                                is_thread_local);
+      assignment->NewAllocation(*buffer, buffer_size_(*buffer), is_thread_local,
+                                /*is_reusable=*/false);
       continue;
     }
 
@@ -503,7 +515,16 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       // Can't use MaybeAssignBuffer here because buffer liveness conservatively
       // assumes buffers in different computations always interfere.
       CHECK_GE(root_allocation->size(), buffer_size_(*buffer));
-      assignment->AddAssignment(*buffer, root_allocation);
+      assignment->AddAssignment(*buffer, root_allocation,
+                                /*colocated_buffer=*/true);
+      continue;
+    }
+
+    if (ShapeUtil::IsTuple(buffer->shape())) {
+      // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
+      // assumes longer buffer liveness than indicated by the analysis.
+      assignment->NewAllocation(*buffer, buffer_size_(*buffer), is_thread_local,
+                                /*is_reusable=*/false);
       continue;
     }
 
@@ -567,8 +588,9 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       }
     }
     if (!assignment->HasAllocation(*buffer)) {
-      auto* allocation = assignment->NewAllocation(
-          *buffer, buffer_size_(*buffer), is_thread_local);
+      auto* allocation =
+          assignment->NewAllocation(*buffer, buffer_size_(*buffer),
+                                    is_thread_local, /*is_reusable=*/true);
       VLOG(3) << "New allocation for: " << buffer->ToString();
       allocation_indices.push_back(allocation->index());
     }
@@ -651,10 +673,12 @@ void BufferAssigner::AssignColocatedBufferSets(
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
         allocation = assignment->NewAllocation(*buffer, buffer_size_(*buffer),
-                                               /*is_thread_local=*/false);
+                                               /*is_thread_local=*/false,
+                                               /*is_reusable=*/true);
         colocated_buffer_allocations_.insert(allocation->index());
       } else {
-        assignment->AddAssignment(*buffer, allocation);
+        assignment->AddAssignment(*buffer, allocation,
+                                  /*colocated_buffer=*/true);
       }
       colocated_buffers_.insert(buffer);
     }
@@ -755,7 +779,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       root->shape(), [this, &output_size, root, &assignment](
                          const Shape& /*subshape*/, const ShapeIndex& index) {
         const auto& allocations = assignment->GetAllocations(root, index);
-        if (allocations.size() > 0) {
+        if (!allocations.empty()) {
           output_size += allocations.begin()->size();
         }
         return tensorflow::Status::OK();

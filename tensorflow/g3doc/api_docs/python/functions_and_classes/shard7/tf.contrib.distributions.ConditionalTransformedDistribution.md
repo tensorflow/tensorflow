@@ -1,0 +1,498 @@
+A TransformedDistribution that allows intrinsic conditioning.
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#ConditionalTransformedDistribution.__init__}
+
+Construct a Transformed Distribution.
+
+##### Args:
+
+
+*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
+    instance of `Distribution`.
+*  <b>`bijector`</b>: The object responsible for calculating the transformation.
+    Typically an instance of `Bijector`. `None` means `Identity()`.
+*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
+*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
+    `event_shape`; valid only if `distribution.is_scalar_event()`.
+*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
+    If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`name`</b>: The name for the distribution. Default:
+    `bijector.name + distribution.name`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.allow_nan_stats` {#ConditionalTransformedDistribution.allow_nan_stats}
+
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.batch_shape(name='batch_shape')` {#ConditionalTransformedDistribution.batch_shape}
+
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.bijector` {#ConditionalTransformedDistribution.bijector}
+
+Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.cdf(*args, **kwargs)` {#ConditionalTransformedDistribution.cdf}
+
+Additional documentation from `ConditionalTransformedDistribution`:
+
+##### `kwargs`:
+
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.copy(**override_parameters_kwargs)` {#ConditionalTransformedDistribution.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.distribution` {#ConditionalTransformedDistribution.distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.dtype` {#ConditionalTransformedDistribution.dtype}
+
+The `DType` of `Tensor`s handled by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.entropy(name='entropy')` {#ConditionalTransformedDistribution.entropy}
+
+Shannon entropy in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.event_shape(name='event_shape')` {#ConditionalTransformedDistribution.event_shape}
+
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.get_batch_shape()` {#ConditionalTransformedDistribution.get_batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.get_event_shape()` {#ConditionalTransformedDistribution.get_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.is_continuous` {#ConditionalTransformedDistribution.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#ConditionalTransformedDistribution.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.is_scalar_event(name='is_scalar_event')` {#ConditionalTransformedDistribution.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.log_cdf(*args, **kwargs)` {#ConditionalTransformedDistribution.log_cdf}
+
+Additional documentation from `ConditionalTransformedDistribution`:
+
+##### `kwargs`:
+
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.log_pdf(value, name='log_pdf')` {#ConditionalTransformedDistribution.log_pdf}
+
+Log probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if not `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.log_pmf(value, name='log_pmf')` {#ConditionalTransformedDistribution.log_pmf}
+
+Log probability mass function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.log_prob(*args, **kwargs)` {#ConditionalTransformedDistribution.log_prob}
+
+Additional documentation from `ConditionalTransformedDistribution`:
+
+##### `kwargs`:
+
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.log_survival_function(*args, **kwargs)` {#ConditionalTransformedDistribution.log_survival_function}
+
+Additional documentation from `ConditionalTransformedDistribution`:
+
+##### `kwargs`:
+
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.mean(name='mean')` {#ConditionalTransformedDistribution.mean}
+
+Mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.mode(name='mode')` {#ConditionalTransformedDistribution.mode}
+
+Mode.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.name` {#ConditionalTransformedDistribution.name}
+
+Name prepended to all ops created by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ConditionalTransformedDistribution.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.param_static_shapes(cls, sample_shape)` {#ConditionalTransformedDistribution.param_static_shapes}
+
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.parameters` {#ConditionalTransformedDistribution.parameters}
+
+Dictionary of parameters used to instantiate this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.pdf(value, name='pdf')` {#ConditionalTransformedDistribution.pdf}
+
+Probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if not `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.pmf(value, name='pmf')` {#ConditionalTransformedDistribution.pmf}
+
+Probability mass function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.prob(*args, **kwargs)` {#ConditionalTransformedDistribution.prob}
+
+Additional documentation from `ConditionalTransformedDistribution`:
+
+##### `kwargs`:
+
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.reparameterization_type` {#ConditionalTransformedDistribution.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.sample(*args, **kwargs)` {#ConditionalTransformedDistribution.sample}
+
+##### `kwargs`:
+
+*  `**condition_kwargs`: Named arguments forwarded to subclass implementation.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.stddev(name='stddev')` {#ConditionalTransformedDistribution.stddev}
+
+Standard deviation.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.survival_function(*args, **kwargs)` {#ConditionalTransformedDistribution.survival_function}
+
+Additional documentation from `ConditionalTransformedDistribution`:
+
+##### `kwargs`:
+
+*  `bijector_kwargs`: Python dictionary of arg names/values forwarded to the bijector.
+*  `distribution_kwargs`: Python dictionary of arg names/values forwarded to the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.validate_args` {#ConditionalTransformedDistribution.validate_args}
+
+Python boolean indicated possibly expensive checks are enabled.
+
+
+- - -
+
+#### `tf.contrib.distributions.ConditionalTransformedDistribution.variance(name='variance')` {#ConditionalTransformedDistribution.variance}
+
+Variance.
+
+

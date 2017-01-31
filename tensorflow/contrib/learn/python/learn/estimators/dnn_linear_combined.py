@@ -191,53 +191,54 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   if not dnn_feature_columns:
     dnn_logits = None
   else:
-    input_layer_partitioner = (
-        partitioned_variables.min_max_variable_partitioner(
-            max_partitions=num_ps_replicas,
-            min_slice_size=input_layer_min_slice_size))
-    input_layer_scope = dnn_parent_scope + "/input_from_feature_columns"
-    with variable_scope.variable_scope(
-        input_layer_scope,
-        values=features.values(),
-        partitioner=input_layer_partitioner) as scope:
-      net = layers.input_from_feature_columns(
-          columns_to_tensors=features,
-          feature_columns=dnn_feature_columns,
-          weight_collections=[dnn_parent_scope],
-          scope=scope)
-
-    hidden_layer_partitioner = (
+    dnn_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas))
-    for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
-      with variable_scope.variable_scope(
-          dnn_parent_scope + "/hiddenlayer_%d" % layer_id,
-          values=[net],
-          partitioner=hidden_layer_partitioner) as scope:
-        net = layers.fully_connected(
-            net,
-            num_hidden_units,
-            activation_fn=dnn_activation_fn,
-            variables_collections=[dnn_parent_scope],
-            scope=scope)
-        if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-          net = layers.dropout(
-              net,
-              keep_prob=(1.0 - dnn_dropout))
-      # TODO(b/31209633): Consider adding summary before dropout.
-      _add_hidden_layer_summary(net, scope.name)
-
     with variable_scope.variable_scope(
-        dnn_parent_scope + "/logits",
-        values=[net],
-        partitioner=hidden_layer_partitioner) as scope:
-      dnn_logits = layers.fully_connected(
-          net,
-          head.logits_dimension,
-          activation_fn=None,
-          variables_collections=[dnn_parent_scope],
-          scope=scope)
-    _add_hidden_layer_summary(dnn_logits, scope.name)
+        dnn_parent_scope,
+        values=tuple(six.itervalues(features)),
+        partitioner=dnn_partitioner):
+      input_layer_partitioner = (
+          partitioned_variables.min_max_variable_partitioner(
+              max_partitions=num_ps_replicas,
+              min_slice_size=input_layer_min_slice_size))
+      with variable_scope.variable_scope(
+          "input_from_feature_columns",
+          values=tuple(six.itervalues(features)),
+          partitioner=input_layer_partitioner) as dnn_input_scope:
+        net = layers.input_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=dnn_feature_columns,
+            weight_collections=[dnn_parent_scope],
+            scope=dnn_input_scope)
+
+      for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
+        with variable_scope.variable_scope(
+            "hiddenlayer_%d" % layer_id,
+            values=(net,)) as dnn_hidden_layer_scope:
+          net = layers.fully_connected(
+              net,
+              num_hidden_units,
+              activation_fn=dnn_activation_fn,
+              variables_collections=[dnn_parent_scope],
+              scope=dnn_hidden_layer_scope)
+          if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+            net = layers.dropout(
+                net,
+                keep_prob=(1.0 - dnn_dropout))
+        # TODO(b/31209633): Consider adding summary before dropout.
+        _add_hidden_layer_summary(net, dnn_hidden_layer_scope.name)
+
+      with variable_scope.variable_scope(
+          "logits",
+          values=(net,)) as dnn_logits_scope:
+        dnn_logits = layers.fully_connected(
+            net,
+            head.logits_dimension,
+            activation_fn=None,
+            variables_collections=[dnn_parent_scope],
+            scope=dnn_logits_scope)
+      _add_hidden_layer_summary(dnn_logits, dnn_logits_scope.name)
 
   # Build Linear logits.
   linear_parent_scope = "linear"
@@ -250,7 +251,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         min_slice_size=64 << 20)
     with variable_scope.variable_scope(
         linear_parent_scope,
-        values=features.values(),
+        values=tuple(six.itervalues(features)),
         partitioner=linear_partitioner) as scope:
       if joint_linear_weights:
         linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
@@ -287,7 +288,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
               optimizer=_get_optimizer(dnn_optimizer),
               gradient_multipliers=_extract_embedding_lr_multipliers(  # pylint: disable=protected-access
                   embedding_lr_multipliers, dnn_parent_scope,
-                  input_layer_scope),
+                  dnn_input_scope.name),
               clip_gradients=gradient_clip_norm,
               variables=ops.get_collection(dnn_parent_scope),
               name=dnn_parent_scope,
@@ -309,7 +310,11 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
     return control_flow_ops.group(*train_ops)
 
   return head.create_model_fn_ops(
-      features, labels, mode, _make_training_op, logits=logits)
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_make_training_op,
+      logits=logits)
 
 
 class _DNNLinearCombinedEstimator(estimator.Estimator):

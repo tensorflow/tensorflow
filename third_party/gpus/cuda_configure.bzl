@@ -410,6 +410,9 @@ def _find_cuda_lib(lib, repository_ctx, cpu_value, basedir, version="",
     path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
     if path.exists:
       return struct(file_name=file_name, path=str(path.realpath))
+    path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
+    if path.exists:
+      return struct(file_name=file_name, path=str(path.realpath))
     path = repository_ctx.path(
         "%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name))
     if path.exists:
@@ -493,6 +496,7 @@ def _find_libs(repository_ctx, cuda_config):
   cudnn_ext = ".%s" % cudnn_version if cudnn_version else ""
   cpu_value = cuda_config.cpu_value
   return {
+      "cuda": _find_cuda_lib("cuda", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path),
       "cudart": _find_cuda_lib(
           "cudart", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path,
           cuda_config.cuda_version),
@@ -649,6 +653,7 @@ def _create_dummy_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
+           "%{cuda_driver_lib}": _lib_name("cuda", cpu_value),
            "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
                                              static=True),
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
@@ -661,6 +666,7 @@ def _create_dummy_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
+           "%{cuda_driver_lib}": _lib_name("cuda", cpu_value),
            "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
                                              static=True),
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
@@ -684,6 +690,7 @@ def _create_dummy_repository(repository_ctx):
   repository_ctx.file("cuda/include/cublas.h", "")
   repository_ctx.file("cuda/include/cudnn.h", "")
   repository_ctx.file("cuda/extras/CUPTI/include/cupti.h", "")
+  repository_ctx.file("cuda/lib/%s" % _lib_name("cuda", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudart", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudart_static", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cublas", cpu_value))
@@ -757,6 +764,7 @@ def _create_cuda_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
+           "%{cuda_driver_lib}": cuda_libs["cuda"].file_name,
            "%{cudart_static_lib}": cuda_libs["cudart_static"].file_name,
            "%{cudart_static_linkopt}": _cudart_static_linkopt(
                cuda_config.cpu_value),

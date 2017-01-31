@@ -1759,7 +1759,7 @@ placeholder.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`t`</b>: tensor whose input must be transformed into a place holder.
 
 ##### Returns:
@@ -1780,7 +1780,7 @@ This handler is typically used to transform a hidden input tensors.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`t`</b>: tensor whose input must be transformed into a place holder.
 
 ##### Returns:
@@ -1800,7 +1800,7 @@ A collection is renamed only if is not a known key, as described in
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`elem`</b>: the original element (`tf.Tensor` or `tf.Operation`)
 *  <b>`elem_`</b>: the transformed element
 
@@ -1817,7 +1817,7 @@ if they are inside the subgraph, otherwise they are just ignored.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`op`</b>: the optional op to transform (or ignore).
 *  <b>`keep_if_possible`</b>: re-attach to the original op if possible, that is,
     if the source graph and the destination graph are the same.
@@ -1836,35 +1836,13 @@ Copy a `tf.Operation`.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`op`</b>: the `tf.Operation` to be copied.
 *  <b>`copy_shape`</b>: also copy the shape of the tensor
 
 ##### Returns:
 
-  A copy of op.
-
-
-- - -
-
-### `tf.contrib.graph_editor.transform_op_in_place(info, op, detach_outputs=False)` {#transform_op_in_place}
-
-Transform a op in-place - experimental!
-
-Transform an operation in place. It reconnects the inputs if they have been
-modified. if detach_outputs is True, the outputs of op are also detached.
-
-##### Args:
-
-
-*  <b>`info`</b>: Transform._Info instance.
-*  <b>`op`</b>: the op to transform in place.
-*  <b>`detach_outputs`</b>: if True, the outputs of op are detached, ready for the user
-    to add more operation.
-
-##### Returns:
-
-  The transformed op.
+  A `(op, op_outputs)` tuple containgin the transformed op and its outputs.
 
 
 - - -
@@ -1900,7 +1878,7 @@ Execute the transformation.
 
   A tuple `(sgv, info)` where:
     `sgv` is the transformed subgraph view;
-    `info` is an instance of Transformer.ResultInfo containing
+    `info` is an instance of TransformerInfo containing
     information about the transform, including mapping between
     original and transformed tensors and operations.
 
@@ -1935,26 +1913,76 @@ transform_original_op_handler: handle the transform of original_op. This
   subgraph, otherwise they are ignored.
 
 
+
 - - -
 
-#### `tf.contrib.graph_editor.Transformer.new_name(name)` {#Transformer.new_name}
+### `class tf.contrib.graph_editor.TransformerInfo` {#TransformerInfo}
 
-Compute a destination name from a source name.
+"Contains information about the result of a transform operation.
+- - -
+
+#### `tf.contrib.graph_editor.TransformerInfo.__init__(info)` {#TransformerInfo.__init__}
+
+Constructor.
 
 ##### Args:
 
 
-*  <b>`name`</b>: the name to be "transformed".
+*  <b>`info`</b>: an instance of Transformer._TmpInfo containing various internal
+    information about the transform operation.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.TransformerInfo.__str__()` {#TransformerInfo.__str__}
+
+
+
+
+- - -
+
+#### `tf.contrib.graph_editor.TransformerInfo.original(transformed, missing_fn=None)` {#TransformerInfo.original}
+
+Return the original op/tensor corresponding to the transformed one.
+
+Note that the output of this function mimics the hierarchy
+of its input argument `transformed`.
+Given an iterable, it returns a list. Given an operation or a tensor,
+it will return an operation or a tensor.
+
+##### Args:
+
+
+*  <b>`transformed`</b>: the transformed tensor/operation.
+*  <b>`missing_fn`</b>: function handling the case where the counterpart
+    cannot be found. By default, None is returned.
 
 ##### Returns:
 
-  The transformed name.
-
-##### Raises:
+  the original tensor/operation (or None if no match is found).
 
 
-*  <b>`ValueError`</b>: if the source scope is used (that is, not an empty string)
-    and the source name does not belong to the source scope.
+- - -
+
+#### `tf.contrib.graph_editor.TransformerInfo.transformed(original, missing_fn=None)` {#TransformerInfo.transformed}
+
+Return the transformed op/tensor corresponding to the original one.
+
+Note that the output of this function mimics the hierarchy
+of its input argument `original`.
+Given an iterable, it returns a list. Given an operation or a tensor,
+it will return an operation or a tensor.
+
+##### Args:
+
+
+*  <b>`original`</b>: the original tensor/operation.
+*  <b>`missing_fn`</b>: function handling the case where the counterpart
+    cannot be found. By default, None is returned.
+
+##### Returns:
+
+  the transformed tensor/operation (or None if no match is found).
 
 
 
@@ -1980,7 +2008,7 @@ Copy a subgraph.
 
   A tuple `(sgv, info)` where:
     `sgv` is the transformed subgraph view;
-    `info` is an instance of Transformer.ResultInfo containing
+    `info` is an instance of TransformerInfo containing
     information about the transform, including mapping between
     original and transformed tensors and operations.
 
@@ -2020,7 +2048,7 @@ be queried using sgv.inputs.
 
   A tuple `(sgv, info)` where:
     `sgv` is the transformed subgraph view;
-    `info` is an instance of Transformer.ResultInfo containing
+    `info` is an instance of TransformerInfo containing
     information about the transform, including mapping between
     original and transformed tensors and operations.
 

@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
@@ -184,7 +185,73 @@ class BasicTrainingSampler(Sampler):
     finished = (next_time >= self._sequence_length)
     all_finished = math_ops.reduce_all(finished)
     sample_id = array_ops.tile([constant_op.constant(-1)], [self._batch_size])
+    def read_from_ta(inp):
+      return inp.read(next_time)
     next_inputs = control_flow_ops.cond(
         all_finished, lambda: self._zero_inputs,
-        lambda: nest.map_structure(lambda inp: inp.read(next_time), self._input_tas))
+        lambda: nest.map_structure(read_from_ta, self._input_tas))
     return (sample_id, finished, next_inputs)
+
+
+class GreedyEmbeddingSampler(Sampler):
+  """A (non-)sampler for use during inference.
+
+  Uses the argmax of the output (treated as logits) and passes the
+  result through an embedding layer to get the next input.
+  """
+
+  def __init__(self, embedding, start_tokens, end_token):
+    """Initializer.
+
+    Args:
+      embedding: A callable that takes a vector tensor of `ids` (argmax ids),
+        or the `params` argument for `embedding_lookup`.
+      start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
+      end_token: `int32` scalar, the token that marks end of decoding.
+
+    Raises:
+      ValueError: if `sequence_length` is not a 1D tensor.
+    """
+    if callable(embedding):
+      self._embedding_fn = embedding
+    else:
+
+      def embedding_fn(ids):
+        return embedding_ops.embedding_lookup(embedding, ids)
+
+      self._embedding_fn = embedding_fn
+
+    self._start_tokens = ops.convert_to_tensor(
+        start_tokens, dtype=dtypes.int32, name="start_tokens")
+    self._end_token = ops.convert_to_tensor(
+        end_token, dtype=dtypes.int32, name="end_token")
+    if self._start_tokens.get_shape().ndims != 1:
+      raise ValueError("start_tokens must be a vector")
+    self._batch_size = array_ops.size(self._start_tokens)
+    if self._end_token.get_shape().ndims != 0:
+      raise ValueError("end_token must be a scalar")
+    self._start_inputs = self._embedding_fn(self._start_tokens)
+
+  @property
+  def batch_size(self):
+    return self._batch_size
+
+  def initialize(self):
+    finished = array_ops.tile([False], [self._batch_size])
+    return (finished, self._start_inputs)
+
+  def sample(self, time, outputs, **unused_kwargs):
+    # Outputs are logits, use argmax to get the most probable id
+    if not isinstance(outputs, ops.Tensor):
+      raise TypeError("Expected outputs to be a single Tensor, got: %s" %
+                      outputs)
+    sample_ids = math_ops.cast(math_ops.argmax(outputs, axis=-1), dtypes.int32)
+    finished = math_ops.equal(sample_ids, self._end_token)
+    all_finished = math_ops.reduce_all(finished)
+
+    next_inputs = control_flow_ops.cond(
+        all_finished,
+        # If we're finished, the next_inputs value doesn't matter
+        lambda: self._start_inputs,
+        lambda: self._embedding_fn(sample_ids))
+    return (sample_ids, finished, next_inputs)

@@ -536,7 +536,7 @@ TEST(BundleShimTest, BasicExportSavedModel) {
   const string saved_model_bundle_export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kSavedModelBundlePath);
   LoadAndValidateSavedModelBundle(saved_model_bundle_export_dir,
-                                  {kSavedModelTagServe}, kRegressMethodName);
+                                  {kSavedModelTagServe}, "regress_x_to_y");
 }
 
 // Checks a basic load fails with an invalid export path.

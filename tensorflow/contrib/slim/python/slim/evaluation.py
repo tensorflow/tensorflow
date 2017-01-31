@@ -187,8 +187,8 @@ def evaluate_once(master,
   hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
-    hooks.append(
-        evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
+    hooks.append(evaluation.SummaryAtEndHook(
+        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
 
   saver = None
   if variables_to_restore is not None:
@@ -262,8 +262,8 @@ def evaluation_loop(master,
   hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
-    hooks.append(
-        evaluation.SummaryAtEndHook(logdir, summary_op, summary_op_feed_dict))
+    hooks.append(evaluation.SummaryAtEndHook(
+        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
 
   saver = None
   if variables_to_restore is not None:

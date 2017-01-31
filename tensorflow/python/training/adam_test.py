@@ -24,6 +24,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -92,7 +93,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  def testBasic(self):
+  def doTestBasic(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
         # Initialize variables for numpy implementation.
@@ -102,8 +103,12 @@ class AdamOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = variables.Variable(var0_np)
-        var1 = variables.Variable(var1_np)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable(var0_np)
+          var1 = resource_variable_ops.ResourceVariable(var1_np)
+        else:
+          var0 = variables.Variable(var0_np)
+          var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
         opt = adam.AdamOptimizer()
@@ -128,6 +133,12 @@ class AdamOptimizerTest(test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
+
+  def testBasic(self):
+    self.doTestBasic(use_resource=False)
+
+  def testResourceBasic(self):
+    self.doTestBasic(use_resource=True)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

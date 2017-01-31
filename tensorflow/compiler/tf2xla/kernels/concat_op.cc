@@ -175,7 +175,7 @@ class ConcatOffsetOp : public XlaOpKernel {
       const TensorShape inp_shape = ctx->InputShape(1 + i);
       OP_REQUIRES(ctx, dims == inp_shape.num_elements(),
                   errors::InvalidArgument("input ", i, " should contain ", dims,
-                                          " elements, but got",
+                                          " elements, but got ",
                                           inp_shape.num_elements()));
       xla::Literal inp_literal;
       OP_REQUIRES_OK(ctx, ctx->ConstantInput(1 + i, &inp_literal));
