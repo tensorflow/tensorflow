@@ -170,7 +170,7 @@ def copy_op_handler(info, op, copy_shape=True):
   if op._original_op:
     original_op = info.transform_original_op_handler(info, op._original_op)
     if original_op is None:
-      logging.info("Could not find original op of: %s", op_.name)
+      logging.debug("Could not find original op of: %s", op_.name)
     else:
       op_._original_op = original_op
 
@@ -442,7 +442,7 @@ class Transformer(object):
   def _copy_ops(self, info):
     """Copy ops without connecting them."""
     for op in info.sgv.ops:
-      logging.info("Copying op: %s", op.name)
+      logging.debug("Copying op: %s", op.name)
       # TODO(fkp): return a subgraph?
       op_, op_outputs_ = self.transform_op_handler(info, op)
       if op is op_:
@@ -460,7 +460,7 @@ class Transformer(object):
   def _connect_ops(self, info):
     """Connect the previously copied ops."""
     for op in info.sgv.ops:
-      logging.info("Finalizing op: %s", op.name)
+      logging.debug("Finalizing op: %s", op.name)
       op_ = info.transformed_ops[op]
 
       # pylint: disable=protected-access
