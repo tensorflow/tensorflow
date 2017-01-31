@@ -84,6 +84,7 @@ java_test(
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
+        ":testutil",
         "//external:junit",
     ],
 )

@@ -380,7 +380,7 @@ with the `input_from_feature_columns()` function in
 [tf.contrib.layers](../../api_docs/python/contrib.layers.md#layers-contrib).
 
 ```python
-input layer = tf.contrib.layers.input_from_feature_columns(
+input_layer = tf.contrib.layers.input_from_feature_columns(
     columns_to_tensors=features, feature_columns=[age, height, weight])
 ```
 
