@@ -17,6 +17,10 @@ package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
 import android.util.Log;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.util.Random;
 
 /**
@@ -91,16 +95,31 @@ public class TensorFlowInferenceInterface {
    */
   public native void close();
 
-  // Methods for creating a native Tensor and filling it with values.
+  // Methods for taking a native Tensor and filling it with values from Java arrays.
   public native void fillNodeFloat(String inputName, int[] dims, float[] values);
   public native void fillNodeInt(String inputName, int[] dims, int[] values);
   public native void fillNodeDouble(String inputName, int[] dims, double[] values);
   public native void fillNodeByte(String inputName, int[] dims, byte[] values);
 
-  public native void readNodeFloat(String outputName, float[] values);
-  public native void readNodeInt(String outputName, int[] values);
-  public native void readNodeDouble(String outputName, double[] values);
-  public native void readNodeByte(String outputName, byte[] values);
+  // Methods for taking a native Tensor and filling it with values from Java
+  // native IO buffers.
+  public native void fillNodeFromFloatBuffer(String inputName, IntBuffer dims, FloatBuffer values);
+  public native void fillNodeFromIntBuffer(String inputName, IntBuffer dims, IntBuffer values);
+  public native void fillNodeFromDoubleBuffer(String inputName, IntBuffer dims, DoubleBuffer values);
+  public native void fillNodeFromByteBuffer(String inputName, IntBuffer dims, ByteBuffer values);
+
+  // Methods for taking reading from a native Tensor and copying the data into Java arrays.
+  public native int readNodeFloat(String outputName, float[] values);
+  public native int readNodeInt(String outputName, int[] values);
+  public native int readNodeDouble(String outputName, double[] values);
+  public native int readNodeByte(String outputName, byte[] values);
+
+  // Methods for taking reading from a native Tensor and copying the data into
+  // Java native IO buffers.
+  public native void readNodeIntoFloatBuffer(String outputName, FloatBuffer dst);
+  public native void readNodeIntoFloatBuffer(String outputName, IntBuffer dst);
+  public native void readNodeIntoFloatBuffer(String outputName, DoubleBuffer dst);
+  public native void readNodeIntoFloatBuffer(String outputName, ByteBuffer dst);
 
   /**
    * Canary method solely for determining if the tensorflow_inference native library should be
