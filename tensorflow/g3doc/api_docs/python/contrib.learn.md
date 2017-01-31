@@ -485,7 +485,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#Estimator.export_savedmodel}
+#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#Estimator.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -506,6 +506,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -980,7 +982,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.KMeansClustering.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#KMeansClustering.export_savedmodel}
+#### `tf.contrib.learn.KMeansClustering.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#KMeansClustering.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -1001,6 +1003,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -1779,7 +1783,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNClassifier.export_savedmodel}
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNClassifier.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -1800,6 +1804,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -2215,7 +2221,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -2236,6 +2242,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -2626,7 +2634,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNLinearCombinedRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNLinearCombinedRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNLinearCombinedRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNLinearCombinedRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -2647,6 +2655,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -3071,7 +3081,7 @@ See BasEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNLinearCombinedClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNLinearCombinedClassifier.export_savedmodel}
+#### `tf.contrib.learn.DNNLinearCombinedClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNLinearCombinedClassifier.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -3092,6 +3102,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -3552,7 +3564,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearClassifier.export_savedmodel}
+#### `tf.contrib.learn.LinearClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#LinearClassifier.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -3573,6 +3585,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -3996,7 +4010,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearRegressor.export_savedmodel}
+#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#LinearRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -4017,6 +4031,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -4562,9 +4578,18 @@ Typically constructed by a utility function specific to the exporter, such as
 The fields are:
   name: The directory name under the export base directory where exports of
     this type will be written.
-  export_fn: A function that writes an export, given an estimator and a
-    destination path.  This may be run repeatedly during continuous training,
-    or just once at the end of fixed-length training.
+  export_fn: A function that writes an export, given an estimator, a
+    destination path, and optionally a checkpoint path and an evaluation
+    result for that checkpoint.  This export_fn() may be run repeatedly during
+    continuous training, or just once at the end of fixed-length training.
+    Note the export_fn() may choose whether or not to export based on the eval
+    result or based on an internal timer or any other criterion, if exports
+    are not desired for every checkpoint.
+
+    The signature of this function must be one of:
+      * (estimator, export_path) -> export_path`
+      * (estimator, export_path, checkpoint_path) -> export_path`
+      * (estimator, export_path, checkpoint_path, eval_result) -> export_path`
 - - -
 
 #### `tf.contrib.learn.ExportStrategy.__getnewargs__()` {#ExportStrategy.__getnewargs__}
@@ -4595,9 +4620,29 @@ Return a nicely formatted representation string
 
 - - -
 
-#### `tf.contrib.learn.ExportStrategy.export(estimator, export_path)` {#ExportStrategy.export}
+#### `tf.contrib.learn.ExportStrategy.export(estimator, export_path, checkpoint_path=None, eval_result=None)` {#ExportStrategy.export}
+
+Exports the given Estimator to a specific format.
+
+##### Args:
 
 
+*  <b>`estimator`</b>: the Estimator to export.
+*  <b>`export_path`</b>: A string containing a directory where to write the export.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the strategy may locate a checkpoint (e.g. the most recent) by itself.
+*  <b>`eval_result`</b>: The output of Estimator.evaluate on this checkpoint.  This
+    should be set only if checkpoint_path is provided (otherwise it is
+    unclear which checkpoint this eval refers to).
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the export_fn does not have the required signature
 
 
 - - -
