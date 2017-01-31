@@ -749,8 +749,9 @@ class Defun(object):
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
   
-  Definitions of function is frozen for the session after first session.run
-  call, so you must create node using given function before it.
+  Definitions of functions are frozen in a graph as soon as the graph is used to
+  create a session. Therefore, nodes using the function must be created in the
+  graph before the corresponding session is created.
 
   Example, but also see the [How To on functions](link_needed).
 
