@@ -168,17 +168,15 @@ class DataSet(object):
       return [fake_image for _ in xrange(batch_size)], [
           fake_label for _ in xrange(batch_size)
       ]
-
-    """ Get next batch """ 
     start = self._index_in_epoch
     # Shuffle for the first epoch
-    if self._epochs_completed ==0 and start == 0 and shuffle:
+    if self._epochs_completed == 0 and start == 0 and shuffle:
       perm0 = numpy.arange(self._num_examples)
       numpy.random.shuffle(perm0)
       self._images = self.images[perm0]
       self._labels = self.labels[perm0]
     # Go to the next epoch
-    if start+batch_size > self._num_examples:
+    if start + batch_size > self._num_examples:
       # Finished epoch
       self._epochs_completed += 1
       # Get the rest examples in this epoch
@@ -193,7 +191,7 @@ class DataSet(object):
         self._labels = self.labels[perm]
       # Start next epoch
       start = 0
-      self._index_in_epoch = batch_size-rest_num_examples
+      self._index_in_epoch = batch_size - rest_num_examples
       end = self._index_in_epoch
       images_new_part = self.images[start:end]
       labels_new_part = self.labels[start:end]
