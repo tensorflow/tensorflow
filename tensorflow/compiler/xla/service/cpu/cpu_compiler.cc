@@ -401,8 +401,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
         CreateMemoryMinimizingSequence(
-            *hlo_module, [](const LogicalBuffer& buffer) {
-              return ShapeUtil::ByteSizeOf(buffer.shape());
+            *hlo_module, [&](const LogicalBuffer& buffer) {
+              return llvm_ir::ByteSizeOf(buffer.shape(), data_layout);
             }));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
@@ -552,8 +552,8 @@ CpuCompiler::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
         CreateMemoryMinimizingSequence(
-            *hlo_module, [](const LogicalBuffer& buffer) {
-              return ShapeUtil::ByteSizeOf(buffer.shape());
+            *hlo_module, [&](const LogicalBuffer& buffer) {
+              return llvm_ir::ByteSizeOf(buffer.shape(), data_layout);
             }));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
