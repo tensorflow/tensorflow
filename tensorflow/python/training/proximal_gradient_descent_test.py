@@ -21,7 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -30,10 +34,15 @@ from tensorflow.python.training import proximal_gradient_descent
 
 class ProximalGradientDescentOptimizerTest(test.TestCase):
 
-  def testProximalGradientDescentwithoutRegularization(self):
+  def doTestProximalGradientDescentwithoutRegularization(
+      self, use_resource=False):
     with self.test_session() as sess:
-      var0 = variables.Variable([0.0, 0.0])
-      var1 = variables.Variable([0.0, 0.0])
+      if use_resource:
+        var0 = resource_variable_ops.ResourceVariable([0.0, 0.0])
+        var1 = resource_variable_ops.ResourceVariable([0.0, 0.0])
+      else:
+        var0 = variables.Variable([0.0, 0.0])
+        var1 = variables.Variable([0.0, 0.0])
       grads0 = constant_op.constant([0.1, 0.2])
       grads1 = constant_op.constant([0.01, 0.02])
       opt = proximal_gradient_descent.ProximalGradientDescentOptimizer(
@@ -52,6 +61,12 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([-0.9, -1.8]), v0_val)
       self.assertAllClose(np.array([-0.09, -0.18]), v1_val)
+
+  def testProximalGradientDescentwithoutRegularization(self):
+    self.doTestProximalGradientDescentwithoutRegularization(use_resource=False)
+
+  def testResourceProximalGradientDescentwithoutRegularization(self):
+    self.doTestProximalGradientDescentwithoutRegularization(use_resource=True)
 
   def testProximalGradientDescentwithoutRegularization2(self):
     with self.test_session() as sess:
@@ -76,6 +91,24 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([0.1, 0.2]), v0_val)
       self.assertAllClose(np.array([3.91, 2.82]), v1_val)
+
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = proximal_gradient_descent.ProximalGradientDescentOptimizer(
+            1.0).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[-111, -138]], var0.eval(), atol=0.01)
 
   def testProximalGradientDescentWithL1_L2(self):
     with self.test_session() as sess:

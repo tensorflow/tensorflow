@@ -38,11 +38,11 @@ class ExponentialTest(test.TestCase):
       exponential = exponential_lib.Exponential(lam=lam)
       expected_log_pdf = stats.expon.logpdf(x, scale=1 / lam_v)
 
-      log_pdf = exponential.log_pdf(x)
+      log_pdf = exponential.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = exponential.pdf(x)
+      pdf = exponential.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 

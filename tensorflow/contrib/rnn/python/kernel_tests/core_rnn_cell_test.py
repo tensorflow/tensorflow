@@ -44,6 +44,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
+
 # pylint: enable=protected-access
 
 
@@ -311,6 +312,36 @@ class RNNCellTest(test.TestCase):
         self.assertEqual(res[1].shape, (1, 3))
         # The numbers in results were not calculated, this is just a smoke test.
         self.assertAllClose(res[0], [[0.154605, 0.154605, 0.154605]])
+
+  def testResidualWrapper(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 3])
+        base_cell = core_rnn_cell_impl.GRUCell(3)
+        g, m_new = base_cell(x, m)
+        variable_scope.get_variable_scope().reuse_variables()
+        g_res, m_new_res = core_rnn_cell_impl.ResidualWrapper(base_cell)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run([g, g_res, m_new, m_new_res], {
+            x: np.array([[1., 1., 1.]]),
+            m: np.array([[0.1, 0.1, 0.1]])
+        })
+        # Residual connections
+        self.assertAllClose(res[1], res[0] + [1., 1., 1.])
+        # States are left untouched
+        self.assertAllClose(res[2], res[3])
+
+  def testDeviceWrapper(self):
+    with variable_scope.variable_scope(
+        "root", initializer=init_ops.constant_initializer(0.5)):
+      x = array_ops.zeros([1, 3])
+      m = array_ops.zeros([1, 3])
+      cell = core_rnn_cell_impl.DeviceWrapper(
+          core_rnn_cell_impl.GRUCell(3), "/cpu:14159")
+      outputs, _ = cell(x, m)
+      self.assertTrue("cpu:14159" in outputs.device.lower())
 
   def testDropoutWrapper(self):
     with self.test_session() as sess:

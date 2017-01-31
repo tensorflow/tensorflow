@@ -22,6 +22,7 @@ import os
 import shlex
 import sys
 
+from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import app
@@ -92,6 +93,9 @@ def main(unused_args):
   else:
     output_path = os.path.abspath(FLAGS.test_log_output)
   gfile.GFile(output_path, "w").write(serialized_test_results)
+  # Also write test results in JSON, used by the datastore uploader.
+  json_test_results = json_format.MessageToJson(test_results)
+  gfile.GFile(output_path + ".json", "w").write(json_test_results)
   tf_logging.info("Test results written to: %s" % output_path)
 
 

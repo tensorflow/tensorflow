@@ -28,7 +28,7 @@ initialized with parameters that define the distributions.
 
 @@Binomial
 @@Bernoulli
-@@BernoulliWithSigmoidP
+@@BernoulliWithSigmoidProbs
 @@Beta
 @@BetaWithSoftplusAB
 @@Categorical
@@ -43,10 +43,10 @@ initialized with parameters that define the distributions.
 @@Laplace
 @@LaplaceWithSoftplusScale
 @@Normal
-@@NormalWithSoftplusSigma
+@@NormalWithSoftplusScale
 @@Poisson
 @@StudentT
-@@StudentTWithAbsDfSoftplusSigma
+@@StudentTWithAbsDfSoftplusScale
 @@Uniform
 
 ## Multivariate distributions
@@ -87,8 +87,8 @@ representing the posterior or posterior predictive.
 
 ## Normal likelihood with conjugate prior.
 
-@@normal_conjugates_known_sigma_posterior
-@@normal_conjugates_known_sigma_predictive
+@@normal_conjugates_known_scale_posterior
+@@normal_conjugates_known_scale_predictive
 
 ## Kullback-Leibler Divergence
 
@@ -107,11 +107,14 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
 from tensorflow.contrib.distributions.python.ops import bijector
+from tensorflow.contrib.distributions.python.ops import conditional_bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
+from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
+from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
@@ -135,3 +138,12 @@ from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['bijector',
+                    'ConditionalDistribution',
+                    'ConditionalTransformedDistribution',
+                    'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
+
+remove_undocumented(__name__, _allowed_symbols)

@@ -1,20 +1,35 @@
-Student's t distribution with degree-of-freedom parameter df.
+Student's t-distribution with degree of freedom `df`, location `loc`, and `scale` parameters.
 
 #### Mathematical details
 
-Write `sigma` for the scale and `mu` for the mean (both are scalars). The PDF
-of this distribution is:
+The probability density function (pdf) is,
 
 ```none
-f(x) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
+pdf(x; df, mu, sigma) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
 where,
-y(x) = (x - mu) / sigma
-Z    = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
+y = (x - mu) / sigma
+Z = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
 ```
 
-Notice that `sigma` has semantics more similar to standard deviation than
-variance.  (Recall that the variance of the Student's t-distribution is
-`sigma**2 df / (df - 2)` when `df > 2`.)
+where:
+* `loc = mu`,
+* `scale = sigma`, and,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The StudentT distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ StudentT(df, loc=0, scale=1)
+Y = loc + scale * X
+```
+
+Notice that `scale` has semantics more similar to standard deviation than
+variance.  However it is not actually the std. deviation; the Student's
+t-distribution std. dev. is `scale sqrt(df / (df - 2))` when `df > 2`.
 
 #### Examples
 
@@ -25,18 +40,18 @@ Examples of initialization of one or a batch of distributions.
 single_dist = tf.contrib.distributions.StudentT(df=3)
 
 # Evaluate the pdf at 1, returning a scalar Tensor.
-single_dist.pdf(1.)
+single_dist.prob(1.)
 
 # Define a batch of two scalar valued Student t's.
 # The first has degrees of freedom 2, mean 1, and scale 11.
 # The second 3, 2 and 22.
 multi_dist = tf.contrib.distributions.StudentT(df=[2, 3],
-                                               mu=[1, 2.],
-                                               sigma=[11, 22.])
+                                               loc=[1, 2.],
+                                               scale=[11, 22.])
 
 # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
 # returning a length two tensor.
-multi_dist.pdf([0, 1.5])
+multi_dist.prob([0, 1.5])
 
 # Get 3 samples, returning a 3 x 2 tensor.
 multi_dist.sample(3)
@@ -47,46 +62,48 @@ Arguments are broadcast when possible.
 ```python
 # Define a batch of two Student's t distributions.
 # Both have df 2 and mean 1, but different scales.
-dist = tf.contrib.distributions.StudentT(df=2, mu=1, sigma=[11, 22.])
+dist = tf.contrib.distributions.StudentT(df=2, loc=1, scale=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
-dist.pdf(3.0)
+dist.prob(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=False, allow_nan_stats=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, loc, scale, validate_args=False, allow_nan_stats=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
-The distributions have degree of freedom `df`, mean `mu`, and scale `sigma`.
+The distributions have degree of freedom `df`, mean `loc`, and scale
+`scale`.
 
-The parameters `df`, `mu`, and `sigma` must be shaped in a way that supports
-broadcasting (e.g. `df + mu + sigma` is a valid operation).
+The parameters `df`, `loc`, and `scale` must be shaped in a way that
+supports broadcasting (e.g. `df + loc + scale` is a valid operation).
 
 ##### Args:
 
 
 *  <b>`df`</b>: Numeric `Tensor`. The degrees of freedom of the distribution(s).
     `df` must contain only positive values.
-*  <b>`mu`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
-*  <b>`sigma`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
-    Note that `sigma` is not technically the standard deviation of this
+*  <b>`loc`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
+*  <b>`scale`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
+    Note that `scale` is not technically the standard deviation of this
     distribution but has semantics more similar to standard deviation than
     variance.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+*  <b>`TypeError`</b>: if loc and scale are different dtypes.
 
 
 - - -
@@ -132,7 +149,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.cdf(value, name='cdf', **condition_kwargs)` {#StudentT.cdf}
+#### `tf.contrib.distributions.StudentT.cdf(value, name='cdf')` {#StudentT.cdf}
 
 Cumulative distribution function.
 
@@ -147,7 +164,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -177,6 +193,50 @@ intialization arguments.
 *  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
     of self.parameters and override_parameters_kwargs, i.e.,
     `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.covariance(name='covariance')` {#StudentT.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
 
 
 - - -
@@ -288,7 +348,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf', **condition_kwargs)` {#StudentT.log_cdf}
+#### `tf.contrib.distributions.StudentT.loc` {#StudentT.loc}
+
+Locations of these Student's t distribution(s).
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf')` {#StudentT.log_cdf}
 
 Log cumulative distribution function.
 
@@ -307,7 +374,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -318,57 +384,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_pdf(value, name='log_pdf', **condition_kwargs)` {#StudentT.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.log_pmf(value, name='log_pmf', **condition_kwargs)` {#StudentT.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.log_prob(value, name='log_prob', **condition_kwargs)` {#StudentT.log_prob}
+#### `tf.contrib.distributions.StudentT.log_prob(value, name='log_prob')` {#StudentT.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -377,7 +393,6 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -388,7 +403,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#StudentT.log_survival_function}
+#### `tf.contrib.distributions.StudentT.log_survival_function(value, name='log_survival_function')` {#StudentT.log_survival_function}
 
 Log survival function.
 
@@ -408,7 +423,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -424,9 +438,9 @@ Mean.
 
 Additional documentation from `StudentT`:
 
-The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
-If `self.allow_nan_stats=True`, then an exception will be raised rather
-than returning `NaN`.
+The mean of Student's T equals `loc` if `df > 1`, otherwise it is
+`NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+rather than returning `NaN`.
 
 
 - - -
@@ -434,13 +448,6 @@ than returning `NaN`.
 #### `tf.contrib.distributions.StudentT.mode(name='mode')` {#StudentT.mode}
 
 Mode.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.mu` {#StudentT.mu}
-
-Locations of these Student's t distribution(s).
 
 
 - - -
@@ -513,57 +520,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.pdf(value, name='pdf', **condition_kwargs)` {#StudentT.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.pmf(value, name='pmf', **condition_kwargs)` {#StudentT.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.prob(value, name='prob', **condition_kwargs)` {#StudentT.prob}
+#### `tf.contrib.distributions.StudentT.prob(value, name='prob')` {#StudentT.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -572,7 +529,6 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -598,7 +554,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#StudentT.sample}
+#### `tf.contrib.distributions.StudentT.sample(sample_shape=(), seed=None, name='sample')` {#StudentT.sample}
 
 Generate samples of the specified shape.
 
@@ -611,7 +567,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -621,7 +576,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sigma` {#StudentT.sigma}
+#### `tf.contrib.distributions.StudentT.scale` {#StudentT.scale}
 
 Scaling factors of these Student's t distribution(s).
 
@@ -632,10 +587,30 @@ Scaling factors of these Student's t distribution(s).
 
 Standard deviation.
 
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.survival_function(value, name='survival_function', **condition_kwargs)` {#StudentT.survival_function}
+#### `tf.contrib.distributions.StudentT.survival_function(value, name='survival_function')` {#StudentT.survival_function}
 
 Survival function.
 
@@ -652,7 +627,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -673,6 +647,16 @@ Python boolean indicated possibly expensive checks are enabled.
 
 Variance.
 
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+
 Additional documentation from `StudentT`:
 
 The variance for Student's T equals
@@ -682,5 +666,16 @@ df / (df - 2), when df > 2
 infinity, when 1 < df <= 2
 NaN, when df <= 1
 ```
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

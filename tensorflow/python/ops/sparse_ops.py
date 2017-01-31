@@ -57,6 +57,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import numbers
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -824,12 +827,24 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
                  dense_shape=[3, 6])
   ```
 
+  This method generalizes to higher-dimensions by simply providing a list for
+  both the sp_ids as well as the vocab_size.
+  In this case the resulting `SparseTensor` has the following properties:
+    - `indices` is equivalent to `sp_ids[0].indices` with the last
+      dimension discarded and concatenated with
+      `sp_ids[0].values, sp_ids[1].values, ...`.
+    - `values` is simply `sp_values.values`.
+    - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
+      `output.shape = [D0, D1, ..., Dn] + vocab_size`.
+
   Args:
-    sp_ids: A `SparseTensor` with `values` property of type `int32`
-      or `int64`.
+    sp_ids: A single `SparseTensor` with `values` property of type `int32`
+      or `int64` or a Python list of such `SparseTensor`s or a list thereof.
     sp_values: A`SparseTensor` of any type.
     vocab_size: A scalar `int64` Tensor (or Python int) containing the new size
       of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
+      Or a list thereof with `all(0 <= sp_ids[i].values < vocab_size[i])` for
+      all `i`.
     name: A name prefix for the returned tensors (optional)
     already_sorted: A boolean to specify whether the per-batch values in
      `sp_values` are already sorted. If so skip sorting, False by default
@@ -840,31 +855,54 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     useful for passing to functions that expect such a `SparseTensor`.
 
   Raises:
-    TypeError: If `sp_ids` or `sp_values` are not a `SparseTensor`.
+    TypeError: If `sp_values` is not a `SparseTensor`. Or if `sp_ids` is neither
+      a `SparseTensor` nor a list thereof. Or if `vocab_size` is not a
+      `Tensor` or a Python int and `sp_ids` is a `SparseTensor`. Or if
+      `vocab_size` is not a or list thereof and `sp_ids` is a list.
+    ValueError: If `sp_ids` and `vocab_size` are lists of different lengths.
   """
-  sp_ids = _convert_to_sparse_tensor(sp_ids)
-  sp_values = _convert_to_sparse_tensor(sp_values)
+  if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
+      sp_ids, sparse_tensor.SparseTensor):
+    sp_ids = [sp_ids]
+    if not (isinstance(vocab_size, ops.Tensor) or
+            isinstance(vocab_size, numbers.Integral)):
+      raise TypeError("vocab_size has to be a Tensor or Python int. Found %s" %
+                      type(vocab_size))
+    vocab_size = [vocab_size]
+  else:
+    if not isinstance(sp_ids, collections.Iterable):
+      raise TypeError("sp_ids has to be a SparseTensor or list thereof. "
+                      "Found %s" % type(sp_ids))
+    if not isinstance(vocab_size, collections.Iterable):
+      raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
+                      "Found %s" % type(vocab_size))
+    for dim in vocab_size:
+      if not (isinstance(dim, ops.Tensor) or
+              isinstance(dim, numbers.Integral)):
+        raise TypeError(
+            "vocab_size has to be a list of Tensors or Python ints. Found %s" %
+            type(dim))
+  if len(sp_ids) != len(vocab_size):
+    raise ValueError("sp_ids and vocab_size have to have equal lengths.")
 
   with ops.name_scope(name, "SparseMerge", [sp_ids, sp_values]):
-    indices_shape = array_ops.shape(sp_ids.indices)
-    rank = indices_shape[1]
+    sp_ids = [_convert_to_sparse_tensor(sp_ids_dim) for sp_ids_dim in sp_ids]
+    sp_values = _convert_to_sparse_tensor(sp_values)
+    ids = []
+    for sp_ids_dim in sp_ids:
+      ids_dim = sp_ids_dim.values
+      if sp_ids_dim.dtype != dtypes.int64:
+        ids_dim = math_ops.cast(ids_dim, dtypes.int64)
+      ids += [array_ops.expand_dims(ids_dim, axis=1)]
 
-    ids = sp_ids.values
-    if ids.dtype != dtypes.int64:
-      ids = math_ops.cast(ids, dtypes.int64)
+    vocab_size = [math_ops.cast(x, dtypes.int64) for x in vocab_size]
 
     # Slice off the last dimension of indices, then tack on the ids
-    indices_columns_to_preserve = array_ops.slice(
-        sp_ids.indices, [0, 0], array_ops.stack([-1, rank - 1]))
-    new_indices = array_ops.concat(
-        [indices_columns_to_preserve, array_ops.reshape(ids, [-1, 1])], 1)
+    indices_columns_to_preserve = sp_ids[0].indices[:, :-1]
+    new_indices = array_ops.concat([indices_columns_to_preserve] + ids, 1)
 
     new_values = sp_values.values
-    new_shape = array_ops.concat([
-        array_ops.slice(sp_ids.dense_shape, [0],
-                        array_ops.expand_dims(rank - 1, 0)),
-        math_ops.cast(array_ops.stack([vocab_size]), dtypes.int64)
-    ], 0)
+    new_shape = array_ops.concat([sp_ids[0].dense_shape[:-1], vocab_size], 0)
 
     result = sparse_tensor.SparseTensor(new_indices, new_values, new_shape)
     return result if already_sorted else sparse_reorder(result)

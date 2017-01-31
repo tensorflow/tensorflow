@@ -370,8 +370,7 @@ int Main(int argc, char** argv) {
   stats_options.memory_limit = memory_limit;
   stats_options.show_type = show_type;
   stats_options.show_summary = show_summary;
-  stats.reset(
-      new tensorflow::StatSummarizer(*(graph_def.get()), stats_options));
+  stats.reset(new tensorflow::StatSummarizer(stats_options));
 
   const double sleep_seconds = std::strtod(run_delay.c_str(), nullptr);
 
