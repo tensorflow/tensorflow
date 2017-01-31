@@ -17,7 +17,7 @@ bad numerical values (`nan`s and `inf`s) causing training to fail.
 To **observe** such an issue, run the following code without the debugger:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_mnist.py
+python -m tensorflow.python.debug.examples.debug_mnist
 ```
 
 This code trains a simple NN for MNIST digit image recognition. Notice that the
@@ -80,7 +80,7 @@ Let's try training the model again with debugging enabled. Execute the command
 from above, this time with the `--debug` flag added:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_mnist.py --debug
+python -m tensorflow.python.debug.examples.debug_mnist --debug
 ```
 
 The debug wrapper session will prompt you when it is about to execute the first
@@ -255,7 +255,7 @@ diff = y_ * tf.log(tf.clip_by_value(y, 1e-8, 1.0))
 Now, try training again with `--debug`:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_mnist.py --debug
+python -m tensorflow.python.debug.examples.debug_mnist --debug
 ```
 
 Enter `run -f has_inf_or_nan` at the `tfdbg>` prompt and confirm that no tensors
@@ -302,7 +302,7 @@ inspect the data in the dump directory on the shared storage by using the
 `offline_analyzer` of `tfdbg`. For example:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/cli/offline_analyzer.py \
+python -m tensorflow.python.debug.cli.offline_analyzer \
     --dump_dir=/cns/is-d/home/somebody/tfdbg_dumps_1
 ```
 
@@ -377,11 +377,11 @@ sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
 ```none
 # Debugging shape mismatch during matrix multiplication.
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_errors.py \
+python -m tensorflow.python.debug.examples.debug_errors \
     --error shape_mismatch --debug
 
 # Debugging uninitialized variable.
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_errors.py \
+python -m tensorflow.python.debug.examples.debug_errors \
     --error uninitialized_variable --debug
 ```
 

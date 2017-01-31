@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
@@ -22,6 +23,10 @@ REGISTER_OP("_Arg")
     .Attr("T: type")
     .Attr("index: int >= 0")
     .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      context->set_output(0, context->UnknownShape());
+      return Status::OK();
+    })
     .Doc(R"doc(
 A graph node which represents an argument to a function.
 
@@ -34,6 +39,9 @@ REGISTER_OP("_Retval")
     .Attr("T: type")
     .Attr("index: int >= 0")
     .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      return Status::OK();
+    })
     .Doc(R"doc(
 A graph node which represents a return value of a function.
 

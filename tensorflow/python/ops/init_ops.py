@@ -96,6 +96,9 @@ class Constant(Initializer):
       elements of the initialized variable will be set to the corresponding
       value in the `value` argument.
     dtype: The data type.
+    verify_shape: Boolean that enables verification of the shape of `value`. If
+      `True`, the initializer will throw an error if the shape of `value` is not
+      compatible with the shape of the initialized tensor.
 
   Examples:
     The following example can be rewritten using a numpy.ndarray instead
@@ -112,7 +115,6 @@ class Constant(Initializer):
     >>> init = tf.constant_initializer(value)
 
     >>> print('fitting shape:')
-    >>> tf.reset_default_graph()
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
     >>>   x.initializer.run()
@@ -123,7 +125,6 @@ class Constant(Initializer):
      [ 4.  5.  6.  7.]]
 
     >>> print('larger shape:')
-    >>> tf.reset_default_graph()
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
     >>>   x.initializer.run()
@@ -135,22 +136,30 @@ class Constant(Initializer):
      [ 7.  7.  7.  7.]]
 
     >>> print('smaller shape:')
-    >>> tf.reset_default_graph()
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
     ValueError: Too many elements provided. Needed at most 6, but received 8
+
+    >>> print('shape verification:')
+    >>> init_verify = tf.constant_initializer(value, verify_shape=True)
+    >>> with tf.Session():
+    >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
+
+    TypeError: Expected Tensor's shape: (3, 4), got (8,).
   ```
   """
 
-  def __init__(self, value=0, dtype=dtypes.float32):
+  def __init__(self, value=0, dtype=dtypes.float32, verify_shape=False):
     self.value = value
     self.dtype = dtype
+    self.verify_shape = verify_shape
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
-    return constant_op.constant(self.value, dtype=dtype, shape=shape)
+    return constant_op.constant(self.value, dtype=dtype, shape=shape,
+                                verify_shape=self.verify_shape)
 
 
 class RandomUniform(Initializer):
@@ -363,8 +372,8 @@ class VarianceScaling(Initializer):
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
-  If the shape of the tensor to initialize is two-dimensional, i is initialized 
-  with an orthogonal matrix obtained from the singular value decomposition of a 
+  If the shape of the tensor to initialize is two-dimensional, i is initialized
+  with an orthogonal matrix obtained from the singular value decomposition of a
   matrix of uniform random numbers.
 
   If the shape of the tensor to initialize is more than two-dimensional,

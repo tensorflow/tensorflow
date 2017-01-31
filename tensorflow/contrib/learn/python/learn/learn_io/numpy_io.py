@@ -97,7 +97,7 @@ def numpy_input_fn(x,
       shape_dict_of_x = {k: x[k].shape for k in x.keys()}
       shape_of_y = None if y is None else y.shape
       raise ValueError('Length of tensors in x and y is mismatched. All '
-                       'elementson x and y must have the same length.\n'
+                       'elements in x and y must have the same length.\n'
                        'Shapes in x: {}\n'
                        'Shape for y: {}\n'.format(shape_dict_of_x, shape_of_y))
 

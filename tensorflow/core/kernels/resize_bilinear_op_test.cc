@@ -108,6 +108,22 @@ class ResizeBilinearOpTest : public OpsTestBase {
       }
     }
   }
+
+  void TestResize(int input_width, int input_height, int channels,
+                  int output_width, int output_height) {
+    const TensorShape shape({1, input_width, input_height, channels});
+    const Tensor* input = AddRandomImageInput(shape);
+    AddInputFromArray<int32>(TensorShape({2}), {output_width, output_height});
+    TF_ASSERT_OK(RunOpKernel());
+
+    std::unique_ptr<Tensor> expected(
+        new Tensor(device_->GetAllocator(AllocatorAttributes()),
+                   DataTypeToEnum<float>::v(),
+                   TensorShape({1, output_width, output_height, channels})));
+    ResizeBilinearBaseline(input->tensor<float, 4>(),
+                           expected->tensor<float, 4>());
+    test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
+  }
 };
 
 class ResizeBilinearOpAlignCornersTest : public OpsTestBase {
@@ -184,7 +200,6 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3) {
     {1,        5.0f / 3,  2,
      7.0f / 3, 3,         10.0f / 3,
      3,        11.0f / 3, 4});
-
 
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
@@ -388,61 +403,29 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeBilinearOpTest, TestBilinearRandom183x299To299x299) {
-  const TensorShape shape({1, 183, 299, 1});
-  const Tensor* input = AddRandomImageInput(shape);
-  AddInputFromArray<int32>(TensorShape({2}), {299, 299});
-  TF_ASSERT_OK(RunOpKernel());
+// similar_size case
+TEST_F(ResizeBilinearOpTest, Test1_1c) { TestResize(183, 299, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test1_3c) { TestResize(183, 299, 3, 299, 299); }
 
-  std::unique_ptr<Tensor> expected(
-      new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                 DataTypeToEnum<float>::v(), TensorShape({1, 299, 299, 1})));
-  ResizeBilinearBaseline(input->tensor<float, 4>(),
-                         expected->tensor<float, 4>());
-  test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
-}
+// Significantly smaller: scale_up case
+TEST_F(ResizeBilinearOpTest, Test2_1c) { TestResize(141, 186, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test2_3c) { TestResize(141, 186, 3, 299, 299); }
 
-TEST_F(ResizeBilinearOpTest, TestBilinearRandom141x186To299x299) {
-  const TensorShape shape({1, 141, 186, 1});
-  const Tensor* input = AddRandomImageInput(shape);
-  AddInputFromArray<int32>(TensorShape({2}), {299, 299});
-  TF_ASSERT_OK(RunOpKernel());
+// Significantly larger: scale_down case
+TEST_F(ResizeBilinearOpTest, Test3_1c) { TestResize(749, 603, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test3_3c) { TestResize(749, 603, 3, 299, 299); }
 
-  std::unique_ptr<Tensor> expected(
-      new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                 DataTypeToEnum<float>::v(), TensorShape({1, 299, 299, 1})));
-  ResizeBilinearBaseline(input->tensor<float, 4>(),
-                         expected->tensor<float, 4>());
-  test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
-}
+// Exactly the same size
+TEST_F(ResizeBilinearOpTest, Test4_1c) { TestResize(299, 299, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test4_3c) { TestResize(299, 299, 3, 299, 299); }
 
-TEST_F(ResizeBilinearOpTest, TestBilinearRandom749x603To299x299) {
-  const TensorShape shape({1, 749, 603, 1});
-  const Tensor* input = AddRandomImageInput(shape);
-  AddInputFromArray<int32>(TensorShape({2}), {299, 299});
-  TF_ASSERT_OK(RunOpKernel());
+// Slightly smaller: similar_size case
+TEST_F(ResizeBilinearOpTest, Test5_1c) { TestResize(298, 297, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test5_3c) { TestResize(298, 297, 3, 299, 299); }
 
-  std::unique_ptr<Tensor> expected(
-      new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                 DataTypeToEnum<float>::v(), TensorShape({1, 299, 299, 1})));
-  ResizeBilinearBaseline(input->tensor<float, 4>(),
-                         expected->tensor<float, 4>());
-  test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
-}
-
-TEST_F(ResizeBilinearOpTest, TestBilinearRandom299x299To299x299) {
-  const TensorShape shape({1, 299, 299, 1});
-  const Tensor* input = AddRandomImageInput(shape);
-  AddInputFromArray<int32>(TensorShape({2}), {299, 299});
-  TF_ASSERT_OK(RunOpKernel());
-
-  std::unique_ptr<Tensor> expected(
-      new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                 DataTypeToEnum<float>::v(), TensorShape({1, 299, 299, 1})));
-  ResizeBilinearBaseline(input->tensor<float, 4>(),
-                         expected->tensor<float, 4>());
-  test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
-}
+// Slightly bigger: similar_size case
+TEST_F(ResizeBilinearOpTest, Test6_1c) { TestResize(304, 303, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test6_3c) { TestResize(304, 303, 3, 299, 299); }
 
 TEST_F(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});

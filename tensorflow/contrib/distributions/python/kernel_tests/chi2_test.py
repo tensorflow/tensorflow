@@ -37,11 +37,11 @@ class Chi2Test(test.TestCase):
       chi2 = chi2_lib.Chi2(df=df)
       expected_log_pdf = stats.chi2.logpdf(x, df_v)
 
-      log_pdf = chi2.log_pdf(x)
+      log_pdf = chi2.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = chi2.pdf(x)
+      pdf = chi2.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 

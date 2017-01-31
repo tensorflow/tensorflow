@@ -53,6 +53,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.tensorboard.backend import application
@@ -67,9 +68,12 @@ class TensorboardServerTest(test.TestCase):
 
   def setUp(self):
     self.temp_dir = self._GenerateTestData()
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=True)
     plugins = {'projector': projector_plugin.ProjectorPlugin()}
     app = application.TensorBoardWSGIApp(
-        self.temp_dir, plugins, reload_interval=0)
+        self.temp_dir, plugins, multiplexer, reload_interval=0)
     self._server = serving.BaseWSGIServer('localhost', 0, app)
     # 0 to pick an unused port.
     self._server_thread = threading.Thread(target=self._server.serve_forever)

@@ -23,3 +23,12 @@ from tensorflow.contrib.opt.python.training.external_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 # pylint: enable=wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['ExternalOptimizerInterface',
+                    'MovingAverageOptimizer',
+                    'ScipyOptimizerInterface',
+                    'VariableClippingOptimizer']
+
+remove_undocumented(__name__, _allowed_symbols)
