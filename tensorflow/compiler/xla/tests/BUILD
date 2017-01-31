@@ -754,6 +754,7 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
+    timeout = "long",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
