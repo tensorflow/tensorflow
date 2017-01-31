@@ -49,7 +49,10 @@ cc_library(
     name = "cudart_static",
     srcs = ["lib/%{cudart_static_lib}"],
     includes = ["include/"],
-    linkopts = [
+    linkopts = select({
+            "//tensorflow:FreeBSD": [],
+            "//conditions:default": ["-ldl"],
+        }) + [
         "-lpthread",
         %{cudart_static_linkopt}
     ],

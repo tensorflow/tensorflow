@@ -24,8 +24,10 @@ cc_library(
         "lib/gtl/*.h",
         "platform/**/*.h",
     ]),
-    linkopts = [
-    ],
+    linkopts = select({
+        "//tensorflow:FreeBSD": [],
+        "//conditions:default": ["-ldl"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
