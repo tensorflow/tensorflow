@@ -1797,6 +1797,7 @@ tf_cc_tests(
         "util/saved_tensor_slice_util_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/semver_test.cc",
+        "util/stat_summarizer_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
         "util/tensor_slice_util_test.cc",
