@@ -18,7 +18,7 @@
 
 @@RNNCell
 
-## RNN Cells for use with TensorFlow's core RNN methods
+## Core RNN Cells for use with TensorFlow's core RNN methods
 
 @@BasicRNNCell
 @@BasicLSTMCell
@@ -30,7 +30,7 @@
 
 @@LSTMStateTuple
 
-## RNN Cell wrappers (RNNCells that wrap other RNNCells)
+## Core RNN Cell wrappers (RNNCells that wrap other RNNCells)
 
 @@MultiRNNCell
 @@LSTMBlockWrapper
@@ -58,6 +58,7 @@
 
 ### RNNCell wrappers
 @@AttentionCellWrapper
+@@CompiledWrapper
 
 
 ## Recurrent Neural Networks

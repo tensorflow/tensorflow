@@ -44,6 +44,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
+
 # pylint: enable=protected-access
 
 
