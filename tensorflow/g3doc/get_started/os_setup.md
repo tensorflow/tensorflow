@@ -706,7 +706,7 @@ for production (though it will mature over time).
 ##### Download and install OpenCL drivers
 
 The exact steps required for a functional OpenCL installation will depend on
-your environment. For Unbuntu 14.04, the following steps are known to work:
+your environment. For Ubuntu 14.04, the following steps are known to work:
 
 ```bash
 sudo apt-get install ocl-icd-opencl-dev opencl-headers
