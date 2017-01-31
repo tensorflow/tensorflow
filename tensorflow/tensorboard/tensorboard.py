@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import os
 import socket
+
 from werkzeug import serving
 
 from tensorflow.python.platform import app
@@ -32,7 +33,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import application
-from tensorflow.tensorboard.plugins.debugger import plugin as debugger_plugin
 from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
 flags.DEFINE_string('logdir', '', """logdir specifies the directory where
@@ -120,12 +120,7 @@ class Server(object):
     multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=FLAGS.purge_orphaned_data)
-    plugins = {
-        debugger_plugin.PLUGIN_PREFIX_ROUTE:
-            debugger_plugin.DebuggerPlugin(),
-        projector_plugin.PLUGIN_PREFIX_ROUTE:
-            projector_plugin.ProjectorPlugin(),
-    }
+    plugins = {'projector': projector_plugin.ProjectorPlugin()}
     return application.TensorBoardWSGIApp(
         logdir,
         plugins,
