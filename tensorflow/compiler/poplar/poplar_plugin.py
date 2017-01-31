@@ -37,3 +37,4 @@ def load_poplar():
     except errors.NotFoundError:
         logging.warning('%s file could not be loaded.', filename)
 
+load_poplar()

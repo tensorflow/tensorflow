@@ -31,7 +31,7 @@ const char* const DEVICE_XLA_IPU = "XLA_IPU";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_CPU_JIT";
 
 class XlaIpuDeviceFactory : public DeviceFactory {
-public:
+ public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<Device*>* devices) override;
 };
@@ -40,7 +40,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
   static XlaDeviceOpRegistrations* registrations =
-          RegisterXlaDeviceKernels(DEVICE_XLA_IPU, DEVICE_IPU_XLA_JIT);
+      RegisterXlaDeviceKernels(DEVICE_XLA_IPU, DEVICE_IPU_XLA_JIT);
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
@@ -56,7 +56,7 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory);
 // Kernel registrations
 
 constexpr std::array<DataType, 5> kAllXlaIpuTypes = {
-        {DT_INT32, DT_FLOAT, DT_HALF, DT_BOOL}};
+    {DT_INT32, DT_FLOAT, DT_HALF, DT_BOOL}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaDeviceLaunchOp, kAllXlaIpuTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kAllXlaIpuTypes);

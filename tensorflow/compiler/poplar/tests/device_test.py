@@ -30,15 +30,16 @@ class IpuXlaDeviceLibTest(test_util.TensorFlowTestCase):
 
     def testLoadDevice(self):
         devices = device_lib.list_local_devices()
-        device_count = len(devices)
 
         self.assertGreater(len(devices), 0)
         self.assertEqual(devices[0].device_type, "CPU")
 
-        poplar_plugin.load_poplar()
+        found_ipu = False
+        for d in devices:
+            if d.device_type == "XLA_IPU":
+                found_ipu = True
 
-        devices = device_lib.list_local_devices()
-        self.assertEqual(len(devices), device_count+1)
+        self.assertTrue(found_ipu)
 
 if __name__ == "__main__":
     googletest.main()
