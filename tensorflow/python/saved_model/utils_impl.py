@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,24 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""SavedModel main op.
-
-Builds a main op that defines the sequence of ops to be run as part of the
-SavedModel load/restore operations.
-"""
+"""SavedModel utility functions implementation."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.python.saved_model.main_op_impl import main_op
-from tensorflow.python.saved_model.main_op_impl import main_op_with_restore
-# pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.framework import dtypes
 
-_allowed_symbols = [
-    "main_op",
-    "main_op_with_restore",
-]
-remove_undocumented(__name__, _allowed_symbols)
+
+# TensorInfo helpers.
+
+
+def build_tensor_info(tensor):
+  """Utility function to build TensorInfo proto.
+
+  Args:
+    tensor: Tensor whose name, dtype and shape are used to build the TensorInfo.
+
+  Returns:
+    A TensorInfo protocol buffer constructed based on the supplied argument.
+  """
+  dtype_enum = dtypes.as_dtype(tensor.dtype).as_datatype_enum
+  return meta_graph_pb2.TensorInfo(
+      name=tensor.name,
+      dtype=dtype_enum,
+      tensor_shape=tensor.get_shape().as_proto())
