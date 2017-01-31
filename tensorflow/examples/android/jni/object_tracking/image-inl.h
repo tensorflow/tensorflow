@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
 #define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
@@ -192,9 +192,11 @@ inline T Image<T>::GetPixelInterpFixed1616(
   const T c = trunc_start[stride_];
   const T d = trunc_start[stride_ + 1];
 
-  return ((one_minus_fp_y * static_cast<int64>(one_minus_fp_x * a + fp_x * b) +
-           fp_y           * static_cast<int64>(one_minus_fp_x * c + fp_x * d) +
-           kFixedPointHalf) >> 32);
+  return (
+      (one_minus_fp_y * static_cast<int64_t>(one_minus_fp_x * a + fp_x * b) +
+       fp_y * static_cast<int64_t>(one_minus_fp_x * c + fp_x * d) +
+       kFixedPointHalf) >>
+      32);
 }
 
 template <typename T>
@@ -234,7 +236,7 @@ void Image<T>::DownsampleAveraged(const T* const original, const int stride,
   }
 #endif
 
-  // TODO(andrewharp): delete or enable this for non-uint8 downsamples.
+  // TODO(andrewharp): delete or enable this for non-uint8_t downsamples.
   const int pixels_per_block = factor * factor;
 
   // For every pixel in resulting image.
@@ -247,8 +249,8 @@ void Image<T>::DownsampleAveraged(const T* const original, const int stride,
       const int orig_x = x * factor;
       const int x_bound = orig_x + factor;
 
-      // Making this int32 because type U or T might overflow.
-      int32 pixel_sum = 0;
+      // Making this int32_t because type U or T might overflow.
+      int32_t pixel_sum = 0;
 
       // Grab all the pixels that make up this pixel.
       for (int curr_y = orig_y; curr_y < y_bound; ++curr_y) {
@@ -389,10 +391,10 @@ void Image<T>::DownsampleInterpolateLinear(const Image<T>& original) {
 
       const int one_minus_fp_x = kFixedPointOne8 - fp_x;
 
-      const int32 value =
+      const int32_t value =
           ((one_minus_fp_y * one_minus_fp_x * a + fp_x * b) +
-                     (fp_y * one_minus_fp_x * c + fp_x * d) +
-           kFixedPointHalf8) >> 16;
+           (fp_y * one_minus_fp_x * c + fp_x * d) + kFixedPointHalf8) >>
+          16;
 
       *pixel_ptr++ = value;
 
@@ -415,7 +417,7 @@ void Image<T>::DownsampleSmoothed3x3(const Image<T>& original) {
       const int max_x = Clip(orig_x + 1, ZERO, original.width_less_one_);
 
       // Center.
-      int32 pixel_sum = original[orig_y][orig_x] * 4;
+      int32_t pixel_sum = original[orig_y][orig_x] * 4;
 
       // Sides.
       pixel_sum += (original[orig_y][max_x] +
@@ -454,7 +456,7 @@ void Image<T>::DownsampleSmoothed5x5(const Image<T>& original) {
   // the total weight to normalize at the last moment.
   for (int y = 0; y < height_; ++y) {
     for (int x = 0; x < width_; ++x) {
-      int32 pixel_sum = 0;
+      int32_t pixel_sum = 0;
 
       const int* w = window_weights;
       const int start_x = Clip((x << 1) - window_radius, ZERO, max_x);
@@ -599,7 +601,7 @@ inline T Image<T>::ConvolvePixel3x3(const Image<U>& original,
                                     const int* const filter,
                                     const int center_x, const int center_y,
                                     const int total) const {
-  int32 sum = 0;
+  int32_t sum = 0;
   for (int filter_y = 0; filter_y < 3; ++filter_y) {
     const int y = Clip(center_y - 1 + filter_y, 0, original.GetHeight());
     for (int filter_x = 0; filter_x < 3; ++filter_x) {
@@ -613,8 +615,8 @@ inline T Image<T>::ConvolvePixel3x3(const Image<U>& original,
 template <typename T>
 template <typename U>
 inline void Image<T>::Convolve3x3(const Image<U>& original,
-                                  const int32* const filter) {
-  int32 sum = 0;
+                                  const int32_t* const filter) {
+  int32_t sum = 0;
   for (int i = 0; i < 9; ++i) {
     sum += abs(filter[i]);
   }

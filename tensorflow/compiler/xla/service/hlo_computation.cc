@@ -101,7 +101,8 @@ HloInstruction* HloComputation::AddInstructionInternal(
 
 /* static */ bool HloComputation::IsRemovable(const HloOpcode& opcode) {
   return !(opcode == HloOpcode::kParameter || opcode == HloOpcode::kRecv ||
-           opcode == HloOpcode::kSend || opcode == HloOpcode::kTrace);
+           opcode == HloOpcode::kSend || opcode == HloOpcode::kTrace ||
+           opcode == HloOpcode::kOutfeed);
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
@@ -141,6 +142,8 @@ StatusOr<bool> HloComputation::RemoveInstructionIfFound(
   if (instruction_iterators_.count(instruction) == 0) {
     return false;
   }
+  VLOG(2) << "Removing instruction " << instruction->name()
+          << " from computation " << name();
   auto inst_it = instruction_iterators_.at(instruction);
   (*inst_it)->set_parent(nullptr);
   instruction->DetachFromOperands();
@@ -520,6 +523,30 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   }
   // Visit root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
+}
+
+Status HloComputation::AcceptOrdered(
+    DfsHloVisitor* visitor,
+    const std::vector<const HloInstruction*>& order) const {
+  TF_RET_CHECK(order.size() == instruction_count());
+  std::unordered_set<const HloInstruction*> visited;
+  for (const HloInstruction* instruction : order) {
+    TF_RET_CHECK(instruction_iterators_.count(instruction) == 1)
+        << "Instruction " << instruction->name() << " is not in computation "
+        << name();
+    TF_RET_CHECK(visited.count(instruction) == 0)
+        << "Instruction " << instruction->name()
+        << " appears more than once in order";
+    HloInstruction* mutable_instruction =
+        const_cast<HloInstruction*>(instruction);
+    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    visitor->SetVisited(*mutable_instruction);
+    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    visited.insert(instruction);
+  }
+  TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
+  return Status::OK();
 }
 
 Status HloComputation::Accept(

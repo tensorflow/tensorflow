@@ -277,13 +277,16 @@ def _export_estimator(estimator,
                       exports_to_keep,
                       input_feature_key=None,
                       use_deprecated_input_fn=True,
-                      prediction_key=None):
+                      prediction_key=None,
+                      checkpoint_path=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
   elif input_fn is None:
     raise ValueError('input_fn must be defined.')
 
-  checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
+  # If checkpoint_path is specified, use the specified checkpoint path.
+  checkpoint_path = (checkpoint_path or
+                     tf_saver.latest_checkpoint(estimator._model_dir))
   with ops.Graph().as_default() as g:
     contrib_variables.create_global_step(g)
 

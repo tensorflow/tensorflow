@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -388,18 +389,20 @@ OpInfo::OpInfo(const OpDef& op_def) : op_def(op_def) {
   arg_types.push_back("const ::tensorflow::Scope&");
   arg_names.push_back("scope");
 
-  if (op_def.summary().empty()) {
+  if (op_def.has_deprecation()) {
+    if (!op_def.summary().empty()) {
+      comment = strings::StrCat(op_def.summary(), "\n");
+    }
+    strings::StrAppend(&comment, "DEPRECATED at GraphDef version ",
+                       op_def.deprecation().version(), ":\n",
+                       op_def.deprecation().explanation(), ".\n");
+  } else if (op_def.summary().empty()) {
     comment = "TODO: add doc.\n";
   } else {
     comment = strings::StrCat(op_def.summary(), "\n");
-    if (op_def.has_deprecation()) {
-      strings::StrAppend(&comment, "\nDEPRECATED at GraphDef version ",
-                         op_def.deprecation().version(), ":\n",
-                         op_def.deprecation().explanation(), ".\n");
-    }
-    if (!op_def.description().empty()) {
-      strings::StrAppend(&comment, "\n", op_def.description(), "\n");
-    }
+  }
+  if (!op_def.description().empty()) {
+    strings::StrAppend(&comment, "\n", op_def.description(), "\n");
   }
   strings::StrAppend(&comment, "\nArguments:\n* scope: A Scope object\n");
 
@@ -794,11 +797,16 @@ namespace ops {
   TF_CHECK_OK(cc->Append(cc_header));
 
   for (const auto& op_def : ops.op()) {
-    if (op_def.name() == "Const") {
-      // We use a hand-written wrapper for "Const", since the
-      // generated code depends on it.
+    // Skip deprecated ops.
+    // TODO(josh11b): If needed, can put them into a "deprecated" namespace
+    // instead of skipping.
+    if (op_def.has_deprecation() &&
+        op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION) {
       continue;
     }
+    // We use a hand-written wrapper for "Const", since the generated
+    // code depends on it.
+    if (op_def.name() == "Const") continue;
     WriteCCOp(op_def, h.get(), cc.get());
   }
 

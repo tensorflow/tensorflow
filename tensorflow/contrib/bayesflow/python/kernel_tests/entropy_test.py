@@ -162,7 +162,7 @@ class EntropyShannonTest(test.TestCase):
 
   def test_normal_entropy_default_form_uses_exact_entropy(self):
     with self.test_session():
-      dist = distributions.Normal(mu=1.11, sigma=2.22)
+      dist = distributions.Normal(loc=1.11, scale=2.22)
       mc_entropy = entropy.entropy_shannon(dist, n=11)
       exact_entropy = dist.entropy()
       self.assertEqual(exact_entropy.get_shape(), mc_entropy.get_shape())
@@ -170,7 +170,7 @@ class EntropyShannonTest(test.TestCase):
 
   def test_normal_entropy_analytic_form_uses_exact_entropy(self):
     with self.test_session():
-      dist = distributions.Normal(mu=1.11, sigma=2.22)
+      dist = distributions.Normal(loc=1.11, scale=2.22)
       mc_entropy = entropy.entropy_shannon(
           dist, form=entropy.ELBOForms.analytic_entropy)
       exact_entropy = dist.entropy()
@@ -180,7 +180,7 @@ class EntropyShannonTest(test.TestCase):
   def test_normal_entropy_sample_form_gets_approximate_answer(self):
     # Tested by showing we get a good answer that is not exact.
     with self.test_session():
-      dist = distributions.Normal(mu=1.11, sigma=2.22)
+      dist = distributions.Normal(loc=1.11, scale=2.22)
       mc_entropy = entropy.entropy_shannon(
           dist, n=1000, form=entropy.ELBOForms.sample, seed=0)
       exact_entropy = dist.entropy()
@@ -199,8 +199,8 @@ class EntropyShannonTest(test.TestCase):
     with self.test_session():
       # NormalNoEntropy is like a Normal, but does not have .entropy method, so
       # we are forced to fall back on sample entropy.
-      dist_no_entropy = NormalNoEntropy(mu=1.11, sigma=2.22)
-      dist_yes_entropy = distributions.Normal(mu=1.11, sigma=2.22)
+      dist_no_entropy = NormalNoEntropy(loc=1.11, scale=2.22)
+      dist_yes_entropy = distributions.Normal(loc=1.11, scale=2.22)
 
       mc_entropy = entropy.entropy_shannon(
           dist_no_entropy, n=1000, form=entropy.ELBOForms.sample, seed=0)

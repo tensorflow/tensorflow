@@ -34,15 +34,26 @@ from tensorflow.python.ops import random_ops
 
 
 class _Logistic(distribution.Distribution):
-  """The scalar Logistic distribution with location and scale parameters.
+  """The Logistic distribution with location `loc` and `scale` parameters.
 
   #### Mathematical details
 
-  The CDF of this distribution is:
+  The cumulative density function of this distribution is:
 
-  ```cdf(x) = 1/(1+exp(-(x - loc) / scale))```
+  ```none
+  cdf(x; mu, sigma) = 1 / (1 + exp(-(x - mu) / sigma))
+  ```
 
-  with support on (-inf, inf).
+  where `loc = mu` and `scale = sigma`.
+
+  The Logistic distribution is a member of the [location-scale family](
+  https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+  constructed as,
+
+  ```none
+  X ~ Logistic(loc=0, scale=1)
+  Y = loc + scale * X
+  ```
 
   #### Examples
 
@@ -96,14 +107,15 @@ class _Logistic(distribution.Distribution):
       loc: Floating point tensor, the means of the distribution(s).
       scale: Floating point tensor, the scales of the distribution(s).
         scale must contain only positive values.
-      validate_args: `Boolean`, default `False`.  Whether to assert that
-        `scale > 0`. If `validate_args` is `False`, correct output is not
-        guaranteed when input is invalid.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: The name to give Ops created by the initializer.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined.  When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if loc and scale are different dtypes.
@@ -169,8 +181,7 @@ class _Logistic(distribution.Distribution):
     return sampled * self.scale + self.loc
 
   def _log_prob(self, x):
-    z = self._z(x)
-    return - z - math_ops.log(self.scale) - 2*nn_ops.softplus(-z)
+    return self._log_unnormalized_prob(x) - self._log_normalization()
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
@@ -186,6 +197,13 @@ class _Logistic(distribution.Distribution):
 
   def _survival_function(self, x):
     return math_ops.sigmoid(-self._z(x))
+
+  def _log_unnormalized_prob(self, x):
+    z = self._z(x)
+    return - z - 2. * nn_ops.softplus(-z)
+
+  def _log_normalization(self):
+    return math_ops.log(self.scale)
 
   def _entropy(self):
     # Use broadcasting rules to calculate the full broadcast sigma.

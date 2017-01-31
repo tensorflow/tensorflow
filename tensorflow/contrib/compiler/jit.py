@@ -33,18 +33,38 @@ def experimental_jit_scope(compile_ops=True):
   The compilation is a hint and only supported on a best-effort basis.
 
   Example usage:
-    with tf.contrib.framework.experimental_jit_scope():
+    with tf.contrib.compiler.experimental_jit_scope():
       c = tf.matmul(a, b)  # compiled
-    with tf.contrib.framework.experimental_jit_scope(compile_ops=False):
-        d = tf.matmul(a, c)  # not compiled
+    with tf.contrib.compiler.experimental_jit_scope(compile_ops=False):
+      d = tf.matmul(a, c)  # not compiled
+    with tf.contrib.compiler.experimental_jit_scope(
+        compile_ops=lambda node_def: 'matmul' in node_def.op.lower()):
+      e = tf.matmul(a, b) + d  # matmul is compiled, the addition is not.
 
   Args:
-    compile_ops: boolean, whether to enable or disable compilation in the scope.
+    compile_ops: Whether to enable or disable compilation in the scope.
+      Either a Python bool, or a callable that accepts the parameter
+      `node_def` and returns a python bool.
   Yields:
     The current scope, enabling or disabling compilation.
 
   """
-  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=compile_ops)}
+  if callable(compile_ops):
+    def xla_compile(node_def):
+      return attr_value_pb2.AttrValue(b=compile_ops(node_def))
+  else:
+    xla_compile = attr_value_pb2.AttrValue(b=compile_ops)
+  attrs = {"_XlaCompile": xla_compile}
+
+  # TODO(ebrevdo): Keep a global XlaScope counter and here create a
+  # special scope that checks if already within a xla scope or creates
+  # a new one with a new scope string.  Add a new attr _XlaScope
+  # taking this string.  Modify the xla fusion to respect scope
+  # boundaries.  Modify gradients_impl to either create a new gradient
+  # scope with a suffix from the fw scope or to try to fuse with
+  # the fw scope of the given op.  Should be backwards compatible to
+  # avoid having to modify Defun compilation attributes.
+
   # pylint: disable=protected-access
   with ops.get_default_graph()._attr_scope(attrs):
     yield

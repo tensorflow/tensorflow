@@ -68,6 +68,7 @@ class HloCostAnalysis : public DfsHloVisitor {
                            HloInstruction* rhs, const Window& window) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random,
                    RandomDistribution distribution) override;
   Status HandleReverse(HloInstruction* reverse,
@@ -134,10 +135,10 @@ class HloCostAnalysis : public DfsHloVisitor {
   std::map<const HloInstruction*, double> hlo_to_flop_count_;
 
   // The number of floating point operations in the graph.
-  double flop_count_ = 0;
+  double flop_count_ = 0.0;
 
   // The number of transcendental operations in the graph.
-  double transcendental_count_ = 0;
+  double transcendental_count_ = 0.0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloCostAnalysis);
 };

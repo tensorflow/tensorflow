@@ -124,16 +124,13 @@ func TestOutputShape(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			shape, err := c.Shape()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got, want := len(shape), len(test.Shape); got != want {
+			shape := c.Shape()
+			if got, want := shape.NumDimensions(), len(test.Shape); got != want {
 				t.Fatalf("Got a shape with %d dimensions, want %d", got, want)
 			}
-			for i := 0; i < len(shape); i++ {
-				if got, want := shape[i], test.Shape[i]; got != want {
-					t.Errorf("Got %d, want %d for dimension #%d/%d", got, want, i, len(shape))
+			for i := 0; i < len(test.Shape); i++ {
+				if got, want := shape.Size(i), test.Shape[i]; got != want {
+					t.Errorf("Got %d, want %d for dimension #%d/%d", got, want, i, len(test.Shape))
 				}
 			}
 		})
@@ -147,8 +144,8 @@ func TestOutputShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shape, err := placeholder.Shape(); err == nil {
-		t.Errorf("Got shape %v, wanted error", shape)
+	if shape := placeholder.Shape(); shape.NumDimensions() != -1 {
+		t.Errorf("Got shape %v, wanted an unknown number of dimensions", shape)
 	}
 }
 

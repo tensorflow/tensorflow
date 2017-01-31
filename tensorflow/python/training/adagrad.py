@@ -78,6 +78,15 @@ class AdagradOptimizer(optimizer.Optimizer):
         grad,
         use_locking=self._use_locking)
 
+  def _resource_apply_dense(self, grad, var):
+    acc = self.get_slot(var, "accumulator")
+    return training_ops.resource_apply_adagrad(
+        var,
+        acc.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
   def _apply_sparse(self, grad, var):
     acc = self.get_slot(var, "accumulator")
     return training_ops.sparse_apply_adagrad(
