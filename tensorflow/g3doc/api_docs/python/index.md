@@ -1111,6 +1111,7 @@
   * [`OutputProjectionWrapper`](../../api_docs/python/contrib.rnn.md#OutputProjectionWrapper)
   * [`ResidualWrapper`](../../api_docs/python/contrib.rnn.md#ResidualWrapper)
   * [`RNNCell`](../../api_docs/python/contrib.rnn.md#RNNCell)
+  * [`stack_bidirectional_dynamic_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_dynamic_rnn)
   * [`static_bidirectional_rnn`](../../api_docs/python/contrib.rnn.md#static_bidirectional_rnn)
   * [`static_rnn`](../../api_docs/python/contrib.rnn.md#static_rnn)
   * [`static_state_saving_rnn`](../../api_docs/python/contrib.rnn.md#static_state_saving_rnn)
