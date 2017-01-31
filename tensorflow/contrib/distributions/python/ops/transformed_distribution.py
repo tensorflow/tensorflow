@@ -275,10 +275,11 @@ class TransformedDistribution(distributions.Distribution):
         `batch_shape`; valid only if `distribution.is_scalar_batch()`.
       event_shape: `integer` vector `Tensor` which overrides `distribution`
         `event_shape`; valid only if `distribution.is_scalar_event()`.
-      validate_args: Python Boolean.  Whether to validate input with asserts.
-        If `validate_args` is `False`, and the inputs are invalid,
-        correct behavior is not guaranteed.
-      name: The name for the distribution. Default:
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      name: `String` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
     parameters = locals()

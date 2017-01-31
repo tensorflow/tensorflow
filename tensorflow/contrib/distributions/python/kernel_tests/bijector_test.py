@@ -36,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 bijectors = bijector_lib
-distributions = distributions_lib
+ds = distributions_lib
 linalg = linalg_lib
 rng = np.random.RandomState(42)
 
@@ -114,8 +114,8 @@ def assert_scalar_congruency(bijector,
     lower_y, upper_y = upper_y, lower_y
 
   # Uniform samples from the domain, range.
-  uniform_x_samps = distributions.Uniform(a=lower_x, b=upper_x).sample(n)
-  uniform_y_samps = distributions.Uniform(a=lower_y, b=upper_y).sample(n)
+  uniform_x_samps = ds.Uniform(low=lower_x, high=upper_x).sample(n, seed=0)
+  uniform_y_samps = ds.Uniform(low=lower_y, high=upper_y).sample(n, seed=1)
 
   # These compositions should be the identity.
   inverse_forward_x = bijector.inverse(bijector.forward(uniform_x_samps))
