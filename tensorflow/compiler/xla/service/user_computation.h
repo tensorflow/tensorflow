@@ -124,6 +124,9 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddInfeedInstruction(
       const InfeedRequest& infeed_request);
 
+  // Enqueues an outfeed instruction onto this user computation.
+  Status AddOutfeedInstruction(const OutfeedRequest& outfeed_request);
+
   // Enqueues a call instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCallInstruction(
       const CallRequest& call_request,

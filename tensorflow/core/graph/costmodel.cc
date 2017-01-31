@@ -347,6 +347,10 @@ Microseconds CostModel::ComputationTimeEstimate(int64 math_ops) {
   return Microseconds(math_ops / 1000);
 }
 
+void CostModel::IncrementUpdateTimes() { update_times_++; }
+
+int32 CostModel::GetUpdateTimes() const { return update_times_; }
+
 // ----------------------------------------------------------------------------
 // InitCostModel
 // ----------------------------------------------------------------------------

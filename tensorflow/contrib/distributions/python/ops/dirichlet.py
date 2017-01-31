@@ -211,18 +211,22 @@ class Dirichlet(distribution.Distribution):
     return entropy
 
   def _mean(self):
-    return self.alpha / array_ops.expand_dims(self.alpha_sum, -1)
+    return self.alpha / self.alpha_sum[..., None]
+
+  def _covariance(self):
+    x = self._variance_scale_term() * self._mean()
+    return array_ops.matrix_set_diag(
+        -math_ops.matmul(x[..., None], x[..., None, :]),  # outer prod
+        self._variance())
 
   def _variance(self):
-    scale = self.alpha_sum * math_ops.sqrt(1. + self.alpha_sum)
-    alpha = self.alpha / scale
-    outer_prod = -math_ops.matmul(
-        array_ops.expand_dims(
-            alpha, dim=-1),  # column
-        array_ops.expand_dims(
-            alpha, dim=-2))  # row
-    return array_ops.matrix_set_diag(outer_prod,
-                                     alpha * (self.alpha_sum / scale - alpha))
+    scale = self._variance_scale_term()
+    x = scale * self._mean()
+    return x * (scale - x)
+
+  def _variance_scale_term(self):
+    """Helper to `_covariance` and `_variance` which computes a shared scale."""
+    return math_ops.rsqrt(1. + self.alpha_sum[..., None])
 
   @distribution_util.AppendDocstring(
       """Note that the mode for the Dirichlet distribution is only defined

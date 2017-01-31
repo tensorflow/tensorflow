@@ -8,18 +8,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_binary(
-    name = "serialize_tensorboard",
-    srcs = ["serialize_tensorboard.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/tensorboard/backend:application",
-        "@six_archive//:six",
-    ],
-)
-
-py_binary(
     name = "generate_testdata",
     srcs = ["generate_testdata.py"],
     srcs_version = "PY2AND3",

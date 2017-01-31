@@ -62,7 +62,7 @@ def _parse_saved_model(export_dir):
 
   # Parse the SavedModel protocol buffer.
   try:
-    file_content = file_io.read_file_to_string(path_to_pb)
+    file_content = file_io.FileIO(path_to_pb, "rb").read()
     saved_model.ParseFromString(file_content)
     return saved_model
   except Exception:  # pylint: disable=broad-except
@@ -70,7 +70,7 @@ def _parse_saved_model(export_dir):
     pass
 
   try:
-    file_content = file_io.read_file_to_string(path_to_pbtxt)
+    file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
     text_format.Merge(file_content.decode("utf-8"), saved_model)
   except text_format.ParseError as e:
     raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))

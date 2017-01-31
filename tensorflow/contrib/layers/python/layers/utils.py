@@ -56,8 +56,8 @@ def collect_named_outputs(collections, alias, outputs):
   Returns:
     The outputs Tensor to allow inline call.
   """
-  append_tensor_alias(outputs, alias)
   if collections:
+    append_tensor_alias(outputs, alias)
     ops.add_to_collections(collections, outputs)
   return outputs
 

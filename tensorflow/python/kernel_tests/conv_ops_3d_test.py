@@ -242,6 +242,14 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
+  def testKernelSizeMatchesInputSize(self):
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 1, 2, 1],
+        filter_in_sizes=[2, 1, 2, 1, 2],
+        stride=1,
+        padding="VALID",
+        expected=[50, 60])
+
   def ConstructAndTestGradient(self, batch, input_planes, input_rows,
                                input_cols, filter_planes, filter_rows,
                                filter_cols, in_depth, out_depth, stride,
@@ -499,6 +507,36 @@ class Conv3DTest(test.TestCase):
         out_depth=3,
         stride=[2, 3, 1],
         padding="SAME",
+        test_input=True)
+
+  def testFilterGradientKernelSizeMatchesInputSize(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_planes=5,
+        input_rows=4,
+        input_cols=3,
+        filter_planes=5,
+        filter_rows=4,
+        filter_cols=3,
+        in_depth=2,
+        out_depth=3,
+        stride=1,
+        padding="VALID",
+        test_input=False)
+
+  def testInputGradientKernelSizeMatchesInputSize(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_planes=5,
+        input_rows=4,
+        input_cols=3,
+        filter_planes=5,
+        filter_rows=4,
+        filter_cols=3,
+        in_depth=2,
+        out_depth=3,
+        stride=1,
+        padding="VALID",
         test_input=True)
 
   def disabledtestFilterGradientSamePaddingDifferentStrides(self):
