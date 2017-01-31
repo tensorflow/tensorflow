@@ -35,22 +35,21 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static void InitGraph(const string& s, Graph* graph) {
-  GraphDef graph_def;
-
-  auto parser = protobuf::TextFormat::Parser();
-  //  parser.AllowRelaxedWhitespace(true);
-  CHECK(parser.MergeFromString(s, &graph_def)) << s;
-  GraphConstructorOptions opts;
-  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, graph));
-}
-
 class OptimizerMergeTest : public ::testing::Test {
  public:
   OptimizerMergeTest() : graph_(OpRegistry::Global()) {}
 
+  static void InitGraph(const string& s, Graph* graph) {
+    GraphDef graph_def;
+
+    auto parser = protobuf::TextFormat::Parser();
+    CHECK(parser.MergeFromString(s, &graph_def)) << s;
+    GraphConstructorOptions opts;
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, graph));
+  }
+
   void InitGraph(const string& s) {
-    ::tensorflow::InitGraph(s, &graph_);
+    InitGraph(s, &graph_);
     original_ = CanonicalGraphString(&graph_);
   }
 
@@ -144,8 +143,8 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Positive) {
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);D(Input);Y(Input);Z(Sub);n/_0(Conv2DWithBias)|"
-             "A->n/_0;B->n/_0:1;D->n/_0:2;Y->Z:1;n/_0->Z");
+            "A(Input);B(Input);D(Input);E(Conv2DWithBias);Y(Input);Z(Sub)|"
+             "A->E;B->E:1;D->E:2;E->Z;Y->Z:1");
 }
 
 // Graph contains only Conv2D, no AddBias.
@@ -373,7 +372,7 @@ static void BM_NodeMerge(int iters, int op_nodes) {
   bool first = true;
   while (iters > 0) {
     Graph* graph = new Graph(OpRegistry::Global());
-    InitGraph(s, graph);
+    OptimizerMergeTest::InitGraph(s, graph);
     int N = graph->num_node_ids();
     if (first) {
       testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));

@@ -19,12 +19,10 @@ load(
     "cuda_default_copts"
 )
 
-# INTEL_MKL start
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-# INTEL_MKL end
 
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
@@ -103,9 +101,7 @@ def tf_copts():
            "-Wno-sign-compare",
            "-fno-exceptions",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
-# INTEL_MKL start
           if_mkl(["-DINTEL_MKL=1"]) +
-# INTEL_MKL end
           if_android_arm(["-mfpu=neon"]) +
           if_x86(["-msse4.1"]) +
           select({

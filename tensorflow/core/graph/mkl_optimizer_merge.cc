@@ -91,7 +91,7 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
   // test interface.
   //
   // @return true, if and only if graph is mutated; false otherwise.
-  bool RunNodeMergeRewritePass(std::unique_ptr<Graph>* g);
+  bool RunPass(std::unique_ptr<Graph>* g);
 
  private:
   /// Structure to specify information used in node merge
@@ -123,11 +123,7 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
     string conv2dwithbias;
     string conv2dwithbiasbackpropbias;
     string biasadd;
-
     string matmul;
-    string matmulmkl;
-    string add;
-
     string biasaddgrad;
   } ConstStringInfo;
 
@@ -150,11 +146,11 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
   // after the call to function may result is undefined behaviors.
   //
   // @input g - input graph, succ - successor node, pred - predecessor node
-  // @return true, if merging is successful and supported.
-  //         Returns false otherwise.
+  // @return Status::OK(), if merging is successful and supported.
+  //         Returns appropriate Status error code otherwise.
   //         Graph is updated in case nodes are merged. Otherwise, it is
   //         not updated.
-  bool MergeNode(std::unique_ptr<Graph>* g, Node* succ, Node* pred);
+  Status MergeNode(std::unique_ptr<Graph>* g, Node* succ, Node* pred);
 
   // Is input node (n) a candidate for rewrite?
   //
@@ -170,10 +166,11 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
   // after the call can result in undefined behaviors.
   //
   // @input  g - input graph, n - Node to be rewritten
-  // @return true, if the input node can be rewritten; false, otherwise.
-  //         Graph is updated in case the input node can be rewritten.
+  // @return Status::OK(), if the input node is rewritten;
+  //         Returns appropriate Status error code otherwise.
+  //         Graph is updated in case the input node is rewritten.
   //         Otherwise, it is not updated.
-  bool RewriteNode(std::unique_ptr<Graph>* g, Node* n);
+  Status RewriteNode(std::unique_ptr<Graph>* g, Node* n);
 
   // Helper function that searches the matching rewriteinfo for the node.
   // Implements depth-first search in the data dependence graph for the
@@ -261,52 +258,47 @@ Node* NodeMergeRewritePass::FindNodeForMerge(const Node* a) const {
   return nullptr;
 }
 
-bool NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
+Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
                                      Node* succ, Node* pred) {
-  if (succ == nullptr || pred == nullptr)
-    return false;
-
-  bool result = false;
+  CHECK_NOTNULL(succ);
+  CHECK_NOTNULL(pred);
 
   if (succ->type_string() == csinfo_.biasadd &&
       pred->type_string() == csinfo_.conv2d) {
     // 1. Get all attributes from input nodes.
     DataType T_pred, T_succ;
+    string padding;
+    std::vector<int32> strides;
+    string data_format_pred, data_format_succ;
+    bool use_cudnn_on_gnu;
+    int groups = 1;
     TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
     TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
-    if (T_pred != T_succ) {
-      return false;
-    }
-
-    string padding;
     TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
-
-    std::vector<int32> strides;
     TF_CHECK_OK(GetNodeAttr(pred->def(), "strides", &strides));
-
+    TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
+    TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
+    TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu",
+                            &use_cudnn_on_gnu));
+    // Groups attribute may not be there on the input node. So we do not
+    // check for error in GetNodeAttr call.
+    GetNodeAttr(pred->def(), "groups", &groups);
     // We check to ensure that data formats of both succ and pred are same.
     // We expect them to be same, so we can enforce this as assert.
     // But assert can be too strict, so we enforce this as a check.
     // If the check fails, then we do not merge two nodes.
-    string data_format_pred, data_format_succ;
-    TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
-    TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-    if (data_format_pred != data_format_succ) {
-      return false;
+    if (data_format_pred != data_format_succ ||
+        T_pred != T_succ) {
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "data_format or T attribute of Conv2D and BiasAdd"
+                    "do not match. Will skip node merge optimization");
     }
-
-    bool use_cudnn_on_gnu;
-    TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu",
-                            &use_cudnn_on_gnu));
-
-    // Groups attribute may not be there on the input node. So we do not
-    // check for error in GetNodeAttr call.
-    int groups = 1;
-    GetNodeAttr(pred->def(), "groups", &groups);
 
     // 2. Get inputs from both the nodes.
     // Find the 2 inputs from the conv and the bias from the add Bias.
-    Node *oper1 = nullptr, *oper2 = nullptr, *oper3 = nullptr;
+    Node* oper1 = nullptr;
+    Node* oper2 = nullptr;
+    Node* oper3 = nullptr;
 
     const int succ_num = succ->num_inputs();
     gtl::InlinedVector<Node*, 4> succ_control_edges;
@@ -321,12 +313,16 @@ bool NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     // We need to ensure that there is only 1 edge between Conv2D and AddBias.
     // Otherwise, merging is semantically incorrect.
     if (pred->out_edges().size() != 1) {
-      return false;
+      return Status(error::Code::INVALID_ARGUMENT,
+                    "Conv2D has multiple outputs."
+                    "Will skip node merge optimization");
     }
 
     for (const Edge *e : pred->out_edges()) {
       if (e->dst() != succ) {
-        return false;
+        return Status(error::Code::INVALID_ARGUMENT,
+                    "Conv2D does not feed to BiasAdd."
+                    "Will skip node merge optimization");
       }
     }
 
@@ -337,9 +333,8 @@ bool NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     oper3 = succ_in[1].first;
 
     Node* ret;
-    // We cannot use same name as original node name as the output of
-    // Conv2D will not be same as Conv2DWithBias.
-    TF_CHECK_OK(NodeBuilder((*g)->NewName("n"), csinfo_.conv2dwithbias)
+    // We will use the node name of BiasAdd as the name of new node
+    TF_CHECK_OK(NodeBuilder(succ->name(), csinfo_.conv2dwithbias)
                   .Input(oper1)
                   .Input(oper2)
                   .Input(oper3)
@@ -360,23 +355,24 @@ bool NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     (*g)->RemoveNode(succ);
     (*g)->RemoveNode(pred);
 
-    result = true;
+    return Status::OK();
   }
 
-  return result;
+  return Status(error::Code::UNIMPLEMENTED,
+                "Unimplemented case for node merge optimization.");
 }
 
-bool NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
-  if (n == nullptr) {
-    return false;
-  }
+Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
+  CHECK_NOTNULL(n);
 
   // Get the matching rewriteinfo for the node
   const Node* fwdn = nullptr;
   const RewriteInfo* ri = FindMatchingRewriteInfo(n, &fwdn);
   if (ri == nullptr || fwdn == nullptr) {
     VLOG(1) << "Rewriteinfo not found for: " << n->type_string();
-    return false;
+    return Status(error::Code::INVALID_ARGUMENT,
+                  "Rewrite info not found for the node."
+                  "Will skip node rewrite optimization");
   }
 
   VLOG(1) << "Rewrite called for: " << n->type_string();
@@ -412,14 +408,13 @@ bool NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
                     .Attr("data_format", data_format)
                     .Attr("strides", strides)
                     .Finalize(&**g, &ret));
-    } else if (ri->rewrite == csinfo_.biasaddgrad) {
+    } else {
+      CHECK_EQ(ri->rewrite, csinfo_.biasaddgrad);
       TF_CHECK_OK(NodeBuilder(n->name(), ri->rewrite)
                     .Input(op)
                     .Attr("T", T)
                     .Attr("data_format", data_format)
                     .Finalize(&**g, &ret));
-    } else {
-      return false;
     }
 
     CHECK_NOTNULL(ret);
@@ -431,11 +426,12 @@ bool NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
 
     VLOG(1) << "Rewrite node: " << n->type_string() << " successful";
     (*g)->RemoveNode(n);
-    return true;
-  } else {
-    VLOG(1) << "Unsupported node: " << n->type_string() << " for rewrite";
+
+    return Status::OK();
   }
-  return false;
+
+  return Status(error::Code::UNIMPLEMENTED,
+                "Unimplemented case for node rewrite optimization.");
 }
 
 const NodeMergeRewritePass::RewriteInfo*
@@ -521,7 +517,7 @@ bool NodeMergeRewritePass::IsApplicableRewriteNode(const Node *n) const {
   return match_found;
 }
 
-bool NodeMergeRewritePass::RunNodeMergeRewritePass(std::unique_ptr<Graph>* g) {
+bool NodeMergeRewritePass::RunPass(std::unique_ptr<Graph>* g) {
   bool result = false;
   CHECK_NOTNULL(g);
 
@@ -552,7 +548,7 @@ bool NodeMergeRewritePass::RunNodeMergeRewritePass(std::unique_ptr<Graph>* g) {
     // need to return true.
     string n1_name = i.first->name();
     string n2_name = i.second->name();
-    if (MergeNode(g, i.first, i.second)) {
+    if (MergeNode(g, i.first, i.second) == Status::OK()) {
       VLOG(1) << "Merged nodes " << n1_name << " and " << n2_name;
       result = true;
     }
@@ -562,7 +558,7 @@ bool NodeMergeRewritePass::RunNodeMergeRewritePass(std::unique_ptr<Graph>* g) {
 
   for (Node* i : nodes_to_be_rewritten) {
     string name = i->name();
-    if (RewriteNode(g, i)) {
+    if (RewriteNode(g, i) == Status::OK()) {
       VLOG(1) << "Rewrite node: " << name << " successful.";
       result = true;
     }
@@ -574,7 +570,7 @@ bool NodeMergeRewritePass::RunNodeMergeRewritePass(std::unique_ptr<Graph>* g) {
 }
 
 bool OptimizeNodeMerge(std::unique_ptr<Graph>* g) {
-  return NodeMergeRewritePass().RunNodeMergeRewritePass(g);
+  return NodeMergeRewritePass().RunPass(g);
 }
 
 Status NodeMergeRewritePass::Run(const GraphOptimizationPassOptions& options) {
@@ -587,7 +583,7 @@ Status NodeMergeRewritePass::Run(const GraphOptimizationPassOptions& options) {
   // Get the ownership of graph
   std::unique_ptr<Graph>* g = std::move(options.graph);
 
-  RunNodeMergeRewritePass(g);
+  RunPass(g);
 
   // Return the ownership of graph back
   options.graph->reset(g->release());

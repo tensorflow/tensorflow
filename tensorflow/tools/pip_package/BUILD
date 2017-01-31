@@ -128,6 +128,6 @@ sh_binary(
             "//tensorflow/python/saved_model:all_files",
             "//tensorflow/python/tools:all_files",
             "//tensorflow/tensorboard",
-        ] 
-				}) + if_mkl(["//third_party/mkl:intel_binary_blob"])
+        ]
+        }) + if_mkl(["//third_party/mkl:intel_binary_blob"])
 )
