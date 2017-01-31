@@ -106,16 +106,12 @@ cc_binary(
     # symbols from the library. This reduces the size of the library
     # considerably (~50% as of January 2017).
     linkopts = select({
+        "//tensorflow:debug" : [], # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
             LINKER_EXPORTED_SYMBOLS,
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:debug" : [
-           	"-z defs",
-           	"-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-           	LINKER_VERSION_SCRIPT,
-       	],
         "//conditions:default": [
             "-z defs",
             "-s",

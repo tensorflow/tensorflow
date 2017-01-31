@@ -79,7 +79,7 @@ config_setting(
 )
 
 config_setting(
-    name = "optimize",
+    name = "optimized",
     values = {
         "compilation_mode": "opt",
     },
