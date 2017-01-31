@@ -333,5 +333,52 @@ TEST_F(HloCostAnalysisTest, TotalOverflowsInt64) {
   EXPECT_GT(matmul_analysis.flop_count(), std::numeric_limits<int64>::max());
 }
 
+using FusionCostAnalysis = ::testing::Test;
+
+TEST_F(FusionCostAnalysis, LoopFusion) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+
+  // Fuse all instructions in complicated expression:
+  //
+  //   add = Add(C1, C2)
+  //   clamp = Clamp(C2, add, add)
+  //   exp = Exp(add)
+  //   mul = Mul(exp, C3)
+  //   sub = Sub(mul, clamp)
+  //   tuple = Tuple({sub, sub, mul, C1})
+  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+      /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2));
+  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+      /*from=*/1.0f, /*to=*/2.0f, /*rows=*/2, /*cols=*/2));
+  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+      /*from=*/2.0f, /*to=*/3.0f, /*rows=*/2, /*cols=*/2));
+
+  auto add =
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, c1.get(), c2.get());
+  auto clamp = HloInstruction::CreateTernary(r2f32, HloOpcode::kClamp, c2.get(),
+                                             add.get(), add.get());
+  auto exp = HloInstruction::CreateUnary(r2f32, HloOpcode::kExp, add.get());
+  auto mul = HloInstruction::CreateBinary(r2f32, HloOpcode::kMultiply,
+                                          exp.get(), c3.get());
+  auto sub = HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract,
+                                          mul.get(), clamp.get());
+  auto tuple =
+      HloInstruction::CreateTuple({sub.get(), sub.get(), mul.get(), c1.get()});
+
+  auto fusion = HloInstruction::CreateFusion(
+      r2f32, HloInstruction::FusionKind::kLoop, tuple.get());
+  fusion->FuseInstruction(sub.get());
+  fusion->FuseInstruction(mul.get());
+  fusion->FuseInstruction(exp.get());
+  fusion->FuseInstruction(clamp.get());
+  fusion->FuseInstruction(add.get());
+
+  HloCostAnalysis fusion_analysis;
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.flop_count(), 16);
+  EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
+}
+
 }  // namespace
 }  // namespace xla

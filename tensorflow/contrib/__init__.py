@@ -58,3 +58,7 @@ from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.specs import python as specs
+
+del absolute_import
+del division
+del print_function

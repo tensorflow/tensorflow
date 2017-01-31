@@ -135,6 +135,25 @@ value: the value by which the variable will be incremented.
 dtype: the dtype of the value.
 )");
 
+REGISTER_OP("AssignSubVariableOp")
+    .Input("resource: resource")
+    .Input("value: dtype")
+    .Attr("dtype: type")
+    .SetShapeFn(CreateAssignShapeFn)
+    .Doc(R"(
+Subtracts a value from the current value of a variable.
+
+Any ReadVariableOp which depends directly or indirectly on this assign is
+guaranteed to see the incremented value or a subsequent newer one.
+
+Outputs the incremented value, which can be used to totally order the
+increments to this variable.
+
+resource: handle to the resource in which to store the variable.
+value: the value by which the variable will be incremented.
+dtype: the dtype of the value.
+)");
+
 REGISTER_OP("VarIsInitializedOp")
     .Input("resource: resource")
     .Output("is_initialized: bool")

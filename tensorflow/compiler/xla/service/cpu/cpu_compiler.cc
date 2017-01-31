@@ -62,7 +62,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
@@ -233,16 +234,22 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
       /*is_layout_sensitive=*/true,
       [](const Shape&, const Shape&) { return true; });
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  // Outline ops in the entry computation into calls to subcomputations.
+  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
+  if (flags->xla_cpu_parallel) {
+    pipeline.AddPass<ParallelizationPreparation>();
+  }
   // Copy insertion should be performed immediately before IR emission to
   // avoid inserting unnecessary copies (later pass adds an instruction which
   // materializes the value) or missing a necessary copy (later pass removes
   // an instruction which materializes a value).
   pipeline.AddPass<CopyInsertion>();
-  pipeline.AddPass<HloDCE>();
-  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
   if (flags->xla_cpu_parallel) {
+    // Re-run the outlining, in case any copies were inserted into the entry
+    // computation.
     pipeline.AddPass<ParallelizationPreparation>();
   }
+  pipeline.AddPass<HloDCE>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -268,27 +275,6 @@ llvm::CodeGenOpt::Level CodeGenOptLevel() {
     default:
       return llvm::CodeGenOpt::None;
   }
-}
-
-// Constructs and returns a sequence for the HLO instructions in each
-// computation in the given module. The sequence can be used to determine the
-// order of HLO instruction emission and for buffer liveness analysis.
-SequentialHloOrdering::HloModuleSequence CreateModuleSequence(
-    const HloModule* module) {
-  SequentialHloOrdering::HloModuleSequence sequence;
-  for (auto& computation : module->computations()) {
-    // Do a DFS traversal from the root to construct a sequence for each
-    // computation.
-    // TODO(b/32006145): Construct a sequence to minimize memory pressure.
-    std::vector<const HloInstruction*> order;
-    TF_CHECK_OK(computation->root_instruction()->Accept(
-        [&order](HloInstruction* instruction) {
-          order.push_back(instruction);
-          return Status::OK();
-        }));
-    sequence.emplace(computation.get(), std::move(order));
-  }
-  return sequence;
 }
 
 }  // namespace
@@ -412,8 +398,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // Select an order for emitting the HLO instructions for each
     // computation. Using this sequence enables tighter buffer liveness analysis
     // and reduced memory usage (as compared to using DependencyHloOrdering).
-    SequentialHloOrdering::HloModuleSequence module_sequence =
-        CreateModuleSequence(hlo_module.get());
+    TF_ASSIGN_OR_RETURN(
+        SequentialHloOrdering::HloModuleSequence module_sequence,
+        CreateMemoryMinimizingSequence(
+            *hlo_module, [](const LogicalBuffer& buffer) {
+              return ShapeUtil::ByteSizeOf(buffer.shape());
+            }));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -559,8 +549,13 @@ CpuCompiler::CompileAheadOfTime(
 
     TF_RETURN_IF_ERROR(RunHloPasses(hlo_module, module_config, dump_hlo));
 
-    SequentialHloOrdering::HloModuleSequence module_sequence =
-        CreateModuleSequence(hlo_module);
+    TF_ASSIGN_OR_RETURN(
+        SequentialHloOrdering::HloModuleSequence module_sequence,
+        CreateMemoryMinimizingSequence(
+            *hlo_module, [](const LogicalBuffer& buffer) {
+              return ShapeUtil::ByteSizeOf(buffer.shape());
+            }));
+
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(

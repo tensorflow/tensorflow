@@ -351,10 +351,8 @@ class BundleShimTest(test.TestCase):
 
     # Check basic signature def property.
     signature_def = meta_graph_def.signature_def
-    self.assertEqual(len(signature_def), 2)
-    self.assertEqual(
-        signature_def[signature_constants.REGRESS_METHOD_NAME].method_name,
-        signature_constants.REGRESS_METHOD_NAME)
+    self.assertEqual(signature_def["regress_x_to_y"].method_name,
+                     signature_constants.REGRESS_METHOD_NAME)
     with sess.as_default():
       output1 = sess.run(["filename_tensor:0"])
       self.assertEqual([compat.as_bytes("foo.txt")], output1)

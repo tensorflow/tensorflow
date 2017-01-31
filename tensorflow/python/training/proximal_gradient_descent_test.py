@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -30,10 +31,15 @@ from tensorflow.python.training import proximal_gradient_descent
 
 class ProximalGradientDescentOptimizerTest(test.TestCase):
 
-  def testProximalGradientDescentwithoutRegularization(self):
+  def doTestProximalGradientDescentwithoutRegularization(
+      self, use_resource=False):
     with self.test_session() as sess:
-      var0 = variables.Variable([0.0, 0.0])
-      var1 = variables.Variable([0.0, 0.0])
+      if use_resource:
+        var0 = resource_variable_ops.ResourceVariable([0.0, 0.0])
+        var1 = resource_variable_ops.ResourceVariable([0.0, 0.0])
+      else:
+        var0 = variables.Variable([0.0, 0.0])
+        var1 = variables.Variable([0.0, 0.0])
       grads0 = constant_op.constant([0.1, 0.2])
       grads1 = constant_op.constant([0.01, 0.02])
       opt = proximal_gradient_descent.ProximalGradientDescentOptimizer(
@@ -52,6 +58,12 @@ class ProximalGradientDescentOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([-0.9, -1.8]), v0_val)
       self.assertAllClose(np.array([-0.09, -0.18]), v1_val)
+
+  def testProximalGradientDescentwithoutRegularization(self):
+    self.doTestProximalGradientDescentwithoutRegularization(use_resource=False)
+
+  def testResourceProximalGradientDescentwithoutRegularization(self):
+    self.doTestProximalGradientDescentwithoutRegularization(use_resource=True)
 
   def testProximalGradientDescentwithoutRegularization2(self):
     with self.test_session() as sess:
