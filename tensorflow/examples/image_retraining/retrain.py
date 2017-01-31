@@ -346,6 +346,20 @@ def read_list_of_floats_from_file(file_path):
 
 bottleneck_path_2_bottleneck_values = {}
 
+def create_bottleneck_file(bottleneck_path, image_lists, label_name, index,
+                           image_dir, category, sess, jpeg_data_tensor, bottleneck_tensor):
+    print('Creating bottleneck at ' + bottleneck_path)
+    image_path = get_image_path(image_lists, label_name, index, image_dir,
+                                category)
+    if not gfile.Exists(image_path):
+        tf.logging.fatal('File does not exist %s', image_path)
+    image_data = gfile.FastGFile(image_path, 'rb').read()
+    bottleneck_values = run_bottleneck_on_image(sess, image_data,
+                                                jpeg_data_tensor,
+                                                bottleneck_tensor)
+    bottleneck_string = ','.join(str(x) for x in bottleneck_values)
+    with open(bottleneck_path, 'w') as bottleneck_file:
+        bottleneck_file.write(bottleneck_string)
 
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                              category, bottleneck_dir, jpeg_data_tensor,
@@ -379,24 +393,23 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
   bottleneck_path = get_bottleneck_path(image_lists, label_name, index,
                                         bottleneck_dir, category)
   if not os.path.exists(bottleneck_path):
-    print('Creating bottleneck at ' + bottleneck_path)
-    image_path = get_image_path(image_lists, label_name, index, image_dir,
-                                category)
-    if not gfile.Exists(image_path):
-      tf.logging.fatal('File does not exist %s', image_path)
-    image_data = gfile.FastGFile(image_path, 'rb').read()
-    bottleneck_values = run_bottleneck_on_image(sess, image_data,
-                                                jpeg_data_tensor,
-                                                bottleneck_tensor)
-    bottleneck_string = ','.join(str(x) for x in bottleneck_values)
-    with open(bottleneck_path, 'w') as bottleneck_file:
-      bottleneck_file.write(bottleneck_string)
-
+      create_bottleneck_file(bottleneck_path, image_lists, label_name, index,
+                             image_dir, category, sess, jpeg_data_tensor, bottleneck_tensor)
+  with open(bottleneck_path, 'r') as bottleneck_file:
+      bottleneck_string = bottleneck_file.read()
+  did_hit_error = False
   try:
-    bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
+      bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
   except:
-    print("Invalid float found, sending None instead")
-    return None
+      print("Invalid float found, recreating bottleneck")
+      did_hit_error = True
+  if did_hit_error:
+      create_bottleneck_file(bottleneck_path, image_lists, label_name, index,
+                             image_dir, category, sess, jpeg_data_tensor, bottleneck_tensor)
+      with open(bottleneck_path, 'r') as bottleneck_file:
+          bottleneck_string = bottleneck_file.read()
+      # Allow exceptions to propagate here, since they shouldn't happen after a fresh creation
+      bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
 
   return bottleneck_values
 
@@ -430,13 +443,13 @@ def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
     for category in ['training', 'testing', 'validation']:
       category_list = label_lists[category]
       for index, unused_base_name in enumerate(category_list):
-        bNeck = get_or_create_bottleneck(sess, image_lists, label_name, index,
+        get_or_create_bottleneck(sess, image_lists, label_name, index,
                                  image_dir, category, bottleneck_dir,
                                  jpeg_data_tensor, bottleneck_tensor)
-        if bNeck is not None:
-          how_many_bottlenecks += 1
-          if how_many_bottlenecks % 100 == 0:
-            print(str(how_many_bottlenecks) + ' bottleneck files created.')
+
+        how_many_bottlenecks += 1
+        if how_many_bottlenecks % 100 == 0:
+          print(str(how_many_bottlenecks) + ' bottleneck files created.')
 
 
 def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
@@ -481,12 +494,10 @@ def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
                                             image_index, image_dir, category,
                                             bottleneck_dir, jpeg_data_tensor,
                                             bottleneck_tensor)
-      if bottleneck is not None:
-        ground_truth = np.zeros(class_count, dtype=np.float32)
-        ground_truth[label_index] = 1.0
-        bottlenecks.append(bottleneck)
-        ground_truths.append(ground_truth)
-        filenames.append(image_name)
+      ground_truth = np.zeros(class_count, dtype=np.float32)
+      ground_truth[label_index] = 1.0
+      bottlenecks.append(bottleneck)
+      ground_truths.append(ground_truth)
   else:
     # Retrieve all bottlenecks.
     for label_index, label_name in enumerate(image_lists.keys()):
