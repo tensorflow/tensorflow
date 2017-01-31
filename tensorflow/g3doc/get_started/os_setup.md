@@ -732,6 +732,12 @@ sudo chmod -R a+r /usr/local/computecpp/
 sudo chmod -R a+x /usr/local/computecpp/bin
 ```
 
+Add the lib folder to your `LD_LIBRARY_PATH` to make Python find `libComputeCpp.so` by adding the following line to your `~/.bash_profile`:
+
+```bash
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/computecpp/lib"
+```
+
 ### Prepare environment for Mac OS X
 
 We recommend using [homebrew](http://brew.sh) to install the bazel dependency,
@@ -1305,6 +1311,12 @@ When importing tensorflow, you may see an "ImportError" raised.  Below
 are some possible examples and solutions:
 
 ```
+ImportError: cannot import name 'pywrap_tensorflow'
+```
+
+This can occur if you try to import tensorflow while your current working directory is in the same directory as TensorFlow is located. If that is the case, change the working directory (i.e. `cd` in bash or `os.chdir` in python) to some folder outside of the TensorFlow directory and try importing tensorflow again.
+
+```
 ImportError: /lib64/libc.so.6: version `GLIBC_2.16' not found (required by ..._pywrap_tensorflow.so)
 ```
 
@@ -1322,3 +1334,8 @@ directory, and so tries to import directly from the source code instead of
 your installed tensorflow package.  Solution: don't import tensorflow
 from the tensorflow source code root directory, if you are.
 
+```
+ImportError: libComputeCpp.so: cannot open shared object file: No such file or directory
+```
+
+Make sure you have added the path to ComputeCpp's `lib` folder to your `LD_LIBRARY_PATH` (as mentioned above).
