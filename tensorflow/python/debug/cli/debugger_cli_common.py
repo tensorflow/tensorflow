@@ -247,7 +247,9 @@ class RichTextLines(object):
         line.
     """
 
-    other = RichTextLines(line, font_attr_segs={0: font_attr_segs})
+    other = RichTextLines(line)
+    if font_attr_segs:
+      other.font_attr_segs[0] = font_attr_segs
     self._extend_before(other)
 
   def write_to_file(self, file_path):
