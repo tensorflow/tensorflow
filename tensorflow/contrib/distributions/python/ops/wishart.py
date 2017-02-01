@@ -38,6 +38,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "WishartCholesky",
+    "WishartFull",
+]
+
+
 class _WishartOperatorPD(distribution.Distribution):
   """The matrix Wishart distribution on positive definite matrices.
 
@@ -45,22 +51,22 @@ class _WishartOperatorPD(distribution.Distribution):
   an instance of `OperatorPDBase`, which provides matrix-free access to a
   symmetric positive definite operator, which defines the scale matrix.
 
-  #### Mathematical details.
+  #### Mathematical Details
 
-  The PDF of this distribution is,
+  The probability density function (pdf) is,
 
-  ```
-  f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-  ```
-
-  where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-  `k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-  ```
-  B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+  ```none
+  pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+  Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
   ```
 
-  where `Gamma_k` is the multivariate Gamma function.
+  where:
+
+  * `df >= k` denotes the degrees of freedom,
+  * `scale` is a symmetric, positive definite, `k x k` matrix,
+  * `Z` is the normalizing constant, and,
+  * `Gamma_k` is the [multivariate Gamma function](
+    https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
   #### Examples
 
@@ -86,19 +92,21 @@ class _WishartOperatorPD(distribution.Distribution):
         Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: `Boolean`, default `False`.  Whether to validate input with
-        asserts. If `validate_args` is `False`, and the inputs are invalid,
-        correct behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
-        exception if a statistic (e.g., mean, mode) is undefined for any batch
-        member. If True, batch members with valid parameters leading to
-        undefined statistics will return `NaN` for this statistic.
-      name: The name to give Ops created by the initializer.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined.  When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if scale is not floating-type
       TypeError: if scale.dtype != df.dtype
-      ValueError: if df < k, where scale operator event shape is `(k, k)`
+      ValueError: if df < k, where scale operator event shape is
+        `(k, k)`
     """
     parameters = locals()
     parameters.pop("self")
@@ -111,7 +119,9 @@ class _WishartOperatorPD(distribution.Distribution):
               scale_operator_pd.dtype)
         self._scale_operator_pd = scale_operator_pd
         self._df = ops.convert_to_tensor(
-            df, dtype=scale_operator_pd.dtype, name="df")
+            df,
+            dtype=scale_operator_pd.dtype,
+            name="df")
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._scale_operator_pd))
         if (self._scale_operator_pd.get_shape().ndims is None or
@@ -127,19 +137,22 @@ class _WishartOperatorPD(distribution.Distribution):
         dim_val = tensor_util.constant_value(self._dimension)
         if df_val is not None and dim_val is not None:
           df_val = np.asarray(df_val)
-          if not df_val.shape: df_val = (df_val,)
+          if not df_val.shape:
+            df_val = [df_val]
           if any(df_val < dim_val):
             raise ValueError(
-                "Degrees of freedom (df = %s) cannot be less than dimension of "
-                "scale matrix (scale.dimension = %s)"
+                "Degrees of freedom (df = %s) cannot be less than "
+                "dimension of scale matrix (scale.dimension = %s)"
                 % (df_val, dim_val))
         elif validate_args:
           assertions = check_ops.assert_less_equal(
               self._dimension, self._df,
-              message=("Degrees of freedom (df = %s) cannot be less than "
-                       "dimension of scale matrix (scale.dimension = %s)" %
+              message=("Degrees of freedom (df = %s) cannot be "
+                       "less than dimension of scale matrix "
+                       "(scale.dimension = %s)" %
                        (self._dimension, self._df)))
-          self._df = control_flow_ops.with_dependencies([assertions], self._df)
+          self._df = control_flow_ops.with_dependencies(
+              [assertions], self._df)
     super(_WishartOperatorPD, self).__init__(
         dtype=self._scale_operator_pd.dtype,
         validate_args=validate_args,
@@ -321,7 +334,7 @@ class _WishartOperatorPD(distribution.Distribution):
     # Complexity: O(nbk^2)
     log_prob = ((self.df - self.dimension - 1.) * half_log_det_x -
                 0.5 * trace_scale_inv_x -
-                self.log_normalizing_constant())
+                self.log_normalization())
 
     # Set shape hints.
     # Try to merge what we know from the input then what we know from the
@@ -349,7 +362,8 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _mean(self):
     if self.cholesky_input_output_matrices:
-      return math_ops.sqrt(self.df) * self.scale_operator_pd.sqrt_to_dense()
+      return (math_ops.sqrt(self.df)
+              * self.scale_operator_pd.sqrt_to_dense())
     return self.df * self.scale_operator_pd.to_dense()
 
   def _variance(self):
@@ -384,7 +398,7 @@ class _WishartOperatorPD(distribution.Distribution):
               self.dimension * math.log(2.) +
               self.scale_operator_pd.log_det())
 
-  def log_normalizing_constant(self, name="log_normalizing_constant"):
+  def log_normalization(self, name="log_normalization"):
     """Computes the log normalizing constant, log(Z)."""
     with self._name_scope(name):
       return (self.df * self.scale_operator_pd.sqrt_log_det() +
@@ -429,22 +443,21 @@ class WishartCholesky(_WishartOperatorPD):
   another O(nbk^3) operation since most uses of Wishart will also use the
   Cholesky factorization.
 
-  #### Mathematical details.
+  #### Mathematical Details
 
-  The PDF of this distribution is,
+  The probability density function (pdf) is,
 
-  ```
-  f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-  ```
-
-  where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-  `k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-  ```
-  B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+  ```none
+  pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+  Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
   ```
 
-  where `Gamma_k` is the multivariate Gamma function.
+  where:
+  * `df >= k` denotes the degrees of freedom,
+  * `scale` is a symmetric, positive definite, `k x k` matrix,
+  * `Z` is the normalizing constant, and,
+  * `Gamma_k` is the [multivariate Gamma function](
+    https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
 
   #### Examples
@@ -499,14 +512,15 @@ class WishartCholesky(_WishartOperatorPD):
         Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: `Boolean`, default `False`.  Whether to validate input
-        with asserts. If `validate_args` is `False`, and the inputs are invalid,
-        correct behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
-        exception if a statistic (e.g., mean, mode) is undefined for any batch
-        member. If True, batch members with valid parameters leading to
-        undefined statistics will return `NaN` for this statistic.
-      name: The name scope to give class member ops.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined.  When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
     parameters.pop("self")
@@ -531,22 +545,21 @@ class WishartFull(_WishartOperatorPD):
   Evaluation of the pdf, determinant, and sampling are all `O(k^3)` operations
   where `(k, k)` is the event space shape.
 
-  #### Mathematical details.
+  #### Mathematical Details
 
-  The PDF of this distribution is,
+  The probability density function (pdf) is,
 
-  ```
-  f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-  ```
-
-  where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-  `k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-  ```
-  B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+  ```none
+  pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+  Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
   ```
 
-  where `Gamma_k` is the multivariate Gamma function.
+  where:
+  * `df >= k` denotes the degrees of freedom,
+  * `scale` is a symmetric, positive definite, `k x k` matrix,
+  * `Z` is the normalizing constant, and,
+  * `Gamma_k` is the [multivariate Gamma function](
+    https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
   #### Examples
 
@@ -600,14 +613,15 @@ class WishartFull(_WishartOperatorPD):
         Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: `Boolean`, default `False`.  Whether to validate input with
-        asserts. If `validate_args` is `False`, and the inputs are invalid,
-        correct behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
-        exception if a statistic (e.g., mean, mode) is undefined for any batch
-        member. If True, batch members with valid parameters leading to
-        undefined statistics will return `NaN` for this statistic.
-      name: The name scope to give class member ops.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined.  When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
     parameters.pop("self")

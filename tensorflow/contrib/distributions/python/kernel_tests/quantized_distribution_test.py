@@ -201,7 +201,7 @@ class QuantizedDistributionTest(test.TestCase):
     # integers.  Hence, F(X) (see below) will not be uniform exactly.
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Exponential(lam=0.01))
+          distribution=distributions.Exponential(rate=0.01))
       # X ~ QuantizedExponential
       x = qdist.sample(10000, seed=42)
       # Z = F(X), should be Uniform.
@@ -224,7 +224,7 @@ class QuantizedDistributionTest(test.TestCase):
     # Make an exponential with mean 5.
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
-          distribution=distributions.Exponential(lam=0.2))
+          distribution=distributions.Exponential(rate=0.2))
       # Standard error should be less than 1 / (2 * sqrt(n_samples))
       n_samples = 10000
       stddev_err_bound = 1 / (2 * np.sqrt(n_samples))
