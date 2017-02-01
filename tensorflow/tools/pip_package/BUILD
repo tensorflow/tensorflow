@@ -4,8 +4,9 @@
 package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl","if_mkl")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
+
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
 # public headers.  Not all of the headers returned by the filegroup
@@ -95,6 +96,7 @@ filegroup(
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
+        "@org_pocoo_werkzeug//:LICENSE",
         "@zlib_archive//:zlib.h",
     ] + tf_additional_license_deps(),
 )

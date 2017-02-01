@@ -360,7 +360,10 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       raise ValueError("None values not supported.")
     # if dtype is provided, forces numpy array to be the type
     # provided if possible.
-    np_dt = dtype.as_numpy_dtype if dtype else None
+    if dtype and dtype.is_numpy_compatible:
+      np_dt = dtype.as_numpy_dtype
+    else:
+      np_dt = None
     if np.prod(shape) == 0:
       nparray = np.empty(shape, dtype=np_dt)
     else:

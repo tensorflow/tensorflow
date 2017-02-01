@@ -56,11 +56,11 @@ class PoissonTest(test.TestCase):
       lam_v = 3.0
       x = [2., 3., 4., 5., 6., 7.]
       poisson = poisson_lib.Poisson(lam=lam)
-      log_pmf = poisson.log_pmf(x)
+      log_pmf = poisson.log_prob(x)
       self.assertEqual(log_pmf.get_shape(), (6,))
       self.assertAllClose(log_pmf.eval(), stats.poisson.logpmf(x, lam_v))
 
-      pmf = poisson.pmf(x)
+      pmf = poisson.prob(x)
       self.assertEqual(pmf.get_shape(), (6,))
       self.assertAllClose(pmf.eval(), stats.poisson.pmf(x, lam_v))
 
@@ -73,17 +73,17 @@ class PoissonTest(test.TestCase):
 
       # Non-integer
       with self.assertRaisesOpError("x has non-integer components"):
-        log_pmf = poisson.log_pmf(x)
+        log_pmf = poisson.log_prob(x)
         log_pmf.eval()
 
       with self.assertRaisesOpError("Condition x >= 0"):
-        log_pmf = poisson.log_pmf([-1.])
+        log_pmf = poisson.log_prob([-1.])
         log_pmf.eval()
 
       poisson = poisson_lib.Poisson(lam=lam, validate_args=False)
-      log_pmf = poisson.log_pmf(x)
+      log_pmf = poisson.log_prob(x)
       self.assertEqual(log_pmf.get_shape(), (6,))
-      pmf = poisson.pmf(x)
+      pmf = poisson.prob(x)
       self.assertEqual(pmf.get_shape(), (6,))
 
   def testPoissonLogPmfMultidimensional(self):
@@ -94,11 +94,11 @@ class PoissonTest(test.TestCase):
       x = np.array([[2., 3., 4., 5., 6., 7.]], dtype=np.float32).T
 
       poisson = poisson_lib.Poisson(lam=lam)
-      log_pmf = poisson.log_pmf(x)
+      log_pmf = poisson.log_prob(x)
       self.assertEqual(log_pmf.get_shape(), (6, 3))
       self.assertAllClose(log_pmf.eval(), stats.poisson.logpmf(x, lam_v))
 
-      pmf = poisson.pmf(x)
+      pmf = poisson.prob(x)
       self.assertEqual(pmf.get_shape(), (6, 3))
       self.assertAllClose(pmf.eval(), stats.poisson.pmf(x, lam_v))
 
@@ -154,9 +154,9 @@ class PoissonTest(test.TestCase):
     with self.test_session():
       lam_v = [1.0, 3.0, 2.5]
       poisson = poisson_lib.Poisson(lam=lam_v)
-      self.assertEqual(poisson.std().get_shape(), (3,))
-      self.assertAllClose(poisson.std().eval(), stats.poisson.std(lam_v))
-      self.assertAllClose(poisson.std().eval(), np.sqrt(lam_v))
+      self.assertEqual(poisson.stddev().get_shape(), (3,))
+      self.assertAllClose(poisson.stddev().eval(), stats.poisson.std(lam_v))
+      self.assertAllClose(poisson.stddev().eval(), np.sqrt(lam_v))
 
   def testPoissonMode(self):
     with self.test_session():

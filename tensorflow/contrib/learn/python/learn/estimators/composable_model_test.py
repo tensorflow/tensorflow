@@ -70,7 +70,12 @@ def _base_model_fn(features, labels, mode, params):
       with ops.get_default_graph().colocate_with(global_step):
         return state_ops.assign_add(global_step, 1).op
 
-  return head.head_ops(features, labels, mode, _train_op_fn, logits=logits)
+  return head.create_model_fn_ops(
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_train_op_fn,
+      logits=logits)
 
 
 def _linear_estimator(head, feature_columns):

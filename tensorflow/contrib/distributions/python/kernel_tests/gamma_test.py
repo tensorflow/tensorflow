@@ -54,11 +54,11 @@ class GammaTest(test.TestCase):
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
       gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      log_pdf = gamma.log_pdf(x)
+      log_pdf = gamma.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = gamma.pdf(x)
+      pdf = gamma.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
@@ -72,12 +72,12 @@ class GammaTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      log_pdf = gamma.log_pdf(x)
+      log_pdf = gamma.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = gamma.pdf(x)
+      pdf = gamma.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -92,12 +92,12 @@ class GammaTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      log_pdf = gamma.log_pdf(x)
+      log_pdf = gamma.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = gamma.pdf(x)
+      pdf = gamma.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -170,9 +170,9 @@ class GammaTest(test.TestCase):
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
-      expected_std = stats.gamma.std(alpha_v, scale=1 / beta_v)
-      self.assertEqual(gamma.std().get_shape(), (3,))
-      self.assertAllClose(gamma.std().eval(), expected_std)
+      expected_stddev = stats.gamma.std(alpha_v, scale=1. / beta_v)
+      self.assertEqual(gamma.stddev().get_shape(), (3,))
+      self.assertAllClose(gamma.stddev().eval(), expected_stddev)
 
   def testGammaEntropy(self):
     with self.test_session():
@@ -271,7 +271,7 @@ class GammaTest(test.TestCase):
       gamma = gamma_lib.Gamma(alpha=[7., 11.], beta=[[5.], [6.]])
       num = 50000
       samples = gamma.sample(num, seed=137)
-      pdfs = gamma.pdf(samples)
+      pdfs = gamma.prob(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))

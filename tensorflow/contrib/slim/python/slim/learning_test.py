@@ -888,6 +888,30 @@ class TrainTest(test.TestCase):
     # be smaller.
     self.assertGreater(losses[0], losses[1])
 
+  def testTrainWithEpochLimit(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+      tf_inputs_limited = tf.train.limit_epochs(tf_inputs, num_epochs=300)
+      tf_labels_limited = tf.train.limit_epochs(tf_labels, num_epochs=300)
+
+      tf_predictions = LogisticClassifier(tf_inputs_limited)
+      slim.losses.log_loss(tf_predictions, tf_labels_limited)
+      total_loss = slim.losses.get_total_loss()
+
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+      loss = slim.learning.train(train_op, logdir, log_every_n_steps=10)
+    self.assertIsNotNone(loss)
+    self.assertLess(loss, .015)
+    self.assertTrue(os.path.isfile('{}/model.ckpt-300.index'.format(logdir)))
+    self.assertTrue(os.path.isfile('{}/model.ckpt-300.data-00000-of-00001'.format(logdir)))
+
 
 if __name__ == '__main__':
   test.main()

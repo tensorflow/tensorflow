@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import sys
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -53,8 +54,12 @@ class DecodeRawOpTest(test.TestCase):
       self.assertEqual([None, None], decode.get_shape().as_list())
 
       result = decode.eval(feed_dict={in_bytes: ["AaBC"]})
-      self.assertAllEqual(
-          [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
+      if sys.byteorder == "big":
+        self.assertAllEqual(
+            [[ord("A") * 256 + ord("a"), ord("B") * 256 + ord("C")]], result)
+      else:
+        self.assertAllEqual(
+            [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
 
       with self.assertRaisesOpError(
           "Input to DecodeRaw has length 3 that is not a multiple of 2, the "

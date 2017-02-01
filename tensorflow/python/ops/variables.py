@@ -947,23 +947,21 @@ class PartitionedVariable(object):
       raise ValueError("partition values must be positive: %s" % partitions)
     if not variable_list:
       raise ValueError("variable_list may not be empty")
-    for v in variable_list:
-      if not isinstance(v, Variable):
-        raise TypeError("Not all entries in variable_list are variables: %s"
-                        % variable_list)
-    # Sort the variable_list lexicographically according to var offset value.
     # pylint: disable=protected-access
-    if not all([v._get_save_slice_info() is not None for v in variable_list]):
-      raise ValueError("All variables must have a save_slice_info available: %s"
-                       % [v.name for v in variable_list])
-    if len(shape) != len(partitions):
-      raise ValueError("len(shape) != len(partitions): %s vs. %s"
-                       % (shape, partitions))
-    if not all([v._get_save_slice_info().full_shape == shape]):
-      raise ValueError(
-          "All variables' full shapes must match shape: %s; "
-          "but full shapes were: %s"
-          % (shape, str([v._get_save_slice_info().full_shape])))
+    for v in variable_list:
+      # Sort the variable_list lexicographically according to var offset value.
+      if not all([v._get_save_slice_info() is not None for v in variable_list]):
+        raise ValueError(
+            "All variables must have a save_slice_info available: %s"
+            % [v.name for v in variable_list])
+      if len(shape) != len(partitions):
+        raise ValueError("len(shape) != len(partitions): %s vs. %s"
+                         % (shape, partitions))
+      if not all([v._get_save_slice_info().full_shape == shape]):
+        raise ValueError(
+            "All variables' full shapes must match shape: %s; "
+            "but full shapes were: %s"
+            % (shape, str([v._get_save_slice_info().full_shape])))
     self._variable_list = sorted(
         variable_list, key=lambda v: v._get_save_slice_info().var_offset)
     # pylint: enable=protected-access

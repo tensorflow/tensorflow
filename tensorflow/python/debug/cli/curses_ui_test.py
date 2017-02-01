@@ -1210,7 +1210,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.unwrapped_outputs))
 
     with gfile.Open(output_path, "r") as f:
-      self.assertEqual(b"bar\nbar\n", f.read())
+      self.assertEqual("bar\nbar\n", f.read())
 
     # Clean up output file.
     gfile.Remove(output_path)

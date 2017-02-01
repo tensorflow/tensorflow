@@ -19,13 +19,13 @@ Changes to the each number have the following meaning:
 
 * **PATCH**: Backwards compatible bug fixes.
 
-## Public API
+## What is covered
 
 Only the public APIs of TensorFlow are backwards compatible across minor and
 patch versions.  The public APIs consist of
 
 * The documented public [Python](../api_docs/python) API, excluding `tf.contrib`.
-  This includes all public functions and classes (with names not starting with
+  This includes all public functions and classes (whose names do not start with
   `_`) in the tensorflow module and its submodules. Note that the code in
   the `examples/` to `tools/` directories is not reachable through the
   tensorflow Python module and is thus not covered by the compatibility
@@ -49,24 +49,23 @@ patch versions.  The public APIs consist of
   [`tensor_shape`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor_shape.proto),
   and [`types`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/types.proto).
 
-## Other Languages
+## What is *not* covered
 
-In addition to Python and C, TensorFlow also provides APIs for:
+Some API functions are explicitly marked as "experimental" and can change in
+backward incompatible ways between minor releases. These include:
 
-- [C++](../api_docs/cc) (exposed through header files in
-[`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc).
-- [Java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java)
-([#5](https://github.com/tensorflow/tensorflow/issues/5)), and
-- [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
+* **Experimental APIs**: The `tf.contrib` module and its submodules in Python
+  and any functions in the C API or fields in protocol buffers that are
+  explicitly commented as being experimental.
 
-However, these three are **not** covered by the versioning scheme at this time
-and can be changed in backward incompatible ways between releases.
+* **Other languages**: TensorFlow APIs in languages other than Python and C,
+  such as:
 
-## Details That Are Not Public
-
-The following are specifically **not** part of the public API: they are allowed
-to change without notice across minor releases and even patch releases if bug
-fixes require it:
+  - [C++](../api_docs/cc) (exposed through header files in
+    [`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc)).
+  - [Java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java)
+    ([#5](https://github.com/tensorflow/tensorflow/issues/5)), and
+  - [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
 
 * **Details of composite ops:**  Many public functions in Python expand to
   several primitive ops in the graph, and these details will be part of any
@@ -91,6 +90,8 @@ fixes require it:
   changes to random bits rarely and ideally never for patch releases, and all
   such intended changes will be documented.
 
+Furthermore, any API methods marked "deprecated" in the 1.0 release can
+be deleted in any subsequent minor release.
 
 ## Compatibility for Graphs and Checkpoints
 

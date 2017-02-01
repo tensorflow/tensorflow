@@ -1,4 +1,4 @@
-### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_scope}
+### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_scope}
 
 Returns a context manager for defining ops that creates variables (layers).
 
@@ -83,6 +83,9 @@ then all its sub-scopes become reusing as well.
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 *  <b>`dtype`</b>: type of variables created in this scope (defaults to the type
     in the passed scope, or inherited from parent scope).
+*  <b>`use_resource`</b>: If False, all variables will be regular Variables. If True,
+    experimental ResourceVariables with well-defined semantics will be used
+    instead. Defaults to False (will later change to True).
 
 ##### Returns:
 

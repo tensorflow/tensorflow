@@ -44,6 +44,7 @@ CXXFLAGS += -DTENSORFLOW_DISABLE_META
 CXXFLAGS += -D__ANDROID_TYPES_FULL__
 
 GRAPH_EXECUTION_SRCS := \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
 tensorflow/core/kernels/hexagon/graph_transferer.cc \
 tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
 tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \

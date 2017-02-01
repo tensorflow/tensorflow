@@ -37,7 +37,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// TODO(mfdyck): use GUnit typed tests when we can do all tests on all backends.
+// TODO(b/34468543): use GUnit typed tests when we can do all tests on all
+// backends.
 class DotOperationTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001, 1e-5};

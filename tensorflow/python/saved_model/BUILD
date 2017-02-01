@@ -100,7 +100,6 @@ py_test(
     srcs = ["saved_model_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",

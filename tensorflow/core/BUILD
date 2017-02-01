@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_ios",
+    "if_x86",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -102,6 +103,8 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
+    "tf_env_time_hdrs",
+    "tf_env_time_srcs",
     "tf_kernel_tests_linkstatic",
     "tf_additional_cloud_op_deps",
     "tf_additional_cloud_kernel_deps",
@@ -185,7 +188,7 @@ tf_proto_library(
 # don't have to depend on lib/platformlib.
 cc_library(
     name = "lib_proto_parsing",
-    srcs = glob(tf_additional_proto_srcs()),
+    srcs = glob(tf_additional_proto_srcs()) + tf_env_time_srcs(),
     hdrs = [
         "lib/core/errors.h",
         "lib/core/status.h",
@@ -198,7 +201,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ] + glob(tf_additional_proto_hdrs()),
+    ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
     deps = [
         ":protos_all_cc",
@@ -253,6 +256,7 @@ cc_library(
         "platform/cpu_info.h",
         "platform/dynamic_annotations.h",
         "platform/env.h",
+        "platform/env_time.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
         "platform/init_main.h",
@@ -263,6 +267,7 @@ cc_library(
         "platform/net.h",
         "platform/notification.h",
         "platform/prefetch.h",
+        "platform/profile_utils/clock_cycle_profiler.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",
         "platform/stacktrace.h",
@@ -1065,10 +1070,12 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
                 "platform/gif.h",
                 "platform/jpeg.h",
+                "platform/**/env_time.cc",
                 "platform/**/cuda.h",
                 "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
@@ -1086,10 +1093,12 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
                 "platform/gif.h",
                 "platform/jpeg.h",
+                "platform/**/env_time.cc",
                 "platform/**/cuda.h",
                 "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
@@ -1101,6 +1110,7 @@ cc_library(
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
+            "platform/**/env_time.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -1150,12 +1160,21 @@ cc_library(
     defines = tf_additional_lib_defines(),
     linkopts = ["-ldl"],
     deps = tf_additional_lib_deps() + [
+        ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@zlib_archive//:zlib",
     ],
+)
+
+# File compiled with extra flags to get cpu-specific acceleration.
+cc_library(
+    name = "lib_hash_crc32c_accelerate_internal",
+    srcs = ["lib/hash/crc32c_accelerate.cc"],
+    # -msse4.2 enables the use of crc32c compiler builtins.
+    copts = tf_copts() + if_x86(["-msse4.2"]),
 )
 
 cc_library(
@@ -1783,6 +1802,7 @@ tf_cc_tests(
         "util/saved_tensor_slice_util_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/semver_test.cc",
+        "util/stat_summarizer_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
         "util/tensor_slice_util_test.cc",

@@ -87,7 +87,9 @@ Initializes a `DNNRegressor` instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
-*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
@@ -129,22 +131,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export_savedmodel(*args, **kwargs)` {#DNNRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNRegressor.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -153,7 +152,6 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 ##### Returns:
 

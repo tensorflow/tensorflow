@@ -95,7 +95,7 @@ class WishartCholeskyTest(test.TestCase):
       scale = make_pd(1., 2)
       df = 4
       w = distributions.WishartCholesky(df, chol(scale))
-      self.assertAllEqual(chol(wishart_var(df, scale)), w.std().eval())
+      self.assertAllEqual(chol(wishart_var(df, scale)), w.stddev().eval())
 
   def testVariance(self):
     with self.test_session():
@@ -205,7 +205,7 @@ class WishartCholeskyTest(test.TestCase):
       # This test checks that batches don't interfere with correctness.
       w = distributions.WishartCholesky(
           df=[2, 3, 4, 5], scale=chol_x, cholesky_input_output_matrices=True)
-      self.assertAllClose(log_prob_df_seq, w.log_pdf(chol_x).eval())
+      self.assertAllClose(log_prob_df_seq, w.log_prob(chol_x).eval())
 
       # Now we test various constructions of Wishart with different sample
       # shape.

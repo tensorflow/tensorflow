@@ -36,13 +36,6 @@ __all__ = [
     "TransformedDistribution",
 ]
 
-_condition_kwargs_dict = {
-    "bijector_kwargs": ("Python dictionary of arg names/values "
-                        "forwarded to the bijector."),
-    "distribution_kwargs": ("Python dictionary of arg names/values "
-                            "forwarded to the distribution."),
-}
-
 
 # The following helper functions attempt to statically perform a TF operation.
 # These functions make debugging easier since we can do more validation during
@@ -345,7 +338,7 @@ class TransformedDistribution(distributions.Distribution):
     super(TransformedDistribution, self).__init__(
         dtype=self._distribution.dtype,
         is_continuous=self._distribution.is_continuous,
-        is_reparameterized=self._distribution.is_reparameterized,
+        reparameterization_type=self._distribution.reparameterization_type,
         validate_args=validate_args,
         allow_nan_stats=self._distribution.allow_nan_stats,
         parameters=parameters,
@@ -392,36 +385,27 @@ class TransformedDistribution(distributions.Distribution):
 
   @distribution_util.AppendDocstring(
       """Samples from the base distribution and then passes through
-      the bijector's forward transform.""",
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _sample_n(self, n, seed=None,
-                bijector_kwargs=None, distribution_kwargs=None):
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
+      the bijector's forward transform.""")
+  def _sample_n(self, n, seed=None):
     sample_shape = _concat_vectors(
         distribution_util.pick_vector(self._needs_rotation, self._empty, [n]),
         self._override_batch_shape,
         self._override_event_shape,
         distribution_util.pick_vector(self._needs_rotation, [n], self._empty))
-    x = self.distribution.sample(sample_shape=sample_shape, seed=seed,
-                                 **distribution_kwargs)
+    x = self.distribution.sample(sample_shape=sample_shape, seed=seed)
     x = self._maybe_rotate_dims(x)
-    return self.bijector.forward(x, **bijector_kwargs)
+    return self.bijector.forward(x)
 
   @distribution_util.AppendDocstring(
       """Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
       where `g^{-1}` is the inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
-      distribution and `y` was not returned from `sample`.""",
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _log_prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(
-        y, **bijector_kwargs)
+      distribution and `y` was not returned from `sample`.""")
+  def _log_prob(self, y):
+    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(y)
     x = self._maybe_rotate_dims(x, rotate_right=True)
-    log_prob = self.distribution.log_prob(x, **distribution_kwargs)
+    log_prob = self.distribution.log_prob(x)
     if self._is_maybe_event_override:
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
     return ildj + log_prob
@@ -431,64 +415,42 @@ class TransformedDistribution(distributions.Distribution):
       inverse of `transform`.
 
       Also raises a `ValueError` if `inverse` was not provided to the
-      distribution and `y` was not returned from `sample`.""",
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(
-        y, **bijector_kwargs)
+      distribution and `y` was not returned from `sample`.""")
+  def _prob(self, y):
+    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(y)
     x = self._maybe_rotate_dims(x, rotate_right=True)
-    prob = self.distribution.prob(x, **distribution_kwargs)
+    prob = self.distribution.prob(x)
     if self._is_maybe_event_override:
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
     return math_ops.exp(ildj) * prob
 
-  @distribution_util.AppendDocstring(
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _log_cdf(self, y, bijector_kwargs=None, distribution_kwargs=None):
+  def _log_cdf(self, y):
     if self._is_maybe_event_override:
       raise NotImplementedError("log_cdf is not implemented when overriding "
                                 "event_shape")
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
-    x = self.bijector.inverse(y, **bijector_kwargs)
-    return self.distribution.log_cdf(x, **distribution_kwargs)
+    x = self.bijector.inverse(y)
+    return self.distribution.log_cdf(x)
 
-  @distribution_util.AppendDocstring(
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _cdf(self, y, bijector_kwargs=None, distribution_kwargs=None):
+  def _cdf(self, y):
     if self._is_maybe_event_override:
       raise NotImplementedError("cdf is not implemented when overriding "
                                 "event_shape")
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
-    x = self.bijector.inverse(y, **bijector_kwargs)
-    return self.distribution.cdf(x, **distribution_kwargs)
+    x = self.bijector.inverse(y)
+    return self.distribution.cdf(x)
 
-  @distribution_util.AppendDocstring(
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _log_survival_function(self, y,
-                             bijector_kwargs=None, distribution_kwargs=None):
+  def _log_survival_function(self, y):
     if self._is_maybe_event_override:
       raise NotImplementedError("log_survival_function is not implemented when "
                                 "overriding event_shape")
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
-    x = self.bijector.inverse(y, **bijector_kwargs)
-    return self.distribution.log_survival_function(x, **distribution_kwargs)
+    x = self.bijector.inverse(y)
+    return self.distribution.log_survival_function(x)
 
-  @distribution_util.AppendDocstring(
-      condition_kwargs_dict=_condition_kwargs_dict)
-  def _survival_function(self, y,
-                         bijector_kwargs=None, distribution_kwargs=None):
+  def _survival_function(self, y):
     if self._is_maybe_event_override:
       raise NotImplementedError("survival_function is not implemented when "
                                 "overriding event_shape")
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
-    x = self.bijector.inverse(y, **bijector_kwargs)
-    return self.distribution.survival_function(x, **distribution_kwargs)
+    x = self.bijector.inverse(y)
+    return self.distribution.survival_function(x)
 
   def _entropy(self):
     if (not self.distribution.is_continuous or

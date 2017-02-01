@@ -113,10 +113,10 @@ class UnstageOp : public OpKernel {
     Buffer::Tuple tuple;
     buf->Get(&tuple);
     OP_REQUIRES(
-        ctx, tuple.size() == ctx->num_outputs(),
+        ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
-    for (int i = 0; i < tuple.size(); ++i) {
+    for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
   }

@@ -76,11 +76,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.6.1.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.6.1.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.6.6.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.6.6.tar.gz",
       ],
-      sha256 = "1dd81077b186300122dc8a8f1872c21fd2bd9b88286ab9f068cc7b62fa7593a7",
-      strip_prefix = "libxsmm-1.6.1",
+      sha256 = "7c048a48e17f7f14a475be7b83e6e941289e03debb42ce9e02a06353412f9f2a",
+      strip_prefix = "libxsmm-1.6.6",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
@@ -125,21 +125,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@farmhash//:farmhash",
   )
 
-  native.http_archive(
+  native.new_http_archive(
       name = "highwayhash",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/highwayhash/archive/4bce8fc6a9ca454d9d377dbc4c4d33488bbab78f.tar.gz",
-          "https://github.com/google/highwayhash/archive/4bce8fc6a9ca454d9d377dbc4c4d33488bbab78f.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
+          "https://github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
       ],
-      sha256 = "b159a62fb05e5f6a6be20aa0df6a951ebf44a7bb96ed2e819e4e35e17f56854d",
-      strip_prefix = "highwayhash-4bce8fc6a9ca454d9d377dbc4c4d33488bbab78f",
+      sha256 = "0f30a15b1566d93f146c8d149878a06e91d9bb7ec2cfd76906df62a82be4aac9",
+      strip_prefix = "highwayhash-dfcb97ca4fe9277bf9dc1802dd979b071896453b",
+      build_file = str(Label("//third_party:highwayhash.BUILD")),
   )
 
   native.new_http_archive(
       name = "nasm",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
-          "http://www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
+          "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.12.02.tar.bz2/d15843c3fb7db39af80571ee27ec6fad/nasm-2.12.02.tar.bz2",
       ],
       sha256 = "00b0891c678c065446ca59bcee64719d0096d54d6886e6e472aeee2e170ae324",
       strip_prefix = "nasm-2.12.02",
@@ -190,6 +191,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
       build_file = str(Label("//third_party:six.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_pocoo_werkzeug",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
+          "https://pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
+      ],
+      strip_prefix = "Werkzeug-0.11.10",
+      sha256 = "cc64dafbacc716cdd42503cf6c44cb5a35576443d82f29f6829e5c49264aeeee",
+      build_file = str(Label("//third_party:werkzeug.BUILD")),
   )
 
   native.bind(
@@ -315,15 +327,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
   # Switch to an official source of snapshots if/when possible.
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/4e9e4f277ad254e02a0cff33c61cd827e600da62.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
       ],
-      sha256 = "ec67c57dfd85c2bb857fd13011c5c2aa3f1dc9f40c0a5bac13e78e76d6b61aa6",
-      strip_prefix = "llvm-4e9e4f277ad254e02a0cff33c61cd827e600da62",
+      sha256 = "0e08c91752732227280466d12f330a5854569deddf28ff4a6c3898334dbb0d16",
+      strip_prefix = "llvm-2276fd31f36aa58f39397c435a8be6632d8c8505",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
+      repository = tf_repo_name,
   )
 
   native.new_http_archive(
@@ -384,6 +397,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@zlib_archive//:zlib",
   )
 
+  native.new_http_archive(
+      name = "nccl_archive",
+      url = "https://github.com/NVIDIA/nccl/archive/2a974f5ca2aa12b178046b2206b43f1fd69d9fae.tar.gz",
+      sha256 = "d6aa1a3f20ae85358890d9a96f49c51a75baa1d3af3598501f29ff9ef8a3107d",
+      strip_prefix = "nccl-2a974f5ca2aa12b178046b2206b43f1fd69d9fae",
+      build_file = str(Label("//third_party:nccl.BUILD")),
+  )
+
   # Make junit-4.12 available as //external:junit
   native.http_jar(
       name = "junit_jar",
@@ -396,7 +417,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@junit_jar//jar",
   )
 
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "jemalloc",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
@@ -405,4 +426,5 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
       strip_prefix = "jemalloc-4.4.0",
       build_file = str(Label("//third_party:jemalloc.BUILD")),
+      repository = tf_repo_name,
   )

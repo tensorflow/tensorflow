@@ -281,7 +281,7 @@ llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
                                                       llvm::Value* x) const {
   if (prim_type != F32) {
-    return Unimplemented("inverse erf");
+    return Unimplemented("inverse erf only implemented for F32 (b/34339814)");
   }
   auto getFloat = [&](const float f) {
     return llvm::ConstantFP::get(ir_builder_->getFloatTy(), f);
@@ -583,7 +583,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
           llvm::ReplaceInstWithInst(
               body_block->getTerminator(),
               llvm::BranchInst::Create(out_block, body_block,
-                                       ir_builder_->CreateICmpULE(random, r)));
+                                       ir_builder_->CreateICmpULT(random, r)));
           SetToFirstInsertPoint(out_block, ir_builder_);
           return ir_builder_->CreateAdd(
               p, ir_builder_->CreateSelect(
@@ -624,9 +624,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator)
     const {
-  // TODO(mfdyck): Make capture lists explicit, lest someone forget to cap
-  // `operand_to_generator` by ref and its many copies fill memory and cause
-  // much woe and process death.
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kCeil:
@@ -639,7 +636,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSign:
     case HloOpcode::kTanh:
     case HloOpcode::kLogicalNot:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
                             operand_to_generator.at(hlo->operand(0))(
@@ -662,7 +659,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSubtract:
     case HloOpcode::kLogicalAnd:
     case HloOpcode::kLogicalOr:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         const HloInstruction* lhs = hlo->operand(0);
         const HloInstruction* rhs = hlo->operand(1);
@@ -675,7 +672,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitBinaryOp(hlo, lhs_value, rhs_value);
       };
     case HloOpcode::kSelect:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * pred_value,
                             operand_to_generator.at(hlo->operand(0))(
@@ -691,7 +688,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
             on_true_value, on_false_value);
       };
     case HloOpcode::kClamp:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * min_value,
                             operand_to_generator.at(hlo->operand(0))(
@@ -705,7 +702,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
       };
     case HloOpcode::kConcatenate:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index target_index) -> StatusOr<llvm::Value*> {
         const int64 concat_dim = hlo->dimensions(0);
         auto source_index = target_index;
@@ -761,7 +758,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return output;
       };
     case HloOpcode::kReverse:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
         auto source_index = target_index;
@@ -774,7 +771,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(operand)(source_index);
       };
     case HloOpcode::kBroadcast:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
         // The `dimensions` member of the broadcast instruction maps from
         // input dimensions to output dimensions.
@@ -787,7 +784,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(operand)(source_index);
       };
     case HloOpcode::kSlice:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         IrArray::Index sliced_index(index.size());
         for (int i = 0; i < index.size(); ++i) {
@@ -798,7 +795,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
     case HloOpcode::kDynamicSlice:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         // Emit IR to read dynamic start indices from hlo->operand(1).
         const HloInstruction* input_hlo = hlo->operand(0);
@@ -827,7 +824,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_to_generator.at(input_hlo)(input_index);
       };
     case HloOpcode::kDynamicUpdateSlice:
-      return [=, &operand_to_generator](
+      return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         const HloInstruction* input_hlo = hlo->operand(0);
         const HloInstruction* update_hlo = hlo->operand(1);
@@ -910,13 +907,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
                ShapeUtil::ElementsIn(hlo->operand(0)->shape()));
-      return [=, &operand_to_generator](const IrArray::Index& index) {
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         const HloInstruction* operand = hlo->operand(0);
         return operand_to_generator.at(operand)(index.SourceIndexOfReshape(
             hlo->shape(), operand->shape(), ir_builder_));
       };
     case HloOpcode::kTranspose:
-      return [=, &operand_to_generator](const IrArray::Index& target_index) {
+      return [this, hlo,
+              &operand_to_generator](const IrArray::Index& target_index) {
         return operand_to_generator.at(hlo->operand(0))(
             target_index.SourceIndexOfTranspose(
                 hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions(),
@@ -925,7 +923,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kRng:
       return MakeRngElementGenerator(hlo, operand_to_generator);
     default:
-      return [=, &operand_to_generator](const IrArray::Index& index) {
+      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         return Unimplemented("%s", HloOpcodeString(hlo->opcode()).c_str());
       };
   }

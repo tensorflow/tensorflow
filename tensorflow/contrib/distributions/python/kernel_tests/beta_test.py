@@ -17,7 +17,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from scipy import stats, special
+from scipy import special
+from scipy import stats
 from tensorflow.contrib.distributions.python.ops import beta as beta_lib
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.client import session
@@ -84,15 +85,15 @@ class BetaTest(test.TestCase):
     b = [[2., 4, 3]]
     with self.test_session():
       dist = beta_lib.Beta(a, b, validate_args=True)
-      dist.pdf([.1, .3, .6]).eval()
-      dist.pdf([.2, .3, .5]).eval()
+      dist.prob([.1, .3, .6]).eval()
+      dist.prob([.2, .3, .5]).eval()
       # Either condition can trigger.
       with self.assertRaisesOpError("(Condition x > 0.*|Condition x < y.*)"):
-        dist.pdf([-1., 1, 1]).eval()
+        dist.prob([-1., 1, 1]).eval()
       with self.assertRaisesOpError("Condition x.*"):
-        dist.pdf([0., 1, 1]).eval()
+        dist.prob([0., 1, 1]).eval()
       with self.assertRaisesOpError("Condition x < y.*"):
-        dist.pdf([.1, .2, 1.2]).eval()
+        dist.prob([.1, .2, 1.2]).eval()
 
   def testPdfTwoBatches(self):
     with self.test_session():
@@ -100,7 +101,7 @@ class BetaTest(test.TestCase):
       b = [1., 2]
       x = [.5, .5]
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1., 3. / 2], pdf.eval())
       self.assertEqual((2,), pdf.get_shape())
 
@@ -110,7 +111,7 @@ class BetaTest(test.TestCase):
       b = [1., 2]
       x = [.3, .7]
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1, 63. / 50], pdf.eval())
       self.assertEqual((2,), pdf.get_shape())
 
@@ -121,7 +122,7 @@ class BetaTest(test.TestCase):
       b = 1.
       x = np.array([.1, .2, .3, .5, .8], dtype=np.float32)
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1.] * 5, pdf.eval())
       self.assertEqual((5,), pdf.get_shape())
 
@@ -131,7 +132,7 @@ class BetaTest(test.TestCase):
       b = [[1., 2]]
       x = [[.5, .5], [.3, .7]]
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([[1., 3. / 2], [1., 63. / 50]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -140,7 +141,7 @@ class BetaTest(test.TestCase):
       a = [1., 2]
       b = [1., 2]
       x = [[.5, .5], [.2, .8]]
-      pdf = beta_lib.Beta(a, b).pdf(x)
+      pdf = beta_lib.Beta(a, b).prob(x)
       self.assertAllClose([[1., 3. / 2], [1., 24. / 25]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -149,7 +150,7 @@ class BetaTest(test.TestCase):
       a = [[1., 2], [2., 3]]
       b = [[1., 2], [2., 3]]
       x = [[.5, .5]]
-      pdf = beta_lib.Beta(a, b).pdf(x)
+      pdf = beta_lib.Beta(a, b).prob(x)
       self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -158,7 +159,7 @@ class BetaTest(test.TestCase):
       a = [[1., 2], [2., 3]]
       b = [[1., 2], [2., 3]]
       x = [.5, .5]
-      pdf = beta_lib.Beta(a, b).pdf(x)
+      pdf = beta_lib.Beta(a, b).prob(x)
       self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 

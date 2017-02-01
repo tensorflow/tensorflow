@@ -34,8 +34,8 @@ new_http_archive(
 new_http_archive(
   name = "mobile_multibox",
   build_file = "models.BUILD",
-  url = "https://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1.zip",
-  sha256 = "b4c178fd6236dcf0a20d25d07c45eebe85281263978c6a6f1dfc49d75befc45f"
+  url = "https://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1a.zip",
+  sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96"
 )
 
 new_http_archive(

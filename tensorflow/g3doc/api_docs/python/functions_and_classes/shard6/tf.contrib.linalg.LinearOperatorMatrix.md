@@ -183,7 +183,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.batch_shape_dynamic(name='batch_shape_dynamic')` {#LinearOperatorMatrix.batch_shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.batch_shape_tensor(name='batch_shape_tensor')` {#LinearOperatorMatrix.batch_shape_tensor}
 
 Shape of batch dimensions of this operator, determined at runtime.
 
@@ -216,6 +216,11 @@ Determinant for every batch member.
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
 
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
 
 - - -
 
@@ -233,7 +238,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension_dynamic(name='domain_dimension_dynamic')` {#LinearOperatorMatrix.domain_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension_tensor(name='domain_dimension_tensor')` {#LinearOperatorMatrix.domain_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
 
@@ -289,6 +294,13 @@ List of graph dependencies of this `LinearOperator`.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorMatrix.is_square` {#LinearOperatorMatrix.is_square}
+
+Return `True/False` depending on if this operator is square.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorMatrix.log_abs_determinant(name='log_abs_det')` {#LinearOperatorMatrix.log_abs_determinant}
 
 Log absolute value of determinant for every batch member.
@@ -301,6 +313,11 @@ Log absolute value of determinant for every batch member.
 ##### Returns:
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
+
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
 
 
 - - -
@@ -326,7 +343,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.range_dimension_dynamic(name='range_dimension_dynamic')` {#LinearOperatorMatrix.range_dimension_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.range_dimension_tensor(name='range_dimension_tensor')` {#LinearOperatorMatrix.range_dimension_tensor}
 
 Dimension (in the sense of vector spaces) of the range of this operator.
 
@@ -362,7 +379,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.shape_dynamic(name='shape_dynamic')` {#LinearOperatorMatrix.shape_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.shape_tensor(name='shape_tensor')` {#LinearOperatorMatrix.shape_tensor}
 
 Shape of this `LinearOperator`, determined at runtime.
 
@@ -419,7 +436,7 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If self.is_non_singular is False.
+*  <b>`NotImplementedError`</b>: If `self.is_non_singular` or `is_square` is False.
 
 
 - - -
@@ -443,7 +460,7 @@ If this operator acts like the batch matrix `A` with
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorMatrix.tensor_rank_dynamic(name='tensor_rank_dynamic')` {#LinearOperatorMatrix.tensor_rank_dynamic}
+#### `tf.contrib.linalg.LinearOperatorMatrix.tensor_rank_tensor(name='tensor_rank_tensor')` {#LinearOperatorMatrix.tensor_rank_tensor}
 
 Rank (in the sense of tensors) of matrix corresponding to this operator.
 
