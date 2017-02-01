@@ -540,10 +540,12 @@ cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
     deps = [
+        ":instruction_fusion",
         ":while_transformer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
