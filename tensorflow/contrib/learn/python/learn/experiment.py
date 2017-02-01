@@ -50,16 +50,6 @@ class Experiment(object):
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
   # waiting as only behaviour.
-  @deprecated_args(
-      "2016-10-23",
-      "local_eval_frequency is deprecated as local_run will be renamed to "
-      "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
-      "instead. Note, however, that the default for min_eval_frequency is 1, "
-      "meaning models will be evaluated every time a new checkpoint is "
-      "available. In contrast, the default for local_eval_frequency is None, "
-      "resulting in evaluation occurring only after training has completed. "
-      "min_eval_frequency is ignored when calling the deprecated local_run.",
-      "local_eval_frequency")
   def __init__(self,
                estimator,
                train_input_fn,
@@ -69,7 +59,6 @@ class Experiment(object):
                eval_steps=100,
                train_monitors=None,
                eval_hooks=None,
-               local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
@@ -98,9 +87,6 @@ class Experiment(object):
         function.
       eval_hooks: A list of `SessionRunHook` hooks to pass to the
         `Estimator`'s `evaluate` function.
-      local_eval_frequency: Frequency of running eval in steps,
-        when running locally. If `None`, runs evaluation only at the end of
-        training.
       eval_delay_secs: Start evaluating after waiting for this many seconds.
       continuous_eval_throttle_secs: Do not re-evaluate unless the last
         evaluation was started at least this many seconds ago for
@@ -134,7 +120,6 @@ class Experiment(object):
     self._eval_metrics = eval_metrics
     self._train_steps = train_steps
     self._eval_steps = eval_steps
-    self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
@@ -277,16 +262,6 @@ class Experiment(object):
                                     metrics=self._eval_metrics,
                                     name="one_pass",
                                     hooks=self._eval_hooks)
-
-  @deprecated(
-      "2016-10-23",
-      "local_run will be renamed to train_and_evaluate and the new default "
-      "behavior will be to run evaluation every time there is a new "
-      "checkpoint.")
-  def local_run(self):
-    with _new_attr_context(self, "_min_eval_frequency"):
-      self._min_eval_frequency = self._local_eval_frequency
-      return self.train_and_evaluate()
 
   def _continuous_eval(self,
                        input_fn,

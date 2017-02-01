@@ -349,25 +349,6 @@ class ExperimentTest(test.TestCase):
     self.assertEqual(3, est.eval_count)
     self.assertEqual([noop_hook], est.eval_hooks)
 
-  def test_run_local(self):
-    est = TestEstimator()
-    noop_hook = _NoopHook()
-    ex = experiment.Experiment(
-        est,
-        train_input_fn='train_input',
-        eval_input_fn='eval_input',
-        eval_metrics='eval_metrics',
-        eval_hooks=[noop_hook],
-        train_steps=100,
-        eval_steps=100,
-        local_eval_frequency=10)
-    ex.local_run()
-    self.assertEqual(1, est.fit_count)
-    self.assertEqual(1, est.eval_count)
-    self.assertEqual(1, len(est.monitors))
-    self.assertEqual([noop_hook], est.eval_hooks)
-    self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
-
   def test_train_hooks_extend_does_not_mutate_input_hooks(self):
     noop_hook = _NoopHook()
     input_hooks = [noop_hook]
