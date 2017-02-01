@@ -57,7 +57,7 @@ class GradientDescentOptimizer(optimizer.Optimizer):
                               grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-  def _resource_apply_sparse(self, grad, handle, indices):
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
     return resource_variable_ops.resource_scatter_add(
         handle, indices, -grad * self._learning_rate)
 
