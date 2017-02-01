@@ -42,10 +42,10 @@ class ConditionalDistributionTest(distribution_test.DistributionTest):
             allow_nan_stats=True,
             name="DummyDistribution")
 
-      def _get_batch_shape(self):
+      def _batch_shape(self):
         return self._static_batch_shape
 
-      def _get_event_shape(self):
+      def _event_shape(self):
         return self._static_event_shape
 
       def _sample_n(self, unused_shape, unused_seed, arg1, arg2):

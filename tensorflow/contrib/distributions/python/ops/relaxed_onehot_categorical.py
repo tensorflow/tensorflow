@@ -181,13 +181,8 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
         with ops.name_scope(name="batch_rank"):
           self._batch_rank = array_ops.rank(self._logits) - 1
 
-      logits_shape = array_ops.shape(self._logits, name="logits_shape")
-
       with ops.name_scope(name="event_size"):
-        self._event_size = logits_shape[-1]
-
-      with ops.name_scope(name="batch_shape"):
-        self._batch_shape_val = logits_shape[:-1]
+        self._event_size = array_ops.shape(self._logits)[-1]
 
     super(_ExpRelaxedOneHotCategorical, self).__init__(
         dtype=dtype,
@@ -221,17 +216,16 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
     """Vector of probabilities summing to one."""
     return self._probs
 
-  def _batch_shape(self):
-    # Use identity to inherit callers "name".
-    return array_ops.identity(self._batch_shape_val)
+  def _batch_shape_tensor(self):
+    return array_ops.shape(self._logits)[:-1]
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.logits.get_shape()[:-1]
 
-  def _event_shape(self):
-    return array_ops.shape(self.logits)[-1]
+  def _event_shape_tensor(self):
+    return array_ops.shape(self.logits)[-1:]
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self.logits.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):

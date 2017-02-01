@@ -39,10 +39,10 @@ class GammaTest(test.TestCase):
       beta = constant_op.constant(11.0)
       gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
 
-      self.assertEqual(gamma.batch_shape().eval(), (5,))
-      self.assertEqual(gamma.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(gamma.event_shape().eval(), [])
-      self.assertEqual(gamma.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(gamma.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(gamma.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(gamma.event_shape_tensor().eval(), [])
+      self.assertEqual(gamma.event_shape, tensor_shape.TensorShape([]))
 
   def testGammaLogPDF(self):
     with self.test_session():

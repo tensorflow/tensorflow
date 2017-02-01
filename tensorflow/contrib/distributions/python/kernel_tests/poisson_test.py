@@ -32,10 +32,10 @@ class PoissonTest(test.TestCase):
       lam = constant_op.constant([3.0] * 5)
       poisson = poisson_lib.Poisson(lam=lam)
 
-      self.assertEqual(poisson.batch_shape().eval(), (5,))
-      self.assertEqual(poisson.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(poisson.event_shape().eval(), [])
-      self.assertEqual(poisson.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(poisson.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(poisson.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(poisson.event_shape_tensor().eval(), [])
+      self.assertEqual(poisson.event_shape, tensor_shape.TensorShape([]))
 
   def testInvalidLam(self):
     invalid_lams = [

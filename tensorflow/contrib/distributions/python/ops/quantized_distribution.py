@@ -261,17 +261,17 @@ class QuantizedDistribution(distributions.Distribution):
         graph_parents=graph_parents,
         name=ns)
 
-  def _batch_shape(self):
-    return self.distribution.batch_shape()
+  def _batch_shape_tensor(self):
+    return self.distribution.batch_shape_tensor()
 
-  def _get_batch_shape(self):
-    return self.distribution.get_batch_shape()
+  def _batch_shape(self):
+    return self.distribution.batch_shape
+
+  def _event_shape_tensor(self):
+    return self.distribution.event_shape_tensor()
 
   def _event_shape(self):
-    return self.distribution.event_shape()
-
-  def _get_event_shape(self):
-    return self.distribution.get_event_shape()
+    return self.distribution.event_shape
 
   def _sample_n(self, n, seed=None):
     low = self._low

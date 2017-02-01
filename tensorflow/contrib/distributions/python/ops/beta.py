@@ -183,16 +183,16 @@ class Beta(distribution.Distribution):
     """Sum of parameters."""
     return self._a_b_sum
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.shape(self.a_b_sum)
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.a_b_sum.get_shape()
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
@@ -254,7 +254,7 @@ class Beta(distribution.Distribution):
               math_ops.greater(self.a, 1.),
               math_ops.greater(self.b, 1.)),
           mode,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(

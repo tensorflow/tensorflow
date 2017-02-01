@@ -71,10 +71,10 @@ class UniformTest(test.TestCase):
       b = constant_op.constant(11.0)
       uniform = uniform_lib.Uniform(low=a, high=b)
 
-      self.assertEqual(uniform.batch_shape().eval(), (5,))
-      self.assertEqual(uniform.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(uniform.event_shape().eval(), [])
-      self.assertEqual(uniform.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(uniform.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(uniform.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(uniform.event_shape_tensor().eval(), [])
+      self.assertEqual(uniform.event_shape, tensor_shape.TensorShape([]))
 
   def testUniformPDFWithScalarEndpoint(self):
     with self.test_session():

@@ -123,18 +123,18 @@ class InverseGamma(distribution.Distribution):
     """Scale parameter."""
     return self._beta
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
         array_ops.shape(self.alpha), array_ops.shape(self.beta))
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return array_ops.broadcast_static_shape(
         self.alpha.get_shape(), self.beta.get_shape())
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
@@ -187,7 +187,7 @@ class InverseGamma(distribution.Distribution):
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
       return array_ops.where(
           self.alpha > 1., mean,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(
@@ -206,7 +206,7 @@ class InverseGamma(distribution.Distribution):
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
       return array_ops.where(
           self.alpha > 2., var,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(

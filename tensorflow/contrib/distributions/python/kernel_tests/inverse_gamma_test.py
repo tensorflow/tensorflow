@@ -35,11 +35,11 @@ class InverseGammaTest(test.TestCase):
       beta = constant_op.constant(11.0)
       inv_gamma = inverse_gamma.InverseGamma(alpha=alpha, beta=beta)
 
-      self.assertEqual(inv_gamma.batch_shape().eval(), (5,))
-      self.assertEqual(inv_gamma.get_batch_shape(),
+      self.assertEqual(inv_gamma.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(inv_gamma.batch_shape,
                        tensor_shape.TensorShape([5]))
-      self.assertAllEqual(inv_gamma.event_shape().eval(), [])
-      self.assertEqual(inv_gamma.get_event_shape(), tensor_shape.TensorShape(
+      self.assertAllEqual(inv_gamma.event_shape_tensor().eval(), [])
+      self.assertEqual(inv_gamma.event_shape, tensor_shape.TensorShape(
           []))
 
   def testInverseGammaLogPDF(self):

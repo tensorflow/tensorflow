@@ -106,21 +106,21 @@ class DistributionTest(test.TestCase):
       # Test case 1, 2.
       x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
       # None would fire an exception were it actually executed.
-      self.assertTrue(normal._is_scalar_helper(x.get_shape, lambda: None))
+      self.assertTrue(normal._is_scalar_helper(x.get_shape(), lambda: None))
       self.assertTrue(
-          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+          normal._is_scalar_helper(tensor_shape.TensorShape(None),
                                    lambda: array_ops.shape(x)))
 
       x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       # None would fire an exception were it actually executed.
-      self.assertFalse(normal._is_scalar_helper(x.get_shape, lambda: None))
+      self.assertFalse(normal._is_scalar_helper(x.get_shape(), lambda: None))
       self.assertFalse(
-          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+          normal._is_scalar_helper(tensor_shape.TensorShape(None),
                                    lambda: array_ops.shape(x)))
 
       # Test case 3.
       x = array_ops.placeholder(dtype=dtypes.int32)
-      is_scalar = normal._is_scalar_helper(x.get_shape,
+      is_scalar = normal._is_scalar_helper(x.get_shape(),
                                            lambda: array_ops.shape(x))
       self.assertTrue(is_scalar.eval(feed_dict={x: 1}))
       self.assertFalse(is_scalar.eval(feed_dict={x: [1]}))
@@ -140,10 +140,10 @@ class DistributionTest(test.TestCase):
             allow_nan_stats=True,
             name="DummyDistribution")
 
-      def _get_batch_shape(self):
+      def _batch_shape(self):
         return self._static_batch_shape
 
-      def _get_event_shape(self):
+      def _event_shape(self):
         return self._static_event_shape
 
     return FakeDistribution

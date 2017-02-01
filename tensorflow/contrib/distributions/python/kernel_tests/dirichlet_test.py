@@ -32,19 +32,19 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = np.random.rand(3)
       dist = dirichlet_lib.Dirichlet(alpha)
-      self.assertEqual(3, dist.event_shape().eval())
-      self.assertAllEqual([], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_batch_shape())
+      self.assertEqual(3, dist.event_shape_tensor().eval())
+      self.assertAllEqual([], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
   def testComplexShapes(self):
     with self.test_session():
       alpha = np.random.rand(3, 2, 2)
       dist = dirichlet_lib.Dirichlet(alpha)
-      self.assertEqual(2, dist.event_shape().eval())
-      self.assertAllEqual([3, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([2]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.get_batch_shape())
+      self.assertEqual(2, dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
   def testAlphaProperty(self):
     alpha = [[1., 2, 3]]

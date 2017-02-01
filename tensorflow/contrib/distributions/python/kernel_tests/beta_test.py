@@ -37,32 +37,32 @@ class BetaTest(test.TestCase):
       a = np.random.rand(3)
       b = np.random.rand(3)
       dist = beta_lib.Beta(a, b)
-      self.assertAllEqual([], dist.event_shape().eval())
-      self.assertAllEqual([3], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_batch_shape())
+      self.assertAllEqual([], dist.event_shape_tensor().eval())
+      self.assertAllEqual([3], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.batch_shape)
 
   def testComplexShapes(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(3, 2, 2)
       dist = beta_lib.Beta(a, b)
-      self.assertAllEqual([], dist.event_shape().eval())
-      self.assertAllEqual([3, 2, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_event_shape())
+      self.assertAllEqual([], dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.event_shape)
       self.assertEqual(
-          tensor_shape.TensorShape([3, 2, 2]), dist.get_batch_shape())
+          tensor_shape.TensorShape([3, 2, 2]), dist.batch_shape)
 
   def testComplexShapesBroadcast(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(2, 2)
       dist = beta_lib.Beta(a, b)
-      self.assertAllEqual([], dist.event_shape().eval())
-      self.assertAllEqual([3, 2, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_event_shape())
+      self.assertAllEqual([], dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.event_shape)
       self.assertEqual(
-          tensor_shape.TensorShape([3, 2, 2]), dist.get_batch_shape())
+          tensor_shape.TensorShape([3, 2, 2]), dist.batch_shape)
 
   def testAlphaProperty(self):
     a = [[1., 2, 3]]

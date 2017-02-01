@@ -225,7 +225,7 @@ class WishartCholeskyTest(test.TestCase):
           df=4, scale=chol_x[0], cholesky_input_output_matrices=False),
                 distributions.WishartFull(
                     df=4, scale=x[0], cholesky_input_output_matrices=False)):
-        self.assertAllEqual((2, 2), w.event_shape().eval())
+        self.assertAllEqual((2, 2), w.event_shape_tensor().eval())
         self.assertEqual(2, w.dimension.eval())
         self.assertAllClose(log_prob[0], w.log_prob(x[0]).eval())
         self.assertAllClose(log_prob[0:2], w.log_prob(x[0:2]).eval())
@@ -242,7 +242,7 @@ class WishartCholeskyTest(test.TestCase):
           df=4, scale=chol_x[0], cholesky_input_output_matrices=True),
                 distributions.WishartFull(
                     df=4, scale=x[0], cholesky_input_output_matrices=True)):
-        self.assertAllEqual((2, 2), w.event_shape().eval())
+        self.assertAllEqual((2, 2), w.event_shape_tensor().eval())
         self.assertEqual(2, w.dimension.eval())
         self.assertAllClose(log_prob[0], w.log_prob(chol_x[0]).eval())
         self.assertAllClose(log_prob[0:2], w.log_prob(chol_x[0:2]).eval())
@@ -261,21 +261,22 @@ class WishartCholeskyTest(test.TestCase):
       chol_scale = chol(scale)
 
       w = distributions.WishartCholesky(df=4, scale=chol_scale)
-      self.assertAllEqual([], w.get_batch_shape())
-      self.assertAllEqual([], w.batch_shape().eval())
+      self.assertAllEqual([], w.batch_shape)
+      self.assertAllEqual([], w.batch_shape_tensor().eval())
 
       w = distributions.WishartCholesky(
           df=[4., 4], scale=np.array([chol_scale, chol_scale]))
-      self.assertAllEqual([2], w.get_batch_shape())
-      self.assertAllEqual([2], w.batch_shape().eval())
+      self.assertAllEqual([2], w.batch_shape)
+      self.assertAllEqual([2], w.batch_shape_tensor().eval())
 
       scale_deferred = array_ops.placeholder(dtypes.float32)
       w = distributions.WishartCholesky(df=4, scale=scale_deferred)
       self.assertAllEqual(
-          [], sess.run(w.batch_shape(), feed_dict={scale_deferred: chol_scale}))
+          [], sess.run(w.batch_shape_tensor(),
+                       feed_dict={scale_deferred: chol_scale}))
       self.assertAllEqual(
           [2],
-          sess.run(w.batch_shape(),
+          sess.run(w.batch_shape_tensor(),
                    feed_dict={scale_deferred: [chol_scale, chol_scale]}))
 
   def testEventShape(self):
@@ -284,22 +285,23 @@ class WishartCholeskyTest(test.TestCase):
       chol_scale = chol(scale)
 
       w = distributions.WishartCholesky(df=4, scale=chol_scale)
-      self.assertAllEqual([2, 2], w.get_event_shape())
-      self.assertAllEqual([2, 2], w.event_shape().eval())
+      self.assertAllEqual([2, 2], w.event_shape)
+      self.assertAllEqual([2, 2], w.event_shape_tensor().eval())
 
       w = distributions.WishartCholesky(
           df=[4., 4], scale=np.array([chol_scale, chol_scale]))
-      self.assertAllEqual([2, 2], w.get_event_shape())
-      self.assertAllEqual([2, 2], w.event_shape().eval())
+      self.assertAllEqual([2, 2], w.event_shape)
+      self.assertAllEqual([2, 2], w.event_shape_tensor().eval())
 
       scale_deferred = array_ops.placeholder(dtypes.float32)
       w = distributions.WishartCholesky(df=4, scale=scale_deferred)
       self.assertAllEqual(
           [2, 2],
-          sess.run(w.event_shape(), feed_dict={scale_deferred: chol_scale}))
+          sess.run(w.event_shape_tensor(),
+                   feed_dict={scale_deferred: chol_scale}))
       self.assertAllEqual(
           [2, 2],
-          sess.run(w.event_shape(),
+          sess.run(w.event_shape_tensor(),
                    feed_dict={scale_deferred: [chol_scale, chol_scale]}))
 
   def testValidateArgs(self):

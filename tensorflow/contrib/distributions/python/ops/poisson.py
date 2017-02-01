@@ -92,16 +92,16 @@ class Poisson(distribution.Distribution):
     """Rate parameter."""
     return self._lam
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.shape(self.lam)
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.lam.get_shape()
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   @distribution_util.AppendDocstring(_poisson_prob_note)

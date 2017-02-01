@@ -35,10 +35,10 @@ class LaplaceTest(test.TestCase):
       scale = constant_op.constant(11.0)
       laplace = laplace_lib.Laplace(loc=loc, scale=scale)
 
-      self.assertEqual(laplace.batch_shape().eval(), (5,))
-      self.assertEqual(laplace.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(laplace.event_shape().eval(), [])
-      self.assertEqual(laplace.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(laplace.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(laplace.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(laplace.event_shape_tensor().eval(), [])
+      self.assertEqual(laplace.event_shape, tensor_shape.TensorShape([]))
 
   def testLaplaceLogPDF(self):
     with self.test_session():

@@ -406,10 +406,10 @@ class QuantizedDistributionTest(test.TestCase):
           low=1.0,
           high=10.0)
 
-      self.assertEqual(batch_shape, qdist.get_batch_shape())
-      self.assertAllEqual(batch_shape, qdist.batch_shape().eval())
-      self.assertEqual((), qdist.get_event_shape())
-      self.assertAllEqual((), qdist.event_shape().eval())
+      self.assertEqual(batch_shape, qdist.batch_shape)
+      self.assertAllEqual(batch_shape, qdist.batch_shape_tensor().eval())
+      self.assertEqual((), qdist.event_shape)
+      self.assertAllEqual((), qdist.event_shape_tensor().eval())
 
       samps = qdist.sample(10, seed=42)
       self.assertEqual((10,) + batch_shape, samps.get_shape())

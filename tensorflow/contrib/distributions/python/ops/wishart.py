@@ -178,23 +178,23 @@ class _WishartOperatorPD(distribution.Distribution):
     """Dimension of underlying vector space. The `p` in `R^(p*p)`."""
     return self._dimension
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     s = self.scale_operator_pd.shape()
     return array_ops.strided_slice(s, array_ops.shape(s) - 2,
                                    array_ops.shape(s))
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self.scale_operator_pd.get_shape()[-2:]
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return self.scale_operator_pd.batch_shape()
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.scale_operator_pd.get_batch_shape()
 
   def _sample_n(self, n, seed):
-    batch_shape = self.batch_shape()
-    event_shape = self.event_shape()
+    batch_shape = self.batch_shape_tensor()
+    event_shape = self.event_shape_tensor()
     batch_ndims = array_ops.shape(batch_shape)[0]
 
     ndims = batch_ndims + 3  # sample_ndims=1, event_ndims=2
@@ -257,8 +257,8 @@ class _WishartOperatorPD(distribution.Distribution):
       # Complexity: O(nbk^3)
       x_sqrt = linalg_ops.cholesky(x)
 
-    batch_shape = self.batch_shape()
-    event_shape = self.event_shape()
+    batch_shape = self.batch_shape_tensor()
+    event_shape = self.event_shape_tensor()
     ndims = array_ops.rank(x_sqrt)
     # sample_ndims = ndims - batch_ndims - event_ndims
     sample_ndims = ndims - array_ops.shape(batch_shape)[0] - 2
@@ -329,10 +329,10 @@ class _WishartOperatorPD(distribution.Distribution):
     if x.get_shape().ndims is not None:
       log_prob.set_shape(x.get_shape()[:-2])
     if (log_prob.get_shape().ndims is not None and
-        self.get_batch_shape().ndims is not None and
-        self.get_batch_shape().ndims > 0):
-      log_prob.get_shape()[-self.get_batch_shape().ndims:].merge_with(
-          self.get_batch_shape())
+        self.batch_shape.ndims is not None and
+        self.batch_shape.ndims > 0):
+      log_prob.get_shape()[-self.batch_shape.ndims:].merge_with(
+          self.batch_shape)
 
     return log_prob
 

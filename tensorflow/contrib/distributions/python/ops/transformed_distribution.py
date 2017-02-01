@@ -359,29 +359,29 @@ class TransformedDistribution(distributions.Distribution):
     """Function transforming x => y."""
     return self._bijector
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return self.bijector.forward_event_shape(distribution_util.pick_vector(
         self._is_event_override,
         self._override_event_shape,
-        self.distribution.event_shape()))
+        self.distribution.event_shape_tensor()))
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     static_override = tensor_util.constant_value(self._override_event_shape)
     return self.bijector.get_forward_event_shape(
-        self.distribution.get_event_shape()
+        self.distribution.event_shape
         if static_override is not None and not static_override
         else tensor_shape.TensorShape(static_override))
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return distribution_util.pick_vector(
         self._is_batch_override,
         self._override_batch_shape,
-        self.distribution.batch_shape())
+        self.distribution.batch_shape_tensor())
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     static_override = tensor_util.constant_value(self._override_batch_shape)
     if static_override is not None and not static_override:
-      return self.distribution.get_batch_shape()
+      return self.distribution.batch_shape
     return tensor_shape.TensorShape(static_override)
 
   @distribution_util.AppendDocstring(
@@ -472,12 +472,12 @@ class TransformedDistribution(distributions.Distribution):
     if self._is_maybe_batch_override:
       new_shape = array_ops.concat([
           _ones_like(self._override_batch_shape),
-          self.distribution.batch_shape()
+          self.distribution.batch_shape_tensor()
       ], 0)
       entropy = array_ops.reshape(entropy, new_shape)
       multiples = array_ops.concat([
           self._override_batch_shape,
-          _ones_like(self.distribution.batch_shape())
+          _ones_like(self.distribution.batch_shape_tensor())
       ], 0)
       entropy = array_ops.tile(entropy, multiples)
     dummy = 0.

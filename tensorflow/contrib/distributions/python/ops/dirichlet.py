@@ -167,17 +167,17 @@ class Dirichlet(distribution.Distribution):
     """Sum of shape parameter."""
     return self._alpha_sum
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.shape(self.alpha_sum)
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.alpha_sum.get_shape()
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return array_ops.gather(array_ops.shape(self.alpha),
                             [array_ops.rank(self.alpha) - 1])
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self.alpha.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
@@ -203,7 +203,8 @@ class Dirichlet(distribution.Distribution):
   def _entropy(self):
     entropy = special_math_ops.lbeta(self.alpha)
     entropy += math_ops.digamma(self.alpha_sum) * (
-        self.alpha_sum - math_ops.cast(self.event_shape()[0], self.dtype))
+        self.alpha_sum
+        - math_ops.cast(self.event_shape_tensor()[0], self.dtype))
     entropy += -math_ops.reduce_sum(
         (self.alpha - 1.) * math_ops.digamma(self.alpha),
         reduction_indices=[-1],
@@ -236,10 +237,11 @@ class Dirichlet(distribution.Distribution):
   def _mode(self):
     mode = ((self.alpha - 1.) /
             (array_ops.expand_dims(self.alpha_sum, dim=-1) -
-             math_ops.cast(self.event_shape()[0], self.dtype)))
+             math_ops.cast(self.event_shape_tensor()[0], self.dtype)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      shape = array_ops.concat((self.batch_shape(), self.event_shape()), 0)
+      shape = array_ops.concat([self.batch_shape_tensor(),
+                                self.event_shape_tensor()], 0)
       return array_ops.where(
           math_ops.greater(self.alpha, 1.),
           mode,

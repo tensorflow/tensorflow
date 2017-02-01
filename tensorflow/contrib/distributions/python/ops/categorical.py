@@ -129,14 +129,14 @@ class Categorical(distribution.Distribution):
 
       logits_shape = array_ops.shape(self._logits, name="logits_shape")
       if logits_shape_static[-1].value is not None:
-        self._num_classes = ops.convert_to_tensor(
+        self._event_size = ops.convert_to_tensor(
             logits_shape_static[-1].value,
             dtype=dtypes.int32,
-            name="num_classes")
+            name="event_size")
       else:
-        self._num_classes = array_ops.gather(logits_shape,
-                                             self._batch_rank,
-                                             name="num_classes")
+        self._event_size = array_ops.gather(logits_shape,
+                                            self._batch_rank,
+                                            name="event_size")
 
       if logits_shape_static[:-1].is_fully_defined():
         self._batch_shape_val = constant_op.constant(
@@ -153,13 +153,14 @@ class Categorical(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
-        graph_parents=[self._logits, self._num_classes],
+        graph_parents=[self._logits,
+                       self._probs],
         name=ns)
 
   @property
-  def num_classes(self):
+  def event_size(self):
     """Scalar `int32` tensor: the number of classes."""
-    return self._num_classes
+    return self._event_size
 
   @property
   def logits(self):
@@ -171,29 +172,28 @@ class Categorical(distribution.Distribution):
     """Vector of coordinatewise probabilities."""
     return self._probs
 
-  def _batch_shape(self):
-    # Use identity to inherit callers "name".
+  def _batch_shape_tensor(self):
     return array_ops.identity(self._batch_shape_val)
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.logits.get_shape()[:-1]
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
     if self.logits.get_shape().ndims == 2:
       logits_2d = self.logits
     else:
-      logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
+      logits_2d = array_ops.reshape(self.logits, [-1, self.event_size])
     samples = random_ops.multinomial(logits_2d, n, seed=seed)
     samples = math_ops.cast(samples, self.dtype)
     ret = array_ops.reshape(
         array_ops.transpose(samples),
-        array_ops.concat(([n], self.batch_shape()), 0))
+        array_ops.concat(([n], self.batch_shape_tensor()), 0))
     return ret
 
   def _log_prob(self, k):
@@ -219,7 +219,7 @@ class Categorical(distribution.Distribution):
   def _mode(self):
     ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
     ret = math_ops.cast(ret, self.dtype)
-    ret.set_shape(self.get_batch_shape())
+    ret.set_shape(self.batch_shape)
     return ret
 
 

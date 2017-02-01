@@ -142,24 +142,24 @@ class Uniform(distribution.Distribution):
     with self._name_scope(name):
       return self.high - self.low
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
         array_ops.shape(self.low),
         array_ops.shape(self.high))
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return array_ops.broadcast_static_shape(
         self.low.get_shape(),
         self.high.get_shape())
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], self.batch_shape()), 0)
+    shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
     samples = random_ops.random_uniform(shape=shape,
                                         dtype=self.dtype,
                                         seed=seed)
@@ -169,7 +169,7 @@ class Uniform(distribution.Distribution):
     return math_ops.log(self._prob(x))
 
   def _prob(self, x):
-    broadcasted_x = x * array_ops.ones(self.batch_shape())
+    broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
     return array_ops.where(
         math_ops.is_nan(broadcasted_x),
         broadcasted_x,
@@ -184,7 +184,7 @@ class Uniform(distribution.Distribution):
 
   def _cdf(self, x):
     broadcast_shape = array_ops.broadcast_dynamic_shape(
-        array_ops.shape(x), self.batch_shape())
+        array_ops.shape(x), self.batch_shape_tensor())
     zeros = array_ops.zeros(broadcast_shape, dtype=self.dtype)
     ones = array_ops.ones(broadcast_shape, dtype=self.dtype)
     broadcasted_x = x * ones

@@ -197,16 +197,16 @@ class DirichletMultinomial(distribution.Distribution):
     """Summation of alpha parameter."""
     return self._alpha_sum
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.shape(self.alpha_sum)
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.alpha_sum.get_shape()
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return array_ops.reverse_v2(array_ops.shape(self.alpha), [0])[0]
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     # Event shape depends only on alpha, not "n".
     return self.alpha.get_shape().with_rank_at_least(1)[-1:]
 
@@ -221,7 +221,7 @@ class DirichletMultinomial(distribution.Distribution):
           n_draws, 0,
           message="Sample only supported for scalar number of draws.")
       n_draws = control_flow_ops.with_dependencies([is_scalar], n_draws)
-    k = self.event_shape()[0]
+    k = self.event_shape_tensor()[0]
     unnormalized_logits = array_ops.reshape(
         math_ops.log(random_ops.random_gamma(
             shape=[n],
@@ -235,7 +235,7 @@ class DirichletMultinomial(distribution.Distribution):
         seed=distribution_util.gen_new_seed(seed, salt="dirichlet_multinomial"))
     x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
                             reduction_indices=-2)
-    final_shape = array_ops.concat([[n], self.batch_shape(), [k]], 0)
+    final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
     return array_ops.reshape(x, final_shape)
 
   @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)

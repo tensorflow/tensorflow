@@ -198,16 +198,16 @@ class Multinomial(distribution.Distribution):
     """Probability of of drawing a `1` in that coordinate."""
     return self._probs
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.shape(self._mean_val)[:-1]
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self._mean_val.get_shape().with_rank_at_least(1)[:-1]
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return array_ops.shape(self._mean_val)[-1:]
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self._mean_val.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
@@ -221,9 +221,9 @@ class Multinomial(distribution.Distribution):
           n_draws, 0,
           message="Sample only supported for scalar number of draws.")
       n_draws = control_flow_ops.with_dependencies([is_scalar], n_draws)
-    k = self.event_shape()[0]
+    k = self.event_shape_tensor()[0]
     # Flatten batch dims so logits has shape [B, k],
-    # where B = reduce_prod(self.batch_shape()).
+    # where B = reduce_prod(self.batch_shape_tensor()).
     draws = random_ops.multinomial(
         logits=array_ops.reshape(self.logits, [-1, k]),
         num_samples=n * n_draws,
@@ -232,7 +232,7 @@ class Multinomial(distribution.Distribution):
     x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
                             reduction_indices=-2)  # shape: [B, n, k]
     x = array_ops.transpose(x, perm=[1, 0, 2])
-    final_shape = array_ops.concat([[n], self.batch_shape(), [k]], 0)
+    final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
     return array_ops.reshape(x, final_shape)
 
   @distribution_util.AppendDocstring(_multinomial_sample_note)

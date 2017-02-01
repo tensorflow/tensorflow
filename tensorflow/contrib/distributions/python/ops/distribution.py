@@ -37,7 +37,7 @@ from tensorflow.python.ops import math_ops
 
 
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
-    "batch_shape", "get_batch_shape", "event_shape", "get_event_shape",
+    "batch_shape_tensor", "batch_shape", "event_shape_tensor", "event_shape",
     "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
     "survival_function", "entropy", "mean", "variance", "stddev", "mode",
     "covariance"]
@@ -282,9 +282,9 @@ class Distribution(_BaseDistribution):
   u = Uniform(minval, maxval)
 
   # `event_shape` is `TensorShape([])`.
-  event_shape = u.get_event_shape()
+  event_shape = u.event_shape
   # `event_shape_t` is a `Tensor` which will evaluate to [].
-  event_shape_t = u.event_shape
+  event_shape_t = u.event_shape_tensor()
 
   # Sampling returns a sample per distribution.  `samples` has shape
   # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
@@ -533,14 +533,14 @@ class Distribution(_BaseDistribution):
     parameters.pop("__class__", None)
     return type(self)(**parameters)
 
-  def _batch_shape(self):
-    raise NotImplementedError("batch_shape is not implemented")
+  def _batch_shape_tensor(self):
+    raise NotImplementedError("batch_shape_tensor is not implemented")
 
-  def batch_shape(self, name="batch_shape"):
+  def batch_shape_tensor(self, name="batch_shape_tensor"):
     """Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
+    The batch dimensions are indexes into independent, non-identical
+    parameterizations of this distribution.
 
     Args:
       name: name to give to the op
@@ -549,29 +549,33 @@ class Distribution(_BaseDistribution):
       batch_shape: `Tensor`.
     """
     with self._name_scope(name):
-      if self.get_batch_shape().is_fully_defined():
-        return ops.convert_to_tensor(self.get_batch_shape().as_list(),
+      if self.batch_shape.is_fully_defined():
+        return ops.convert_to_tensor(self.batch_shape.as_list(),
                                      dtype=dtypes.int32,
                                      name="batch_shape")
-      return self._batch_shape()
+      return self._batch_shape_tensor()
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return tensor_shape.TensorShape(None)
 
-  def get_batch_shape(self):
+  @property
+  def batch_shape(self):
     """Shape of a single sample from a single event index as a `TensorShape`.
 
-    Same meaning as `batch_shape`. May be only partially defined.
+    May be partially defined or unknown.
+
+    The batch dimensions are indexes into independent, non-identical
+    parameterizations of this distribution.
 
     Returns:
       batch_shape: `TensorShape`, possibly unknown.
     """
-    return self._get_batch_shape()
+    return self._batch_shape()
 
-  def _event_shape(self):
-    raise NotImplementedError("event_shape is not implemented")
+  def _event_shape_tensor(self):
+    raise NotImplementedError("event_shape_tensor is not implemented")
 
-  def event_shape(self, name="event_shape"):
+  def event_shape_tensor(self, name="event_shape_tensor"):
     """Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
     Args:
@@ -581,24 +585,25 @@ class Distribution(_BaseDistribution):
       event_shape: `Tensor`.
     """
     with self._name_scope(name):
-      if self.get_event_shape().is_fully_defined():
-        return ops.convert_to_tensor(self.get_event_shape().as_list(),
+      if self.event_shape.is_fully_defined():
+        return ops.convert_to_tensor(self.event_shape.as_list(),
                                      dtype=dtypes.int32,
                                      name="event_shape")
-      return self._event_shape()
+      return self._event_shape_tensor()
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.TensorShape(None)
 
-  def get_event_shape(self):
+  @property
+  def event_shape(self):
     """Shape of a single sample from a single batch as a `TensorShape`.
 
-    Same meaning as `event_shape`. May be only partially defined.
+    May be partially defined or unknown.
 
     Returns:
       event_shape: `TensorShape`, possibly unknown.
     """
-    return self._get_event_shape()
+    return self._event_shape()
 
   def is_scalar_event(self, name="is_scalar_event"):
     """Indicates that `event_shape == []`.
@@ -611,7 +616,7 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return ops.convert_to_tensor(
-          self._is_scalar_helper(self.get_event_shape, self.event_shape),
+          self._is_scalar_helper(self.event_shape, self.event_shape_tensor),
           name="is_scalar_event")
 
   def is_scalar_batch(self, name="is_scalar_batch"):
@@ -625,7 +630,7 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return ops.convert_to_tensor(
-          self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+          self._is_scalar_helper(self.batch_shape, self.batch_shape_tensor),
           name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
@@ -1032,8 +1037,8 @@ class Distribution(_BaseDistribution):
 
     ndims = x.get_shape().ndims
     sample_ndims = sample_shape.ndims
-    batch_ndims = self.get_batch_shape().ndims
-    event_ndims = self.get_event_shape().ndims
+    batch_ndims = self.batch_shape.ndims
+    event_ndims = self.event_shape.ndims
 
     # Infer rank(x).
     if (ndims is None and
@@ -1051,7 +1056,7 @@ class Distribution(_BaseDistribution):
     # Infer event shape.
     if ndims is not None and event_ndims is not None:
       shape = tensor_shape.TensorShape(
-          [None]*(ndims - event_ndims)).concatenate(self.get_event_shape())
+          [None]*(ndims - event_ndims)).concatenate(self.event_shape)
       x.set_shape(x.get_shape().merge_with(shape))
 
     # Infer batch shape.
@@ -1063,19 +1068,19 @@ class Distribution(_BaseDistribution):
           event_ndims = ndims - batch_ndims - sample_ndims
       if sample_ndims is not None and event_ndims is not None:
         shape = tensor_shape.TensorShape([None]*sample_ndims).concatenate(
-            self.get_batch_shape()).concatenate([None]*event_ndims)
+            self.batch_shape).concatenate([None]*event_ndims)
         x.set_shape(x.get_shape().merge_with(shape))
 
     return x
 
-  def _is_scalar_helper(self, static_shape_fn, dynamic_shape_fn):
+  def _is_scalar_helper(self, static_shape, dynamic_shape_fn):
     """Implementation for `is_scalar_batch` and `is_scalar_event`."""
-    if static_shape_fn().ndims is not None:
-      return static_shape_fn().ndims == 0
+    if static_shape.ndims is not None:
+      return static_shape.ndims == 0
     shape = dynamic_shape_fn()
     if (shape.get_shape().ndims is not None and
         shape.get_shape()[0].value is not None):
-      # If the static_shape_fn is correctly written then we should never execute
+      # If the static_shape is correctly written then we should never execute
       # this branch. We keep it just in case there's some unimagined corner
       # case.
       return shape.get_shape().as_list() == [0]
