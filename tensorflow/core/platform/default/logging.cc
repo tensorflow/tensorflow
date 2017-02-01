@@ -77,14 +77,17 @@ void LogMessage::GenerateLogMessage() {
 
 void LogMessage::GenerateLogMessage() {
   static EnvTime* env_time = tensorflow::EnvTime::Default();
-  time_t now = static_cast<time_t>(env_time->NowSeconds());
+  uint64 now_micros = env_time->NowMicros();
+  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
+  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
   const size_t time_buffer_size = 30;
   char time_buffer[time_buffer_size];
-  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S", localtime(&now));
+  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
+	   localtime(&now_seconds));
 
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s: %c %s:%d] %s\n", time_buffer, "IWEF"[severity_], fname_,
-          line_, str().c_str());
+  fprintf(stderr, "%s.%d: %c %s:%d] %s\n", time_buffer, micros_remainder,
+	  "IWEF"[severity_], fname_, line_, str().c_str());
 }
 #endif
 
