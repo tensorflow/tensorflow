@@ -257,6 +257,32 @@ CUDA_ATOMIC_WRAPPER(Max, uint64) {
 }
 #endif
 
+CUDA_ATOMIC_WRAPPER(Max, float) {
+  int32* address_as_int = reinterpret_cast<int32*>(address);
+  int32 old = *address_as_int, assumed;
+
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_int, assumed,
+                    __float_as_int(max(val,  __int_as_float(assumed))));;
+  } while (assumed != old);
+
+  return __int_as_float(old);
+}
+
+CUDA_ATOMIC_WRAPPER(Max, double) {
+  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
+  uint64 old = *address_as_ull, assumed;
+
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(max(val,  __longlong_as_double(assumed))));;
+  } while (assumed != old);
+
+  return __longlong_as_double(old);
+}
+
 template <typename T>
 __global__ void SetZero(const int nthreads, T* data) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) { *(data + index) = T(0); }
