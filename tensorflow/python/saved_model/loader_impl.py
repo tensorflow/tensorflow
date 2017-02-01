@@ -175,7 +175,7 @@ def maybe_saved_model_directory(export_dir):
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
-def load(sess, tags, export_dir):
+def load(sess, tags, export_dir, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 
   Args:
@@ -185,6 +185,7 @@ def load(sess, tags, export_dir):
         SavedModel `save()` API.
     export_dir: Directory in which the SavedModel protocol buffer and variables
         to be loaded are located.
+    **saver_kwargs: Optional keyword arguments passed through to Saver.
 
   Returns:
     The `MetaGraphDef` protocol buffer loaded in the provided session. This
@@ -207,7 +208,7 @@ def load(sess, tags, export_dir):
         "[]") + " could not be found in SavedModel")
 
   # Build a saver by importing the meta graph def to load.
-  saver = tf_saver.import_meta_graph(meta_graph_def_to_load)
+  saver = tf_saver.import_meta_graph(meta_graph_def_to_load, **saver_kwargs)
 
   # Build the checkpoint path where the variables are located.
   variables_path = os.path.join(
