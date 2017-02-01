@@ -264,8 +264,8 @@ def _get_arg_spec(func):
       argspec_defaults = list(argspec.defaults[partial_args-first_default_arg:])
 
     first_default_arg = max(0, first_default_arg - partial_args)
-    for kwarg in func.keywords:
-      if kwarg in argspec.args:
+    for kwarg in (func.keywords or []):
+      if kwarg in (argspec.args or []):
         i = argspec_args.index(kwarg)
         argspec_args.pop(i)
         if i >= first_default_arg:

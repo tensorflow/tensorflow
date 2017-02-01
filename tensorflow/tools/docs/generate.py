@@ -118,8 +118,7 @@ def extract():
 
   # Access something in contrib so tf.contrib is properly loaded (it's hidden
   # behind lazy loading)
-  # TODO(wicke): Enable contrib traversal once contrib is sealed.
-  # _ = tf.contrib.__name__
+  _ = tf.contrib.__name__
 
   # Exclude some libaries in contrib from the documentation altogether.
   # TODO(wicke): Shrink this list.
@@ -163,6 +162,7 @@ def extract():
       ],
       'contrib.learn': [
           'datasets',
+          'head',
           'graph_actions',
           'io',
           'models',
