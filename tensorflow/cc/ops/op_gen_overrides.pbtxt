@@ -20,6 +20,15 @@ op { name: "Where" input_rename: { from: "input" to: "condition" } }
 
 # candidate_sampling_ops
 # control_flow_ops
+op { name: "Switch" hide: true }
+op { name: "Merge" hide: true }
+op { name: "RefMerge" hide: true }
+op { name: "Exit" hide: true }
+op { name: "RefExit" hide: true }
+op { name: "Enter" hide: true }
+op { name: "RefEnter" hide: true }
+op { name: "RefIdentity" hide: true }
+
 # ctc_ops
 # data_flow_ops
 op { name: "FakeQueue" skip: true }

@@ -253,7 +253,7 @@ def tf_gen_op_wrappers_cc(name,
                     ]),
                     copts=tf_copts(),
                     alwayslink=1,
-                    visibility=["//visibility:private"])
+                    visibility=["//tensorflow:internal"])
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
