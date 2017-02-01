@@ -163,7 +163,11 @@ CUDA_ATOMIC_WRAPPER(Max, uint64) {
 }
 #endif
 
-// Custom implementation of atomicAdd for double.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
+USE_CUDA_ATOMIC(Add, double);
+#else
+// The double overload of atomicMax() is only available for __CUDA_ARCH__ >=
+// 600.  If not satisfied, we provide a custom implementation using atomicCAS().
 // This implementation is copied from CUDA manual.
 CUDA_ATOMIC_WRAPPER(Add, double) {
   uint64* address_as_ull = reinterpret_cast<uint64*>(address);
@@ -179,6 +183,7 @@ CUDA_ATOMIC_WRAPPER(Add, double) {
 
   return __longlong_as_double(old);
 }
+#endif
 
 // Helper functions for CudaAtomicAdd(half*, half), below.
 //
