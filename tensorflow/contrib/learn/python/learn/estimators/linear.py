@@ -67,14 +67,21 @@ def _as_iterable(preds, output):
 
 
 def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
-                     labels, columns_to_variables):
+                     columns_to_variables):
+  """Adds a fake bias feature column filled with all 1s."""
   # TODO(b/31008490): Move definition to a common constants place.
   bias_column_name = "tf_virtual_bias_column"
   if any(col.name is bias_column_name for col in feature_columns):
     raise ValueError("%s is a reserved column name." % bias_column_name)
+  if not feature_columns:
+    raise ValueError("feature_columns can't be empty.")
+
+  # Using a arbitrary input tensor to figure out batch_size.
+  batch_size = array_ops.shape(next(iter(columns_to_tensors.values())))[0]
+
   bias_column = layers.real_valued_column(bias_column_name)
-  columns_to_tensors[bias_column] = array_ops.ones_like(labels,
-                                                        dtype=dtypes.float32)
+  columns_to_tensors[bias_column] = array_ops.ones([batch_size, 1],
+                                                   dtype=dtypes.float32)
   columns_to_variables[bias_column] = [bias_variable]
 
 
@@ -224,8 +231,7 @@ def sdca_model_fn(features, labels, mode, params):
             num_outputs=1,
             scope=scope))
 
-    _add_bias_column(feature_columns, features, bias, labels,
-                     columns_to_variables)
+    _add_bias_column(feature_columns, features, bias, columns_to_variables)
 
   def _train_op_fn(unused_loss):
     global_step = contrib_variables.get_global_step()
