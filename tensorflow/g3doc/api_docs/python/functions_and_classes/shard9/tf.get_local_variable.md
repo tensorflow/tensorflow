@@ -57,6 +57,9 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,

@@ -52,7 +52,7 @@ tf_kernel_library(
 
 py_library(
     name = "input_pipeline_py",
-    srcs = glob(["python/ops/*.py"]),
+    srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
     data = [":python/ops/_input_pipeline_ops.so"],
     srcs_version = "PY2AND3",
     deps = [

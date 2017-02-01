@@ -133,7 +133,6 @@ Status XlaContext::CollectResults(
     int* num_nonconst_outputs) {
   mutex_lock l(mu_);
 
-
   xla::ComputationDataHandle handle;
   if (retval_.empty() && has_side_effects_) {
     // Build a empty tuple return value for computations that have side effects
@@ -192,10 +191,12 @@ Status XlaContext::CollectResults(
 
 XlaContext::XlaContext(XlaCompiler* compiler, xla::Client* client,
                        const string& computation_name,
-                       bool allow_cpu_custom_calls)
+                       bool allow_cpu_custom_calls,
+                       bool resolve_compile_time_constants)
     : compiler_(compiler),
       xla_builder_(client, computation_name),
-      allow_cpu_custom_calls_(allow_cpu_custom_calls) {}
+      allow_cpu_custom_calls_(allow_cpu_custom_calls),
+      resolve_compile_time_constants_(resolve_compile_time_constants) {}
 
 const xla::ComputationDataHandle&
 XlaContext::GetOrCreateRuntimeContextParameter() {
@@ -227,11 +228,16 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
                                   const xla::Literal& literal) {
   VLOG(1) << "Adding retval index " << retval_index
           << " with non-data-dependent tensor to XLA computation";
-  ConstRetVal value;
-  value.index = retval_index;
-  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value.value));
-  mutex_lock l(mu_);
-  compile_time_constant_.push_back(std::move(value));
+  if (resolve_compile_time_constants_) {
+    ConstRetVal value;
+    value.index = retval_index;
+    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value.value));
+    mutex_lock l(mu_);
+    compile_time_constant_.push_back(std::move(value));
+  } else {
+    mutex_lock l(mu_);
+    retval_.emplace_back(retval_index, xla_builder_.ConstantLiteral(literal));
+  }
   return Status::OK();
 }
 

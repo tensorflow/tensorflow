@@ -62,8 +62,8 @@ class Poisson(distribution.Distribution):
       lam: Floating point tensor, the rate parameter of the
         distribution(s). `lam` must be positive.
       validate_args: `Boolean`, default `False`.  Whether to assert that
-        `lam > 0` as well as inputs to pmf computations are non-negative
-        integers. If validate_args is `False`, then `pmf` computations might
+        `lam > 0` as well as inputs to `prob` computations are non-negative
+        integers. If validate_args is `False`, then `prob` computations might
         return `NaN`, but can be evaluated at any real value.
       allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any

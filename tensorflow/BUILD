@@ -70,6 +70,22 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "debug",
+    values = {
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],

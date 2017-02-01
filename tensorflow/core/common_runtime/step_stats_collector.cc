@@ -139,6 +139,7 @@ void StepStatsCollector::BuildCostModel(
 
     const Graph* graph = itr.second;
     CostModel* cm = cost_model_manager->FindOrCreateCostModel(graph);
+    cm->IncrementUpdateTimes();
 
     std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
     for (Node* n : graph->nodes()) {

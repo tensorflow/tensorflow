@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
 #define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
 
+#include <stdint.h>
 #include <memory>
-
-#include "tensorflow/core/platform/types.h"
 
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
@@ -28,8 +27,6 @@ limitations under the License.
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
 #include "tensorflow/examples/android/jni/object_tracking/config.h"
-
-using namespace tensorflow;
 
 namespace tf_tracking {
 
@@ -89,15 +86,14 @@ class ImageData {
     }
   }
 
-  void SetData(const uint8* const new_frame, const int stride,
-               const int64 timestamp, const int downsample_factor) {
+  void SetData(const uint8_t* const new_frame, const int stride,
+               const int64_t timestamp, const int downsample_factor) {
     SetData(new_frame, NULL, stride, timestamp, downsample_factor);
   }
 
-  void SetData(const uint8* const new_frame,
-               const uint8* const uv_frame,
-               const int stride,
-               const int64 timestamp, const int downsample_factor) {
+  void SetData(const uint8_t* const new_frame, const uint8_t* const uv_frame,
+               const int stride, const int64_t timestamp,
+               const int downsample_factor) {
     ResetComputationCache();
 
     timestamp_ = timestamp;
@@ -110,8 +106,8 @@ class ImageData {
 
     if (uv_frame != NULL) {
       if (u_data_.get() == NULL) {
-        u_data_.reset(new Image<uint8>(uv_frame_width_, uv_frame_height_));
-        v_data_.reset(new Image<uint8>(uv_frame_width_, uv_frame_height_));
+        u_data_.reset(new Image<uint8_t>(uv_frame_width_, uv_frame_height_));
+        v_data_.reset(new Image<uint8_t>(uv_frame_width_, uv_frame_height_));
       }
 
       GetUV(uv_frame, u_data_.get(), v_data_.get());
@@ -128,20 +124,18 @@ class ImageData {
 #endif
   }
 
-  inline const uint64 GetTimestamp() const {
-    return timestamp_;
-  }
+  inline const uint64_t GetTimestamp() const { return timestamp_; }
 
-  inline const Image<uint8>* GetImage() const {
+  inline const Image<uint8_t>* GetImage() const {
     SCHECK(pyramid_sqrt2_computed_[0], "image not set!");
     return pyramid_sqrt2_[0];
   }
 
-  const Image<uint8>* GetPyramidSqrt2Level(const int level) const {
+  const Image<uint8_t>* GetPyramidSqrt2Level(const int level) const {
     if (!pyramid_sqrt2_computed_[level]) {
       SCHECK(level != 0, "Level equals 0!");
       if (level == 1) {
-        const Image<uint8>& upper_level = *GetPyramidSqrt2Level(0);
+        const Image<uint8_t>& upper_level = *GetPyramidSqrt2Level(0);
         if (pyramid_sqrt2_[level] == NULL) {
           const int new_width =
               (static_cast<int>(upper_level.GetWidth() / sqrtf(2)) + 1) / 2 * 2;
@@ -149,13 +143,13 @@ class ImageData {
               (static_cast<int>(upper_level.GetHeight() / sqrtf(2)) + 1) / 2 *
               2;
 
-          pyramid_sqrt2_[level] = new Image<uint8>(new_width, new_height);
+          pyramid_sqrt2_[level] = new Image<uint8_t>(new_width, new_height);
         }
         pyramid_sqrt2_[level]->DownsampleInterpolateLinear(upper_level);
       } else {
-        const Image<uint8>& upper_level = *GetPyramidSqrt2Level(level - 2);
+        const Image<uint8_t>& upper_level = *GetPyramidSqrt2Level(level - 2);
         if (pyramid_sqrt2_[level] == NULL) {
-          pyramid_sqrt2_[level] = new Image<uint8>(
+          pyramid_sqrt2_[level] = new Image<uint8_t>(
               upper_level.GetWidth() / 2, upper_level.GetHeight() / 2);
         }
         pyramid_sqrt2_[level]->DownsampleAveraged(
@@ -166,11 +160,11 @@ class ImageData {
     return pyramid_sqrt2_[level];
   }
 
-  inline const Image<int32>* GetSpatialX(const int level) const {
+  inline const Image<int32_t>* GetSpatialX(const int level) const {
     if (!spatial_x_computed_[level]) {
-      const Image<uint8>& src = *GetPyramidSqrt2Level(level * 2);
+      const Image<uint8_t>& src = *GetPyramidSqrt2Level(level * 2);
       if (spatial_x_[level] == NULL) {
-        spatial_x_[level] = new Image<int32>(src.GetWidth(), src.GetHeight());
+        spatial_x_[level] = new Image<int32_t>(src.GetWidth(), src.GetHeight());
       }
       spatial_x_[level]->DerivativeX(src);
       spatial_x_computed_[level] = true;
@@ -178,11 +172,11 @@ class ImageData {
     return spatial_x_[level];
   }
 
-  inline const Image<int32>* GetSpatialY(const int level) const {
+  inline const Image<int32_t>* GetSpatialY(const int level) const {
     if (!spatial_y_computed_[level]) {
-      const Image<uint8>& src = *GetPyramidSqrt2Level(level * 2);
+      const Image<uint8_t>& src = *GetPyramidSqrt2Level(level * 2);
       if (spatial_y_[level] == NULL) {
-        spatial_y_[level] = new Image<int32>(src.GetWidth(), src.GetHeight());
+        spatial_y_[level] = new Image<int32_t>(src.GetWidth(), src.GetHeight());
       }
       spatial_y_[level]->DerivativeY(src);
       spatial_y_computed_[level] = true;
@@ -202,12 +196,12 @@ class ImageData {
     return integral_image_.get();
   }
 
-  inline const Image<uint8>* GetU() const {
+  inline const Image<uint8_t>* GetU() const {
     SCHECK(uv_data_computed_, "UV data not provided!");
     return u_data_.get();
   }
 
-  inline const Image<uint8>* GetV() const {
+  inline const Image<uint8_t>* GetV() const {
     SCHECK(uv_data_computed_, "UV data not provided!");
     return v_data_.get();
   }
@@ -240,19 +234,19 @@ class ImageData {
   const int uv_frame_width_;
   const int uv_frame_height_;
 
-  int64 timestamp_;
+  int64_t timestamp_;
 
-  Image<uint8> image_;
+  Image<uint8_t> image_;
 
   bool uv_data_computed_;
-  std::unique_ptr<Image<uint8> > u_data_;
-  std::unique_ptr<Image<uint8> > v_data_;
+  std::unique_ptr<Image<uint8_t> > u_data_;
+  std::unique_ptr<Image<uint8_t> > v_data_;
 
   mutable bool spatial_x_computed_[kNumPyramidLevels];
-  mutable Image<int32>* spatial_x_[kNumPyramidLevels];
+  mutable Image<int32_t>* spatial_x_[kNumPyramidLevels];
 
   mutable bool spatial_y_computed_[kNumPyramidLevels];
-  mutable Image<int32>* spatial_y_[kNumPyramidLevels];
+  mutable Image<int32_t>* spatial_y_[kNumPyramidLevels];
 
   // Mutable so the lazy initialization can work when this class is const.
   // Whether or not the integral image has been computed for the current image.
@@ -260,7 +254,7 @@ class ImageData {
   mutable std::unique_ptr<IntegralImage> integral_image_;
 
   mutable bool pyramid_sqrt2_computed_[kNumPyramidLevels * 2];
-  mutable Image<uint8>* pyramid_sqrt2_[kNumPyramidLevels * 2];
+  mutable Image<uint8_t>* pyramid_sqrt2_[kNumPyramidLevels * 2];
 
   TF_DISALLOW_COPY_AND_ASSIGN(ImageData);
 };

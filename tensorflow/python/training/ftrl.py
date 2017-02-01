@@ -120,6 +120,19 @@ class FtrlOptimizer(optimizer.Optimizer):
         math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
         use_locking=self._use_locking)
 
+  def _resource_apply_dense(self, grad, var):
+    accum = self.get_slot(var, "accum")
+    linear = self.get_slot(var, "linear")
+    return training_ops.resource_apply_ftrl(
+        var, accum.handle, linear.handle, grad,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        math_ops.cast(self._l1_regularization_strength_tensor,
+                      grad.dtype.base_dtype),
+        math_ops.cast(self._l2_regularization_strength_tensor,
+                      grad.dtype.base_dtype),
+        math_ops.cast(self._learning_rate_power_tensor, grad.dtype.base_dtype),
+        use_locking=self._use_locking)
+
   def _apply_sparse(self, grad, var):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
@@ -131,4 +144,17 @@ class FtrlOptimizer(optimizer.Optimizer):
         math_ops.cast(self._l2_regularization_strength_tensor,
                       var.dtype.base_dtype),
         math_ops.cast(self._learning_rate_power_tensor, var.dtype.base_dtype),
+        use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    accum = self.get_slot(var, "accum")
+    linear = self.get_slot(var, "linear")
+    return training_ops.resource_sparse_apply_ftrl(
+        var, accum.handle, linear.handle, grad, indices,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype),
+        math_ops.cast(self._l1_regularization_strength_tensor,
+                      grad.dtype),
+        math_ops.cast(self._l2_regularization_strength_tensor,
+                      grad.dtype),
+        math_ops.cast(self._learning_rate_power_tensor, grad.dtype),
         use_locking=self._use_locking)

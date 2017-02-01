@@ -144,7 +144,7 @@ applying gradients).
 
 A common training configuration, called "data parallelism," involves multiple
 tasks in a `worker` job training the same model on different mini-batches of
-data, updating shared parameters hosted in a one or more tasks in a `ps`
+data, updating shared parameters hosted in one or more tasks in a `ps`
 job. All tasks typically run on different machines. There are many ways to
 specify this structure in TensorFlow, and we are building libraries that will
 simplify the work of specifying a replicated model. Possible approaches include:

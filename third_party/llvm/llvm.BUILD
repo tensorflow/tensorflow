@@ -329,6 +329,7 @@ llvm_target_list = [
         "lower_name": "aarch64",
         "short_name": "AArch64",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/AArch64/AArch64GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/AArch64/AArch64GenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/AArch64/AArch64GenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/AArch64/AArch64GenMCCodeEmitter.inc"),
@@ -1266,6 +1267,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":ipo",
         ":mc",
         ":nvptx_asm_printer",
         ":nvptx_desc",

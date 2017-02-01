@@ -158,6 +158,12 @@ class CostModel {
   // Write the contents of the CostModel to the INFO log.
   void WriteSummaryToLog() const;
 
+  // Increment the times that the cost model is updated.
+  void IncrementUpdateTimes();
+
+  // Get the times that the cost model is updated.
+  int32 GetUpdateTimes() const;
+
  private:
   static Bytes MinTensorMemoryUsage(const TensorShapeProto& tensor_shape,
                                     const DataType& dtype);
@@ -170,6 +176,9 @@ class CostModel {
   // Nodes and Edges whose count is < this value
   // get type/byte estimates of 0.
   int32 min_count_ = 0;
+
+  // The number of times the cost model is updated.
+  int32 update_times_ = 0;
 
   // Number of times each Node has been executed.
   std::vector<int32> count_;

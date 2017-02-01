@@ -111,7 +111,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        pred = math_ops.matmul(var0, x) + var1
+        pred += var1
         loss = pred * pred
         sgd_op = gradient_descent.GradientDescentOptimizer(1.0).minimize(loss)
         # TODO(apassos) calling initialize_resources on all resources here
