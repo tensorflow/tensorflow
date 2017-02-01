@@ -179,9 +179,6 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   num_ps_replicas = config.num_ps_replicas if config else 0
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
 
-  if not dnn_hidden_units:
-    raise ValueError(
-        "dnn_hidden_units must be defined.")
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
         "Either linear_feature_columns or dnn_feature_columns must be defined.")
@@ -194,6 +191,9 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   if not dnn_feature_columns:
     dnn_logits = None
   else:
+    if not dnn_hidden_units:
+      raise ValueError(
+          "dnn_hidden_units must be defined when dnn_feature_columns is specified.")
     input_layer_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas,
