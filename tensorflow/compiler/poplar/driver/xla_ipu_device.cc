@@ -44,7 +44,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_IPU, 0,
+  TF_RETURN_IF_ERROR(XlaDevice::Create("Poplar", DEVICE_XLA_IPU, 0,
                                        DEVICE_IPU_XLA_JIT, options, name_prefix,
                                        &device));
   devices->push_back(device.release());
