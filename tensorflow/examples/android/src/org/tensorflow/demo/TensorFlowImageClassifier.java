@@ -99,7 +99,8 @@ public class TensorFlowImageClassifier implements Classifier {
       c.labels.add(line);
     }
     br.close();
-    Log.i(TAG, "Read " + c.labels.size() + ", " + numClasses + " specified");
+    Log.i(TAG, "Read " + c.labels.size() + " labels, " + numClasses +
+        " output layer size specified");
 
     c.inputSize = inputSize;
     c.imageMean = imageMean;
@@ -167,7 +168,8 @@ public class TensorFlowImageClassifier implements Classifier {
             });
     for (int i = 0; i < outputs.length; ++i) {
       if (outputs[i] > THRESHOLD) {
-        pq.add(new Recognition("" + i, labels.get(i), outputs[i], null));
+        pq.add(new Recognition("" + i,
+            labels.size() > i ? labels.get(i) : "unknown", outputs[i], null));
       }
     }
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();

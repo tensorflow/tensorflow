@@ -1,11 +1,29 @@
-The Chi2 distribution with degrees of freedom df.
+Chi2 distribution.
 
-The PDF of this distribution is:
+The Chi2 distribution is defined over positive real numbers using a degrees of
+freedom ("df") parameter.
 
-```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
+#### Mathematical Details
 
-Note that the Chi2 distribution is a special case of the Gamma distribution,
-with Chi2(df) = Gamma(df/2, 1/2).
+The probability density function (pdf) is,
+
+```none
+pdf(x; df, x > 0) = x**(0.5 df - 1) exp(-0.5 x) / Z
+Z = 2**(0.5 df) Gamma(0.5 df)
+```
+
+where:
+
+* `df` denotes the degrees of freedom,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The Chi2 distribution is a special case of the Gamma distribution, i.e.,
+
+```python
+Chi2(df) = Gamma(concentration=0.5 * df, rate=0.5)
+```
 - - -
 
 #### `tf.contrib.distributions.Chi2.__init__(df, validate_args=False, allow_nan_stats=True, name='Chi2')` {#Chi2.__init__}
@@ -17,15 +35,15 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `df > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
-    If `validate_args` is `False` and the inputs are invalid, correct
-    behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -51,19 +69,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.alpha` {#Chi2.alpha}
+#### `tf.contrib.distributions.Chi2.batch_shape` {#Chi2.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.batch_shape(name='batch_shape')` {#Chi2.batch_shape}
+#### `tf.contrib.distributions.Chi2.batch_shape_tensor(name='batch_shape_tensor')` {#Chi2.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -74,13 +102,6 @@ independent distributions of this kind the instance represents.
 
 
 *  <b>`batch_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.beta` {#Chi2.beta}
-
-Inverse scale parameter.
 
 
 - - -
@@ -106,6 +127,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.concentration` {#Chi2.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -195,21 +223,24 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shannon entropy in nats.
 
-Additional documentation from `Gamma`:
 
-This is defined to be
+- - -
 
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
+#### `tf.contrib.distributions.Chi2.event_shape` {#Chi2.event_shape}
 
-where digamma(alpha) is the digamma function.
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.event_shape(name='event_shape')` {#Chi2.event_shape}
+#### `tf.contrib.distributions.Chi2.event_shape_tensor(name='event_shape_tensor')` {#Chi2.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -222,34 +253,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.get_batch_shape()` {#Chi2.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.get_event_shape()` {#Chi2.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -385,8 +388,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -475,6 +478,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.rate` {#Chi2.rate}
+
+Rate parameter.
 
 
 - - -

@@ -29,21 +29,21 @@ class BinomialTest(test.TestCase):
     with self.test_session():
       p = np.float32(np.random.beta(1, 1))
       binom = binomial.Binomial(total_count=1., probs=p)
-      self.assertAllEqual([], binom.event_shape().eval())
-      self.assertAllEqual([], binom.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), binom.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([]), binom.get_batch_shape())
+      self.assertAllEqual([], binom.event_shape_tensor().eval())
+      self.assertAllEqual([], binom.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), binom.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([]), binom.batch_shape)
 
   def testComplexShapes(self):
     with self.test_session():
       p = np.random.beta(1, 1, size=(3, 2)).astype(np.float32)
       n = [[3., 2], [4, 5], [6, 7]]
       binom = binomial.Binomial(total_count=n, probs=p)
-      self.assertAllEqual([], binom.event_shape().eval())
-      self.assertAllEqual([3, 2], binom.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), binom.get_event_shape())
+      self.assertAllEqual([], binom.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2], binom.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), binom.event_shape)
       self.assertEqual(
-          tensor_shape.TensorShape([3, 2]), binom.get_batch_shape())
+          tensor_shape.TensorShape([3, 2]), binom.batch_shape)
 
   def testNProperty(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]

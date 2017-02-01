@@ -62,7 +62,28 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.forward_event_shape(input_shape, name='forward_event_shape')` {#Softplus.forward_event_shape}
+#### `tf.contrib.distributions.bijector.Softplus.forward_event_shape(input_shape)` {#Softplus.forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softplus.forward_event_shape_tensor(input_shape, name='forward_event_shape_tensor')` {#Softplus.forward_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -76,8 +97,8 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `forward`.
+*  <b>`forward_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `forward`.
 
 
 - - -
@@ -103,48 +124,6 @@ Returns both the forward_log_det_jacobian.
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Softplus.get_forward_event_shape(input_shape)` {#Softplus.get_forward_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `forward_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `forward` function.
-
-##### Returns:
-
-
-*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `forward`. Possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Softplus.get_inverse_event_shape(output_shape)` {#Softplus.get_inverse_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `inverse_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `inverse` function.
-
-##### Returns:
-
-
-*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `inverse`. Possibly unknown.
 
 
 - - -
@@ -211,7 +190,28 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Softplus.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Softplus.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.Softplus.inverse_event_shape(output_shape)` {#Softplus.inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `inverse`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softplus.inverse_event_shape_tensor(output_shape, name='inverse_event_shape_tensor')` {#Softplus.inverse_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -225,8 +225,8 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `inverse`.
+*  <b>`inverse_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `inverse`.
 
 
 - - -

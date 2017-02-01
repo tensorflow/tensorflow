@@ -642,7 +642,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
       const_input,
   };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
-  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  auto concat = ops::Concat(root, concat_inputs, concat_dim);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -684,7 +684,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
       ops::Shape(root, Output(unknown)),
   };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
-  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  auto concat = ops::Concat(root, concat_inputs, concat_dim);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -726,7 +726,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
       const_input,
   };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
-  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  auto concat = ops::Concat(root, concat_inputs, concat_dim);
   TF_ASSERT_OK(root.status());
 
   Node* result;

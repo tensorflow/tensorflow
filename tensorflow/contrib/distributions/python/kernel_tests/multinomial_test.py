@@ -35,20 +35,20 @@ class MultinomialTest(test.TestCase):
     with self.test_session():
       p = [.1, .3, .6]
       dist = ds.Multinomial(total_count=1., probs=p)
-      self.assertEqual(3, dist.event_shape().eval())
-      self.assertAllEqual([], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_batch_shape())
+      self.assertEqual(3, dist.event_shape_tensor().eval())
+      self.assertAllEqual([], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
   def testComplexShapes(self):
     with self.test_session():
       p = 0.5 * np.ones([3, 2, 2], dtype=np.float32)
       n = [[3., 2], [4, 5], [6, 7]]
       dist = ds.Multinomial(total_count=n, probs=p)
-      self.assertEqual(2, dist.event_shape().eval())
-      self.assertAllEqual([3, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([2]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.get_batch_shape())
+      self.assertEqual(2, dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
   def testN(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]

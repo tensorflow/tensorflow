@@ -606,6 +606,22 @@ class RegexFindTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "Invalid regular expression"):
       debugger_cli_common.regex_find(self._orig_screen_output, "[", "yellow")
 
+  def testRegexFindOnPrependedLinesWorks(self):
+    rich_lines = debugger_cli_common.RichTextLines(["Violets are blue"])
+    rich_lines.prepend(["Roses are red"])
+    searched_rich_lines = debugger_cli_common.regex_find(
+        rich_lines, "red", "bold")
+    self.assertEqual(
+        {0: [(10, 13, "bold")]}, searched_rich_lines.font_attr_segs)
+
+    rich_lines = debugger_cli_common.RichTextLines(["Violets are blue"])
+    rich_lines.prepend(["A poem"], font_attr_segs=[(0, 1, "underline")])
+    searched_rich_lines = debugger_cli_common.regex_find(
+        rich_lines, "poem", "italic")
+    self.assertEqual(
+        {0: [(0, 1, "underline"), (2, 6, "italic")]},
+        searched_rich_lines.font_attr_segs)
+
 
 class WrapScreenOutputTest(test_util.TensorFlowTestCase):
 

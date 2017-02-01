@@ -242,7 +242,7 @@ class RegressionModelHeadTest(test.TestCase):
           values=(0., 1., 1.),
           dense_shape=(3, 1))
       with self.assertRaisesRegexp(ValueError,
-                                   "SparseTensor is not supported as labels."):
+                                   "Must set num_classes when passing"):
         head.create_model_fn_ops(
             {},
             labels=labels,
@@ -439,6 +439,48 @@ class MultiLabelModelHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
+  def testMultiLabelSparseTensorLabels(self):
+    n_classes = 3
+    head = head_lib._multi_label_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      labels = sparse_tensor.SparseTensorValue(
+          indices=((0, 0),),
+          values=(2,),
+          dense_shape=(1, 1))
+      model_fn_ops = head.create_model_fn_ops(
+          features={},
+          mode=model_fn.ModeKeys.TRAIN,
+          labels=labels,
+          train_op_fn=_noop_train_op,
+          logits=self._logits)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = .89985204
+      _assert_metrics(self, expected_loss,
+                      self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testMultiLabelSparseTensorLabelsTooFewClasses(self):
+    n_classes = 3
+    head = head_lib._multi_label_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    # Set _logits_dimension (n_classes) to a lower value; if it's set to 1
+    # upfront, the class throws an error during initialization.
+    head._logits_dimension = 1
+    with ops.Graph().as_default(), session.Session():
+      labels = sparse_tensor.SparseTensorValue(
+          indices=((0, 0),),
+          values=(2,),
+          dense_shape=(1, 1))
+      with self.assertRaisesRegexp(ValueError,
+                                   "Must set num_classes >= 2 when passing"):
+        head.create_model_fn_ops(
+            features={},
+            labels=labels,
+            mode=model_fn.ModeKeys.TRAIN,
+            train_op_fn=_noop_train_op,
+            logits=[0.])
+
 
 class BinaryClassificationModelHeadTest(test.TestCase):
 
@@ -569,7 +611,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
           values=(0, 1, 1),
           dense_shape=(3, 1))
       with self.assertRaisesRegexp(ValueError,
-                                   "SparseTensor is not supported as labels."):
+                                   "Must set num_classes when passing"):
         head.create_model_fn_ops(
             {},
             model_fn.ModeKeys.TRAIN,

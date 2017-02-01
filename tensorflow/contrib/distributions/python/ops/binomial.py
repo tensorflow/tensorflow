@@ -142,7 +142,6 @@ class Binomial(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
@@ -179,20 +178,20 @@ class Binomial(distribution.Distribution):
     """Probability of of drawing a `1`."""
     return self._probs
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
         array_ops.shape(self.total_count),
         array_ops.shape(self.probs))
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return array_ops.broadcast_static_shape(
         self.total_count.get_shape(),
         self.probs.get_shape())
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   @distribution_util.AppendDocstring(_binomial_sample_note)
