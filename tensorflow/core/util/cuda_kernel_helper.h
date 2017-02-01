@@ -253,8 +253,8 @@ CUDA_ATOMIC_WRAPPER(Add, Eigen::half) {
 }
 
 template <typename T>
-__global__ void SetZero(const int nthreads, T* bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) { *(bottom_diff + index) = T(0); }
+__global__ void SetZero(const int nthreads, T* data) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) { *(data + index) = T(0); }
 }
 
 // For atomicSub.
