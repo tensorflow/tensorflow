@@ -7,13 +7,20 @@ package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "poplar_plugin",
-    srcs = [
-        "driver/xla_ipu_device.cc",
-    ],
+    srcs = glob([
+        "driver/*.cc",
+        "stream_executor/*.cc",
+    ]),
+    hdrs = glob([
+        "driver/*.h",
+        "stream_executor/*.h",
+    ]),
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:local_service",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/jit:xla_cpu_device",
         "//tensorflow/core:framework_headers_lib",
