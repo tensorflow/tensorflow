@@ -27,6 +27,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -210,14 +211,18 @@ def load(sess, tags, export_dir, **saver_kwargs):
   # Build a saver by importing the meta graph def to load.
   saver = tf_saver.import_meta_graph(meta_graph_def_to_load, **saver_kwargs)
 
-  # Build the checkpoint path where the variables are located.
-  variables_path = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.VARIABLES_DIRECTORY),
-      compat.as_bytes(constants.VARIABLES_FILENAME))
+  if saver:
+    # Build the checkpoint path where the variables are located.
+    variables_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes(constants.VARIABLES_DIRECTORY),
+        compat.as_bytes(constants.VARIABLES_FILENAME))
 
-  # Restore the variables using the built saver in the provided session.
-  saver.restore(sess, variables_path)
+    # Restore the variables using the built saver in the provided session.
+    saver.restore(sess, variables_path)
+  else:
+    tf_logging.info("The specified SavedModel has no variables; no "
+                    "checkpoints were restored.")
 
   # Get asset tensors, if any.
   asset_tensors_dictionary = _get_asset_tensors(export_dir,
