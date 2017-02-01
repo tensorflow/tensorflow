@@ -22,7 +22,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Operator.h"
 #include "external/llvm/include/llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_backend_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/llvm_util_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -450,22 +449,26 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-void SetFastMathFlags(llvm::FastMathFlags* fast_math_flags) {
-  auto* flags = legacy_flags::GetLlvmBackendFlags();
-  if (flags->xla_precision_losing_optimizations) {
-    fast_math_flags->setAllowReciprocal();
+llvm::FastMathFlags GetFastMathFlags(
+    const CompilationOptions& compilation_options) {
+  llvm::FastMathFlags flags;
+  if (!compilation_options.disable_fast_math()) {
+    // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
+    flags.setUnsafeAlgebra();
   }
-  if (flags->xla_fast_math) {
-    fast_math_flags->setUnsafeAlgebra();
-  }
+  return flags;
 }
 
-void SetTargetOptions(llvm::TargetOptions* options) {
-  auto* flags = legacy_flags::GetLlvmBackendFlags();
-  options->LessPreciseFPMADOption = options->UnsafeFPMath =
-      flags->xla_fast_math || flags->xla_precision_losing_optimizations;
-  options->NoInfsFPMath = options->NoNaNsFPMath = options->NoSignedZerosFPMath =
-      flags->xla_fast_math;
+void SetTargetOptions(const CompilationOptions& compilation_options,
+                      llvm::TargetOptions* target_options) {
+  bool fast = !compilation_options.disable_fast_math();
+  // In LLVM backend flags, UnsafeFPMath does not explicitly imply
+  // NoInfs, etc.
+  target_options->UnsafeFPMath = fast;
+  target_options->NoInfsFPMath = fast;
+  target_options->NoNaNsFPMath = fast;
+  target_options->NoSignedZerosFPMath = fast;
+  target_options->LessPreciseFPMADOption = fast;
 }
 
 }  // namespace llvm_ir

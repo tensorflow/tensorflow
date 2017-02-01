@@ -24,7 +24,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Mangler.h"
 #include "external/llvm/include/llvm/Support/CodeGen.h"
 #include "external/llvm/include/llvm/Support/Host.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_backend_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
