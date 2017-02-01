@@ -51,7 +51,7 @@ class ModelFnOps(
     collections.namedtuple('ModelFnOps', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
-        'training_scaffold'
+        'scaffold'
     ])):
   """Ops returned from a model_fn."""
 
@@ -64,7 +64,7 @@ class ModelFnOps(
               output_alternatives=None,
               training_chief_hooks=None,
               training_hooks=None,
-              training_scaffold=None):
+              scaffold=None):
     """Creates a validated `ModelFnOps` instance.
 
     For a multi-headed model, the predictions dict here will contain the outputs
@@ -103,7 +103,7 @@ class ModelFnOps(
         run on the chief worker during training.
       training_hooks: A list of `SessionRunHook` objects that will be run on
         all workers during training.
-      training_scaffold: A `tf.train.Scaffold` object that can be used to set
+      scaffold: A `tf.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
 
     Returns:
@@ -176,4 +176,4 @@ class ModelFnOps(
         output_alternatives=output_alternatives,
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
-        training_scaffold=training_scaffold)
+        scaffold=scaffold)
