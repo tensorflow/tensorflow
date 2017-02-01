@@ -257,10 +257,11 @@ load(
 
 filegroup(
     name = "intel_binary_blob",
-    data = if_mkl([
-						"//third_party/mkl:intel_binary_blob",
-						],
-						),
+    data = if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 # -------------------------------------------
