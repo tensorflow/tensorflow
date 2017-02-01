@@ -82,7 +82,6 @@ class Chi2(gamma.Gamma):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     # Even though all stats of chi2 are defined for valid parameters, this is
     # not true in the parent class "gamma."  therefore, passing
     # allow_nan_stats=True
@@ -115,7 +114,6 @@ class Chi2WithAbsDf(Chi2):
                allow_nan_stats=True,
                name="Chi2WithAbsDf"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[df]) as ns:
       super(Chi2WithAbsDf, self).__init__(
           df=math_ops.floor(

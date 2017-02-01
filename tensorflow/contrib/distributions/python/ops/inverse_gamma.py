@@ -126,7 +126,6 @@ class InverseGamma(distribution.Distribution):
       TypeError: if `concentration` and `rate` are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[concentration, rate]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
@@ -289,7 +288,6 @@ class InverseGammaWithSoftplusConcentrationRate(InverseGamma):
                allow_nan_stats=True,
                name="InverseGammaWithSoftplusConcentrationRate"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[concentration, rate]) as ns:
       super(InverseGammaWithSoftplusConcentrationRate, self).__init__(
           concentration=nn.softplus(concentration,

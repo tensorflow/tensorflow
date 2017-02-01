@@ -108,7 +108,6 @@ class Categorical(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[logits, probs]) as ns:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,

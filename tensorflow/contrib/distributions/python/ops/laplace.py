@@ -100,7 +100,6 @@ class Laplace(distribution.Distribution):
       TypeError: if `loc` and `scale` are of different dtype.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
@@ -214,7 +213,6 @@ class LaplaceWithSoftplusScale(Laplace):
                allow_nan_stats=True,
                name="LaplaceWithSoftplusScale"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       super(LaplaceWithSoftplusScale, self).__init__(
           loc=loc,

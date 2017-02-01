@@ -162,7 +162,6 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):

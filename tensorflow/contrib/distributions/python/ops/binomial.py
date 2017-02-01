@@ -142,7 +142,6 @@ class Binomial(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),

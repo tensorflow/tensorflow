@@ -89,7 +89,6 @@ class Mixture(distribution.Distribution):
         have matching static event shapes.
     """
     parameters = locals()
-    parameters.pop("self")
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)

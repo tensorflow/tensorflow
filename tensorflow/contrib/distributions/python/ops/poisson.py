@@ -81,7 +81,6 @@ class Poisson(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[rate]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(rate)] if
                                     validate_args else []):

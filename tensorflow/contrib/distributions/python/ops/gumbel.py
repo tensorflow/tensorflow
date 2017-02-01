@@ -124,7 +124,6 @@ class _Gumbel(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):

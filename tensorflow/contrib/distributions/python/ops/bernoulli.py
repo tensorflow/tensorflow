@@ -71,7 +71,6 @@ class Bernoulli(distribution.Distribution):
       ValueError: If p and logits are passed, or if neither are passed.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name) as ns:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
@@ -173,7 +172,6 @@ class BernoulliWithSigmoidProbs(Bernoulli):
                allow_nan_stats=True,
                name="BernoulliWithSigmoidProbs"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name) as ns:
       super(BernoulliWithSigmoidProbs, self).__init__(
           probs=nn.sigmoid(logits, name="sigmoid_probs"),

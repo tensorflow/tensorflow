@@ -131,7 +131,6 @@ class Normal(distribution.Distribution):
       TypeError: if `loc` and `scale` have different `dtype`.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
@@ -240,7 +239,6 @@ class NormalWithSoftplusScale(Normal):
                allow_nan_stats=True,
                name="NormalWithSoftplusScale"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[scale]) as ns:
       super(NormalWithSoftplusScale, self).__init__(
           loc=loc,

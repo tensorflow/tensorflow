@@ -383,13 +383,12 @@ class Distribution(_BaseDistribution):
     for i, t in enumerate(graph_parents):
       if t is None or not contrib_framework.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
-    parameters = parameters or {}
     self._dtype = dtype
     self._is_continuous = is_continuous
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    self._parameters = parameters
+    self._parameters = parameters or {}
     self._graph_parents = graph_parents
     self._name = name or type(self).__name__
 
@@ -470,7 +469,10 @@ class Distribution(_BaseDistribution):
   @property
   def parameters(self):
     """Dictionary of parameters used to instantiate this `Distribution`."""
-    return self._parameters
+    # Remove "self", "__class__", or other special variables. These can appear
+    # if the subclass used `parameters = locals()`.
+    return dict((k, v) for k, v in self._parameters.items()
+                if not k.startswith("__") and k != "self")
 
   @property
   def is_continuous(self):
@@ -528,9 +530,6 @@ class Distribution(_BaseDistribution):
         `dict(self.parameters, **override_parameters_kwargs)`.
     """
     parameters = dict(self.parameters, **override_parameters_kwargs)
-    # Python3 leaks "__class__" into `locals()` so we remove if present.
-    # TODO(b/32376812): Remove this pop.
-    parameters.pop("__class__", None)
     return type(self)(**parameters)
 
   def _batch_shape_tensor(self):

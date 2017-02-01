@@ -171,7 +171,6 @@ class DirichletMultinomial(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[total_count, concentration]) as ns:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and

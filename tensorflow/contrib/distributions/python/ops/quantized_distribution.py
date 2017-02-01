@@ -214,7 +214,6 @@ class QuantizedDistribution(distributions.Distribution):
       NotImplementedError:  If the base distribution does not implement `cdf`.
     """
     parameters = locals()
-    parameters.pop("self")
     values = (
         list(distribution.parameters.values()) +
         [low, high])

@@ -283,7 +283,6 @@ class TransformedDistribution(distributions.Distribution):
         `bijector.name + distribution.name`.
     """
     parameters = locals()
-    parameters.pop("self")
     name = name or (("" if bijector is None else bijector.name) +
                     distribution.name)
     with ops.name_scope(name, values=[event_shape, batch_shape]):

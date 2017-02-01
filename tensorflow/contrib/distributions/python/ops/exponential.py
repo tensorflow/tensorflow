@@ -89,7 +89,6 @@ class Exponential(gamma.Gamma):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
@@ -138,7 +137,6 @@ class ExponentialWithSoftplusRate(Exponential):
                allow_nan_stats=True,
                name="ExponentialWithSoftplusRate"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[rate]) as ns:
       super(ExponentialWithSoftplusRate, self).__init__(
           rate=nn.softplus(rate, name="softplus_rate"),

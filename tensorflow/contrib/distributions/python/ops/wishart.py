@@ -109,7 +109,6 @@ class _WishartOperatorPD(distribution.Distribution):
         `(k, k)`
     """
     parameters = locals()
-    parameters.pop("self")
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
     with ops.name_scope(name) as ns:
       with ops.name_scope("init", values=[df, scale_operator_pd]):
@@ -523,7 +522,6 @@ class WishartCholesky(_WishartOperatorPD):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[scale]) as ns:
       super(WishartCholesky, self).__init__(
           df=df,
@@ -624,7 +622,6 @@ class WishartFull(_WishartOperatorPD):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[scale]) as ns:
       super(WishartFull, self).__init__(
           df=df,
