@@ -263,7 +263,8 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const Shape* shape_with_output_layout, uint64 seed);
+      const Shape* shape_with_output_layout,
+      const CompilationOptions& compilation_options, uint64 seed);
 
   // Builds an Executable for the given parameters. If
   // executable_for_compute_constant is true, then the executable is intended to

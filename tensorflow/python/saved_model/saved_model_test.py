@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
@@ -81,6 +82,31 @@ class SavedModelTest(test.TestCase):
                      compat.as_text(actual_asset_contents))
     self.assertEqual(expected_asset_file_name, asset.filename)
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
+
+  def _validate_inputs_tensor_info(self, builder, tensor_info):
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      foo_signature = signature_def_utils.build_signature_def({
+          "foo_inputs": tensor_info
+      }, dict(), "foo")
+      self.assertRaises(
+          AssertionError,
+          builder.add_meta_graph_and_variables,
+          sess, ["foo"],
+          signature_def_map={"foo_key": foo_signature})
+
+  def _validate_outputs_tensor_info(self, builder, tensor_info):
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      foo_signature = signature_def_utils.build_signature_def(
+          dict(), {"foo_outputs": tensor_info}, "foo")
+      self.assertRaises(
+          AssertionError,
+          builder.add_meta_graph_and_variables,
+          sess, ["foo"],
+          signature_def_map={"foo_key": foo_signature})
 
   def testMaybeSavedModelDir(self):
     base_path = test.test_src_dir_path("/python/saved_model")
@@ -219,6 +245,41 @@ class SavedModelTest(test.TestCase):
     with self.test_session(graph=ops.Graph()) as sess:
       self.assertRaises(errors.NotFoundError, loader.load, sess, ["baz"],
                         export_dir)
+
+  def testGraphWithoutVariables(self):
+    export_dir = os.path.join(test.get_temp_dir(), "test_graph_has_variables")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Graph with no variables.
+    with self.test_session(graph=ops.Graph()) as sess:
+      constant_5_name = constant_op.constant(5.0).name
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Second graph with no variables
+    with self.test_session(graph=ops.Graph()) as sess:
+      constant_6_name = constant_op.constant(6.0).name
+      builder.add_meta_graph(["bar"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Restore the graph with tag "foo".
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      # Read the constant a from the graph.
+      a = ops.get_default_graph().get_tensor_by_name(constant_5_name)
+      b = constant_op.constant(6.0)
+      c = a * b
+      self.assertEqual(30.0, sess.run(c))
+
+    # Restore the graph with tag "bar".
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["bar"], export_dir)
+      # Read the constant a from the graph.
+      a = ops.get_default_graph().get_tensor_by_name(constant_6_name)
+      b = constant_op.constant(5.0)
+      c = a * b
+      self.assertEqual(30.0, sess.run(c))
 
   def testNoOverwrite(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_no_overwrite")
@@ -384,6 +445,25 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(len(bar_signature), 2)
       self.assertEqual("bar", bar_signature["bar_key"].method_name)
       self.assertEqual("foo_new", bar_signature["foo_key"].method_name)
+
+  def testSignatureDefValidation(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_signature_def_validation")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    tensor_without_name = meta_graph_pb2.TensorInfo()
+    tensor_without_name.dtype = types_pb2.DT_FLOAT
+    self._validate_inputs_tensor_info(builder, tensor_without_name)
+    self._validate_outputs_tensor_info(builder, tensor_without_name)
+
+    tensor_without_dtype = meta_graph_pb2.TensorInfo()
+    tensor_without_dtype.name = "x"
+    self._validate_inputs_tensor_info(builder, tensor_without_dtype)
+    self._validate_outputs_tensor_info(builder, tensor_without_dtype)
+
+    tensor_empty = meta_graph_pb2.TensorInfo()
+    self._validate_inputs_tensor_info(builder, tensor_empty)
+    self._validate_outputs_tensor_info(builder, tensor_empty)
 
   def testAssets(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_assets")

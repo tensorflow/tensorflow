@@ -121,7 +121,6 @@ class _Logistic(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
@@ -154,18 +153,18 @@ class _Logistic(distribution.Distribution):
     """Distribution parameter for scale."""
     return self._scale
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
         array_ops.shape(self.loc), array_ops.shape(self.scale))
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return array_ops.broadcast_static_shape(
         self.loc.get_shape(), self.scale.get_shape())
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):

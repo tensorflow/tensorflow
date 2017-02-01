@@ -89,7 +89,6 @@ class Mixture(distribution.Distribution):
         have matching static event shapes.
     """
     parameters = locals()
-    parameters.pop("self")
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)
@@ -112,11 +111,11 @@ class Mixture(distribution.Distribution):
       raise TypeError(
           "All components must either be continuous or not, but continuity "
           "values are: %s" % [(d.name, d.is_continuous) for d in components])
-    static_event_shape = components[0].get_event_shape()
-    static_batch_shape = cat.get_batch_shape()
+    static_event_shape = components[0].event_shape
+    static_batch_shape = cat.batch_shape
     for d in components:
-      static_event_shape = static_event_shape.merge_with(d.get_event_shape())
-      static_batch_shape = static_batch_shape.merge_with(d.get_batch_shape())
+      static_event_shape = static_event_shape.merge_with(d.event_shape)
+      static_batch_shape = static_batch_shape.merge_with(d.batch_shape)
     if static_event_shape.ndims is None:
       raise ValueError(
           "Expected to know rank(event_shape) from components, but "
@@ -124,7 +123,7 @@ class Mixture(distribution.Distribution):
 
     # Ensure that all batch and event ndims are consistent.
     with ops.name_scope(name, values=[cat.logits]) as ns:
-      num_components = cat.num_classes
+      num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
         raise ValueError(
@@ -136,10 +135,10 @@ class Mixture(distribution.Distribution):
         raise ValueError("cat.num_classes != len(components): %d vs. %d" %
                          (static_num_components, len(components)))
 
-      cat_batch_shape = cat.batch_shape()
+      cat_batch_shape = cat.batch_shape_tensor()
       cat_batch_rank = array_ops.size(cat_batch_shape)
       if validate_args:
-        batch_shapes = [d.batch_shape() for d in components]
+        batch_shapes = [d.batch_shape_tensor() for d in components]
         batch_ranks = [array_ops.size(bs) for bs in batch_shapes]
         check_message = ("components[%d] batch shape must match cat "
                          "batch shape")
@@ -190,16 +189,16 @@ class Mixture(distribution.Distribution):
   def num_components(self):
     return self._num_components
 
-  def _batch_shape(self):
-    return self._cat.batch_shape()
+  def _batch_shape_tensor(self):
+    return self._cat.batch_shape_tensor()
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self._static_batch_shape
 
-  def _event_shape(self):
-    return self._components[0].event_shape()
+  def _event_shape_tensor(self):
+    return self._components[0].event_shape_tensor()
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self._static_event_shape
 
   def _mean(self):
@@ -207,7 +206,7 @@ class Mixture(distribution.Distribution):
       distribution_means = [d.mean() for d in self.components]
       cat_probs = self._cat_probs(log_probs=False)
       # This was checked to not be None at construction time.
-      static_event_rank = self.get_event_shape().ndims
+      static_event_rank = self.event_shape.ndims
       # Expand the rank of x up to static_event_rank times so that
       # broadcasting works correctly.
       def expand(x):
@@ -253,18 +252,18 @@ class Mixture(distribution.Distribution):
       else:
         samples_shape = array_ops.shape(cat_samples)
         samples_size = array_ops.size(cat_samples)
-      static_batch_shape = self.get_batch_shape()
+      static_batch_shape = self.batch_shape
       if static_batch_shape.is_fully_defined():
         batch_shape = static_batch_shape.as_list()
         batch_size = static_batch_shape.num_elements()
       else:
-        batch_shape = self.batch_shape()
+        batch_shape = self.batch_shape_tensor()
         batch_size = array_ops.reduce_prod(batch_shape)
-      static_event_shape = self.get_event_shape()
+      static_event_shape = self.event_shape
       if static_event_shape.is_fully_defined():
         event_shape = np.array(static_event_shape.as_list(), dtype=np.int32)
       else:
-        event_shape = self.event_shape()
+        event_shape = self.event_shape_tensor()
 
       # Get indices into the raw cat sampling tensor.  We will
       # need these to stitch sample values back out after sampling
@@ -342,10 +341,10 @@ class Mixture(distribution.Distribution):
       # Reshape back to proper sample, batch, and event shape.
       ret = array_ops.reshape(lhs_flat_ret,
                               array_ops.concat((samples_shape,
-                                                self.event_shape()), 0))
+                                                self.event_shape_tensor()), 0))
       ret.set_shape(
           tensor_shape.TensorShape(static_samples_shape).concatenate(
-              self.get_event_shape()))
+              self.event_shape))
       return ret
 
   def entropy_lower_bound(self, name="entropy_lower_bound"):

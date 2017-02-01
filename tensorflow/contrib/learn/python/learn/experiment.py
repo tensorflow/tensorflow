@@ -351,8 +351,7 @@ class Experiment(object):
         if not eval_result:
           eval_result = {}
 
-        # TODO(soergel): further throttle how often export happens?
-        self._maybe_export(eval_result)
+        self._maybe_export(eval_result, checkpoint_path=latest_path)
 
         # Clear warning timer and update last evaluated checkpoint
         last_warning_time = 0
@@ -438,7 +437,7 @@ class Experiment(object):
     export_results = self._maybe_export(eval_result)
     return eval_result, export_results
 
-  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+  def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
     export_dir_base = os.path.join(
         compat.as_bytes(self._estimator.model_dir),
@@ -446,15 +445,14 @@ class Experiment(object):
 
     export_results = []
     for strategy in self._export_strategies:
-      # TODO(soergel): possibly, allow users to decide whether to export here
-      # based on the eval_result (e.g., to keep the best export).
-
       export_results.append(
           strategy.export(
               self._estimator,
               os.path.join(
                   compat.as_bytes(export_dir_base),
-                  compat.as_bytes(strategy.name))))
+                  compat.as_bytes(strategy.name)),
+              checkpoint_path=checkpoint_path,
+              eval_result=eval_result))
 
     return export_results
 

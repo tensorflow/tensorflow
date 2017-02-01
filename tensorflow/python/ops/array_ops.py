@@ -1370,7 +1370,12 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "zeros", [shape]) as name:
-    zero = False if dtype == dtypes.bool else 0
+    if dtype == dtypes.bool:
+      zero = False
+    elif dtype == dtypes.string:
+      zero = ""
+    else:
+      zero = 0
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)

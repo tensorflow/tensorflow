@@ -315,6 +315,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_cc",
     ],
     alwayslink = 1,

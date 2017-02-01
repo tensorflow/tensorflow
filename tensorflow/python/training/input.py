@@ -56,11 +56,11 @@ def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
 
   Args:
-    pattern: A file pattern (glob).
+    pattern: A file pattern (glob), or 1D tensor of file patterns.
     name: A name for the operations (optional).
 
   Returns:
-    A variable that is initialized to the list of files matching pattern.
+    A variable that is initialized to the list of files matching the pattern(s).
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
     return variables.Variable(io_ops.matching_files(pattern), trainable=False,

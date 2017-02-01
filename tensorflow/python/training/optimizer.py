@@ -28,9 +28,22 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+
+
+def _get_variable_for(v):
+  """Returns the ResourceVariable responsible for v, or v if not necessary."""
+  if v.op.type == "ResourceGather":
+    for var in variables.global_variables() + variables.local_variables():
+      if (isinstance(var, resource_variable_ops.ResourceVariable)
+          and var.handle is v.op.inputs[0]):
+        return var
+    raise ValueError("Got embedding lookup %s but"
+                     " could not locate source variable." % (str(v)))
+  return v
 
 
 def _var_key(var):
@@ -415,7 +428,7 @@ class Optimizer(object):
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
     with ops.control_dependencies(None):
-      self._create_slots(var_list)
+      self._create_slots([_get_variable_for(v) for v in var_list])
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()

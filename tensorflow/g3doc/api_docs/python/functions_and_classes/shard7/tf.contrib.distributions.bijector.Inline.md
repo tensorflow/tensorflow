@@ -14,7 +14,7 @@ exp = Inline(
 The above example is equivalent to the `Bijector` `Exp(event_ndims=1)`.
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.__init__(forward_fn=None, inverse_fn=None, inverse_log_det_jacobian_fn=None, forward_log_det_jacobian_fn=None, get_forward_event_shape_fn=None, forward_event_shape_fn=None, get_inverse_event_shape_fn=None, inverse_event_shape_fn=None, is_constant_jacobian=False, validate_args=False, name='inline')` {#Inline.__init__}
+#### `tf.contrib.distributions.bijector.Inline.__init__(forward_fn=None, inverse_fn=None, inverse_log_det_jacobian_fn=None, forward_log_det_jacobian_fn=None, forward_event_shape_fn=None, forward_event_shape_tensor_fn=None, inverse_event_shape_fn=None, inverse_event_shape_tensor_fn=None, is_constant_jacobian=False, validate_args=False, name='inline')` {#Inline.__init__}
 
 Creates a `Bijector` from callables.
 
@@ -27,14 +27,14 @@ Creates a `Bijector` from callables.
     log o det o jacobian of the inverse transformation.
 *  <b>`forward_log_det_jacobian_fn`</b>: Python callable implementing the
     log o det o jacobian of the forward transformation.
-*  <b>`get_forward_event_shape_fn`</b>: Python callable implementing non-identical
+*  <b>`forward_event_shape_fn`</b>: Python callable implementing non-identical
     static event shape changes. Default: shape is assumed unchanged.
-*  <b>`forward_event_shape_fn`</b>: Python callable implementing non-identical event
-    shape changes. Default: shape is assumed unchanged.
-*  <b>`get_inverse_event_shape_fn`</b>: Python callable implementing non-identical
+*  <b>`forward_event_shape_tensor_fn`</b>: Python callable implementing non-identical
+    event shape changes. Default: shape is assumed unchanged.
+*  <b>`inverse_event_shape_fn`</b>: Python callable implementing non-identical
     static event shape changes. Default: shape is assumed unchanged.
-*  <b>`inverse_event_shape_fn`</b>: Python callable implementing non-identical event
-    shape changes. Default: shape is assumed unchanged.
+*  <b>`inverse_event_shape_tensor_fn`</b>: Python callable implementing non-identical
+    event shape changes. Default: shape is assumed unchanged.
 *  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is constant
     for all input arguments.
 *  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
@@ -75,7 +75,28 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.forward_event_shape(input_shape, name='forward_event_shape')` {#Inline.forward_event_shape}
+#### `tf.contrib.distributions.bijector.Inline.forward_event_shape(input_shape)` {#Inline.forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Inline.forward_event_shape_tensor(input_shape, name='forward_event_shape_tensor')` {#Inline.forward_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -89,8 +110,8 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `forward`.
+*  <b>`forward_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `forward`.
 
 
 - - -
@@ -116,48 +137,6 @@ Returns both the forward_log_det_jacobian.
     `self.dtype`.
 *  <b>`NotImplementedError`</b>: if neither `_forward_log_det_jacobian`
     nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Inline.get_forward_event_shape(input_shape)` {#Inline.get_forward_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `forward_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `forward` function.
-
-##### Returns:
-
-
-*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `forward`. Possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Inline.get_inverse_event_shape(output_shape)` {#Inline.get_inverse_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `inverse_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `inverse` function.
-
-##### Returns:
-
-
-*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `inverse`. Possibly unknown.
 
 
 - - -
@@ -224,7 +203,28 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Inline.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Inline.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.Inline.inverse_event_shape(output_shape)` {#Inline.inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `inverse`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Inline.inverse_event_shape_tensor(output_shape, name='inverse_event_shape_tensor')` {#Inline.inverse_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -238,8 +238,8 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `inverse`.
+*  <b>`inverse_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `inverse`.
 
 
 - - -

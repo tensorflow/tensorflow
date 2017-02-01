@@ -35,35 +35,35 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session():
       alpha = np.random.rand(3)
       dist = ds.DirichletMultinomial(1., alpha)
-      self.assertEqual(3, dist.event_shape().eval())
-      self.assertAllEqual([], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_batch_shape())
+      self.assertEqual(3, dist.event_shape_tensor().eval())
+      self.assertAllEqual([], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
   def testComplexShapes(self):
     with self.test_session():
       alpha = np.random.rand(3, 2, 2)
       n = [[3., 2], [4, 5], [6, 7]]
       dist = ds.DirichletMultinomial(n, alpha)
-      self.assertEqual(2, dist.event_shape().eval())
-      self.assertAllEqual([3, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([2]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.get_batch_shape())
+      self.assertEqual(2, dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
   def testNproperty(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
       dist = ds.DirichletMultinomial(n, alpha)
-      self.assertEqual([1, 1], dist.n.get_shape())
-      self.assertAllClose(n, dist.n.eval())
+      self.assertEqual([1, 1], dist.total_count.get_shape())
+      self.assertAllClose(n, dist.total_count.eval())
 
   def testAlphaProperty(self):
     alpha = [[1., 2, 3]]
     with self.test_session():
       dist = ds.DirichletMultinomial(1, alpha)
-      self.assertEqual([1, 3], dist.alpha.get_shape())
-      self.assertAllClose(alpha, dist.alpha.eval())
+      self.assertEqual([1, 3], dist.concentration.get_shape())
+      self.assertAllClose(alpha, dist.concentration.eval())
 
   def testPmfNandCountsAgree(self):
     alpha = [[1., 2, 3]]
@@ -72,9 +72,10 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(n, alpha, validate_args=True)
       dist.prob([2., 3, 0]).eval()
       dist.prob([3., 0, 2]).eval()
-      with self.assertRaisesOpError("Condition x >= 0.*"):
+      with self.assertRaisesOpError("counts must be non-negative"):
         dist.prob([-1., 4, 2]).eval()
-      with self.assertRaisesOpError("counts do not sum to n"):
+      with self.assertRaisesOpError(
+          "counts last-dimension must sum to `self.total_count`"):
         dist.prob([3., 3, 0]).eval()
 
   def testPmfNonIntegerCounts(self):
@@ -86,7 +87,8 @@ class DirichletMultinomialTest(test.TestCase):
       dist.prob([3., 0, 2]).eval()
       dist.prob([3.0, 0, 2.0]).eval()
       # Both equality and integer checking fail.
-      with self.assertRaisesOpError("Condition x == y.*"):
+      with self.assertRaisesOpError(
+          "counts cannot contain fractional components"):
         dist.prob([1.0, 2.5, 1.5]).eval()
       dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
       dist.prob([1., 2., 3.]).eval()
@@ -138,7 +140,7 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial([1.], alpha)
       pmf = dist.prob(counts)
       self.assertAllClose([1 / 3., 2 / 3.], pmf.eval())
-      self.assertEqual((2), pmf.get_shape())
+      self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfAlphaStretchedInBroadcastWhenLowerRank(self):
     # The probabilities of one vote falling into class k is the mean for class
@@ -148,7 +150,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [[1., 0], [0., 1]]
       pmf = ds.DirichletMultinomial(1., alpha).prob(counts)
       self.assertAllClose([1 / 3., 2 / 3.], pmf.eval())
-      self.assertEqual((2), pmf.get_shape())
+      self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfCountsStretchedInBroadcastWhenSameRank(self):
     # The probabilities of one vote falling into class k is the mean for class
@@ -158,7 +160,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [[1., 0]]
       pmf = ds.DirichletMultinomial([1., 1.], alpha).prob(counts)
       self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
-      self.assertEqual((2), pmf.get_shape())
+      self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfCountsStretchedInBroadcastWhenLowerRank(self):
     # The probabilities of one vote falling into class k is the mean for class
@@ -168,7 +170,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [1., 0]
       pmf = ds.DirichletMultinomial(1., alpha).prob(counts)
       self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
-      self.assertEqual((2), pmf.get_shape())
+      self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfForOneVoteIsTheMeanWithOneRecordInput(self):
     # The probabilities of one vote falling into class k is the mean for class
@@ -176,15 +178,15 @@ class DirichletMultinomialTest(test.TestCase):
     alpha = [1., 2, 3]
     with self.test_session():
       for class_num in range(3):
-        counts = np.zeros((3), dtype=np.float32)
+        counts = np.zeros([3], dtype=np.float32)
         counts[class_num] = 1
         dist = ds.DirichletMultinomial(1., alpha)
         mean = dist.mean().eval()
         pmf = dist.prob(counts).eval()
 
         self.assertAllClose(mean[class_num], pmf)
-        self.assertTupleEqual((3,), mean.shape)
-        self.assertTupleEqual((), pmf.shape)
+        self.assertAllEqual([3], mean.shape)
+        self.assertAllEqual([], pmf.shape)
 
   def testMeanDoubleTwoVotes(self):
     # The probabilities of two votes falling into class k for
@@ -193,9 +195,9 @@ class DirichletMultinomialTest(test.TestCase):
     alpha = [1., 2, 3]
     with self.test_session():
       for class_num in range(3):
-        counts_one = np.zeros((3), dtype=np.float32)
+        counts_one = np.zeros([3], dtype=np.float32)
         counts_one[class_num] = 1.
-        counts_two = np.zeros((3), dtype=np.float32)
+        counts_two = np.zeros([3], dtype=np.float32)
         counts_two[class_num] = 2
 
         dist1 = ds.DirichletMultinomial(1., alpha)
@@ -205,7 +207,7 @@ class DirichletMultinomialTest(test.TestCase):
         mean2 = dist2.mean().eval()
 
         self.assertAllClose(mean2[class_num], 2 * mean1[class_num])
-        self.assertTupleEqual((3,), mean1.shape)
+        self.assertAllEqual([3], mean1.shape)
 
   def testCovarianceFromSampling(self):
     # We will test mean, cov, var, stddev on a DirichletMultinomial constructed
@@ -279,7 +281,7 @@ class DirichletMultinomialTest(test.TestCase):
         covariance = dist.covariance()
         expected_covariance = n * (n + alpha_0) / (1 + alpha_0) * shared_matrix
 
-        self.assertEqual((2, 2), covariance.get_shape())
+        self.assertEqual([2, 2], covariance.get_shape())
         self.assertAllClose(expected_covariance, covariance.eval())
 
   def testCovarianceNAlphaBroadcast(self):
@@ -415,7 +417,8 @@ class DirichletMultinomialTest(test.TestCase):
   def testSampleUnbiasedNonScalarBatch(self):
     with self.test_session() as sess:
       dist = ds.DirichletMultinomial(
-          n=5., alpha=2. * self._rng.rand(4, 3, 2).astype(np.float32))
+          total_count=5.,
+          concentration=2. * self._rng.rand(4, 3, 2).astype(np.float32))
       n = int(3e3)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)
@@ -443,7 +446,8 @@ class DirichletMultinomialTest(test.TestCase):
   def testSampleUnbiasedScalarBatch(self):
     with self.test_session() as sess:
       dist = ds.DirichletMultinomial(
-          n=5., alpha=2. * self._rng.rand(4).astype(np.float32))
+          total_count=5.,
+          concentration=2. * self._rng.rand(4).astype(np.float32))
       n = int(5e3)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)

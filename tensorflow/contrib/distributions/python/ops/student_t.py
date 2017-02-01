@@ -155,7 +155,6 @@ class StudentT(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[df, loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(df)]
                                     if validate_args else []):
@@ -196,22 +195,22 @@ class StudentT(distribution.Distribution):
     """Scaling factors of these Student's t distribution(s)."""
     return self._scale
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
         array_ops.shape(self.df),
         array_ops.broadcast_dynamic_shape(
             array_ops.shape(self.loc), array_ops.shape(self.scale)))
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return array_ops.broadcast_static_shape(
         array_ops.broadcast_static_shape(self.df.get_shape(),
                                          self.loc.get_shape()),
         self.scale.get_shape())
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=math_ops.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
@@ -221,9 +220,9 @@ class StudentT(distribution.Distribution):
     #   Y = X / sqrt(Z / df)
     # then:
     #   Y ~ StudentT(df).
-    shape = array_ops.concat([[n], self.batch_shape()], 0)
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
     normal_sample = random_ops.random_normal(shape, dtype=self.dtype, seed=seed)
-    df = self.df * array_ops.ones(self.batch_shape(), dtype=self.dtype)
+    df = self.df * array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
     gamma_sample = random_ops.random_gamma(
         [n],
         0.5 * df,
@@ -258,7 +257,7 @@ class StudentT(distribution.Distribution):
     return array_ops.where(math_ops.less(y, 0.), neg_cdf, 1. - neg_cdf)
 
   def _entropy(self):
-    v = array_ops.ones(self.batch_shape(), dtype=self.dtype)[..., None]
+    v = array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)[..., None]
     u = v * self.df[..., None]
     beta_arg = array_ops.concat([u, v], -1) / 2.
     return (math_ops.log(math_ops.abs(self.scale)) +
@@ -273,15 +272,16 @@ class StudentT(distribution.Distribution):
       `NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
       rather than returning `NaN`.""")
   def _mean(self):
-    mean = self.loc * array_ops.ones(self.batch_shape(), dtype=self.dtype)
+    mean = self.loc * array_ops.ones(self.batch_shape_tensor(),
+                                     dtype=self.dtype)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
       return array_ops.where(
           math_ops.greater(
               self.df,
-              array_ops.ones(self.batch_shape(), dtype=self.dtype)),
+              array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)),
           mean,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies(
           [
@@ -308,23 +308,23 @@ class StudentT(distribution.Distribution):
                             self.df - 2.,
                             array_ops.ones_like(self.df))
     # Abs(scale) superfluous.
-    var = (array_ops.ones(self.batch_shape(), dtype=self.dtype) *
+    var = (array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype) *
            math_ops.square(self.scale) * self.df / denom)
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
     result_where_defined = array_ops.where(
-        math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
+        self.df > array_ops.fill(self.batch_shape_tensor(), 2.),
         var,
-        array_ops.fill(self.batch_shape(), inf, name="inf"))
+        array_ops.fill(self.batch_shape_tensor(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
       return array_ops.where(
           math_ops.greater(
               self.df,
-              array_ops.ones(self.batch_shape(), dtype=self.dtype)),
+              array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)),
           result_where_defined,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
       return control_flow_ops.with_dependencies(
           [
@@ -350,7 +350,6 @@ class StudentTWithAbsDfSoftplusScale(StudentT):
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusScale"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[df, scale]) as ns:
       super(StudentTWithAbsDfSoftplusScale, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
