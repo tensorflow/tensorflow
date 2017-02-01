@@ -32,9 +32,14 @@ Java bindings for TensorFlow.
 
 ## Installation
 
-Build the Java Archive (JAR) and native library:
+Configure and build the Java Archive (JAR) and native library:
 
 ```sh
+# Configure the build (e.g. GPU support etc.), as per
+# https://www.tensorflow.org/get_started/os_setup#configure_the_installation
+./configure
+
+# Build the JAR and native library
 bazel build -c opt \
   //tensorflow/java:tensorflow \
   //tensorflow/java:libtensorflow_jni
