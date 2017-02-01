@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -337,9 +338,9 @@ TEST(XlaCompilationTest, Loops) {
   auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT);
   auto b = ops::Placeholder(root.WithOpName("B"), DT_FLOAT);
   auto c = ops::Add(root.WithOpName("C"), a, b);
-  auto enter = ops::Enter(root, c, "aframe");
+  auto enter = ops::internal::Enter(root, c, "aframe");
   auto next_iter = ops::NextIteration(root, enter);
-  auto exit = ops::Exit(root, next_iter);
+  auto exit = ops::internal::Exit(root, next_iter);
   auto d = ops::Add(root.WithOpName("D"), c, exit);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
