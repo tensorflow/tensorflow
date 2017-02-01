@@ -592,7 +592,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
 
   def testEnableCenteredBias(self):
-    """Tests that we can disable centered bias."""
+    """Tests that we can enable centered bias."""
 
     def input_fn():
       return {
