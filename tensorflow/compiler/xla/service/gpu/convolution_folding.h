@@ -17,14 +17,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_FOLDING_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
 
-class ConvolutionFolding : public HloPass {
+class ConvolutionFolding : public HloPassInterface {
  public:
-  ConvolutionFolding() : HloPass("convolution-folding") {}
+  tensorflow::StringPiece name() const override {
+    return "convolution-folding";
+  }
+
   StatusOr<bool> Run(HloModule* module) override;
 };
 

@@ -297,8 +297,8 @@ class FileOutputBuffer {
   Status Close();
 
  private:
-  // Appends the buffered data and flushes.
-  Status Flush();
+  // Appends the buffered data to the underlying file. Does NOT flush the file.
+  Status FlushBuffer();
 
   WritableFile* file_;  // Owned.
 

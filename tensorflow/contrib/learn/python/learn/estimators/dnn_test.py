@@ -817,7 +817,8 @@ class DNNClassifierTest(test.TestCase):
 
     input_fn = test_data.iris_input_multiclass_fn
     classifier.fit(input_fn=input_fn, steps=5)
-    self.assertIn('centered_bias_weight', classifier.get_variable_names())
+    self.assertIn('dnn/multi_class_head/centered_bias_weight',
+                  classifier.get_variable_names())
     scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
     self.assertIn('loss', scores)
@@ -1367,7 +1368,8 @@ class DNNRegressorTest(test.TestCase):
         config=run_config.RunConfig(tf_random_seed=1))
 
     regressor.fit(input_fn=_input_fn, steps=5)
-    self.assertIn('centered_bias_weight', regressor.get_variable_names())
+    self.assertIn('dnn/regression_head/centered_bias_weight',
+                  regressor.get_variable_names())
 
     scores = regressor.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores)

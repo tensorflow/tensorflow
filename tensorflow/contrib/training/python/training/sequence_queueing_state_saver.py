@@ -1691,13 +1691,17 @@ def _reconstruct_sparse_tensor_seq(sequence,
     Returns:
       A SparseTensor with a +1 higher rank than the input.
     """
-    idx_batch = math_ops.to_int64(math_ops.floor(s.indices[:, 0] / num_unroll))
-    idx_time = math_ops.mod(s.indices[:, 0], num_unroll)
-    indices = array_ops.concat_v2([array_ops.expand_dims(idx_batch, 1),
-                                   array_ops.expand_dims(idx_time, 1),
-                                   s.indices[:, 1:]], axis=1)
-    dense_shape = array_ops.concat_v2(
-        [[batch_size], [num_unroll], s.dense_shape[1:]], axis=0)
+    idx_batch = math_ops.to_int64(
+        math_ops.floor(sp_tensor.indices[:, 0] / num_unroll))
+    idx_time = math_ops.mod(sp_tensor.indices[:, 0], num_unroll)
+    indices = array_ops.concat(
+        [
+            array_ops.expand_dims(idx_batch, 1),
+            array_ops.expand_dims(idx_time, 1), sp_tensor.indices[:, 1:]
+        ],
+        axis=1)
+    dense_shape = array_ops.concat(
+        [[batch_size], [num_unroll], sp_tensor.dense_shape[1:]], axis=0)
     return sparse_tensor.SparseTensor(
         indices=indices,
         values=sp_tensor.values,

@@ -93,7 +93,7 @@ def freeze_graph(input_graph,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(f.read().decode("utf-8"), input_graph_def)
+      text_format.Merge(f.read(), input_graph_def)
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:

@@ -2370,6 +2370,13 @@ class Graph(object):
     # attributes.
     for key, value in self._attr_scope_map.items():
       if key not in node_def.attr:
+        if callable(value):
+          value = value(node_def)
+          if not isinstance(value, (type(None), attr_value_pb2.AttrValue)):
+            raise TypeError(
+                "Callable for scope map key '%s' must return either None or "
+                "an AttrValue protocol buffer; but it returned: %s" %
+                (key, value))
         node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
@@ -3428,10 +3435,12 @@ class Graph(object):
     saved_attrs = {}
     # Install the given attribute
     for name, attr in attr_map.items():
-      if not (isinstance(name, six.string_types)
-              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+      if not (isinstance(name, six.string_types) and
+              (isinstance(attr, (type(None), attr_value_pb2.AttrValue)) or
+               callable(attr))):
         raise TypeError("attr_map must be a dictionary mapping "
-                        "strings to AttrValue protocol buffers")
+                        "strings to AttrValue protocol buffers or "
+                        "callables that emit AttrValue protocol buffers")
       try:
         saved_attrs[name] = self._attr_scope_map[name]
       except KeyError:

@@ -234,6 +234,15 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
+    HloInstruction* operand, tensorflow::StringPiece outfeed_config) {
+  std::unique_ptr<HloInstruction> instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
+  instruction->AppendOperand(operand);
+  instruction->outfeed_config_ = outfeed_config.ToString();
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
     HloInstruction* operand, int64 channel_id) {
   auto instruction =
@@ -841,6 +850,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1128,6 +1138,7 @@ bool HloInstruction::Identical(
     // These opcodes are not yet supported.
     case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
     case HloOpcode::kUpdate:
     case HloOpcode::kSend:
@@ -1158,8 +1169,12 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
       << ShapeUtil::HumanString(new_producer->shape());
   auto user_it = std::find(users_.begin(), users_.end(), user);
   TF_RET_CHECK(user_it != users_.end())
-      << "Instruction " << user << " not a use of instruction " << this;
+      << "Instruction " << user->name() << " not a use of instruction "
+      << name();
   users_.erase(user_it);
+
+  VLOG(3) << "Replacing uses of " << name() << " in " << user->name()
+          << " with " << new_producer->name();
 
   TF_RET_CHECK(
       std::count(user->operands_.begin(), user->operands_.end(), this) >= 0);
@@ -1179,6 +1194,9 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
       << old_operand->shape().ShortDebugString() << " is not compatible with "
       << new_operand->shape().ShortDebugString();
   operands_[operand_num] = new_operand;
+
+  VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
+          << new_operand->name() << ", was " << old_operand->name();
 
   if (std::find(operands_.begin(), operands_.end(), old_operand) ==
       operands_.end()) {
@@ -1248,6 +1266,11 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
 const string& HloInstruction::custom_call_target() const {
   CHECK_EQ(opcode_, HloOpcode::kCustomCall);
   return custom_call_target_;
+}
+
+const string& HloInstruction::outfeed_config() const {
+  CHECK_EQ(opcode_, HloOpcode::kOutfeed);
+  return outfeed_config_;
 }
 
 HloComputation* HloInstruction::while_condition() const {
@@ -1343,43 +1366,73 @@ string HloInstruction::ToString(bool compact_operands) const {
   string extra;
   if (CanHaveDimensionsField()) {
     tensorflow::strings::StrAppend(
-        &extra, ", dimensions={",
-        tensorflow::str_util::Join(dimensions(), ", "), "}");
+        &extra, ", dimensions={", tensorflow::str_util::Join(dimensions(), ","),
+        "}");
   }
   if (window_ != nullptr) {
-    tensorflow::strings::StrAppend(&extra, ", window=",
+    tensorflow::strings::StrAppend(&extra, ", ",
                                    window_util::ToString(*window_));
   }
   if (padding_config_ != nullptr) {
-    tensorflow::strings::StrAppend(&extra, ", padding=",
-                                   padding_config_->ShortDebugString());
+    tensorflow::strings::StrAppend(
+        &extra, ", padding=", padding_config_->ShortDebugString());
+  }
+  if (!slice_starts_.empty() && !slice_limits_.empty()) {
+    std::vector<string> bounds;
+    for (int i = 0; i < slice_starts_.size(); ++i) {
+      bounds.push_back(tensorflow::strings::StrCat("[", slice_starts_[i], ":",
+                                                   slice_limits_[i], "]"));
+    }
+    tensorflow::strings::StrAppend(
+        &extra, ", slice={", tensorflow::str_util::Join(bounds, ", "), "}");
   }
   if (convolution_dimension_numbers_ != nullptr) {
-    tensorflow::strings::StrAppend(
-        &extra,
-        tensorflow::strings::Printf(
-            ", "
-            "conv_dim_nums={batch_dim=%lld,feature_dim=%lld,spatial_dims=(%s),"
-            "kernel_input_feature_dims=%lld,kernel_output_feature_dim=%lld,"
-            "kernel_spatial_dims=(%s)}",
-            convolution_dimension_numbers_->batch_dimension(),
-            convolution_dimension_numbers_->feature_dimension(),
-            tensorflow::str_util::Join(
-                convolution_dimension_numbers_->spatial_dimensions(), ",")
-                .c_str(),
-            convolution_dimension_numbers_->kernel_input_feature_dimension(),
-            convolution_dimension_numbers_->kernel_output_feature_dimension(),
-            tensorflow::str_util::Join(
-                convolution_dimension_numbers_->kernel_spatial_dimensions(),
-                ",")
-                .c_str()));
+    const auto& dnums = *convolution_dimension_numbers_;
+
+    // Show the given dimension labels in order of major to minor based on the
+    // shape's layout.
+    const auto append_dims = [&](const std::vector<string>& dims,
+                                 const Shape& shape) {
+      CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
+      for (int64 logical = 0; logical < dims.size(); ++logical) {
+        int64 physical = logical;
+        if (!shape.layout().minor_to_major().empty()) {
+          physical = LayoutUtil::Major(shape.layout(), logical);
+        }
+        extra += dims[physical];
+      }
+    };
+
+    // lhs_dims[i] is the symbol of the logical dimension i for the lhs
+    // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
+    std::vector<string> lhs_dims(2 + dnums.spatial_dimensions().size());
+    lhs_dims[dnums.batch_dimension()] = 'b';
+    lhs_dims[dnums.feature_dimension()] = 'f';
+    for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
+      lhs_dims[dnums.spatial_dimensions(i)] = tensorflow::strings::StrCat(i);
+    }
+
+    std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
+    rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
+    rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
+    for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
+      rhs_dims[dnums.kernel_spatial_dimensions(i)] =
+          tensorflow::strings::StrCat(i);
+    }
+
+    extra += " dims: ";
+    append_dims(lhs_dims, operands_.at(0)->shape());
+    extra += "_";
+    append_dims(rhs_dims, operands_.at(1)->shape());
+    extra += "->";
+    append_dims(lhs_dims, shape());
   }
   if (to_apply_ != nullptr) {
     tensorflow::strings::StrAppend(&extra, ", computation=", to_apply_->name());
   }
   if (opcode() == HloOpcode::kWhile) {
-    tensorflow::strings::StrAppend(&extra, ", condition=",
-                                   while_condition()->name());
+    tensorflow::strings::StrAppend(&extra,
+                                   ", condition=", while_condition()->name());
     tensorflow::strings::StrAppend(&extra, ", body=", while_body()->name());
   }
   if (opcode() == HloOpcode::kGetTupleElement) {
@@ -1398,6 +1451,49 @@ string HloInstruction::ToShortString() const {
                                                      HloInstruction* operand) {
         tensorflow::strings::StrAppend(out, operand->name());
       }).c_str());
+}
+
+string HloInstruction::ToCategory() const {
+  if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
+      opcode() == HloOpcode::kReshape) {
+    return "data formatting";
+  }
+
+  if (opcode() == HloOpcode::kConvolution) {
+    string category = "convolution";
+    if (window_util::HasBaseDilation(window())) {
+      category += " base-dilated";
+    }
+    if (window_util::HasWindowDilation(window())) {
+      category += " window-dilated";
+    }
+    return category;
+  }
+
+  if (opcode() == HloOpcode::kFusion) {
+    if (operands().size() == 2) {
+      bool saw_rank_1 = false;
+      bool saw_higher_rank = false;
+      for (const auto* operand : operands()) {
+        saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
+        saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
+      }
+      if (saw_rank_1 && saw_higher_rank) {
+        return "rank-1-broadcast binary fusion";
+      }
+    }
+    if (IsElementwise()) {
+      return "elementwise fusion";
+    } else {
+      return "non-elementwise fusion";
+    }
+  }
+
+  if (IsElementwise() && opcode() != HloOpcode::kFusion) {
+    return "non-fusion elementwise";
+  }
+
+  return HloOpcodeString(opcode());
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -1426,6 +1522,7 @@ bool HloInstruction::IsFusable() const {
   switch (opcode_) {
     case HloOpcode::kFusion:
     case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
     case HloOpcode::kTrace:
     case HloOpcode::kSend:
@@ -1464,7 +1561,7 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
-Status HloInstruction::AcceptInternalVisit(DfsHloVisitor* visitor) {
+Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
@@ -1571,6 +1668,8 @@ Status HloInstruction::AcceptInternalVisit(DfsHloVisitor* visitor) {
       return visitor->HandleSort(this, operands_[0]);
     case HloOpcode::kInfeed:
       return visitor->HandleInfeed(this);
+    case HloOpcode::kOutfeed:
+      return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this, distribution_);
     case HloOpcode::kWhile:
@@ -1599,7 +1698,7 @@ Status HloInstruction::AcceptInternalVisit(DfsHloVisitor* visitor) {
 Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   // Do not visit this HLO node again if it is already visited.
   if (visitor->DidVisit(*this)) {
-    VLOG(3) << "Not visiting HLO " << this << " as it was already visited.";
+    VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
     return Status::OK();
   }
 
@@ -1612,25 +1711,26 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   visitor->SetVisiting(*this);
 
   for (auto operand : operands_) {
-    VLOG(3) << "Going to visit HLO " << operand << " as operand of HLO "
-            << this;
+    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
+            << name();
     TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor));
   }
 
   for (auto control_predecessor : control_predecessors_) {
-    VLOG(3) << "Going to visit HLO " << control_predecessor
-            << " as a control predecessor of HLO " << this;
+    VLOG(3) << "Going to visit HLO " << control_predecessor->name()
+            << " as a control predecessor of HLO " << name();
     TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(visitor));
   }
 
   TF_RETURN_IF_ERROR(visitor->Preprocess(this));
-  VLOG(3) << "Visiting HLO " << this;
-  TF_RETURN_IF_ERROR(AcceptInternalVisit(visitor));
+  VLOG(2) << "Visiting HLO " << name();
+  TF_RETURN_IF_ERROR(Visit(visitor));
   visitor->SetVisited(*this);
   return visitor->Postprocess(this);
 }
 
 Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit) {
+  VLOG(2) << "HloInstruction::Accept(" << name() << ")";
   auto status = AcceptInternal(visitor);
   if (!status.ok()) {
     return status;
@@ -1645,14 +1745,13 @@ Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit) {
 
 namespace {
 
-// Returns true if the given order is a topological sort of exactly those
-// instructions rooted at 'root'.
-bool OrderIsTopologicalSort(HloInstruction* root,
-                            const std::vector<const HloInstruction*>& order) {
+// Returns true if the given order is a topological sort of the instructions it
+// contains.
+bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
   // Create a map from instruction to its position in 'order'.
   std::unordered_map<const HloInstruction*, int> order_position;
   for (int i = 0; i < order.size(); i++) {
-    if (!order_position.insert(std::make_pair(order[i], i)).second) {
+    if (!order_position.insert({order[i], i}).second) {
       // Instruction order[i] is duplicated in the order.
       return false;
     }
@@ -1669,26 +1768,6 @@ bool OrderIsTopologicalSort(HloInstruction* root,
     }
   }
 
-  // Create a vector of all instructions in a DFS search starting at
-  // root. 'order' should contain exactly these instructions.
-  std::vector<const HloInstruction*> visited;
-  TF_CHECK_OK(root->Accept([&visited](HloInstruction* instruction) {
-    visited.push_back(instruction);
-    return Status::OK();
-  }));
-
-  if (order_position.size() != visited.size()) {
-    return false;
-  }
-  for (auto* instruction : visited) {
-    if (order_position.count(instruction) == 0) {
-      return false;
-    }
-  }
-  // Given the conditions above, the last element of order should always be the
-  // root.
-  CHECK_EQ(root, order[order.size() - 1]);
-
   return true;
 }
 
@@ -1701,12 +1780,26 @@ Status HloInstruction::Accept(FunctionVisitor::VisitorFunction visitor_func) {
 
 Status HloInstruction::AcceptOrdered(
     DfsHloVisitor* visitor, const std::vector<const HloInstruction*>& order) {
-  DCHECK(OrderIsTopologicalSort(this, order));
+  VLOG(2) << "HloInstruction::AcceptOrdered(" << name() << ")";
+  TF_RET_CHECK(OrderIsTopologicalSort(order));
+
+  // Compute the predecessors of this instruction.
+  std::unordered_set<const HloInstruction*> predecessors;
+  TF_RETURN_IF_ERROR(this->Accept([&predecessors](HloInstruction* instruction) {
+    predecessors.insert(instruction);
+    return Status::OK();
+  }));
+
   for (auto* const_instruction : order) {
+    if (predecessors.count(const_instruction) == 0) {
+      // Instruction is not a predecessors of 'this'.
+      continue;
+    }
+
     // The visitor can mark instructions as visited to skip particular
     // instructions.
     if (visitor->DidVisit(*const_instruction)) {
-      VLOG(3) << "Not visiting HLO " << const_instruction
+      VLOG(3) << "Not visiting HLO " << const_instruction->name()
               << " as it was already visited.";
       continue;
     }
@@ -1715,8 +1808,8 @@ Status HloInstruction::AcceptOrdered(
         const_cast<HloInstruction*>(const_instruction);
 
     TF_RETURN_IF_ERROR(visitor->Preprocess(instruction));
-    VLOG(3) << "Visiting HLO " << instruction;
-    TF_RETURN_IF_ERROR(instruction->AcceptInternalVisit(visitor));
+    VLOG(2) << "Visiting HLO " << instruction->name();
+    TF_RETURN_IF_ERROR(instruction->Visit(visitor));
     visitor->SetVisited(*instruction);
     TF_RETURN_IF_ERROR(visitor->Postprocess(instruction));
   }

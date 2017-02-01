@@ -31,6 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -112,6 +113,24 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(-1.0, var.eval())
 
       self.assertAllClose(4.0, four.eval())
+      self.assertAllClose(4.0, var.eval())
+
+  def testResourceAssignments(self):
+    with self.test_session(use_gpu=True):
+      var = resource_variable_ops.ResourceVariable(0.0)
+      plus_one = var.assign_add(1.0)
+      minus_one = var.assign_sub(2.0)
+      four = var.assign(4.0)
+      variables.global_variables_initializer().run()
+      self.assertAllClose(0.0, var.eval())
+
+      plus_one.eval()
+      self.assertAllClose(1.0, var.eval())
+
+      minus_one.eval()
+      self.assertAllClose(-1.0, var.eval())
+
+      four.eval()
       self.assertAllClose(4.0, var.eval())
 
   def _countUpToTest(self, dtype):

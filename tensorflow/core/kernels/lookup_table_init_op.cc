@@ -430,7 +430,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     const Tensor& vocab_filename_tensor = ctx->input(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(vocab_filename_tensor.shape()),
-        errors::InvalidArgument("filename should be a single string, but got",
+        errors::InvalidArgument("filename should be a single string, but got ",
                                 vocab_filename_tensor.shape().DebugString()));
 
     string vocab_filename = vocab_filename_tensor.scalar<string>()();

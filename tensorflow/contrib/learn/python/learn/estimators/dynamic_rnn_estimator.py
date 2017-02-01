@@ -704,7 +704,9 @@ def _to_rnn_cell(cell_or_type, num_units, num_layers):
   if num_layers > 1:
     cell = contrib_rnn.MultiRNNCell(
         [single_cell() for _ in range(num_layers)], state_is_tuple=True)
-  return single_cell()
+  else:
+    cell = single_cell()
+  return cell
 
 
 @experimental

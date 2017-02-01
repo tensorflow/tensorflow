@@ -66,10 +66,15 @@ GpuHloOrdering::GpuHloOrdering(
 
   for (const HloInstruction* hlo : thunk_launch_order) {
     if (stream_assignment.HasStreamAssigned(*hlo)) {
-      // All ops already queued on the same stream are predecessors.
+      // All ops already queued on the same instruction stream, and their
+      // transitive predecessors, are predecessors. Since the relation is
+      // transitive, we just set the transitive closure of the previous op.
       const int stream_no = stream_assignment.StreamNumberForHlo(*hlo);
-      for (const HloInstruction* inst : instructions_per_stream[stream_no]) {
-        predecessor_map->SetReachable(hlo, inst);
+      std::vector<const HloInstruction*>* instructions =
+          &instructions_per_stream[stream_no];
+      if (!instructions->empty()) {
+        const HloInstruction* back = instructions->back();
+        predecessor_map->SetReachableAndTransitiveClosure(hlo, back);
       }
       // All operands and their transitive predecessors are predecessors. Each
       // operand must already exist in 'predecessor_map', since we're iterating
@@ -77,7 +82,7 @@ GpuHloOrdering::GpuHloOrdering(
       for (const HloInstruction* operand : hlo->operands()) {
         predecessor_map->SetReachableAndTransitiveClosure(hlo, operand);
       }
-      instructions_per_stream[stream_no].push_back(hlo);
+      instructions->push_back(hlo);
     } else {
       // Only parameters and constants don't have an assigned stream, since they
       // don't require a thunk. These ops don't have any predecessors.

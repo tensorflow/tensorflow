@@ -45,7 +45,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "third_party/eigen3/Eigen/Core"
+
+namespace Eigen {
+struct half;
+}  // namespace Eigen
 
 namespace perftools {
 namespace gputools {

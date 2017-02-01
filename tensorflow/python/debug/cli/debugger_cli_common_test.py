@@ -236,7 +236,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     screen_output.write_to_file(file_path)
 
     with gfile.Open(file_path, "r") as f:
-      self.assertEqual(b"Roses are red\nViolets are blue\n", f.read())
+      self.assertEqual("Roses are red\nViolets are blue\n", f.read())
 
     # Clean up.
     gfile.Remove(file_path)

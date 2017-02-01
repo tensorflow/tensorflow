@@ -214,6 +214,11 @@ class HloComputation {
   // root instruction as the argument).
   Status Accept(DfsHloVisitor* visitor) const;
 
+  // Visit every node in the computation in the given order. 'order' must
+  // be a topological sort of all instructions in the computation.
+  Status AcceptOrdered(DfsHloVisitor* visitor,
+                       const std::vector<const HloInstruction*>& order) const;
+
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
 
