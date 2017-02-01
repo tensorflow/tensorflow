@@ -17,6 +17,8 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-imports/d3.html">
 
@@ -37,6 +39,7 @@ future for loading older images.
         <template is="dom-if" if="[[_currentWallTime]]">
           ([[_currentWallTime]])
         </template>
+        <paper-spinner-lite active hidden$=[[!_isImageLoading]]></paper-spinner-lite>
       </template>
       <template is="dom-if" if="[[_hasMultipleSteps]]">
         <paper-slider
@@ -50,7 +53,7 @@ future for loading older images.
       </template>
     </div>
 
-    <img id="img" src="">
+    <div id="main-image-container"></div>
 
     <style>
       :host {
@@ -72,6 +75,13 @@ future for loading older images.
         font-weight: bold;
       }
 
+      #image-annotation paper-spinner-lite {
+        width: 14px;
+        height: 14px;
+        vertical-align: text-bottom;
+        --paper-spinner-color: var(--tb-orange-strong)
+      }
+
       #steps {
         height: 15px;
         margin: 0 0 0 -15px;
@@ -87,7 +97,7 @@ future for loading older images.
         --paper-slider-pin-start-color: var(--step-slider-knob-color);
       }
 
-      img {
+      #main-image-container img {
         border: 1px solid #f5f5f5;
         image-rendering: -moz-crisp-edges;
         image-rendering: pixelated;
@@ -141,6 +151,15 @@ future for loading older images.
           type: Number,
           computed: "_computeMaxStepIndex(_steps)",
         },
+        // We use a strictly increasing index to make sure that we don't settle on a stale image.
+        _currentImageLoadIndex: {
+          type: Number,
+          value: 1,
+        },
+        _isImageLoading: {
+          type: Boolean,
+          value: false,
+        },
       },
       observers: [
         "_updateImageUrl(_steps, _stepIndex)",
@@ -164,14 +183,32 @@ future for loading older images.
       },
       _updateImageUrl: function(steps, stepIndex) {
         // We manually change the image URL (instead of binding to the image's src attribute)
-        // because we would like to clear the image URL before setting the src to the new URL. If
-        // we avoid doing that, the user might be misled into believing that the new image has
-        // finished loading (and that it looks identical to the previous image).
+        // because we would like to manage what happens when the image starts to / finishes loading.
         if (!steps.length) {
           return;
         }
-        this.$.img.src = "";
-        this.$.img.src = steps[stepIndex].url;
+
+        let img = new Image();
+
+        const loadIndex = ++this._currentImageLoadIndex;
+        img.onload = img.onerror = (function() {
+          if (loadIndex != this._currentImageLoadIndex) {
+            // This load is no longer relevant.
+            return;
+          }
+
+          // The new image has finished loading. Remove the old image. Add the new one.
+          let mainImageContainer = this.$$("#main-image-container");
+          mainImageContainer.innerHTML = "";
+          Polymer.dom(mainImageContainer).appendChild(img);
+
+          // The image has finished loading (or has erred and failed to load).
+          this.set("_isImageLoading", false);
+        }).bind(this);
+
+        // Load the new image.
+        this.set("_isImageLoading", true);
+        img.src = steps[stepIndex].url;
       },
       _computeHasAtLeastOneStep: function(steps) {
         return !!steps && steps.length > 0;
