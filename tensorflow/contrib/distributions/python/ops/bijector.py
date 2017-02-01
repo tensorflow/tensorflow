@@ -332,9 +332,10 @@ class Bijector(object):
     functions to avoid computing the `inverse_log_det_jacobian` or the
     `inverse`, respectively.
 
-  - Subclasses should implement `_get_forward_event_shape`,
-    `_forward_event_shape` (and `inverse` counterparts) if the transformation is
-    shape-changing.  By default the event-shape is assumed unchanged from input.
+  - Subclasses should implement `_forward_event_shape`,
+    `_forward_event_shape_tensor` (and `inverse` counterparts) if the
+    transformation is shape-changing.  By default the event-shape is assumed
+    unchanged from input.
 
   Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
 
@@ -486,11 +487,13 @@ class Bijector(object):
     """Returns the string name of this `Bijector`."""
     return self._name
 
-  def _forward_event_shape(self, input_shape):
-    """Subclass implementation for `forward_event_shape` public function."""
+  def _forward_event_shape_tensor(self, input_shape):
+    """Subclass implementation for `forward_event_shape_tensor` function."""
     return input_shape
 
-  def forward_event_shape(self, input_shape, name="forward_event_shape"):
+  def forward_event_shape_tensor(self,
+                                 input_shape,
+                                 name="forward_event_shape_tensor"):
     """Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
     Args:
@@ -499,38 +502,40 @@ class Bijector(object):
       name: name to give to the op
 
     Returns:
-      forward_event_shape: `Tensor`, `int32` vector indicating event-portion
-        shape after applying `forward`.
+      forward_event_shape_tensor: `Tensor`, `int32` vector indicating
+        event-portion shape after applying `forward`.
     """
     with self._name_scope(name, [input_shape]):
       input_shape = ops.convert_to_tensor(input_shape, dtype=dtypes.int32,
                                           name="input_shape")
-      return self._forward_event_shape(input_shape)
+      return self._forward_event_shape_tensor(input_shape)
 
-  def _get_forward_event_shape(self, input_shape):
-    """Subclass implementation for `get_forward_event_shape` public function."""
+  def _forward_event_shape(self, input_shape):
+    """Subclass implementation for `forward_event_shape` public function."""
     return input_shape
 
-  def get_forward_event_shape(self, input_shape):
+  def forward_event_shape(self, input_shape):
     """Shape of a single sample from a single batch as a `TensorShape`.
 
-    Same meaning as `forward_event_shape`. May be only partially defined.
+    Same meaning as `forward_event_shape_tensor`. May be only partially defined.
 
     Args:
       input_shape: `TensorShape` indicating event-portion shape passed into
         `forward` function.
 
     Returns:
-      forward_event_shape: `TensorShape` indicating event-portion shape after
-        applying `forward`. Possibly unknown.
+      forward_event_shape_tensor: `TensorShape` indicating event-portion shape
+        after applying `forward`. Possibly unknown.
     """
-    return self._get_forward_event_shape(tensor_shape.TensorShape(input_shape))
+    return self._forward_event_shape(tensor_shape.TensorShape(input_shape))
 
-  def _inverse_event_shape(self, output_shape):
-    """Subclass implementation for `inverse_event_shape` public function."""
+  def _inverse_event_shape_tensor(self, output_shape):
+    """Subclass implementation for `inverse_event_shape_tensor` function."""
     return output_shape
 
-  def inverse_event_shape(self, output_shape, name="inverse_event_shape"):
+  def inverse_event_shape_tensor(self,
+                                 output_shape,
+                                 name="inverse_event_shape_tensor"):
     """Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
     Args:
@@ -539,32 +544,32 @@ class Bijector(object):
       name: name to give to the op
 
     Returns:
-      inverse_event_shape: `Tensor`, `int32` vector indicating event-portion
-        shape after applying `inverse`.
+      inverse_event_shape_tensor: `Tensor`, `int32` vector indicating
+        event-portion shape after applying `inverse`.
     """
     with self._name_scope(name, [output_shape]):
       output_shape = ops.convert_to_tensor(output_shape, dtype=dtypes.int32,
                                            name="output_shape")
-      return self._inverse_event_shape(output_shape)
+      return self._inverse_event_shape_tensor(output_shape)
 
-  def _get_inverse_event_shape(self, output_shape):
-    """Subclass implementation for `get_inverse_event_shape` public function."""
-    return self._get_inverse_event_shape(tensor_shape.TensorShape(output_shape))
+  def _inverse_event_shape(self, output_shape):
+    """Subclass implementation for `inverse_event_shape` public function."""
+    return self._inverse_event_shape(tensor_shape.TensorShape(output_shape))
 
-  def get_inverse_event_shape(self, output_shape):
+  def inverse_event_shape(self, output_shape):
     """Shape of a single sample from a single batch as a `TensorShape`.
 
-    Same meaning as `inverse_event_shape`. May be only partially defined.
+    Same meaning as `inverse_event_shape_tensor`. May be only partially defined.
 
     Args:
       output_shape: `TensorShape` indicating event-portion shape passed into
         `inverse` function.
 
     Returns:
-      inverse_event_shape: `TensorShape` indicating event-portion shape after
-        applying `inverse`. Possibly unknown.
+      inverse_event_shape_tensor: `TensorShape` indicating event-portion shape
+        after applying `inverse`. Possibly unknown.
     """
-    return self._get_inverse_event_shape(output_shape)
+    return self._inverse_event_shape(output_shape)
 
   def _forward(self, x):
     """Subclass implementation for `forward` public function."""
@@ -877,10 +882,10 @@ class Inline(Bijector):
                inverse_fn=None,
                inverse_log_det_jacobian_fn=None,
                forward_log_det_jacobian_fn=None,
-               get_forward_event_shape_fn=None,
                forward_event_shape_fn=None,
-               get_inverse_event_shape_fn=None,
+               forward_event_shape_tensor_fn=None,
                inverse_event_shape_fn=None,
+               inverse_event_shape_tensor_fn=None,
                is_constant_jacobian=False,
                validate_args=False,
                name="inline"):
@@ -893,14 +898,14 @@ class Inline(Bijector):
         log o det o jacobian of the inverse transformation.
       forward_log_det_jacobian_fn: Python callable implementing the
         log o det o jacobian of the forward transformation.
-      get_forward_event_shape_fn: Python callable implementing non-identical
+      forward_event_shape_fn: Python callable implementing non-identical
         static event shape changes. Default: shape is assumed unchanged.
-      forward_event_shape_fn: Python callable implementing non-identical event
-        shape changes. Default: shape is assumed unchanged.
-      get_inverse_event_shape_fn: Python callable implementing non-identical
+      forward_event_shape_tensor_fn: Python callable implementing non-identical
+        event shape changes. Default: shape is assumed unchanged.
+      inverse_event_shape_fn: Python callable implementing non-identical
         static event shape changes. Default: shape is assumed unchanged.
-      inverse_event_shape_fn: Python callable implementing non-identical event
-        shape changes. Default: shape is assumed unchanged.
+      inverse_event_shape_tensor_fn: Python callable implementing non-identical
+        event shape changes. Default: shape is assumed unchanged.
       is_constant_jacobian: `Boolean` indicating that the Jacobian is constant
         for all input arguments.
       validate_args: `Boolean` indicating whether arguments should be checked
@@ -917,16 +922,10 @@ class Inline(Bijector):
     self._inverse_fn = inverse_fn
     self._inverse_log_det_jacobian_fn = inverse_log_det_jacobian_fn
     self._forward_log_det_jacobian_fn = forward_log_det_jacobian_fn
-    self._get_forward_event_shape_fn = get_forward_event_shape_fn
     self._forward_event_shape_fn = forward_event_shape_fn
-    self._get_inverse_event_shape_fn = get_inverse_event_shape_fn
+    self._forward_event_shape_tensor_fn = forward_event_shape_tensor_fn
     self._inverse_event_shape_fn = inverse_event_shape_fn
-
-  def _get_forward_event_shape(self, input_shape):
-    if self._get_forward_event_shape_fn is None:
-      # By default assume shape doesn't change.
-      return input_shape
-    return self._get_forward_event_shape_fn(input_shape)
+    self._inverse_event_shape_tensor_fn = inverse_event_shape_tensor_fn
 
   def _forward_event_shape(self, input_shape):
     if self._forward_event_shape_fn is None:
@@ -934,17 +933,23 @@ class Inline(Bijector):
       return input_shape
     return self._forward_event_shape_fn(input_shape)
 
-  def _get_inverse_event_shape(self, output_shape):
-    if self._get_inverse_event_shape_fn is None:
+  def _forward_event_shape_tensor(self, input_shape):
+    if self._forward_event_shape_tensor_fn is None:
       # By default assume shape doesn't change.
-      return output_shape
-    return self._get_inverse_event_shape_fn(output_shape)
+      return input_shape
+    return self._forward_event_shape_tensor_fn(input_shape)
 
   def _inverse_event_shape(self, output_shape):
     if self._inverse_event_shape_fn is None:
       # By default assume shape doesn't change.
       return output_shape
     return self._inverse_event_shape_fn(output_shape)
+
+  def _inverse_event_shape_tensor(self, output_shape):
+    if self._inverse_event_shape_tensor_fn is None:
+      # By default assume shape doesn't change.
+      return output_shape
+    return self._inverse_event_shape_tensor_fn(output_shape)
 
   def _forward(self, x, **kwargs):
     if not callable(self._forward_fn):
@@ -1015,17 +1020,17 @@ class Invert(Bijector):
         name=name or "_".join(["invert", bijector.name]))
     self._shaper = bijector.shaper
 
-  def _get_forward_event_shape(self, input_shape):
-    return self.bijector.get_inverse_event_shape(input_shape)
-
   def _forward_event_shape(self, input_shape):
     return self.bijector.inverse_event_shape(input_shape)
 
-  def _get_inverse_event_shape(self, output_shape):
-    return self.bijector.get_forward_event_shape(output_shape)
+  def _forward_event_shape_tensor(self, input_shape):
+    return self.bijector.inverse_event_shape_tensor(input_shape)
 
   def _inverse_event_shape(self, output_shape):
     return self.bijector.forward_event_shape(output_shape)
+
+  def _inverse_event_shape_tensor(self, output_shape):
+    return self.bijector.forward_event_shape_tensor(output_shape)
 
   @property
   def bijector(self):
@@ -1124,19 +1129,20 @@ class Chain(Bijector):
       new_shape = func(new_shape)
     return new_shape
 
-  def _get_forward_event_shape(self, input_shape):
-    return self._shape_helper("get_forward_event_shape", input_shape,
+  def _forward_event_shape(self, input_shape):
+    return self._shape_helper("forward_event_shape", input_shape,
                               reverse=True)
 
-  def _forward_event_shape(self, input_shape):
-    return self._shape_helper("forward_event_shape", input_shape, reverse=True)
-
-  def _get_inverse_event_shape(self, output_shape):
-    return self._shape_helper("get_inverse_event_shape", output_shape,
-                              reverse=False)
+  def _forward_event_shape_tensor(self, input_shape):
+    return self._shape_helper(
+        "forward_event_shape_tensor", input_shape, reverse=True)
 
   def _inverse_event_shape(self, output_shape):
     return self._shape_helper("inverse_event_shape", output_shape,
+                              reverse=False)
+
+  def _inverse_event_shape_tensor(self, output_shape):
+    return self._shape_helper("inverse_event_shape_tensor", output_shape,
                               reverse=False)
 
   def _forward(self, x, **kwargs):
@@ -2153,7 +2159,7 @@ class SoftmaxCentered(Bijector):
         validate_args=validate_args,
         name=name)
 
-  def _get_forward_event_shape(self, input_shape):
+  def _forward_event_shape(self, input_shape):
     if input_shape.ndims is None:
       return input_shape
     if input_shape.ndims != self._static_event_ndims:
@@ -2166,7 +2172,7 @@ class SoftmaxCentered(Bijector):
     # Unreachable code:
     raise ValueError("event_ndims = %d must be 0 or 1" % input_shape.ndims)
 
-  def _forward_event_shape(self, input_shape):
+  def _forward_event_shape_tensor(self, input_shape):
     ndims = array_ops.shape(input_shape)
     if self.validate_args:
       # It is not possible for a negative shape so we need only check <= 1.
@@ -2179,7 +2185,7 @@ class SoftmaxCentered(Bijector):
           [2], dtype=dtypes.int32, name="output_shape")
     return input_shape + 1
 
-  def _get_inverse_event_shape(self, output_shape):
+  def _inverse_event_shape(self, output_shape):
     if output_shape.ndims is None:
       return output_shape
     if output_shape.ndims != 1:
@@ -2188,7 +2194,7 @@ class SoftmaxCentered(Bijector):
       return tensor_shape.TensorShape([])
     return tensor_shape.TensorShape(output_shape[0] - 1)
 
-  def _inverse_event_shape(self, output_shape):
+  def _inverse_event_shape_tensor(self, output_shape):
     ndims = array_ops.shape(output_shape)[0]
     if self.validate_args:
       # It is not possible for a negative shape so we need only check <= 1.

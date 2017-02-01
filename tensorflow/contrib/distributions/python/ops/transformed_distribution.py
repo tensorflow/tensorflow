@@ -360,14 +360,15 @@ class TransformedDistribution(distributions.Distribution):
     return self._bijector
 
   def _event_shape_tensor(self):
-    return self.bijector.forward_event_shape(distribution_util.pick_vector(
-        self._is_event_override,
-        self._override_event_shape,
-        self.distribution.event_shape_tensor()))
+    return self.bijector.forward_event_shape_tensor(
+        distribution_util.pick_vector(
+            self._is_event_override,
+            self._override_event_shape,
+            self.distribution.event_shape_tensor()))
 
   def _event_shape(self):
     static_override = tensor_util.constant_value(self._override_event_shape)
-    return self.bijector.get_forward_event_shape(
+    return self.bijector.forward_event_shape(
         self.distribution.event_shape
         if static_override is not None and not static_override
         else tensor_shape.TensorShape(static_override))
