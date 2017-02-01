@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
@@ -84,7 +85,7 @@ Status SplitGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
                  std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(NoGradient());
-  grad_outputs->push_back(Concat(scope, op.input(0), grad_inputs));
+  grad_outputs->push_back(Concat(scope, grad_inputs, op.input(0)));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Split", SplitGrad);
@@ -211,7 +212,7 @@ Status ReverseGrad(const Scope& scope, const Operation& op,
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
-REGISTER_GRADIENT_OP("Reverse", ReverseGrad);
+REGISTER_GRADIENT_OP("ReverseV2", ReverseGrad);
 
 }  // anonymous namespace
 }  // namespace ops

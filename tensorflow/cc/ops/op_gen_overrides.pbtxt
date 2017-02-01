@@ -1,0 +1,42 @@
+# array_ops
+op { name: "BroadcastArgs" rename_to: "BroadcastDynamicShape" }
+op { name: "ConcatOffset" skip: true }  # Maybe should just be hidden?
+op { name: "Concat" skip: true }
+op { name: "ConcatV2" rename_to: "Concat" }
+op { name: "MirrorPadGrad" hide: true }
+op { name: "Reverse" skip: true }
+op { name: "ReverseV2" rename_to: "Reverse" }
+
+# candidate_sampling_ops
+# control_flow_ops
+# ctc_ops
+# data_flow_ops
+op { name: "FakeQueue" skip: true }
+
+# functional_ops
+# image_ops
+# io_ops
+# linalg_ops
+# logging_ops
+# math_ops
+op { name: "All" alias: "ReduceAll" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Max" alias: "ReduceMax" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Mean" alias: "ReduceMean" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Min" alias: "ReduceMin" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Prod" alias: "ReduceProd" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Sum" alias: "ReduceSum" input_rename: { from: "reduction_indices" to: "axis" } }
+
+# nn_ops
+op { name: "TopKV2" rename_to: "TopK" alias: "TopKV2" }  # TODO(josh11b): delete "TopKV2" alias once users updated
+
+# parsing_ops
+# random_ops
+# script_ops
+# sdca_ops
+# state_ops
+# sparse_ops
+# string_ops
+# user_ops
+# training_ops
+# word2vec deprecated ops
