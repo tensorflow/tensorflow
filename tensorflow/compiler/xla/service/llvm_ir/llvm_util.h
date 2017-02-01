@@ -29,6 +29,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -216,11 +217,15 @@ llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
 // Returns the number of bytes within the shape.
 int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
-// Set values in the given FastMathFlags struct according to our XLA flags.
-void SetFastMathFlags(llvm::FastMathFlags* flags);
+// Gets an llvm::FastMathFlags that reflects the settings in the given
+// compilation options.
+llvm::FastMathFlags GetFastMathFlags(
+    const CompilationOptions& compilation_options);
 
-// Set values in the given TargetOptions struct according to our XLA flags.
-void SetTargetOptions(llvm::TargetOptions* options);
+// Sets values in the given TargetOptions struct according to the given
+// compilation options.
+void SetTargetOptions(const CompilationOptions& compilation_options,
+                      llvm::TargetOptions* target_options);
 
 }  // namespace llvm_ir
 }  // namespace xla

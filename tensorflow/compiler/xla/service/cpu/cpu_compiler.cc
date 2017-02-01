@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/port/initialize.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -255,9 +256,10 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
 
 namespace {
 
-llvm::TargetOptions CompilerTargetOptions() {
+llvm::TargetOptions CompilerTargetOptions(
+    const CompilationOptions& compilation_options) {
   llvm::TargetOptions target_options;
-  llvm_ir::SetTargetOptions(&target_options);
+  llvm_ir::SetTargetOptions(compilation_options, &target_options);
   return target_options;
 }
 
@@ -289,8 +291,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
-  auto jit =
-      MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(), CodeGenOptLevel());
+  auto jit = MakeUnique<SimpleOrcJIT>(
+      CompilerTargetOptions(module_config->compilation_options()),
+      CodeGenOptLevel());
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
   const llvm::DataLayout& data_layout = llvm_module->getDataLayout();
@@ -474,6 +477,21 @@ CpuCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(hlo_modules.size() == module_configs.size());
+  TF_RET_CHECK(!hlo_modules.empty());
+
+  // We can pass just one llvm::TargetOptions when we compile the LLVM module,
+  // so we bail if the configs have conflicting flags.
+  for (const auto& module_config : module_configs) {
+    const auto& options0 = module_configs[0]->compilation_options();
+    const auto& options1 = module_config->compilation_options();
+    if (!protobuf_util::ProtobufEquals(options0, options1)) {
+      return InvalidArgument(
+          "All HLO module configs must have matching compilation options. "
+          "[%s] vs [%s]",
+          options0.ShortDebugString().c_str(),
+          options1.ShortDebugString().c_str());
+    }
+  }
 
   if (aot_options.PlatformId() != se::host::kHostPlatformId) {
     return InvalidArgument("Incompatible AOT compilation platform");
@@ -525,7 +543,8 @@ CpuCompiler::CompileAheadOfTime(
   llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel();
   std::unique_ptr<llvm::TargetMachine> target_machine =
       WrapUnique(target->createTargetMachine(
-          triple.getTriple(), cpu_name, features, CompilerTargetOptions(),
+          triple.getTriple(), cpu_name, features,
+          CompilerTargetOptions(module_configs[0]->compilation_options()),
           reloc_model, llvm::CodeModel::Default, opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
