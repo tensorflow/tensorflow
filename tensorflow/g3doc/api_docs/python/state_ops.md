@@ -3515,7 +3515,7 @@ Returns an Op that initializes all tables of the default graph. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
 Instructions for updating:
-Use `tf.tables_initializer` instead.
+Use [`tf.tables_initializer`](state_ops.md#tables_initializer) instead.
 
 ##### Args:
 
@@ -3669,43 +3669,43 @@ device assignments have not changed.
 
 ### `tf.all_variables(*args, **kwargs)` {#all_variables}
 
-See `tf.global_variables`. (deprecated)
+See [`tf.global_variables`](state_ops.md#global_variables).
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
 Instructions for updating:
-Please use tf.global_variables instead.
+Use [`tf.global_variables`](state_ops.md#global_variables) instead.
 
 
 - - -
 
 ### `tf.initialize_all_variables(*args, **kwargs)` {#initialize_all_variables}
 
-See `tf.global_variables_initializer`. (deprecated)
+See [`tf.global_variables_initializer`](state_ops.md#global_variables_initializer).
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
 Instructions for updating:
-Use `tf.global_variables_initializer` instead.
+Use [`tf.global_variables_initializer`](state_ops.md#global_variables_initializer) instead.
 
 
 - - -
 
 ### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
 
-See `tf.local_variables_initializer`. (deprecated)
+See [`tf.local_variables_initializer`](state_ops.md#local_variables_initializer).
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
 Instructions for updating:
-Use `tf.local_variables_initializer` instead.
+Use [`tf.local_variables_initializer`](state_ops.md#local_variables_initializer) instead.
 
 
 - - -
 
 ### `tf.initialize_variables(*args, **kwargs)` {#initialize_variables}
 
-See `tf.variables_initializer`. (deprecated)
+See [`tf.variables_initializer`](state_ops.md#variables_initializer).
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
 Instructions for updating:
-Use `tf.variables_initializer` instead.
+Use [`tf.variables_initializer`](state_ops.md#variables_initializer) instead.
 
 
