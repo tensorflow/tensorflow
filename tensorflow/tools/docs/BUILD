@@ -84,6 +84,16 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "make_py_guides",
+    srcs = ["make_py_guides.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/tools/docs:generate",
+        "//tensorflow/tools/docs:parser",
+    ],
+)
+
 filegroup(
     name = "doxy_config",
     srcs = ["tf-doxy_for_md-config"],
