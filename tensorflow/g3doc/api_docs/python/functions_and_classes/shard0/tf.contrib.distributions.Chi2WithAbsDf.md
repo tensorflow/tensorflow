@@ -29,13 +29,6 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.alpha` {#Chi2WithAbsDf.alpha}
-
-Shape parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2WithAbsDf.batch_shape` {#Chi2WithAbsDf.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
@@ -73,13 +66,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.beta` {#Chi2WithAbsDf.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2WithAbsDf.cdf(value, name='cdf')` {#Chi2WithAbsDf.cdf}
 
 Cumulative distribution function.
@@ -101,6 +87,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.concentration` {#Chi2WithAbsDf.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -189,17 +182,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.Chi2WithAbsDf.entropy(name='entropy')` {#Chi2WithAbsDf.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -366,8 +348,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -456,6 +438,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.rate` {#Chi2WithAbsDf.rate}
+
+Rate parameter.
 
 
 - - -

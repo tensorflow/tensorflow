@@ -6,22 +6,21 @@ symmetric, positive definite scale matrix.
 Evaluation of the pdf, determinant, and sampling are all `O(k^3)` operations
 where `(k, k)` is the event space shape.
 
-#### Mathematical details.
+#### Mathematical Details
 
-The PDF of this distribution is,
+The probability density function (pdf) is,
 
-```
-f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-```
-
-where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-`k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-```
-B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+```none
+pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
 ```
 
-where `Gamma_k` is the multivariate Gamma function.
+where:
+* `df >= k` denotes the degrees of freedom,
+* `scale` is a symmetric, positive definite, `k x k` matrix,
+* `Z` is the normalizing constant, and,
+* `Gamma_k` is the [multivariate Gamma function](
+  https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
 #### Examples
 
@@ -71,14 +70,15 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
-    exception if a statistic (e.g., mean, mode) is undefined for any batch
-    member. If True, batch members with valid parameters leading to
-    undefined statistics will return `NaN` for this statistic.
-*  <b>`name`</b>: The name scope to give class member ops.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -369,7 +369,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_normalizing_constant(name='log_normalizing_constant')` {#WishartFull.log_normalizing_constant}
+#### `tf.contrib.distributions.WishartFull.log_normalization(name='log_normalization')` {#WishartFull.log_normalization}
 
 Computes the log normalizing constant, log(Z).
 

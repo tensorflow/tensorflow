@@ -1,33 +1,37 @@
 Poisson distribution.
 
-The Poisson distribution is parameterized by `lam`, the rate parameter.
+The Poisson distribution is parameterized by an event `rate` parameter.
 
-The pmf of this distribution is:
+#### Mathematical Details
 
+The probability mass function (pmf) is,
+
+```none
+pmf(k; lambda, k >= 0) = (lambda^k / k!) / Z
+Z = exp(lambda).
 ```
 
-pmf(k) = e^(-lam) * lam^k / k!,  k >= 0
-```
+where `rate = lambda` and `Z` is the normalizing constant.
 - - -
 
-#### `tf.contrib.distributions.Poisson.__init__(lam, validate_args=False, allow_nan_stats=True, name='Poisson')` {#Poisson.__init__}
+#### `tf.contrib.distributions.Poisson.__init__(rate, validate_args=False, allow_nan_stats=True, name='Poisson')` {#Poisson.__init__}
 
-Construct Poisson distributions.
+Initialize a batch of Poisson distributions.
 
 ##### Args:
 
 
-*  <b>`lam`</b>: Floating point tensor, the rate parameter of the
-    distribution(s). `lam` must be positive.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `lam > 0` as well as inputs to `prob` computations are non-negative
-    integers. If validate_args is `False`, then `prob` computations might
-    return `NaN`, but can be evaluated at any real value.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: A name for this distribution.
+*  <b>`rate`</b>: Floating point tensor, the rate parameter of the
+    distribution(s). `rate` must be positive.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -99,6 +103,13 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 ```
 cdf(x) := P[X <= x]
 ```
+
+
+Additional documentation from `Poisson`:
+
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -268,13 +279,6 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.lam` {#Poisson.lam}
-
-Rate parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Poisson.log_cdf(value, name='log_cdf')` {#Poisson.log_cdf}
 
 Log cumulative distribution function.
@@ -288,6 +292,13 @@ log_cdf(x) := Log[ P[X <= x] ]
 Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
+
+
+Additional documentation from `Poisson`:
+
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -311,8 +322,8 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Poisson`:
 
-Note thet the input value must be a non-negative floating point tensor with
-dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
 legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
@@ -372,9 +383,8 @@ Mode.
 
 Additional documentation from `Poisson`:
 
-Note that when `lam` is an integer, there are actually two modes.
-Namely, `lam` and `lam - 1` are both modes. Here we return
-only the larger of the two modes.
+Note: when `rate` is an integer, there are actually two modes: `rate`
+and `rate - 1`. In this case we return the larger, i.e., `rate`.
 
 
 - - -
@@ -454,8 +464,8 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Poisson`:
 
-Note thet the input value must be a non-negative floating point tensor with
-dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
 legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
@@ -469,6 +479,13 @@ legal if it is non-negative and its components are equal to integer values.
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.rate` {#Poisson.rate}
+
+Rate parameter.
 
 
 - - -

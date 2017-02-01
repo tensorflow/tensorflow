@@ -1,58 +1,83 @@
-The `Gamma` distribution with parameter alpha and beta.
+Gamma distribution.
 
-The parameters are the shape and inverse scale parameters alpha, beta.
+The Gamma distribution is defined over positive real numbers using
+parameters `concentration` (aka "alpha") and `rate` (aka "beta").
 
-The PDF of this distribution is:
+#### Mathematical Details
 
-```pdf(x) = (beta^alpha)(x^(alpha-1))e^(-x*beta)/Gamma(alpha), x > 0```
+The probability density function (pdf) is,
 
-and the CDF of this distribution is:
+```none
+pdf(x; alpha, beta, x > 0) = x**(alpha - 1) exp(-x beta) / Z
+Z = Gamma(alpha) beta**alpha
+```
 
-```cdf(x) =  GammaInc(alpha, beta * x) / Gamma(alpha), x > 0```
+where:
 
-where GammaInc is the incomplete lower Gamma function.
+* `concentration = alpha`, `alpha > 0`,
+* `rate = beta`, `beta > 0`,
+* `Z` is the normalizing constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-WARNING: This distribution may draw 0-valued samples for small alpha values.
-    See the note on `tf.random_gamma`.
+The cumulative density function (cdf) is,
 
-Examples:
+```none
+cdf(x; alpha, beta, x > 0) = GammaInc(alpha, beta x) / Gamma(alpha)
+```
+
+where `GammaInc` is the [lower incomplete Gamma function](
+https://en.wikipedia.org/wiki/Incomplete_gamma_function).
+
+The parameters can be intuited via their relationship to mean and stddev,
+
+```none
+concentration = alpha = (mean / stddev)**2
+rate = beta = mean / stddev**2 = concentration / mean
+```
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
+
+WARNING: This distribution may draw 0-valued samples for small `concentration`
+values. See note in `tf.random_gamma` docstring.
+
+#### Examples
 
 ```python
-dist = Gamma(alpha=3.0, beta=2.0)
-dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
+dist = Gamma(concentration=3.0, rate=2.0)
+dist2 = Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='Gamma')` {#Gamma.__init__}
 
-Construct Gamma distributions with parameters `alpha` and `beta`.
+Construct Gamma with `concentration` and `rate` parameters.
 
-The parameters `alpha` and `beta` must be shaped in a way that supports
-broadcasting (e.g. `alpha + beta` is a valid operation).
+The parameters `concentration` and `rate` must be shaped in a way that
+supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`alpha`</b>: Floating point tensor, the shape params of the
-    distribution(s).
-    alpha must contain only positive values.
-*  <b>`beta`</b>: Floating point tensor, the inverse scale params of the
-    distribution(s).
-    beta must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
-    `log_prob(x)`.  If `validate_args` is `False` and the inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`concentration`</b>: Floating point tensor, the concentration params of the
+    distribution(s). Must contain only positive values.
+*  <b>`rate`</b>: Floating point tensor, the inverse scale params of the
+    distribution(s). Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+*  <b>`TypeError`</b>: if `concentration` and `rate` are different dtypes.
 
 
 - - -
@@ -74,13 +99,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Gamma.alpha` {#Gamma.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -122,13 +140,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.beta` {#Gamma.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Gamma.cdf(value, name='cdf')` {#Gamma.cdf}
 
 Cumulative distribution function.
@@ -150,6 +161,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.concentration` {#Gamma.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -231,17 +249,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.Gamma.entropy(name='entropy')` {#Gamma.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -408,8 +415,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -498,6 +505,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.rate` {#Gamma.rate}
+
+Rate parameter.
 
 
 - - -

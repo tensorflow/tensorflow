@@ -1,54 +1,84 @@
-The `InverseGamma` distribution with parameter alpha and beta.
+InverseGamma distribution.
 
-The parameters are the shape and inverse scale parameters alpha, beta.
+The `InverseGamma` distribution is defined over positive real numbers using
+parameters `concentration` (aka "alpha") and `rate` (aka "beta").
 
-The PDF of this distribution is:
+#### Mathematical Details
 
-```pdf(x) = (beta^alpha)/Gamma(alpha)(x^(-alpha-1))e^(-beta/x), x > 0```
+The probability density function (pdf) is,
 
-and the CDF of this distribution is:
+```none
+pdf(x; alpha, beta, x > 0) = x**(-alpha - 1) exp(-beta / x) / Z
+Z = Gamma(alpha) beta**-alpha
+```
 
-```cdf(x) =  GammaInc(alpha, beta / x) / Gamma(alpha), x > 0```
+where:
 
-where GammaInc is the upper incomplete Gamma function.
+* `concentration = alpha`,
+* `rate = beta`,
+* `Z` is the normalizing constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-Examples:
+The cumulative density function (cdf) is,
+
+```none
+cdf(x; alpha, beta, x > 0) = GammaInc(alpha, beta / x) / Gamma(alpha)
+```
+
+where `GammaInc` is the [upper incomplete Gamma function](
+https://en.wikipedia.org/wiki/Incomplete_gamma_function).
+
+The parameters can be intuited via their relationship to mean and stddev,
+
+```none
+concentration = alpha = (mean / stddev)**2
+rate = beta = mean / stddev**2
+```
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
+
+WARNING: This distribution may draw 0-valued samples for small concentration
+values. See note in `tf.random_gamma` docstring.
+
+#### Examples
 
 ```python
-dist = InverseGamma(alpha=3.0, beta=2.0)
-dist2 = InverseGamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
+dist = InverseGamma(concentration=3.0, rate=2.0)
+dist2 = InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='InverseGamma')` {#InverseGamma.__init__}
+#### `tf.contrib.distributions.InverseGamma.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='InverseGamma')` {#InverseGamma.__init__}
 
-Construct InverseGamma distributions with parameters `alpha` and `beta`.
+Construct InverseGamma with `concentration` and `rate` parameters.
 
-The parameters `alpha` and `beta` must be shaped in a way that supports
-broadcasting (e.g. `alpha + beta` is a valid operation).
+The parameters `concentration` and `rate` must be shaped in a way that
+supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`alpha`</b>: Floating point tensor, the shape params of the
-    distribution(s).
-    alpha must contain only positive values.
-*  <b>`beta`</b>: Floating point tensor, the scale params of the distribution(s).
-    beta must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
-    `log_prob(x)`.  If `validate_args` is `False` and the inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`concentration`</b>: Floating point tensor, the concentration params of the
+    distribution(s). Must contain only positive values.
+*  <b>`rate`</b>: Floating point tensor, the inverse scale params of the
+    distribution(s). Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+*  <b>`TypeError`</b>: if `concentration` and `rate` are different dtypes.
 
 
 - - -
@@ -70,13 +100,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGamma.alpha` {#InverseGamma.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -118,13 +141,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.beta` {#InverseGamma.beta}
-
-Scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.InverseGamma.cdf(value, name='cdf')` {#InverseGamma.cdf}
 
 Cumulative distribution function.
@@ -146,6 +162,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.concentration` {#InverseGamma.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -227,17 +250,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.InverseGamma.entropy(name='entropy')` {#InverseGamma.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `InverseGamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -397,9 +409,10 @@ Mean.
 
 Additional documentation from `InverseGamma`:
 
-The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
-`False`, an exception will be raised rather than returning `NaN`
+The mean of an inverse gamma distribution is
+`rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
+otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+raised rather than returning `NaN`
 
 
 - - -
@@ -410,7 +423,8 @@ Mode.
 
 Additional documentation from `InverseGamma`:
 
-The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
+The mode of an inverse gamma distribution is `rate / (concentration +
+1)`.
 
 
 - - -
@@ -498,6 +512,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.rate` {#InverseGamma.rate}
+
+Rate parameter.
 
 
 - - -
@@ -615,7 +636,7 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 Additional documentation from `InverseGamma`:
 
-Variance for inverse gamma is defined only for `alpha > 2`. If
+Variance for inverse gamma is defined only for `concentration > 2`. If
 `self.allow_nan_stats` is `False`, an exception will be raised rather
 than returning `NaN`.
 

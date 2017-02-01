@@ -2627,113 +2627,102 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 Beta distribution.
 
-This distribution is parameterized by `a` and `b` which are shape
-parameters.
+The Beta distribution is defined over the `(0, 1)` interval using parameters
+`concentration1` (aka "alpha") and `concentration0` (aka "beta").
 
-#### Mathematical details
+#### Mathematical Details
 
-The Beta is a distribution over the interval (0, 1).
-The distribution has hyperparameters `a` and `b` and
-probability mass function (pdf):
+The probability density function (pdf) is,
 
-```pdf(x) = 1 / Beta(a, b) * x^(a - 1) * (1 - x)^(b - 1)```
+```none
+pdf(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+```
 
-where `Beta(a, b) = Gamma(a) * Gamma(b) / Gamma(a + b)`
-is the beta function.
+where:
 
+* `concentration1 = alpha`,
+* `concentration0 = beta`,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-This class provides methods to create indexed batches of Beta
-distributions. One entry of the broadcasted
-shape represents of `a` and `b` represents one single Beta distribution.
-When calling distribution functions (e.g. `dist.prob(x)`), `a`, `b`
-and `x` are broadcast to the same shape (if possible).
-Every entry in a/b/x corresponds to a single Beta distribution.
+The concentration parameters represent mean total counts of a `1` or a `0`,
+i.e.,
+
+```none
+concentration1 = alpha = mean * total_concentration
+concentration0 = beta  = (1. - mean) * total_concentration
+```
+
+where `mean` in `(0, 1)` and `total_concentration` is a positive real number
+representing a mean `total_count = concentration1 + concentration0`.
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
 
 #### Examples
 
-Creates 3 distributions.
-The distribution functions can be evaluated on x.
-
 ```python
-a = [1, 2, 3]
-b = [1, 2, 3]
-dist = Beta(a, b)
+# Create a batch of three Beta distributions.
+alpha = [1, 2, 3]
+beta = [1, 2, 3]
+dist = Beta(alpha, beta)
+
+dist.sample([4, 5])  # Shape [4, 5, 3]
+
+# `x` has three batch entries, each with two samples.
+x = [[.1, .4, .5],
+     [.2, .3, .5]]
+# Calculate the probability of each pair of samples under the corresponding
+# distribution in `dist`.
+dist.prob(x)         # Shape [2, 3]
 ```
 
 ```python
-# x same shape as a.
-x = [.2, .3, .7]
-dist.prob(x)  # Shape [3]
+# Create batch_shape=[2, 3] via parameter broadcast:
+alpha = [[1.], [2]]      # Shape [2, 1]
+beta = [3., 4, 5]        # Shape [3]
+dist = Beta(alpha, beta)
 
-# a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
-x = [[.1, .4, .5], [.2, .3, .5]]
-dist.prob(x)  # Shape [2, 3]
+# alpha broadcast as: [[1., 1, 1,],
+#                      [2, 2, 2]]
+# beta broadcast as:  [[3., 4, 5],
+#                      [3, 4, 5]]
+# batch_Shape [2, 3]
+dist.sample([4, 5])  # Shape [4, 5, 2, 3]
 
-# a/b will be broadcast to shape [5, 7, 3] to match x.
-x = [[...]]  # Shape [5, 7, 3]
-dist.prob(x)  # Shape [5, 7, 3]
-```
-
-Creates a 2-batch of 3-class distributions.
-
-```python
-a = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
-b = 5  # Shape []
-dist = Beta(a, b)
-
-# x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
-x = [.2, .3, .9]
-dist.prob(x)  # Shape [2]
+x = [.2, .3, .5]
+# x will be broadcast as [[.2, .3, .5],
+#                         [.2, .3, .5]],
+# thus matching batch_shape [2, 3].
+dist.prob(x)         # Shape [2, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(concentration1=None, concentration0=None, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
 ##### Args:
 
 
-*  <b>`a`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different Beta distributions. This also defines the
-     dtype of the distribution.
-*  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different Beta distributions.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
-    values for parameters `a`, `b`, and `x` in `prob` and `log_prob`.
-    If `False` and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch.
-dist = Beta(1.1, 2.0)
-
-# Define a 2-batch.
-dist = Beta([1.0, 2.0], [4.0, 5.0])
-```
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.a` {#Beta.a}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.a_b_sum` {#Beta.a_b_sum}
-
-Sum of parameters.
+*  <b>`concentration1`</b>: Positive floating-point `Tensor` indicating mean
+    number of successes; aka "alpha". Implies `self.dtype` and
+    `self.batch_shape`, i.e.,
+    `concentration1.shape = [N1, N2, ..., Nm] = self.batch_shape`.
+*  <b>`concentration0`</b>: Positive floating-point `Tensor` indicating mean
+    number of failures; aka "beta". Otherwise has same semantics as
+    `concentration1`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -2755,13 +2744,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.b` {#Beta.b}
-
-Shape parameter.
 
 
 - - -
@@ -2813,6 +2795,12 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 cdf(x) := P[X <= x]
 ```
 
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
+
 ##### Args:
 
 
@@ -2824,6 +2812,20 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.concentration0` {#Beta.concentration0}
+
+Concentration parameter associated with a `0` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.concentration1` {#Beta.concentration1}
+
+Concentration parameter associated with a `1` outcome.
 
 
 - - -
@@ -2998,10 +3000,8 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3021,6 +3021,12 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 #### `tf.contrib.distributions.Beta.log_prob(value, name='log_prob')` {#Beta.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3079,10 +3085,10 @@ Mode.
 
 Additional documentation from `Beta`:
 
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+Note: The mode is undefined when `concentration1 <= 1` or
+`concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
+is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+exception is raised when one or more modes are undefined.
 
 
 - - -
@@ -3162,10 +3168,8 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3272,6 +3276,13 @@ survival_function(x) = P[X > x]
 
 - - -
 
+#### `tf.contrib.distributions.Beta.total_concentration` {#Beta.total_concentration}
+
+Sum of concentration parameters.
+
+
+- - -
+
 #### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -3307,33 +3318,19 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 - - -
 
-### `class tf.contrib.distributions.BetaWithSoftplusAB` {#BetaWithSoftplusAB}
+### `class tf.contrib.distributions.BetaWithSoftplusConcentration` {#BetaWithSoftplusConcentration}
 
-Beta with softplus transform on `a` and `b`.
+Beta with softplus transform of `concentration1` and `concentration0`.
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.__init__(a, b, validate_args=False, allow_nan_stats=True, name='BetaWithSoftplusAB')` {#BetaWithSoftplusAB.__init__}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.__init__(concentration1, concentration0, validate_args=False, allow_nan_stats=True, name='BetaWithSoftplusConcentration')` {#BetaWithSoftplusConcentration.__init__}
 
 
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.a` {#BetaWithSoftplusAB.a}
-
-Shape parameter.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.a_b_sum` {#BetaWithSoftplusAB.a_b_sum}
-
-Sum of parameters.
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.allow_nan_stats` {#BetaWithSoftplusAB.allow_nan_stats}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.allow_nan_stats` {#BetaWithSoftplusConcentration.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -3354,14 +3351,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.b` {#BetaWithSoftplusAB.b}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.batch_shape` {#BetaWithSoftplusAB.batch_shape}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.batch_shape` {#BetaWithSoftplusConcentration.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -3378,7 +3368,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.batch_shape_tensor(name='batch_shape_tensor')` {#BetaWithSoftplusAB.batch_shape_tensor}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.batch_shape_tensor(name='batch_shape_tensor')` {#BetaWithSoftplusConcentration.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -3398,7 +3388,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.cdf(value, name='cdf')` {#BetaWithSoftplusAB.cdf}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.cdf(value, name='cdf')` {#BetaWithSoftplusConcentration.cdf}
 
 Cumulative distribution function.
 
@@ -3407,6 +3397,12 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 ```
 cdf(x) := P[X <= x]
 ```
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3423,7 +3419,21 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.copy(**override_parameters_kwargs)` {#BetaWithSoftplusAB.copy}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.concentration0` {#BetaWithSoftplusConcentration.concentration0}
+
+Concentration parameter associated with a `0` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.concentration1` {#BetaWithSoftplusConcentration.concentration1}
+
+Concentration parameter associated with a `1` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.copy(**override_parameters_kwargs)` {#BetaWithSoftplusConcentration.copy}
 
 Creates a deep copy of the distribution.
 
@@ -3446,7 +3456,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.covariance(name='covariance')` {#BetaWithSoftplusAB.covariance}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.covariance(name='covariance')` {#BetaWithSoftplusConcentration.covariance}
 
 Covariance.
 
@@ -3490,21 +3500,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.dtype` {#BetaWithSoftplusAB.dtype}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.dtype` {#BetaWithSoftplusConcentration.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.entropy(name='entropy')` {#BetaWithSoftplusAB.entropy}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.entropy(name='entropy')` {#BetaWithSoftplusConcentration.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.event_shape` {#BetaWithSoftplusAB.event_shape}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.event_shape` {#BetaWithSoftplusConcentration.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -3518,7 +3528,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.event_shape_tensor(name='event_shape_tensor')` {#BetaWithSoftplusAB.event_shape_tensor}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.event_shape_tensor(name='event_shape_tensor')` {#BetaWithSoftplusConcentration.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -3535,14 +3545,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_continuous` {#BetaWithSoftplusAB.is_continuous}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.is_continuous` {#BetaWithSoftplusConcentration.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusAB.is_scalar_batch}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusConcentration.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -3559,7 +3569,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusAB.is_scalar_event}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusConcentration.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -3576,7 +3586,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.log_cdf(value, name='log_cdf')` {#BetaWithSoftplusAB.log_cdf}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.log_cdf(value, name='log_cdf')` {#BetaWithSoftplusConcentration.log_cdf}
 
 Log cumulative distribution function.
 
@@ -3593,10 +3603,8 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3613,9 +3621,15 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.log_prob(value, name='log_prob')` {#BetaWithSoftplusAB.log_prob}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.log_prob(value, name='log_prob')` {#BetaWithSoftplusConcentration.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3632,7 +3646,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.log_survival_function(value, name='log_survival_function')` {#BetaWithSoftplusAB.log_survival_function}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.log_survival_function(value, name='log_survival_function')` {#BetaWithSoftplusConcentration.log_survival_function}
 
 Log survival function.
 
@@ -3661,35 +3675,35 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.mean(name='mean')` {#BetaWithSoftplusAB.mean}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.mean(name='mean')` {#BetaWithSoftplusConcentration.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.mode(name='mode')` {#BetaWithSoftplusAB.mode}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.mode(name='mode')` {#BetaWithSoftplusConcentration.mode}
 
 Mode.
 
 Additional documentation from `Beta`:
 
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+Note: The mode is undefined when `concentration1 <= 1` or
+`concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
+is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+exception is raised when one or more modes are undefined.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.name` {#BetaWithSoftplusAB.name}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.name` {#BetaWithSoftplusConcentration.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#BetaWithSoftplusAB.param_shapes}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#BetaWithSoftplusConcentration.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -3713,7 +3727,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.param_static_shapes(cls, sample_shape)` {#BetaWithSoftplusAB.param_static_shapes}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.param_static_shapes(cls, sample_shape)` {#BetaWithSoftplusConcentration.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -3743,24 +3757,22 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.parameters` {#BetaWithSoftplusAB.parameters}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.parameters` {#BetaWithSoftplusConcentration.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.prob(value, name='prob')` {#BetaWithSoftplusAB.prob}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.prob(value, name='prob')` {#BetaWithSoftplusConcentration.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -3777,7 +3789,7 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.reparameterization_type` {#BetaWithSoftplusAB.reparameterization_type}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.reparameterization_type` {#BetaWithSoftplusConcentration.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -3792,7 +3804,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.sample(sample_shape=(), seed=None, name='sample')` {#BetaWithSoftplusAB.sample}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.sample(sample_shape=(), seed=None, name='sample')` {#BetaWithSoftplusConcentration.sample}
 
 Generate samples of the specified shape.
 
@@ -3814,7 +3826,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.stddev(name='stddev')` {#BetaWithSoftplusAB.stddev}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.stddev(name='stddev')` {#BetaWithSoftplusConcentration.stddev}
 
 Standard deviation.
 
@@ -3841,7 +3853,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.survival_function(value, name='survival_function')` {#BetaWithSoftplusAB.survival_function}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.survival_function(value, name='survival_function')` {#BetaWithSoftplusConcentration.survival_function}
 
 Survival function.
 
@@ -3867,14 +3879,21 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.validate_args` {#BetaWithSoftplusAB.validate_args}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.total_concentration` {#BetaWithSoftplusConcentration.total_concentration}
+
+Sum of concentration parameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.validate_args` {#BetaWithSoftplusConcentration.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.variance(name='variance')` {#BetaWithSoftplusAB.variance}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.variance(name='variance')` {#BetaWithSoftplusConcentration.variance}
 
 Variance.
 
@@ -4539,14 +4558,32 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.Chi2` {#Chi2}
 
-The Chi2 distribution with degrees of freedom df.
+Chi2 distribution.
 
-The PDF of this distribution is:
+The Chi2 distribution is defined over positive real numbers using a degrees of
+freedom ("df") parameter.
 
-```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
+#### Mathematical Details
 
-Note that the Chi2 distribution is a special case of the Gamma distribution,
-with Chi2(df) = Gamma(df/2, 1/2).
+The probability density function (pdf) is,
+
+```none
+pdf(x; df, x > 0) = x**(0.5 df - 1) exp(-0.5 x) / Z
+Z = 2**(0.5 df) Gamma(0.5 df)
+```
+
+where:
+
+* `df` denotes the degrees of freedom,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The Chi2 distribution is a special case of the Gamma distribution, i.e.,
+
+```python
+Chi2(df) = Gamma(concentration=0.5 * df, rate=0.5)
+```
 - - -
 
 #### `tf.contrib.distributions.Chi2.__init__(df, validate_args=False, allow_nan_stats=True, name='Chi2')` {#Chi2.__init__}
@@ -4558,15 +4595,15 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `df > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
-    If `validate_args` is `False` and the inputs are invalid, correct
-    behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -4588,13 +4625,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.alpha` {#Chi2.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -4636,13 +4666,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.beta` {#Chi2.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2.cdf(value, name='cdf')` {#Chi2.cdf}
 
 Cumulative distribution function.
@@ -4664,6 +4687,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.concentration` {#Chi2.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -4752,17 +4782,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.Chi2.entropy(name='entropy')` {#Chi2.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -4929,8 +4948,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -5019,6 +5038,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.rate` {#Chi2.rate}
+
+Rate parameter.
 
 
 - - -
@@ -5181,13 +5207,6 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.alpha` {#Chi2WithAbsDf.alpha}
-
-Shape parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2WithAbsDf.batch_shape` {#Chi2WithAbsDf.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
@@ -5225,13 +5244,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.beta` {#Chi2WithAbsDf.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Chi2WithAbsDf.cdf(value, name='cdf')` {#Chi2WithAbsDf.cdf}
 
 Cumulative distribution function.
@@ -5253,6 +5265,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.concentration` {#Chi2WithAbsDf.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -5341,17 +5360,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.Chi2WithAbsDf.entropy(name='entropy')` {#Chi2WithAbsDf.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -5518,8 +5526,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -5608,6 +5616,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.rate` {#Chi2WithAbsDf.rate}
+
+Rate parameter.
 
 
 - - -
@@ -5739,34 +5754,55 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.Exponential` {#Exponential}
 
-The Exponential distribution with rate parameter lam.
+Exponential distribution.
 
-The PDF of this distribution is:
+The Exponential distribution is parameterized by an event `rate` parameter.
 
-```prob(x) = (lam * e^(-lam * x)), x > 0```
+#### Mathematical Details
 
-Note that the Exponential distribution is a special case of the Gamma
-distribution, with Exponential(lam) = Gamma(1, lam).
+The probability density function (pdf) is,
+
+```none
+pdf(x; lambda, x > 0) = exp(-lambda x) / Z
+Z = 1 / lambda
+```
+
+where `rate = lambda` and `Z` is the normalizaing constant.
+
+The Exponential distribution is a special case of the Gamma distribution,
+i.e.,
+
+```python
+Exponential(rate) = Gamma(concentration=1., rate)
+```
+
+The Exponential distribution uses a `rate` parameter, or "inverse scale",
+which can be intuited as,
+
+```none
+X ~ Exponential(rate=1)
+Y = X / rate
+```
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=False, allow_nan_stats=True, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(rate, validate_args=False, allow_nan_stats=True, name='Exponential')` {#Exponential.__init__}
 
-Construct Exponential distribution with parameter `lam`.
+Construct Exponential distribution with parameter `rate`.
 
 ##### Args:
 
 
-*  <b>`lam`</b>: Floating point tensor, the rate of the distribution(s).
-    `lam` must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
-    If `validate_args` is `False` and the inputs are invalid, correct
-    behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member. If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`rate`</b>: Floating point tensor, equivalent to `1 / mean`. Must contain only
+    positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -5788,13 +5824,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.alpha` {#Exponential.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -5836,13 +5865,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.beta` {#Exponential.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Exponential.cdf(value, name='cdf')` {#Exponential.cdf}
 
 Cumulative distribution function.
@@ -5864,6 +5886,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.concentration` {#Exponential.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -5946,17 +5975,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shannon entropy in nats.
 
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
-
 
 - - -
 
@@ -6028,13 +6046,6 @@ Indicates that `event_shape == []`.
 
 
 *  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.lam` {#Exponential.lam}
-
-
 
 
 - - -
@@ -6129,8 +6140,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -6219,6 +6230,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.rate` {#Exponential.rate}
+
+
 
 
 - - -
@@ -6348,19 +6366,19 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 - - -
 
-### `class tf.contrib.distributions.ExponentialWithSoftplusLam` {#ExponentialWithSoftplusLam}
+### `class tf.contrib.distributions.ExponentialWithSoftplusRate` {#ExponentialWithSoftplusRate}
 
-Exponential with softplus transform on `lam`.
+Exponential with softplus transform on `rate`.
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.__init__(lam, validate_args=False, allow_nan_stats=True, name='ExponentialWithSoftplusLam')` {#ExponentialWithSoftplusLam.__init__}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.__init__(rate, validate_args=False, allow_nan_stats=True, name='ExponentialWithSoftplusRate')` {#ExponentialWithSoftplusRate.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.allow_nan_stats` {#ExponentialWithSoftplusLam.allow_nan_stats}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.allow_nan_stats` {#ExponentialWithSoftplusRate.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -6381,14 +6399,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.alpha` {#ExponentialWithSoftplusLam.alpha}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.batch_shape` {#ExponentialWithSoftplusLam.batch_shape}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.batch_shape` {#ExponentialWithSoftplusRate.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -6405,7 +6416,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.batch_shape_tensor(name='batch_shape_tensor')` {#ExponentialWithSoftplusLam.batch_shape_tensor}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.batch_shape_tensor(name='batch_shape_tensor')` {#ExponentialWithSoftplusRate.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -6425,14 +6436,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.beta` {#ExponentialWithSoftplusLam.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.cdf(value, name='cdf')` {#ExponentialWithSoftplusLam.cdf}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.cdf(value, name='cdf')` {#ExponentialWithSoftplusRate.cdf}
 
 Cumulative distribution function.
 
@@ -6457,7 +6461,14 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.copy(**override_parameters_kwargs)` {#ExponentialWithSoftplusLam.copy}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.concentration` {#ExponentialWithSoftplusRate.concentration}
+
+Concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.copy(**override_parameters_kwargs)` {#ExponentialWithSoftplusRate.copy}
 
 Creates a deep copy of the distribution.
 
@@ -6480,7 +6491,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.covariance(name='covariance')` {#ExponentialWithSoftplusLam.covariance}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.covariance(name='covariance')` {#ExponentialWithSoftplusRate.covariance}
 
 Covariance.
 
@@ -6524,32 +6535,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.dtype` {#ExponentialWithSoftplusLam.dtype}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.dtype` {#ExponentialWithSoftplusRate.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.entropy(name='entropy')` {#ExponentialWithSoftplusLam.entropy}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.entropy(name='entropy')` {#ExponentialWithSoftplusRate.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.event_shape` {#ExponentialWithSoftplusLam.event_shape}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.event_shape` {#ExponentialWithSoftplusRate.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -6563,7 +6563,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.event_shape_tensor(name='event_shape_tensor')` {#ExponentialWithSoftplusLam.event_shape_tensor}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.event_shape_tensor(name='event_shape_tensor')` {#ExponentialWithSoftplusRate.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -6580,14 +6580,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_continuous` {#ExponentialWithSoftplusLam.is_continuous}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.is_continuous` {#ExponentialWithSoftplusRate.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusLam.is_scalar_batch}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusRate.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -6604,7 +6604,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusLam.is_scalar_event}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusRate.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -6621,14 +6621,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.lam` {#ExponentialWithSoftplusLam.lam}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_cdf(value, name='log_cdf')` {#ExponentialWithSoftplusLam.log_cdf}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.log_cdf(value, name='log_cdf')` {#ExponentialWithSoftplusRate.log_cdf}
 
 Log cumulative distribution function.
 
@@ -6657,7 +6650,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_prob(value, name='log_prob')` {#ExponentialWithSoftplusLam.log_prob}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.log_prob(value, name='log_prob')` {#ExponentialWithSoftplusRate.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -6676,7 +6669,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_survival_function(value, name='log_survival_function')` {#ExponentialWithSoftplusLam.log_survival_function}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.log_survival_function(value, name='log_survival_function')` {#ExponentialWithSoftplusRate.log_survival_function}
 
 Log survival function.
 
@@ -6705,34 +6698,34 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.mean(name='mean')` {#ExponentialWithSoftplusLam.mean}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.mean(name='mean')` {#ExponentialWithSoftplusRate.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.mode(name='mode')` {#ExponentialWithSoftplusLam.mode}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.mode(name='mode')` {#ExponentialWithSoftplusRate.mode}
 
 Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.name` {#ExponentialWithSoftplusLam.name}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.name` {#ExponentialWithSoftplusRate.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ExponentialWithSoftplusLam.param_shapes}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ExponentialWithSoftplusRate.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -6756,7 +6749,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_static_shapes(cls, sample_shape)` {#ExponentialWithSoftplusLam.param_static_shapes}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.param_static_shapes(cls, sample_shape)` {#ExponentialWithSoftplusRate.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -6786,14 +6779,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.parameters` {#ExponentialWithSoftplusLam.parameters}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.parameters` {#ExponentialWithSoftplusRate.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.prob(value, name='prob')` {#ExponentialWithSoftplusLam.prob}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.prob(value, name='prob')` {#ExponentialWithSoftplusRate.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -6812,7 +6805,14 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.reparameterization_type` {#ExponentialWithSoftplusLam.reparameterization_type}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.rate` {#ExponentialWithSoftplusRate.rate}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.reparameterization_type` {#ExponentialWithSoftplusRate.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -6827,7 +6827,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample(sample_shape=(), seed=None, name='sample')` {#ExponentialWithSoftplusLam.sample}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.sample(sample_shape=(), seed=None, name='sample')` {#ExponentialWithSoftplusRate.sample}
 
 Generate samples of the specified shape.
 
@@ -6849,7 +6849,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.stddev(name='stddev')` {#ExponentialWithSoftplusLam.stddev}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.stddev(name='stddev')` {#ExponentialWithSoftplusRate.stddev}
 
 Standard deviation.
 
@@ -6876,7 +6876,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.survival_function(value, name='survival_function')` {#ExponentialWithSoftplusLam.survival_function}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.survival_function(value, name='survival_function')` {#ExponentialWithSoftplusRate.survival_function}
 
 Survival function.
 
@@ -6902,14 +6902,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.validate_args` {#ExponentialWithSoftplusLam.validate_args}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.validate_args` {#ExponentialWithSoftplusRate.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.variance(name='variance')` {#ExponentialWithSoftplusLam.variance}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.variance(name='variance')` {#ExponentialWithSoftplusRate.variance}
 
 Variance.
 
@@ -6939,61 +6939,86 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.Gamma` {#Gamma}
 
-The `Gamma` distribution with parameter alpha and beta.
+Gamma distribution.
 
-The parameters are the shape and inverse scale parameters alpha, beta.
+The Gamma distribution is defined over positive real numbers using
+parameters `concentration` (aka "alpha") and `rate` (aka "beta").
 
-The PDF of this distribution is:
+#### Mathematical Details
 
-```pdf(x) = (beta^alpha)(x^(alpha-1))e^(-x*beta)/Gamma(alpha), x > 0```
+The probability density function (pdf) is,
 
-and the CDF of this distribution is:
+```none
+pdf(x; alpha, beta, x > 0) = x**(alpha - 1) exp(-x beta) / Z
+Z = Gamma(alpha) beta**alpha
+```
 
-```cdf(x) =  GammaInc(alpha, beta * x) / Gamma(alpha), x > 0```
+where:
 
-where GammaInc is the incomplete lower Gamma function.
+* `concentration = alpha`, `alpha > 0`,
+* `rate = beta`, `beta > 0`,
+* `Z` is the normalizing constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-WARNING: This distribution may draw 0-valued samples for small alpha values.
-    See the note on `tf.random_gamma`.
+The cumulative density function (cdf) is,
 
-Examples:
+```none
+cdf(x; alpha, beta, x > 0) = GammaInc(alpha, beta x) / Gamma(alpha)
+```
+
+where `GammaInc` is the [lower incomplete Gamma function](
+https://en.wikipedia.org/wiki/Incomplete_gamma_function).
+
+The parameters can be intuited via their relationship to mean and stddev,
+
+```none
+concentration = alpha = (mean / stddev)**2
+rate = beta = mean / stddev**2 = concentration / mean
+```
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
+
+WARNING: This distribution may draw 0-valued samples for small `concentration`
+values. See note in `tf.random_gamma` docstring.
+
+#### Examples
 
 ```python
-dist = Gamma(alpha=3.0, beta=2.0)
-dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
+dist = Gamma(concentration=3.0, rate=2.0)
+dist2 = Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='Gamma')` {#Gamma.__init__}
 
-Construct Gamma distributions with parameters `alpha` and `beta`.
+Construct Gamma with `concentration` and `rate` parameters.
 
-The parameters `alpha` and `beta` must be shaped in a way that supports
-broadcasting (e.g. `alpha + beta` is a valid operation).
+The parameters `concentration` and `rate` must be shaped in a way that
+supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`alpha`</b>: Floating point tensor, the shape params of the
-    distribution(s).
-    alpha must contain only positive values.
-*  <b>`beta`</b>: Floating point tensor, the inverse scale params of the
-    distribution(s).
-    beta must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
-    `log_prob(x)`.  If `validate_args` is `False` and the inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`concentration`</b>: Floating point tensor, the concentration params of the
+    distribution(s). Must contain only positive values.
+*  <b>`rate`</b>: Floating point tensor, the inverse scale params of the
+    distribution(s). Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+*  <b>`TypeError`</b>: if `concentration` and `rate` are different dtypes.
 
 
 - - -
@@ -7015,13 +7040,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Gamma.alpha` {#Gamma.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -7063,13 +7081,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.beta` {#Gamma.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Gamma.cdf(value, name='cdf')` {#Gamma.cdf}
 
 Cumulative distribution function.
@@ -7091,6 +7102,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.concentration` {#Gamma.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -7172,17 +7190,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.Gamma.entropy(name='entropy')` {#Gamma.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -7349,8 +7356,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -7439,6 +7446,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.rate` {#Gamma.rate}
+
+Rate parameter.
 
 
 - - -
@@ -7568,19 +7582,19 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 - - -
 
-### `class tf.contrib.distributions.GammaWithSoftplusAlphaBeta` {#GammaWithSoftplusAlphaBeta}
+### `class tf.contrib.distributions.GammaWithSoftplusConcentrationRate` {#GammaWithSoftplusConcentrationRate}
 
-Gamma with softplus transform on `alpha` and `beta`.
+`Gamma` with softplus of `concentration` and `rate`.
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='GammaWithSoftplusAlphaBeta')` {#GammaWithSoftplusAlphaBeta.__init__}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='GammaWithSoftplusConcentrationRate')` {#GammaWithSoftplusConcentrationRate.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.allow_nan_stats` {#GammaWithSoftplusAlphaBeta.allow_nan_stats}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.allow_nan_stats` {#GammaWithSoftplusConcentrationRate.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -7601,14 +7615,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.alpha` {#GammaWithSoftplusAlphaBeta.alpha}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.batch_shape` {#GammaWithSoftplusAlphaBeta.batch_shape}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.batch_shape` {#GammaWithSoftplusConcentrationRate.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -7625,7 +7632,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.batch_shape_tensor(name='batch_shape_tensor')` {#GammaWithSoftplusAlphaBeta.batch_shape_tensor}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.batch_shape_tensor(name='batch_shape_tensor')` {#GammaWithSoftplusConcentrationRate.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -7645,14 +7652,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.beta` {#GammaWithSoftplusAlphaBeta.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.cdf(value, name='cdf')` {#GammaWithSoftplusAlphaBeta.cdf}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.cdf(value, name='cdf')` {#GammaWithSoftplusConcentrationRate.cdf}
 
 Cumulative distribution function.
 
@@ -7677,7 +7677,14 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.copy(**override_parameters_kwargs)` {#GammaWithSoftplusAlphaBeta.copy}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.concentration` {#GammaWithSoftplusConcentrationRate.concentration}
+
+Concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.copy(**override_parameters_kwargs)` {#GammaWithSoftplusConcentrationRate.copy}
 
 Creates a deep copy of the distribution.
 
@@ -7700,7 +7707,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.covariance(name='covariance')` {#GammaWithSoftplusAlphaBeta.covariance}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.covariance(name='covariance')` {#GammaWithSoftplusConcentrationRate.covariance}
 
 Covariance.
 
@@ -7744,32 +7751,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.dtype` {#GammaWithSoftplusAlphaBeta.dtype}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.dtype` {#GammaWithSoftplusConcentrationRate.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.entropy(name='entropy')` {#GammaWithSoftplusAlphaBeta.entropy}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.entropy(name='entropy')` {#GammaWithSoftplusConcentrationRate.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.event_shape` {#GammaWithSoftplusAlphaBeta.event_shape}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.event_shape` {#GammaWithSoftplusConcentrationRate.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -7783,7 +7779,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.event_shape_tensor(name='event_shape_tensor')` {#GammaWithSoftplusAlphaBeta.event_shape_tensor}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.event_shape_tensor(name='event_shape_tensor')` {#GammaWithSoftplusConcentrationRate.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -7800,14 +7796,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_continuous` {#GammaWithSoftplusAlphaBeta.is_continuous}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.is_continuous` {#GammaWithSoftplusConcentrationRate.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#GammaWithSoftplusAlphaBeta.is_scalar_batch}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.is_scalar_batch(name='is_scalar_batch')` {#GammaWithSoftplusConcentrationRate.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -7824,7 +7820,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#GammaWithSoftplusAlphaBeta.is_scalar_event}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.is_scalar_event(name='is_scalar_event')` {#GammaWithSoftplusConcentrationRate.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -7841,7 +7837,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.log_cdf(value, name='log_cdf')` {#GammaWithSoftplusAlphaBeta.log_cdf}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.log_cdf(value, name='log_cdf')` {#GammaWithSoftplusConcentrationRate.log_cdf}
 
 Log cumulative distribution function.
 
@@ -7870,7 +7866,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.log_prob(value, name='log_prob')` {#GammaWithSoftplusAlphaBeta.log_prob}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.log_prob(value, name='log_prob')` {#GammaWithSoftplusConcentrationRate.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -7889,7 +7885,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.log_survival_function(value, name='log_survival_function')` {#GammaWithSoftplusAlphaBeta.log_survival_function}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.log_survival_function(value, name='log_survival_function')` {#GammaWithSoftplusConcentrationRate.log_survival_function}
 
 Log survival function.
 
@@ -7918,34 +7914,34 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.mean(name='mean')` {#GammaWithSoftplusAlphaBeta.mean}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.mean(name='mean')` {#GammaWithSoftplusConcentrationRate.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.mode(name='mode')` {#GammaWithSoftplusAlphaBeta.mode}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.mode(name='mode')` {#GammaWithSoftplusConcentrationRate.mode}
 
 Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.name` {#GammaWithSoftplusAlphaBeta.name}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.name` {#GammaWithSoftplusConcentrationRate.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#GammaWithSoftplusAlphaBeta.param_shapes}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#GammaWithSoftplusConcentrationRate.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -7969,7 +7965,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.param_static_shapes(cls, sample_shape)` {#GammaWithSoftplusAlphaBeta.param_static_shapes}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.param_static_shapes(cls, sample_shape)` {#GammaWithSoftplusConcentrationRate.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -7999,14 +7995,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.parameters` {#GammaWithSoftplusAlphaBeta.parameters}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.parameters` {#GammaWithSoftplusConcentrationRate.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.prob(value, name='prob')` {#GammaWithSoftplusAlphaBeta.prob}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.prob(value, name='prob')` {#GammaWithSoftplusConcentrationRate.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -8025,7 +8021,14 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.reparameterization_type` {#GammaWithSoftplusAlphaBeta.reparameterization_type}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.rate` {#GammaWithSoftplusConcentrationRate.rate}
+
+Rate parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.reparameterization_type` {#GammaWithSoftplusConcentrationRate.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -8040,7 +8043,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.sample(sample_shape=(), seed=None, name='sample')` {#GammaWithSoftplusAlphaBeta.sample}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.sample(sample_shape=(), seed=None, name='sample')` {#GammaWithSoftplusConcentrationRate.sample}
 
 Generate samples of the specified shape.
 
@@ -8062,7 +8065,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.stddev(name='stddev')` {#GammaWithSoftplusAlphaBeta.stddev}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.stddev(name='stddev')` {#GammaWithSoftplusConcentrationRate.stddev}
 
 Standard deviation.
 
@@ -8089,7 +8092,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.survival_function(value, name='survival_function')` {#GammaWithSoftplusAlphaBeta.survival_function}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.survival_function(value, name='survival_function')` {#GammaWithSoftplusConcentrationRate.survival_function}
 
 Survival function.
 
@@ -8115,14 +8118,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.validate_args` {#GammaWithSoftplusAlphaBeta.validate_args}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.validate_args` {#GammaWithSoftplusConcentrationRate.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.variance(name='variance')` {#GammaWithSoftplusAlphaBeta.variance}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.variance(name='variance')` {#GammaWithSoftplusConcentrationRate.variance}
 
 Variance.
 
@@ -8152,57 +8155,87 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.InverseGamma` {#InverseGamma}
 
-The `InverseGamma` distribution with parameter alpha and beta.
+InverseGamma distribution.
 
-The parameters are the shape and inverse scale parameters alpha, beta.
+The `InverseGamma` distribution is defined over positive real numbers using
+parameters `concentration` (aka "alpha") and `rate` (aka "beta").
 
-The PDF of this distribution is:
+#### Mathematical Details
 
-```pdf(x) = (beta^alpha)/Gamma(alpha)(x^(-alpha-1))e^(-beta/x), x > 0```
+The probability density function (pdf) is,
 
-and the CDF of this distribution is:
+```none
+pdf(x; alpha, beta, x > 0) = x**(-alpha - 1) exp(-beta / x) / Z
+Z = Gamma(alpha) beta**-alpha
+```
 
-```cdf(x) =  GammaInc(alpha, beta / x) / Gamma(alpha), x > 0```
+where:
 
-where GammaInc is the upper incomplete Gamma function.
+* `concentration = alpha`,
+* `rate = beta`,
+* `Z` is the normalizing constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-Examples:
+The cumulative density function (cdf) is,
+
+```none
+cdf(x; alpha, beta, x > 0) = GammaInc(alpha, beta / x) / Gamma(alpha)
+```
+
+where `GammaInc` is the [upper incomplete Gamma function](
+https://en.wikipedia.org/wiki/Incomplete_gamma_function).
+
+The parameters can be intuited via their relationship to mean and stddev,
+
+```none
+concentration = alpha = (mean / stddev)**2
+rate = beta = mean / stddev**2
+```
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
+
+WARNING: This distribution may draw 0-valued samples for small concentration
+values. See note in `tf.random_gamma` docstring.
+
+#### Examples
 
 ```python
-dist = InverseGamma(alpha=3.0, beta=2.0)
-dist2 = InverseGamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
+dist = InverseGamma(concentration=3.0, rate=2.0)
+dist2 = InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='InverseGamma')` {#InverseGamma.__init__}
+#### `tf.contrib.distributions.InverseGamma.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='InverseGamma')` {#InverseGamma.__init__}
 
-Construct InverseGamma distributions with parameters `alpha` and `beta`.
+Construct InverseGamma with `concentration` and `rate` parameters.
 
-The parameters `alpha` and `beta` must be shaped in a way that supports
-broadcasting (e.g. `alpha + beta` is a valid operation).
+The parameters `concentration` and `rate` must be shaped in a way that
+supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`alpha`</b>: Floating point tensor, the shape params of the
-    distribution(s).
-    alpha must contain only positive values.
-*  <b>`beta`</b>: Floating point tensor, the scale params of the distribution(s).
-    beta must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
-    `log_prob(x)`.  If `validate_args` is `False` and the inputs are
-    invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`concentration`</b>: Floating point tensor, the concentration params of the
+    distribution(s). Must contain only positive values.
+*  <b>`rate`</b>: Floating point tensor, the inverse scale params of the
+    distribution(s). Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+*  <b>`TypeError`</b>: if `concentration` and `rate` are different dtypes.
 
 
 - - -
@@ -8224,13 +8257,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGamma.alpha` {#InverseGamma.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -8272,13 +8298,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.beta` {#InverseGamma.beta}
-
-Scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.InverseGamma.cdf(value, name='cdf')` {#InverseGamma.cdf}
 
 Cumulative distribution function.
@@ -8300,6 +8319,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.concentration` {#InverseGamma.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -8381,17 +8407,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 #### `tf.contrib.distributions.InverseGamma.entropy(name='entropy')` {#InverseGamma.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `InverseGamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
@@ -8551,9 +8566,10 @@ Mean.
 
 Additional documentation from `InverseGamma`:
 
-The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
-`False`, an exception will be raised rather than returning `NaN`
+The mean of an inverse gamma distribution is
+`rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
+otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+raised rather than returning `NaN`
 
 
 - - -
@@ -8564,7 +8580,8 @@ Mode.
 
 Additional documentation from `InverseGamma`:
 
-The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
+The mode of an inverse gamma distribution is `rate / (concentration +
+1)`.
 
 
 - - -
@@ -8652,6 +8669,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.rate` {#InverseGamma.rate}
+
+Rate parameter.
 
 
 - - -
@@ -8769,7 +8793,7 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 Additional documentation from `InverseGamma`:
 
-Variance for inverse gamma is defined only for `alpha > 2`. If
+Variance for inverse gamma is defined only for `concentration > 2`. If
 `self.allow_nan_stats` is `False`, an exception will be raised rather
 than returning `NaN`.
 
@@ -8788,19 +8812,19 @@ than returning `NaN`.
 
 - - -
 
-### `class tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta` {#InverseGammaWithSoftplusAlphaBeta}
+### `class tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate` {#InverseGammaWithSoftplusConcentrationRate}
 
-Inverse Gamma with softplus applied to `alpha` and `beta`.
+`InverseGamma` with softplus of `concentration` and `rate`.
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='InverseGammaWithSoftplusAlphaBeta')` {#InverseGammaWithSoftplusAlphaBeta.__init__}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='InverseGammaWithSoftplusConcentrationRate')` {#InverseGammaWithSoftplusConcentrationRate.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.allow_nan_stats` {#InverseGammaWithSoftplusAlphaBeta.allow_nan_stats}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.allow_nan_stats` {#InverseGammaWithSoftplusConcentrationRate.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -8821,14 +8845,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.alpha` {#InverseGammaWithSoftplusAlphaBeta.alpha}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.batch_shape` {#InverseGammaWithSoftplusAlphaBeta.batch_shape}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.batch_shape` {#InverseGammaWithSoftplusConcentrationRate.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -8845,7 +8862,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.batch_shape_tensor(name='batch_shape_tensor')` {#InverseGammaWithSoftplusAlphaBeta.batch_shape_tensor}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.batch_shape_tensor(name='batch_shape_tensor')` {#InverseGammaWithSoftplusConcentrationRate.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -8865,14 +8882,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.beta` {#InverseGammaWithSoftplusAlphaBeta.beta}
-
-Scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.cdf(value, name='cdf')` {#InverseGammaWithSoftplusAlphaBeta.cdf}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.cdf(value, name='cdf')` {#InverseGammaWithSoftplusConcentrationRate.cdf}
 
 Cumulative distribution function.
 
@@ -8897,7 +8907,14 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.copy(**override_parameters_kwargs)` {#InverseGammaWithSoftplusAlphaBeta.copy}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.concentration` {#InverseGammaWithSoftplusConcentrationRate.concentration}
+
+Concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.copy(**override_parameters_kwargs)` {#InverseGammaWithSoftplusConcentrationRate.copy}
 
 Creates a deep copy of the distribution.
 
@@ -8920,7 +8937,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.covariance(name='covariance')` {#InverseGammaWithSoftplusAlphaBeta.covariance}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.covariance(name='covariance')` {#InverseGammaWithSoftplusConcentrationRate.covariance}
 
 Covariance.
 
@@ -8964,32 +8981,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.dtype` {#InverseGammaWithSoftplusAlphaBeta.dtype}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.dtype` {#InverseGammaWithSoftplusConcentrationRate.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.entropy(name='entropy')` {#InverseGammaWithSoftplusAlphaBeta.entropy}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.entropy(name='entropy')` {#InverseGammaWithSoftplusConcentrationRate.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `InverseGamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.event_shape` {#InverseGammaWithSoftplusAlphaBeta.event_shape}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.event_shape` {#InverseGammaWithSoftplusConcentrationRate.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -9003,7 +9009,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.event_shape_tensor(name='event_shape_tensor')` {#InverseGammaWithSoftplusAlphaBeta.event_shape_tensor}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.event_shape_tensor(name='event_shape_tensor')` {#InverseGammaWithSoftplusConcentrationRate.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -9020,14 +9026,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_continuous` {#InverseGammaWithSoftplusAlphaBeta.is_continuous}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.is_continuous` {#InverseGammaWithSoftplusConcentrationRate.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusConcentrationRate.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -9044,7 +9050,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusConcentrationRate.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -9061,7 +9067,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.log_cdf(value, name='log_cdf')` {#InverseGammaWithSoftplusAlphaBeta.log_cdf}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.log_cdf(value, name='log_cdf')` {#InverseGammaWithSoftplusConcentrationRate.log_cdf}
 
 Log cumulative distribution function.
 
@@ -9090,7 +9096,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.log_prob(value, name='log_prob')` {#InverseGammaWithSoftplusAlphaBeta.log_prob}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.log_prob(value, name='log_prob')` {#InverseGammaWithSoftplusConcentrationRate.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -9109,7 +9115,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.log_survival_function(value, name='log_survival_function')` {#InverseGammaWithSoftplusAlphaBeta.log_survival_function}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.log_survival_function(value, name='log_survival_function')` {#InverseGammaWithSoftplusConcentrationRate.log_survival_function}
 
 Log survival function.
 
@@ -9138,38 +9144,40 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.mean(name='mean')` {#InverseGammaWithSoftplusAlphaBeta.mean}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.mean(name='mean')` {#InverseGammaWithSoftplusConcentrationRate.mean}
 
 Mean.
 
 Additional documentation from `InverseGamma`:
 
-The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
-`False`, an exception will be raised rather than returning `NaN`
+The mean of an inverse gamma distribution is
+`rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
+otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+raised rather than returning `NaN`
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.mode(name='mode')` {#InverseGammaWithSoftplusAlphaBeta.mode}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.mode(name='mode')` {#InverseGammaWithSoftplusConcentrationRate.mode}
 
 Mode.
 
 Additional documentation from `InverseGamma`:
 
-The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
+The mode of an inverse gamma distribution is `rate / (concentration +
+1)`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.name` {#InverseGammaWithSoftplusAlphaBeta.name}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.name` {#InverseGammaWithSoftplusConcentrationRate.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#InverseGammaWithSoftplusAlphaBeta.param_shapes}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#InverseGammaWithSoftplusConcentrationRate.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -9193,7 +9201,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.param_static_shapes(cls, sample_shape)` {#InverseGammaWithSoftplusAlphaBeta.param_static_shapes}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.param_static_shapes(cls, sample_shape)` {#InverseGammaWithSoftplusConcentrationRate.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -9223,14 +9231,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.parameters` {#InverseGammaWithSoftplusAlphaBeta.parameters}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.parameters` {#InverseGammaWithSoftplusConcentrationRate.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.prob(value, name='prob')` {#InverseGammaWithSoftplusAlphaBeta.prob}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.prob(value, name='prob')` {#InverseGammaWithSoftplusConcentrationRate.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -9249,7 +9257,14 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.reparameterization_type` {#InverseGammaWithSoftplusAlphaBeta.reparameterization_type}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.rate` {#InverseGammaWithSoftplusConcentrationRate.rate}
+
+Rate parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.reparameterization_type` {#InverseGammaWithSoftplusConcentrationRate.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -9264,7 +9279,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.sample(sample_shape=(), seed=None, name='sample')` {#InverseGammaWithSoftplusAlphaBeta.sample}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.sample(sample_shape=(), seed=None, name='sample')` {#InverseGammaWithSoftplusConcentrationRate.sample}
 
 Generate samples of the specified shape.
 
@@ -9286,7 +9301,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.stddev(name='stddev')` {#InverseGammaWithSoftplusAlphaBeta.stddev}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.stddev(name='stddev')` {#InverseGammaWithSoftplusConcentrationRate.stddev}
 
 Standard deviation.
 
@@ -9313,7 +9328,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.survival_function(value, name='survival_function')` {#InverseGammaWithSoftplusAlphaBeta.survival_function}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.survival_function(value, name='survival_function')` {#InverseGammaWithSoftplusConcentrationRate.survival_function}
 
 Survival function.
 
@@ -9339,14 +9354,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.validate_args` {#InverseGammaWithSoftplusAlphaBeta.validate_args}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.validate_args` {#InverseGammaWithSoftplusConcentrationRate.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.variance(name='variance')` {#InverseGammaWithSoftplusAlphaBeta.variance}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.variance(name='variance')` {#InverseGammaWithSoftplusConcentrationRate.variance}
 
 Variance.
 
@@ -9362,7 +9377,7 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 Additional documentation from `InverseGamma`:
 
-Variance for inverse gamma is defined only for `alpha > 2`. If
+Variance for inverse gamma is defined only for `concentration > 2`. If
 `self.allow_nan_stats` is `False`, an exception will be raised rather
 than returning `NaN`.
 
@@ -11773,34 +11788,38 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 Poisson distribution.
 
-The Poisson distribution is parameterized by `lam`, the rate parameter.
+The Poisson distribution is parameterized by an event `rate` parameter.
 
-The pmf of this distribution is:
+#### Mathematical Details
 
+The probability mass function (pmf) is,
+
+```none
+pmf(k; lambda, k >= 0) = (lambda^k / k!) / Z
+Z = exp(lambda).
 ```
 
-pmf(k) = e^(-lam) * lam^k / k!,  k >= 0
-```
+where `rate = lambda` and `Z` is the normalizing constant.
 - - -
 
-#### `tf.contrib.distributions.Poisson.__init__(lam, validate_args=False, allow_nan_stats=True, name='Poisson')` {#Poisson.__init__}
+#### `tf.contrib.distributions.Poisson.__init__(rate, validate_args=False, allow_nan_stats=True, name='Poisson')` {#Poisson.__init__}
 
-Construct Poisson distributions.
+Initialize a batch of Poisson distributions.
 
 ##### Args:
 
 
-*  <b>`lam`</b>: Floating point tensor, the rate parameter of the
-    distribution(s). `lam` must be positive.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `lam > 0` as well as inputs to `prob` computations are non-negative
-    integers. If validate_args is `False`, then `prob` computations might
-    return `NaN`, but can be evaluated at any real value.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: A name for this distribution.
+*  <b>`rate`</b>: Floating point tensor, the rate parameter of the
+    distribution(s). `rate` must be positive.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -11872,6 +11891,13 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 ```
 cdf(x) := P[X <= x]
 ```
+
+
+Additional documentation from `Poisson`:
+
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -12041,13 +12067,6 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.Poisson.lam` {#Poisson.lam}
-
-Rate parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Poisson.log_cdf(value, name='log_cdf')` {#Poisson.log_cdf}
 
 Log cumulative distribution function.
@@ -12061,6 +12080,13 @@ log_cdf(x) := Log[ P[X <= x] ]
 Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
+
+
+Additional documentation from `Poisson`:
+
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -12084,8 +12110,8 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Poisson`:
 
-Note thet the input value must be a non-negative floating point tensor with
-dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
 legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
@@ -12145,9 +12171,8 @@ Mode.
 
 Additional documentation from `Poisson`:
 
-Note that when `lam` is an integer, there are actually two modes.
-Namely, `lam` and `lam - 1` are both modes. Here we return
-only the larger of the two modes.
+Note: when `rate` is an integer, there are actually two modes: `rate`
+and `rate - 1`. In this case we return the larger, i.e., `rate`.
 
 
 - - -
@@ -12227,8 +12252,8 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Poisson`:
 
-Note thet the input value must be a non-negative floating point tensor with
-dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+Note that the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.rate`. `x` is only
 legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
@@ -12242,6 +12267,13 @@ legal if it is non-negative and its components are equal to integer values.
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.rate` {#Poisson.rate}
+
+Rate parameter.
 
 
 - - -
@@ -17644,97 +17676,110 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 Dirichlet distribution.
 
-This distribution is parameterized by a vector `alpha` of concentration
-parameters for `k` classes.
+The Dirichlet distribution is defined over the
+[`(k-1)`-simplex](https://en.wikipedia.org/wiki/Simplex) using a positive,
+length-`k` vector `concentration` (`k > 1`). The Dirichlet is identically the
+Beta distribution when `k = 2`.
 
-#### Mathematical details
+#### Mathematical Details
 
-The Dirichlet is a distribution over the standard n-simplex, where the
-standard n-simplex is defined by:
-```{ (x_1, ..., x_n) in R^(n+1) | sum_j x_j = 1 and x_j >= 0 for all j }```.
-The distribution has hyperparameters `alpha = (alpha_1,...,alpha_k)`,
-and probability mass function (prob):
+The Dirichlet is a distribution over the open `(k-1)`-simplex, i.e.,
 
-```prob(x) = 1 / Beta(alpha) * prod_j x_j^(alpha_j - 1)```
+```none
+S^{k-1} = { (x_0, ..., x_{k-1}) in R^k : sum_j x_j = 1 and all_j x_j > 0 }.
+```
 
-where `Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the multivariate
-beta function.
+The probability density function (pdf) is,
 
+```none
+pdf(x; alpha) = prod_j x_j**(alpha_j - 1) / Z
+Z = prod_j Gamma(alpha_j) / Gamma(sum_j alpha_j)
+```
 
-This class provides methods to create indexed batches of Dirichlet
-distributions.  If the provided `alpha` is rank 2 or higher, for
-every fixed set of leading dimensions, the last dimension represents one
-single Dirichlet distribution.  When calling distribution
-functions (e.g. `dist.prob(x)`), `alpha` and `x` are broadcast to the
-same shape (if possible).  In all cases, the last dimension of alpha/x
-represents single Dirichlet distributions.
+where:
+
+* `x in S^{k-1}`, i.e., the `(k-1)`-simplex,
+* `concentration = alpha = [alpha_0, ..., alpha_{k-1}]`, `alpha_j > 0`,
+* `Z` is the normalization constant aka the [multivariate beta function](
+  https://en.wikipedia.org/wiki/Beta_function#Multivariate_beta_function),
+  and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The `concentration` represents mean total counts of class occurrence, i.e.,
+
+```none
+concentration = alpha = mean * total_concentration
+```
+
+where `mean` in `S^{k-1}` and `total_concentration` is a positive real number
+representing a mean total count.
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
 
 #### Examples
 
 ```python
-alpha = [1, 2, 3]
+# Create a single trivariate Dirichlet, with the 3rd class being three times
+# more frequent than the first. I.e., batch_shape=[], event_shape=[3].
+alpha = [1., 2, 3]
 dist = Dirichlet(alpha)
-```
 
-Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
-The distribution functions can be evaluated on x.
+dist.sample([4, 5])  # shape: [4, 5, 3]
 
-```python
-# x same shape as alpha.
-x = [.2, .3, .5]
-dist.prob(x)  # Shape []
+# x has one sample, one batch, three classes:
+x = [.2, .3, .5]   # shape: [3]
+dist.prob(x)       # shape: []
 
-# alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
-x = [[.1, .4, .5], [.2, .3, .5]]
-dist.prob(x)  # Shape [2]
+# x has two samples from one batch:
+x = [[.1, .4, .5],
+     [.2, .3, .5]]
+dist.prob(x)         # shape: [2]
 
 # alpha will be broadcast to shape [5, 7, 3] to match x.
-x = [[...]]  # Shape [5, 7, 3]
-dist.prob(x)  # Shape [5, 7]
+x = [[...]]   # shape: [5, 7, 3]
+dist.prob(x)  # shape: [5, 7]
 ```
 
-Creates a 2-batch of 3-class distributions.
-
 ```python
-alpha = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
+# Create batch_shape=[2], event_shape=[3]:
+alpha = [[1., 2, 3],
+         [4, 5, 6]]   # shape: [2, 3]
 dist = Dirichlet(alpha)
 
-# x will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
+dist.sample([4, 5])  # shape: [4, 5, 2, 3]
+
 x = [.2, .3, .5]
-dist.prob(x)  # Shape [2]
+# x will be broadcast as [[.2, .3, .5],
+#                         [.2, .3, .5]],
+# thus matching batch_shape [2, 3].
+dist.prob(x)         # shape: [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=False, allow_nan_stats=True, name='Dirichlet')` {#Dirichlet.__init__}
+#### `tf.contrib.distributions.Dirichlet.__init__(concentration, validate_args=False, allow_nan_stats=True, name='Dirichlet')` {#Dirichlet.__init__}
 
 Initialize a batch of Dirichlet distributions.
 
 ##### Args:
 
 
-*  <b>`alpha`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different `k` class Dirichlet distributions.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid values
-    for parameters `alpha` and `x` in `prob` and `log_prob`.  If `False`,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch of 2-class Dirichlet distributions,
-# also known as a Beta distribution.
-dist = Dirichlet([1.1, 2.0])
-
-# Define a 2-batch of 3-class distributions.
-dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-```
+*  <b>`concentration`</b>: Positive floating-point `Tensor` indicating mean number
+    of class occurrences; aka "alpha". Implies `self.dtype`, and
+    `self.batch_shape`, `self.event_shape`, i.e., if
+    `concentration.shape = [N1, N2, ..., Nm, k]` then
+    `batch_shape = [N1, N2, ..., Nm]` and
+    `event_shape = [k]`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -17756,20 +17801,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.alpha` {#Dirichlet.alpha}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.alpha_sum` {#Dirichlet.alpha_sum}
-
-Sum of shape parameter.
 
 
 - - -
@@ -17832,6 +17863,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.concentration` {#Dirichlet.concentration}
+
+Concentration parameter; expected counts for that coordinate.
 
 
 - - -
@@ -18025,10 +18063,10 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Dirichlet`:
 
-Note that the input must be a non-negative tensor with dtype `dtype` and whose
-shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
-last dimension represents counts for the corresponding Dirichlet distribution
-in `self.alpha`. `x` is only legal if it sums up to one.
+Note: `value` must be a non-negative tensor with
+dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
+`tf.reduce_sum(value, -1) = 1`. It must have a shape compatible with
+`self.batch_shape() + self.event_shape()`.
 
 ##### Args:
 
@@ -18087,10 +18125,10 @@ Mode.
 
 Additional documentation from `Dirichlet`:
 
-Note that the mode for the Dirichlet distribution is only defined
-when `alpha > 1`. This returns the mode when `alpha > 1`,
-and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+Note: The mode is undefined when any `concentration <= 1`. If
+`self.allow_nan_stats` is `True`, `NaN` is used for undefined modes.  If
+`self.allow_nan_stats` is `False` an exception is raised when one or more
+modes are undefined.
 
 
 - - -
@@ -18170,10 +18208,10 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Dirichlet`:
 
-Note that the input must be a non-negative tensor with dtype `dtype` and whose
-shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
-last dimension represents counts for the corresponding Dirichlet distribution
-in `self.alpha`. `x` is only legal if it sums up to one.
+Note: `value` must be a non-negative tensor with
+dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
+`tf.reduce_sum(value, -1) = 1`. It must have a shape compatible with
+`self.batch_shape() + self.event_shape()`.
 
 ##### Args:
 
@@ -18280,6 +18318,13 @@ survival_function(x) = P[X > x]
 
 - - -
 
+#### `tf.contrib.distributions.Dirichlet.total_concentration` {#Dirichlet.total_concentration}
+
+Sum of last dim of concentration parameter.
+
+
+- - -
+
 #### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -18317,36 +18362,56 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 ### `class tf.contrib.distributions.DirichletMultinomial` {#DirichletMultinomial}
 
-DirichletMultinomial mixture distribution.
+Dirichlet-Multinomial compound distribution.
 
-This distribution is parameterized by a vector `alpha` of concentration
-parameters for `k` classes and `n`, the counts per each class..
+The Dirichlet-Multinomial distribution is parameterized by a (batch of)
+length-`k` `concentration` vectors (`k > 1`) and a `total_count` number of
+trials, i.e., the number of trials per draw from the DirichletMultinomial. It
+is defined over a (batch of) length-`k` vector `counts` such that
+`tf.reduce_sum(counts, -1) = total_count`. The Dirichlet-Multinomial is
+identically the Beta-Binomial distribution when `k = 2`.
 
-#### Mathematical details
+#### Mathematical Details
 
-The Dirichlet Multinomial is a distribution over k-class count data, meaning
-for each k-tuple of non-negative integer `counts = [c_1,...,c_k]`, we have a
-probability of these draws being made from the distribution.  The distribution
-has hyperparameters `alpha = (alpha_1,...,alpha_k)`, and probability mass
-function (pmf):
+The Dirichlet-Multinomial is a distribution over `k`-class counts, i.e., a
+length-`k` vector of non-negative integer `counts = n = [n_0, ..., n_{k-1}]`.
 
-```pmf(counts) = N! / (n_1!...n_k!) * Beta(alpha + c) / Beta(alpha)```
+The probability mass function (pmf) is,
 
-where above `N = sum_j n_j`, `N!` is `N` factorial, and
-`Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the multivariate beta
-function.
+```none
+pmf(n; alpha, N) = Beta(alpha + n) / (prod_j n_j!) / Z
+Z = Beta(alpha) / N!
+```
 
-This is a mixture distribution in that `M` samples can be produced by:
-  1. Choose class probabilities `p = (p_1,...,p_k) ~ Dir(alpha)`
-  2. Draw integers `m = (n_1,...,n_k) ~ Multinomial(N, p)`
+where:
 
-This class provides methods to create indexed batches of Dirichlet
-Multinomial distributions.  If the provided `alpha` is rank 2 or higher, for
-every fixed set of leading dimensions, the last dimension represents one
-single Dirichlet Multinomial distribution.  When calling distribution
-functions (e.g. `dist.prob(counts)`), `alpha` and `counts` are broadcast to
-the same shape (if possible).  In all cases, the last dimension of
-alpha/counts represents single Dirichlet Multinomial distributions.
+* `concentration = alpha = [alpha_0, ..., alpha_{k-1}]`, `alpha_j > 0`,
+* `total_count = N`, `N` a positive integer,
+* `N!` is `N` factorial, and,
+* `Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the
+  [multivariate beta function](
+  https://en.wikipedia.org/wiki/Beta_function#Multivariate_beta_function),
+  and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+Dirichlet-Multinomial is a [compound distribution](
+https://en.wikipedia.org/wiki/Compound_probability_distribution), i.e., its
+samples are generated as follows.
+
+  1. Choose class probabilities:
+     `probs = [p_0,...,p_{k-1}] ~ Dir(concentration)`
+  2. Draw integers:
+     `counts = [n_0,...,n_{k-1}] ~ Multinomial(total_count, probs)`
+
+The last `concentration` dimension parametrizes a single Dirichlet-Multinomial
+distribution. When calling distribution functions (e.g., `dist.prob(counts)`),
+`concentration`, `total_count` and `counts` are broadcast to the same shape.
+The last dimension of of `counts` corresponds single Dirichlet-Multinomial
+distributions.
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
 
 #### Examples
 
@@ -18386,42 +18451,31 @@ dist.prob(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, validate_args=False, allow_nan_stats=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(total_count, concentration, validate_args=False, allow_nan_stats=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
 ##### Args:
 
 
-*  <b>`n`</b>: Non-negative floating point tensor, whose dtype is the same as
-    `alpha`. The shape is broadcastable to `[N1,..., Nm]` with `m >= 0`.
-    Defines this as a batch of `N1 x ... x Nm` different Dirichlet
-    multinomial distributions. Its components should be equal to integer
-    values.
-*  <b>`alpha`</b>: Positive floating point tensor, whose dtype is the same as
-    `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
-    this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
+*  <b>`total_count`</b>: Non-negative floating point tensor, whose dtype is the same
+    as `concentration`. The shape is broadcastable to `[N1,..., Nm]` with
+    `m >= 0`.  Defines this as a batch of `N1 x ... x Nm` different
+    Dirichlet multinomial distributions. Its components should be equal to
+    integer values.
+*  <b>`concentration`</b>: Positive floating point tensor, whose dtype is the
+    same as `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.
+    Defines this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
     multinomial distributions.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
-    values for parameters `alpha` and `n`, and `x` in `prob` and
-    `log_prob`.  If `False`, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch of 2-class Dirichlet multinomial distribution,
-# also known as a beta-binomial.
-dist = DirichletMultinomial(2.0, [1.1, 2.0])
-
-# Define a 2-batch of 3-class distributions.
-dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-```
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -18443,20 +18497,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.alpha` {#DirichletMultinomial.alpha}
-
-Parameter defining this distribution.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.alpha_sum` {#DirichletMultinomial.alpha_sum}
-
-Summation of alpha parameter.
 
 
 - - -
@@ -18523,6 +18563,13 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.concentration` {#DirichletMultinomial.concentration}
+
+Concentration parameter; expected prior counts for that coordinate.
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.copy(**override_parameters_kwargs)` {#DirichletMultinomial.copy}
 
 Creates a deep copy of the distribution.
@@ -18580,16 +18627,17 @@ Additional documentation from `DirichletMultinomial`:
 
 The covariance for each batch member is defined as the following:
 
-```
+```none
 Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
 (n + alpha_0) / (1 + alpha_0)
 ```
 
-where `alpha_0 = sum_j alpha_j`.
+where `concentration = alpha` and
+`total_concentration = alpha_0 = sum_j alpha_j`.
 
 The covariance between elements in a batch is defined as:
 
-```
+```none
 Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
 (n + alpha_0) / (1 + alpha_0)
 ```
@@ -18731,17 +18779,18 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `DirichletMultinomial`:
 
-For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-that after sampling `n` draws from this Dirichlet Multinomial
-distribution, the number of draws falling in class `j` is `n_j`.  Note that
-different sequences of draws can result in the same counts, thus the
-probability includes a combinatorial coefficient.
+For each batch of counts,
+`value = [n_0, ... ,n_{k-1}]`, `P[value]` is the probability that after sampling
+`self.total_count` draws from this Dirichlet-Multinomial distribution, the
+number of draws falling in class `j` is `n_j`. Since this definition is
+[exchangeable]( https://en.wikipedia.org/wiki/Exchangeable_random_variables);
+different sequences have the same counts so the probability includes a
+combinatorial coefficient.
 
-Note that input, "counts", must be a non-negative tensor with dtype `dtype`
-and whose shape can be broadcast with `self.alpha`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding
-Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
-it sums up to `n` and its components are equal to integer values.
+Note: `value` must be a non-negative tensor with dtype `self.dtype`, have no
+fractional components, and such that
+`tf.reduce_sum(value, -1) = self.total_count`. Its shape must be broadcastable
+with `self.concentration` and `self.total_count`.
 
 ##### Args:
 
@@ -18797,13 +18846,6 @@ Mean.
 #### `tf.contrib.distributions.DirichletMultinomial.mode(name='mode')` {#DirichletMultinomial.mode}
 
 Mode.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.n` {#DirichletMultinomial.n}
-
-Parameter defining this distribution.
 
 
 - - -
@@ -18883,17 +18925,18 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `DirichletMultinomial`:
 
-For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-that after sampling `n` draws from this Dirichlet Multinomial
-distribution, the number of draws falling in class `j` is `n_j`.  Note that
-different sequences of draws can result in the same counts, thus the
-probability includes a combinatorial coefficient.
+For each batch of counts,
+`value = [n_0, ... ,n_{k-1}]`, `P[value]` is the probability that after sampling
+`self.total_count` draws from this Dirichlet-Multinomial distribution, the
+number of draws falling in class `j` is `n_j`. Since this definition is
+[exchangeable]( https://en.wikipedia.org/wiki/Exchangeable_random_variables);
+different sequences have the same counts so the probability includes a
+combinatorial coefficient.
 
-Note that input, "counts", must be a non-negative tensor with dtype `dtype`
-and whose shape can be broadcast with `self.alpha`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding
-Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
-it sums up to `n` and its components are equal to integer values.
+Note: `value` must be a non-negative tensor with dtype `self.dtype`, have no
+fractional components, and such that
+`tf.reduce_sum(value, -1) = self.total_count`. Its shape must be broadcastable
+with `self.concentration` and `self.total_count`.
 
 ##### Args:
 
@@ -18996,6 +19039,20 @@ survival_function(x) = P[X > x]
 
   `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.total_concentration` {#DirichletMultinomial.total_concentration}
+
+Sum of last dim of concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.total_count` {#DirichletMultinomial.total_count}
+
+Number of trials used to construct a sample.
 
 
 - - -
@@ -19751,22 +19808,21 @@ and a Cholesky factorization in log_prob. For most use-cases it often saves
 another O(nbk^3) operation since most uses of Wishart will also use the
 Cholesky factorization.
 
-#### Mathematical details.
+#### Mathematical Details
 
-The PDF of this distribution is,
+The probability density function (pdf) is,
 
-```
-f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-```
-
-where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-`k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-```
-B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+```none
+pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
 ```
 
-where `Gamma_k` is the multivariate Gamma function.
+where:
+* `df >= k` denotes the degrees of freedom,
+* `scale` is a symmetric, positive definite, `k x k` matrix,
+* `Z` is the normalizing constant, and,
+* `Gamma_k` is the [multivariate Gamma function](
+  https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
 
 #### Examples
@@ -19817,14 +19873,15 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
-    with asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
-    exception if a statistic (e.g., mean, mode) is undefined for any batch
-    member. If True, batch members with valid parameters leading to
-    undefined statistics will return `NaN` for this statistic.
-*  <b>`name`</b>: The name scope to give class member ops.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -20115,7 +20172,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.log_normalizing_constant(name='log_normalizing_constant')` {#WishartCholesky.log_normalizing_constant}
+#### `tf.contrib.distributions.WishartCholesky.log_normalization(name='log_normalization')` {#WishartCholesky.log_normalization}
 
 Computes the log normalizing constant, log(Z).
 
@@ -20427,22 +20484,21 @@ symmetric, positive definite scale matrix.
 Evaluation of the pdf, determinant, and sampling are all `O(k^3)` operations
 where `(k, k)` is the event space shape.
 
-#### Mathematical details.
+#### Mathematical Details
 
-The PDF of this distribution is,
+The probability density function (pdf) is,
 
-```
-f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-```
-
-where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-`k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-```
-B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+```none
+pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
 ```
 
-where `Gamma_k` is the multivariate Gamma function.
+where:
+* `df >= k` denotes the degrees of freedom,
+* `scale` is a symmetric, positive definite, `k x k` matrix,
+* `Z` is the normalizing constant, and,
+* `Gamma_k` is the [multivariate Gamma function](
+  https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
 #### Examples
 
@@ -20492,14 +20548,15 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
-    exception if a statistic (e.g., mean, mode) is undefined for any batch
-    member. If True, batch members with valid parameters leading to
-    undefined statistics will return `NaN` for this statistic.
-*  <b>`name`</b>: The name scope to give class member ops.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -20790,7 +20847,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_normalizing_constant(name='log_normalizing_constant')` {#WishartFull.log_normalizing_constant}
+#### `tf.contrib.distributions.WishartFull.log_normalization(name='log_normalization')` {#WishartFull.log_normalization}
 
 Computes the log normalizing constant, log(Z).
 

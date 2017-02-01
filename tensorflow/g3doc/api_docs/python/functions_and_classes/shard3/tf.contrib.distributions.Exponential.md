@@ -1,31 +1,52 @@
-The Exponential distribution with rate parameter lam.
+Exponential distribution.
 
-The PDF of this distribution is:
+The Exponential distribution is parameterized by an event `rate` parameter.
 
-```prob(x) = (lam * e^(-lam * x)), x > 0```
+#### Mathematical Details
 
-Note that the Exponential distribution is a special case of the Gamma
-distribution, with Exponential(lam) = Gamma(1, lam).
+The probability density function (pdf) is,
+
+```none
+pdf(x; lambda, x > 0) = exp(-lambda x) / Z
+Z = 1 / lambda
+```
+
+where `rate = lambda` and `Z` is the normalizaing constant.
+
+The Exponential distribution is a special case of the Gamma distribution,
+i.e.,
+
+```python
+Exponential(rate) = Gamma(concentration=1., rate)
+```
+
+The Exponential distribution uses a `rate` parameter, or "inverse scale",
+which can be intuited as,
+
+```none
+X ~ Exponential(rate=1)
+Y = X / rate
+```
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=False, allow_nan_stats=True, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(rate, validate_args=False, allow_nan_stats=True, name='Exponential')` {#Exponential.__init__}
 
-Construct Exponential distribution with parameter `lam`.
+Construct Exponential distribution with parameter `rate`.
 
 ##### Args:
 
 
-*  <b>`lam`</b>: Floating point tensor, the rate of the distribution(s).
-    `lam` must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
-    If `validate_args` is `False` and the inputs are invalid, correct
-    behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member. If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`rate`</b>: Floating point tensor, equivalent to `1 / mean`. Must contain only
+    positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -47,13 +68,6 @@ undefined.
 
 
 *  <b>`allow_nan_stats`</b>: Python boolean.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.alpha` {#Exponential.alpha}
-
-Shape parameter.
 
 
 - - -
@@ -95,13 +109,6 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.beta` {#Exponential.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
 #### `tf.contrib.distributions.Exponential.cdf(value, name='cdf')` {#Exponential.cdf}
 
 Cumulative distribution function.
@@ -123,6 +130,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.concentration` {#Exponential.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -205,17 +219,6 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shannon entropy in nats.
 
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
-
 
 - - -
 
@@ -287,13 +290,6 @@ Indicates that `event_shape == []`.
 
 
 *  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.lam` {#Exponential.lam}
-
-
 
 
 - - -
@@ -388,8 +384,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -478,6 +474,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.rate` {#Exponential.rate}
+
+
 
 
 - - -

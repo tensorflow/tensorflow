@@ -1,14 +1,14 @@
-Exponential with softplus transform on `lam`.
+`Gamma` with softplus of `concentration` and `rate`.
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.__init__(lam, validate_args=False, allow_nan_stats=True, name='ExponentialWithSoftplusLam')` {#ExponentialWithSoftplusLam.__init__}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='GammaWithSoftplusConcentrationRate')` {#GammaWithSoftplusConcentrationRate.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.allow_nan_stats` {#ExponentialWithSoftplusLam.allow_nan_stats}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.allow_nan_stats` {#GammaWithSoftplusConcentrationRate.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -29,14 +29,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.alpha` {#ExponentialWithSoftplusLam.alpha}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.batch_shape` {#ExponentialWithSoftplusLam.batch_shape}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.batch_shape` {#GammaWithSoftplusConcentrationRate.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -53,7 +46,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.batch_shape_tensor(name='batch_shape_tensor')` {#ExponentialWithSoftplusLam.batch_shape_tensor}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.batch_shape_tensor(name='batch_shape_tensor')` {#GammaWithSoftplusConcentrationRate.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -73,14 +66,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.beta` {#ExponentialWithSoftplusLam.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.cdf(value, name='cdf')` {#ExponentialWithSoftplusLam.cdf}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.cdf(value, name='cdf')` {#GammaWithSoftplusConcentrationRate.cdf}
 
 Cumulative distribution function.
 
@@ -105,7 +91,14 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.copy(**override_parameters_kwargs)` {#ExponentialWithSoftplusLam.copy}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.concentration` {#GammaWithSoftplusConcentrationRate.concentration}
+
+Concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.copy(**override_parameters_kwargs)` {#GammaWithSoftplusConcentrationRate.copy}
 
 Creates a deep copy of the distribution.
 
@@ -128,7 +121,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.covariance(name='covariance')` {#ExponentialWithSoftplusLam.covariance}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.covariance(name='covariance')` {#GammaWithSoftplusConcentrationRate.covariance}
 
 Covariance.
 
@@ -172,32 +165,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.dtype` {#ExponentialWithSoftplusLam.dtype}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.dtype` {#GammaWithSoftplusConcentrationRate.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.entropy(name='entropy')` {#ExponentialWithSoftplusLam.entropy}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.entropy(name='entropy')` {#GammaWithSoftplusConcentrationRate.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.event_shape` {#ExponentialWithSoftplusLam.event_shape}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.event_shape` {#GammaWithSoftplusConcentrationRate.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -211,7 +193,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.event_shape_tensor(name='event_shape_tensor')` {#ExponentialWithSoftplusLam.event_shape_tensor}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.event_shape_tensor(name='event_shape_tensor')` {#GammaWithSoftplusConcentrationRate.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -228,14 +210,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_continuous` {#ExponentialWithSoftplusLam.is_continuous}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.is_continuous` {#GammaWithSoftplusConcentrationRate.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusLam.is_scalar_batch}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.is_scalar_batch(name='is_scalar_batch')` {#GammaWithSoftplusConcentrationRate.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -252,7 +234,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusLam.is_scalar_event}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.is_scalar_event(name='is_scalar_event')` {#GammaWithSoftplusConcentrationRate.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -269,14 +251,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.lam` {#ExponentialWithSoftplusLam.lam}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_cdf(value, name='log_cdf')` {#ExponentialWithSoftplusLam.log_cdf}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.log_cdf(value, name='log_cdf')` {#GammaWithSoftplusConcentrationRate.log_cdf}
 
 Log cumulative distribution function.
 
@@ -305,7 +280,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_prob(value, name='log_prob')` {#ExponentialWithSoftplusLam.log_prob}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.log_prob(value, name='log_prob')` {#GammaWithSoftplusConcentrationRate.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -324,7 +299,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_survival_function(value, name='log_survival_function')` {#ExponentialWithSoftplusLam.log_survival_function}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.log_survival_function(value, name='log_survival_function')` {#GammaWithSoftplusConcentrationRate.log_survival_function}
 
 Log survival function.
 
@@ -353,34 +328,34 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.mean(name='mean')` {#ExponentialWithSoftplusLam.mean}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.mean(name='mean')` {#GammaWithSoftplusConcentrationRate.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.mode(name='mode')` {#ExponentialWithSoftplusLam.mode}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.mode(name='mode')` {#GammaWithSoftplusConcentrationRate.mode}
 
 Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.name` {#ExponentialWithSoftplusLam.name}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.name` {#GammaWithSoftplusConcentrationRate.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ExponentialWithSoftplusLam.param_shapes}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#GammaWithSoftplusConcentrationRate.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -404,7 +379,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_static_shapes(cls, sample_shape)` {#ExponentialWithSoftplusLam.param_static_shapes}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.param_static_shapes(cls, sample_shape)` {#GammaWithSoftplusConcentrationRate.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -434,14 +409,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.parameters` {#ExponentialWithSoftplusLam.parameters}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.parameters` {#GammaWithSoftplusConcentrationRate.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.prob(value, name='prob')` {#ExponentialWithSoftplusLam.prob}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.prob(value, name='prob')` {#GammaWithSoftplusConcentrationRate.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -460,7 +435,14 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.reparameterization_type` {#ExponentialWithSoftplusLam.reparameterization_type}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.rate` {#GammaWithSoftplusConcentrationRate.rate}
+
+Rate parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.reparameterization_type` {#GammaWithSoftplusConcentrationRate.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -475,7 +457,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample(sample_shape=(), seed=None, name='sample')` {#ExponentialWithSoftplusLam.sample}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.sample(sample_shape=(), seed=None, name='sample')` {#GammaWithSoftplusConcentrationRate.sample}
 
 Generate samples of the specified shape.
 
@@ -497,7 +479,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.stddev(name='stddev')` {#ExponentialWithSoftplusLam.stddev}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.stddev(name='stddev')` {#GammaWithSoftplusConcentrationRate.stddev}
 
 Standard deviation.
 
@@ -524,7 +506,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.survival_function(value, name='survival_function')` {#ExponentialWithSoftplusLam.survival_function}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.survival_function(value, name='survival_function')` {#GammaWithSoftplusConcentrationRate.survival_function}
 
 Survival function.
 
@@ -550,14 +532,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.validate_args` {#ExponentialWithSoftplusLam.validate_args}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.validate_args` {#GammaWithSoftplusConcentrationRate.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.variance(name='variance')` {#ExponentialWithSoftplusLam.variance}
+#### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.variance(name='variance')` {#GammaWithSoftplusConcentrationRate.variance}
 
 Variance.
 
