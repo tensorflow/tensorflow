@@ -151,11 +151,12 @@ Status Client::ResetDevice() {
 StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout, ExecutionProfile* execution_profile,
-    uint64 seed) {
+    const Shape* shape_with_output_layout,
+    const CompilationOptions* compilation_options,
+    ExecutionProfile* execution_profile, uint64 seed) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
                       Execute(computation, arguments, shape_with_output_layout,
-                              execution_profile, seed));
+                              compilation_options, execution_profile, seed));
   return Transfer(*data, shape_with_output_layout);
 }
 
@@ -204,10 +205,14 @@ StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout, ExecutionProfile* execution_profile,
-    uint64 seed) {
+    const Shape* shape_with_output_layout,
+    const CompilationOptions* compilation_options,
+    ExecutionProfile* execution_profile, uint64 seed) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
+  if (compilation_options != nullptr) {
+    *request.mutable_compilation_options() = *compilation_options;
+  }
   request.set_seed(seed);
   for (GlobalData* argument : arguments) {
     *request.add_arguments() = argument->handle();
@@ -308,7 +313,8 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 StatusOr<ExecutionHandle> Client::ExecuteAsync(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout, uint64 seed) {
+    const Shape* shape_with_output_layout,
+    const CompilationOptions* compilation_options, uint64 seed) {
   ExecuteAsyncRequest request;
   *request.mutable_computation() = computation.handle();
   request.set_seed(seed);
@@ -317,6 +323,9 @@ StatusOr<ExecutionHandle> Client::ExecuteAsync(
   }
   if (shape_with_output_layout != nullptr) {
     *request.mutable_shape_with_output_layout() = *shape_with_output_layout;
+  }
+  if (compilation_options != nullptr) {
+    *request.mutable_compilation_options() = *compilation_options;
   }
 
   ExecuteAsyncResponse response;
