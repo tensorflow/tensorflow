@@ -128,6 +128,25 @@ __device__ __host__ inline T ldg(const T* address) {
 #endif
 }
 
+template <typename T>
+__global__ void SetZero(const int nthreads, T* data) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) { *(data + index) = T(0); }
+}
+
+template <typename T>
+__global__ void SetConstant(const int nthreads, T* data, const T value) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {*(data + index) = value;}
+}
+
+template <typename T>
+__global__ void ReplaceValue(const int nthreads, T* data, const T old_value, const T new_value) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    if (*(data + index) == old_value) {
+      *(data + index) = new_value;
+    }
+  }
+}
+
 // CUDA provides atomic ops, but not for all types.  We provide wrappers
 // for some ops and provide implementation for all reasonable types.
 #define CUDA_ATOMIC_WRAPPER(op, T) \
@@ -354,25 +373,6 @@ CUDA_ATOMIC_WRAPPER(Max, Eigen::half) {
     Eigen::half ret;
     ret.x = old >> 16;
     return ret;
-  }
-}
-
-template <typename T>
-__global__ void SetZero(const int nthreads, T* data) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) { *(data + index) = T(0); }
-}
-
-template <typename T>
-__global__ void SetConstant(const int nthreads, T* data, const T value) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {*(data + index) = value;}
-}
-
-template <typename T>
-__global__ void ReplaceValue(const int nthreads, T* data, const T old_value, const T new_value) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    if (*(data + index) == old_value) {
-      *(data + index) = new_value;
-    }
   }
 }
 
