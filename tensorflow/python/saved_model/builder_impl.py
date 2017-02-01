@@ -336,7 +336,7 @@ class SavedModelBuilder(object):
     """
     if not self._has_saved_variables:
       raise AssertionError(
-          "Variables and assets have not been saved yet. "
+          "Graph state including variables and assets has not been saved yet. "
           "Please invoke `add_meta_graph_and_variables()` first.")
 
     # Validate the signature def map to ensure all included TensorInfos are
@@ -357,7 +357,8 @@ class SavedModelBuilder(object):
     saver = tf_saver.Saver(
         variables.global_variables(),
         sharded=True,
-        write_version=saver_pb2.SaverDef.V2)
+        write_version=saver_pb2.SaverDef.V2,
+        allow_empty=True)
 
     meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
@@ -394,8 +395,9 @@ class SavedModelBuilder(object):
       main_op: Op or group of ops to execute when the graph is loaded.
     """
     if self._has_saved_variables:
-      raise AssertionError("Variables and assets have already been saved. "
-                           "Please invoke `add_meta_graph()` instead.")
+      raise AssertionError("Graph state including variables and assets has "
+                           "already been saved. Please invoke "
+                           "`add_meta_graph()` instead.")
 
     # Validate the signature def map to ensure all included TensorInfos are
     # properly populated.
@@ -426,7 +428,8 @@ class SavedModelBuilder(object):
     saver = tf_saver.Saver(
         variables.global_variables(),
         sharded=True,
-        write_version=saver_pb2.SaverDef.V2)
+        write_version=saver_pb2.SaverDef.V2,
+        allow_empty=True)
 
     # Save the variables. Also, disable writing the checkpoint state proto. The
     # file is not used during SavedModel loading. In addition, since a
