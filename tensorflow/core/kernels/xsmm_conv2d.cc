@@ -144,26 +144,28 @@ struct HashFunction{
     S << w.d.S; u << w.d.u;
     v << w.d.v; padh << w.d.pad_h_in;
     padw << w.d.pad_w_in;
- 
- 
+
+
     std::string out_ =   N.str() + C.str()\
                        + H.str() + W.str()\
                        + K.str() + R.str()\
                        + S.str() + u.str()\
                        + v.str() + padh.str()\
                        + padw.str();
- 
+
     return ( std::hash<std::string>()(out_));
   }
 };
- 
+
 class handles{
   public:
     libxsmm_dnn_layer* find( const libxsmm_dnn_conv_desc_wrap &w) {
-      std::unordered_map<libxsmm_dnn_conv_desc_wrap , libxsmm_dnn_layer*, HashFunction>::iterator i = libxsmm_handles.find(w);
+      std::unordered_map<libxsmm_dnn_conv_desc_wrap , libxsmm_dnn_layer*,
+                         HashFunction>::iterator i = libxsmm_handles.find(w);
       if (i == libxsmm_handles.end()){
         libxsmm_dnn_err_t status;
-        libxsmm_dnn_layer* libxsmm_handle = libxsmm_dnn_create_conv_layer(w.d, &status);
+        libxsmm_dnn_layer* libxsmm_handle =
+            libxsmm_dnn_create_conv_layer(w.d, &status);
         chk_libxsmm_err(status, "Create handle");
         libxsmm_handles.insert(std::make_pair(w, libxsmm_handle));
         return libxsmm_handle;
@@ -172,7 +174,8 @@ class handles{
         return i->second;
     }
    ~handles(){
-    std::unordered_map<libxsmm_dnn_conv_desc_wrap , libxsmm_dnn_layer*, HashFunction>::iterator i;
+     std::unordered_map<libxsmm_dnn_conv_desc_wrap , libxsmm_dnn_layer*,
+                        HashFunction>::iterator i;
     for (i= libxsmm_handles.begin(); i != libxsmm_handles.end(); i++)
       chk_libxsmm_err(libxsmm_dnn_destroy_conv_layer(i->second),
                     "Destroy handle");
@@ -213,20 +216,22 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   libxsmm_dnn_buffer* libxsmm_input;
   libxsmm_dnn_buffer* libxsmm_output;
   libxsmm_dnn_filter* libxsmm_filter;
-  
- /* 
+
+ /*
   const DeviceBase::CpuWorkerThreads* worker_threads =
       ctx->device()->tensorflow_cpu_worker_threads();
- 
+
   int num_threads = worker_threads->num_threads;
 */
 
   int ifmblock = (libxsmm_handle->ifmblock);
-  int ofmblock = (libxsmm_handle->ofmblock); 
+  int ofmblock = (libxsmm_handle->ofmblock);
 
-  int blocksifm = desc.C%ifmblock ==0 ? desc.C/ifmblock :desc.C/ifmblock + 1;           
+  int blocksifm = desc.C%ifmblock ==0 ? desc.C/ifmblock :desc.C/ifmblock + 1;
   int blocksofm = desc.K%ofmblock ==0 ? desc.K/ofmblock :desc.K/ofmblock + 1;
-  float *native_filter = (float*)libxsmm_aligned_scratch( blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float), 2097152);
+  float *native_filter = (float*)libxsmm_aligned_scratch(
+      blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float),
+      2097152);
 
   const DeviceBase::CpuWorkerThreads* worker_threads =
       ctx->device()->tensorflow_cpu_worker_threads();
