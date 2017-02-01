@@ -3,9 +3,20 @@ op { name: "BroadcastArgs" rename_to: "BroadcastDynamicShape" }
 op { name: "ConcatOffset" skip: true }  # Maybe should just be hidden?
 op { name: "Concat" skip: true }
 op { name: "ConcatV2" rename_to: "Concat" }
+op { name: "ExpandDims" input_rename: { from: "dim" to: "axis" } }
+op { name: "ListDiff" rename_to: "SetDiff1D" }
 op { name: "MirrorPadGrad" hide: true }
 op { name: "Reverse" skip: true }
 op { name: "ReverseV2" rename_to: "Reverse" }
+op { name: "Split" input_rename: { from: "split_dim" to: "axis" } }
+op { name: "SplitV" input_rename: { from: "split_dim" to: "axis" } }
+op { name: "Squeeze" input_rename: { from: "squeeze_dims" to: "axis" } }
+op { name: "Pack" rename_to: "Stack" }
+op { name: "Unpack" rename_to: "Unstack" }
+op { name: "Select" rename_to: "Where3" input_rename: { from: "t" to: "x" }
+input_rename: { from: "e" to: "y" } }
+op { name: "Where" input_rename: { from: "input" to: "condition" } }
+
 
 # candidate_sampling_ops
 # control_flow_ops
@@ -24,7 +35,10 @@ op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to
 op { name: "Max" alias: "ReduceMax" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Mean" alias: "ReduceMean" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Min" alias: "ReduceMin" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Mul" rename_to: "Multiply" alias: "Mul" }
+op { name: "Neg" rename_to: "Negate" alias: "Neg" }
 op { name: "Prod" alias: "ReduceProd" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "Sub" rename_to: "Subtract" alias: "Sub" }
 op { name: "Sum" alias: "ReduceSum" input_rename: { from: "reduction_indices" to: "axis" } }
 
 # nn_ops
