@@ -43,7 +43,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   std::cout << "PoplarCompiler::Compile\n";
 
   return tensorflow::errors::Unimplemented(
-          "Compilation of multiple HLO modules is not yet supported on CPU.");
+      "Compilation of multiple HLO modules is not yet supported on Poplar.");
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
@@ -51,7 +51,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
   return tensorflow::errors::Unimplemented(
-      "Compilation of multiple HLO modules is not yet supported on CPU.");
+      "Compilation of multiple HLO modules is not yet supported on Poplar.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
