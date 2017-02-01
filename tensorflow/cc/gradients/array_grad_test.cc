@@ -17,12 +17,14 @@ limitations under the License.
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
+using ops::internal::MirrorPadGrad;
 
 namespace {
 
@@ -207,8 +209,7 @@ TEST_F(ArrayGradTest, ReverseSequenceGrad) {
 TEST_F(ArrayGradTest, ReverseGrad) {
   TensorShape shape({5, 2, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto reverse_dims = Const(scope_, {true, false, true});
-  auto y = Reverse(scope_, x, reverse_dims);
+  auto y = Reverse(scope_, x, {0, 2});
   RunTest(x, shape, y, shape);
 }
 
