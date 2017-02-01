@@ -477,7 +477,8 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "large",
+    size = "medium",
+    shard_count = 4,
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
     deps = [
