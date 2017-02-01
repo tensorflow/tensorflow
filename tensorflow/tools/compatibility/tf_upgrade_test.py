@@ -90,6 +90,14 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertEqual(
         new_text, "tf.concat(axis=a, values=tf.concat(axis=c, values=d))\n")
 
+  def testInitializers(self):
+    text = ("tf.zeros_initializer;tf.zeros_initializer ()\n"
+            "tf.ones_initializer;tf.ones_initializer ()\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text, "tf.zeros_initializer();tf.zeros_initializer ()\n"
+                  "tf.ones_initializer();tf.ones_initializer ()\n")
+
   def testKeyword(self):
     text = "tf.reduce_any(a, reduction_indices=[1, 2])\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)

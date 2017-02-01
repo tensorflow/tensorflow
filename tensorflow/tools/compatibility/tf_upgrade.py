@@ -103,6 +103,7 @@ class APIChangeSpec(object):
 
     # Mapping from function to the new name of the function
     self.function_renames = {
+        "tf.inv": "tf.reciprocal",
         "tf.contrib.deprecated.scalar_summary": "tf.summary.scalar",
         "tf.contrib.deprecated.histogram_summary": "tf.summary.histogram",
         "tf.listdiff": "tf.setdiff1d",
@@ -149,11 +150,17 @@ class APIChangeSpec(object):
         "tf.unpack": "tf.unstack",
     }
 
+    self.change_to_function = {
+        "tf.ones_initializer",
+        "tf.zeros_initializer",
+    }
+
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = {
         "tf.split": ["axis", "num_or_size_splits", "value", "name"],
+        "tf.sparse_split": ["axis", "num_or_size_splits", "value", "name"],
         "tf.concat": ["concat_dim", "values", "name"],
         "tf.svd": ["tensor", "compute_uv", "full_matrices", "name"],
         "tf.nn.softmax_cross_entropy_with_logits": [
@@ -347,10 +354,12 @@ class TensorFlowCallVisitor(ast.NodeVisitor):
       node: Current Node
     """
 
-    ast.NodeVisitor.generic_visit(self, node)
 
     # Find a simple attribute name path e.g. "tf.foo.bar"
     full_name = self._get_attribute_full_path(node.func)
+
+    # Make sure the func is marked as being part of a call
+    node.func.is_function_for_call = True
 
     if full_name and full_name.startswith("tf."):
       # Call special handlers
@@ -387,6 +396,7 @@ class TensorFlowCallVisitor(ast.NodeVisitor):
                               argval.lineno,
                               argval.col_offset - len(argkey) - 1,
                               argkey + "=", renamed_keywords[argkey] + "=")
+    ast.NodeVisitor.generic_visit(self, node)
 
   def visit_Attribute(self, node):  # pylint: disable=invalid-name
     """Handle bare Attributes i.e. [tf.foo, tf.bar].
@@ -397,6 +407,11 @@ class TensorFlowCallVisitor(ast.NodeVisitor):
     full_name = self._get_attribute_full_path(node)
     if full_name and full_name.startswith("tf."):
       self._rename_functions(node, full_name)
+    if full_name in self._api_change_spec.change_to_function:
+      if not hasattr(node, "is_function_for_call"):
+        new_text = full_name + "()"
+        self._file_edit.add("Changed %r to %r"%(full_name, new_text),
+                            node.lineno, node.col_offset, full_name, new_text)
 
     ast.NodeVisitor.generic_visit(self, node)
 
