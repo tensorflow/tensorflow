@@ -498,6 +498,7 @@ def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
       ground_truth[label_index] = 1.0
       bottlenecks.append(bottleneck)
       ground_truths.append(ground_truth)
+      filenames.append(image_name)
   else:
     # Retrieve all bottlenecks.
     for label_index, label_name in enumerate(image_lists.keys()):
@@ -509,12 +510,11 @@ def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
                                               image_index, image_dir, category,
                                               bottleneck_dir, jpeg_data_tensor,
                                               bottleneck_tensor)
-        if bottleneck is not None:
-          ground_truth = np.zeros(class_count, dtype=np.float32)
-          ground_truth[label_index] = 1.0
-          bottlenecks.append(bottleneck)
-          ground_truths.append(ground_truth)
-          filenames.append(image_name)
+        ground_truth = np.zeros(class_count, dtype=np.float32)
+        ground_truth[label_index] = 1.0
+        bottlenecks.append(bottleneck)
+        ground_truths.append(ground_truth)
+        filenames.append(image_name)
   return bottlenecks, ground_truths, filenames
 
 
