@@ -87,10 +87,10 @@ class BernoulliTest(test.TestCase):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_bernoulli(batch_shape)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape().as_list())
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape().as_list())
-        self.assertAllEqual([], dist.event_shape().eval())
+        self.assertAllEqual(batch_shape, dist.batch_shape.as_list())
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape.as_list())
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
 
   def testDtype(self):
     dist = make_bernoulli([])

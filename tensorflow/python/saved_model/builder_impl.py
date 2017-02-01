@@ -22,6 +22,7 @@ import os
 
 from google.protobuf.any_pb2 import Any
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saver_pb2
@@ -258,6 +259,51 @@ class SavedModelBuilder(object):
     proto_meta_graph_def = self._saved_model.meta_graphs.add()
     proto_meta_graph_def.CopyFrom(meta_graph_def)
 
+  def _validate_tensor_info(self, tensor_info):
+    """Validates the `TensorInfo` proto.
+
+    Checks if the `name` and `dtype` fields exist and are non-empty.
+
+    Args:
+      tensor_info: `TensorInfo` protocol buffer to validate.
+
+    Raises:
+      AssertionError: If the `name` or `dtype` fields of the supplied
+          `TensorInfo` proto are not populated.
+    """
+    if tensor_info is None:
+      raise AssertionError(
+          "All TensorInfo protos used in the SignatureDefs must have the name "
+          "and dtype fields set.")
+    if not tensor_info.name:
+      raise AssertionError(
+          "All TensorInfo protos used in the SignatureDefs must have the name "
+          "field set: %s" % tensor_info)
+    if tensor_info.dtype is types_pb2.DT_INVALID:
+      raise AssertionError(
+          "All TensorInfo protos used in the SignatureDefs must have the dtype "
+          "field set: %s" % tensor_info)
+
+  def _validate_signature_def_map(self, signature_def_map):
+    """Validates the `SignatureDef` entries in the signature def map.
+
+    Validation of entries in the signature def map includes ensuring that the
+    `name` and `dtype` fields of the TensorInfo protos of the `inputs` and
+    `outputs` of each `SignatureDef` are populated.
+
+    Args:
+      signature_def_map: The map of signature defs to be validated.
+    """
+    if signature_def_map is not None:
+      for signature_def_key in signature_def_map:
+        signature_def = signature_def_map[signature_def_key]
+        inputs = signature_def.inputs
+        outputs = signature_def.outputs
+        for inputs_key in inputs:
+          self._validate_tensor_info(inputs[inputs_key])
+        for outputs_key in outputs:
+          self._validate_tensor_info(outputs[outputs_key])
+
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
@@ -290,8 +336,12 @@ class SavedModelBuilder(object):
     """
     if not self._has_saved_variables:
       raise AssertionError(
-          "Variables and assets have not been saved yet. "
+          "Graph state including variables and assets has not been saved yet. "
           "Please invoke `add_meta_graph_and_variables()` first.")
+
+    # Validate the signature def map to ensure all included TensorInfos are
+    # properly populated.
+    self._validate_signature_def_map(signature_def_map)
 
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
@@ -307,7 +357,8 @@ class SavedModelBuilder(object):
     saver = tf_saver.Saver(
         variables.global_variables(),
         sharded=True,
-        write_version=saver_pb2.SaverDef.V2)
+        write_version=saver_pb2.SaverDef.V2,
+        allow_empty=True)
 
     meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
@@ -344,8 +395,13 @@ class SavedModelBuilder(object):
       main_op: Op or group of ops to execute when the graph is loaded.
     """
     if self._has_saved_variables:
-      raise AssertionError("Variables and assets have already been saved. "
-                           "Please invoke `add_meta_graph()` instead.")
+      raise AssertionError("Graph state including variables and assets has "
+                           "already been saved. Please invoke "
+                           "`add_meta_graph()` instead.")
+
+    # Validate the signature def map to ensure all included TensorInfos are
+    # properly populated.
+    self._validate_signature_def_map(signature_def_map)
 
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
@@ -372,7 +428,8 @@ class SavedModelBuilder(object):
     saver = tf_saver.Saver(
         variables.global_variables(),
         sharded=True,
-        write_version=saver_pb2.SaverDef.V2)
+        write_version=saver_pb2.SaverDef.V2,
+        allow_empty=True)
 
     # Save the variables. Also, disable writing the checkpoint state proto. The
     # file is not used during SavedModel loading. In addition, since a

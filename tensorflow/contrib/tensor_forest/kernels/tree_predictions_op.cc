@@ -23,6 +23,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -38,6 +39,53 @@ using tensorforest::Sum;
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+
+namespace {
+// Traverse the tree for every example from start to end. Put the resulting
+// prediction probability into output_predictions[i].
+void Evaluate(OpKernelContext* context,
+              const std::function<bool(int, int32, float)>& decide,
+              const Tensor& weights, const Tensor& tree_tensor,
+              const Tensor& tree_thresholds, int valid_leaf_threshold,
+              Tensor* output_predictions, int32 start, int32 end) {
+  auto out = output_predictions->tensor<float, 2>();
+
+  const auto node_pcw = weights.tensor<float, 2>();
+  const auto tree = tree_tensor.tensor<int32, 2>();
+  const auto thresholds = tree_thresholds.unaligned_flat<float>();
+
+  const int32 num_classes = static_cast<int32>(weights.shape().dim_size(1));
+  const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
+
+  for (int i = start; i < end; i++) {
+    int node_index = 0;
+    int parent = -1;
+    while (true) {
+      OP_REQUIRES(context, FastBoundsCheck(node_index, num_nodes),
+                  errors::InvalidArgument("node_index not in valid range."))
+      const int32 left_child = tree(node_index, CHILDREN_INDEX);
+      if (left_child == LEAF_NODE) {
+        const int32 flat_leaf_index = node_index * num_classes + 1;
+        const int32 flat_parent_index = parent * num_classes + 1;
+        std::vector<float> means(num_classes - 1);
+        tensorforest::GetParentWeightedMean(
+            node_pcw(node_index, 0), node_pcw.data() + flat_leaf_index,
+            node_pcw(parent, 0), node_pcw.data() + flat_parent_index,
+            valid_leaf_threshold, num_classes - 1, &means);
+        const int32 start_index = i * (num_classes - 1);
+        std::copy(means.begin(), means.end(), out.data() + start_index);
+        break;
+      } else if (left_child == FREE_NODE) {
+        LOG(ERROR) << "Reached a free node, not good.";
+        return;
+      }
+      parent = node_index;
+      const int32 feature = tree(node_index, FEATURE_INDEX);
+      node_index = left_child + decide(i, feature, thresholds(node_index));
+    }
+  }
+}
+}  // namespace
 
 class TreePredictions : public OpKernel {
  public:
@@ -132,8 +180,6 @@ class TreePredictions : public OpKernel {
 
     const int32 num_classes = static_cast<int32>(
         node_per_class_weights.shape().dim_size(1));
-    const int32 num_nodes = static_cast<int32>(
-        tree_tensor.shape().dim_size(0));
 
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
@@ -142,46 +188,29 @@ class TreePredictions : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape,
                                             &output_predictions));
-    auto out = output_predictions->tensor<float, 2>();
 
-    const auto node_pcw = node_per_class_weights.tensor<float, 2>();
-    const auto tree = tree_tensor.tensor<int32, 2>();
-    const auto thresholds = tree_thresholds.unaligned_flat<float>();
+    auto decide = [&input_data, &sparse_input_values, &sparse_input_indices,
+                   &sparse_input_shape,
+                   this](int example, int32 feature, float threshold) {
+      return tensorforest::DecideNode(input_data, sparse_input_indices,
+                                      sparse_input_values, example, feature,
+                                      threshold, input_spec_);
+    };
 
-    for (int i = 0; i < num_data; i++) {
-      int node_index = 0;
-      int parent = -1;
-      while (true) {
-        OP_REQUIRES(context, FastBoundsCheck(node_index, num_nodes),
-                    errors::InvalidArgument("node_index not in valid range."))
-        const int32 left_child = tree(node_index, CHILDREN_INDEX);
-        if (left_child == LEAF_NODE) {
-          const int32 flat_leaf_index = node_index * num_classes + 1;
-          const int32 flat_parent_index = parent * num_classes + 1;
-          std::vector<float> means(num_classes - 1);
-          tensorforest::GetParentWeightedMean(
-              node_pcw(node_index, 0), node_pcw.data() + flat_leaf_index,
-              node_pcw(parent, 0), node_pcw.data() + flat_parent_index,
-              valid_leaf_threshold_, num_classes - 1, &means);
-          for (int c = 1; c < num_classes; c++) {
-            out(i, c - 1) = means[c - 1];
-          }
-          break;
-        } else if (left_child == FREE_NODE) {
-          LOG(ERROR) << "Reached a free node, not good.";
-          return;
-        }
-        parent = node_index;
-        const int32 feature = tree(node_index, FEATURE_INDEX);
-        node_index = left_child + tensorforest::DecideNode(
-                                      input_data, sparse_input_indices,
-                                      sparse_input_values, i, feature,
-                                      thresholds(node_index), input_spec_);
-      }
-    }
+    auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
+    int num_threads = worker_threads->num_threads;
 
-    VLOG(1) << "tree: " << tree;
-    VLOG(1) << "output: " << out;
+    const int64 costPerUnit = 800;
+    auto work = [context, &decide, &node_per_class_weights, &tree_tensor,
+                 &tree_thresholds, this, &output_predictions,
+                 num_data](int64 start, int64 end) {
+      CHECK(start <= end);
+      CHECK(end <= num_data);
+      Evaluate(context, decide, node_per_class_weights, tree_tensor,
+               tree_thresholds, valid_leaf_threshold_, output_predictions,
+               static_cast<int32>(start), static_cast<int32>(end));
+    };
+    Shard(num_threads, worker_threads->workers, num_data, costPerUnit, work);
   }
 
  private:

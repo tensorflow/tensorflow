@@ -1,14 +1,14 @@
-Exponential with softplus transform on `lam`.
+Beta with softplus transform of `concentration1` and `concentration0`.
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.__init__(lam, validate_args=False, allow_nan_stats=True, name='ExponentialWithSoftplusLam')` {#ExponentialWithSoftplusLam.__init__}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.__init__(concentration1, concentration0, validate_args=False, allow_nan_stats=True, name='BetaWithSoftplusConcentration')` {#BetaWithSoftplusConcentration.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.allow_nan_stats` {#ExponentialWithSoftplusLam.allow_nan_stats}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.allow_nan_stats` {#BetaWithSoftplusConcentration.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -29,19 +29,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.alpha` {#ExponentialWithSoftplusLam.alpha}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.batch_shape` {#BetaWithSoftplusConcentration.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.batch_shape(name='batch_shape')` {#ExponentialWithSoftplusLam.batch_shape}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.batch_shape_tensor(name='batch_shape_tensor')` {#BetaWithSoftplusConcentration.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -56,14 +66,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.beta` {#ExponentialWithSoftplusLam.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.cdf(value, name='cdf')` {#ExponentialWithSoftplusLam.cdf}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.cdf(value, name='cdf')` {#BetaWithSoftplusConcentration.cdf}
 
 Cumulative distribution function.
 
@@ -72,6 +75,12 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 ```
 cdf(x) := P[X <= x]
 ```
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -88,7 +97,21 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.copy(**override_parameters_kwargs)` {#ExponentialWithSoftplusLam.copy}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.concentration0` {#BetaWithSoftplusConcentration.concentration0}
+
+Concentration parameter associated with a `0` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.concentration1` {#BetaWithSoftplusConcentration.concentration1}
+
+Concentration parameter associated with a `1` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.copy(**override_parameters_kwargs)` {#BetaWithSoftplusConcentration.copy}
 
 Creates a deep copy of the distribution.
 
@@ -111,7 +134,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.covariance(name='covariance')` {#ExponentialWithSoftplusLam.covariance}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.covariance(name='covariance')` {#BetaWithSoftplusConcentration.covariance}
 
 Covariance.
 
@@ -155,32 +178,35 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.dtype` {#ExponentialWithSoftplusLam.dtype}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.dtype` {#BetaWithSoftplusConcentration.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.entropy(name='entropy')` {#ExponentialWithSoftplusLam.entropy}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.entropy(name='entropy')` {#BetaWithSoftplusConcentration.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `Gamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.event_shape(name='event_shape')` {#ExponentialWithSoftplusLam.event_shape}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.event_shape` {#BetaWithSoftplusConcentration.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.event_shape_tensor(name='event_shape_tensor')` {#BetaWithSoftplusConcentration.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -197,42 +223,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.get_batch_shape()` {#ExponentialWithSoftplusLam.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.get_event_shape()` {#ExponentialWithSoftplusLam.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_continuous` {#ExponentialWithSoftplusLam.is_continuous}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.is_continuous` {#BetaWithSoftplusConcentration.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusLam.is_scalar_batch}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusConcentration.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -249,7 +247,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusLam.is_scalar_event}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusConcentration.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -266,14 +264,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.lam` {#ExponentialWithSoftplusLam.lam}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_cdf(value, name='log_cdf')` {#ExponentialWithSoftplusLam.log_cdf}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.log_cdf(value, name='log_cdf')` {#BetaWithSoftplusConcentration.log_cdf}
 
 Log cumulative distribution function.
 
@@ -286,6 +277,12 @@ log_cdf(x) := Log[ P[X <= x] ]
 Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -302,9 +299,15 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_prob(value, name='log_prob')` {#ExponentialWithSoftplusLam.log_prob}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.log_prob(value, name='log_prob')` {#BetaWithSoftplusConcentration.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -321,7 +324,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.log_survival_function(value, name='log_survival_function')` {#ExponentialWithSoftplusLam.log_survival_function}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.log_survival_function(value, name='log_survival_function')` {#BetaWithSoftplusConcentration.log_survival_function}
 
 Log survival function.
 
@@ -350,34 +353,35 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.mean(name='mean')` {#ExponentialWithSoftplusLam.mean}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.mean(name='mean')` {#BetaWithSoftplusConcentration.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.mode(name='mode')` {#ExponentialWithSoftplusLam.mode}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.mode(name='mode')` {#BetaWithSoftplusConcentration.mode}
 
 Mode.
 
-Additional documentation from `Gamma`:
+Additional documentation from `Beta`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
-an exception will be raised rather than returning `NaN`.
+Note: The mode is undefined when `concentration1 <= 1` or
+`concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
+is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+exception is raised when one or more modes are undefined.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.name` {#ExponentialWithSoftplusLam.name}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.name` {#BetaWithSoftplusConcentration.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ExponentialWithSoftplusLam.param_shapes}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#BetaWithSoftplusConcentration.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -401,7 +405,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.param_static_shapes(cls, sample_shape)` {#ExponentialWithSoftplusLam.param_static_shapes}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.param_static_shapes(cls, sample_shape)` {#BetaWithSoftplusConcentration.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -431,16 +435,22 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.parameters` {#ExponentialWithSoftplusLam.parameters}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.parameters` {#BetaWithSoftplusConcentration.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.prob(value, name='prob')` {#ExponentialWithSoftplusLam.prob}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.prob(value, name='prob')` {#BetaWithSoftplusConcentration.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -457,7 +467,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.reparameterization_type` {#ExponentialWithSoftplusLam.reparameterization_type}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.reparameterization_type` {#BetaWithSoftplusConcentration.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -472,7 +482,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample(sample_shape=(), seed=None, name='sample')` {#ExponentialWithSoftplusLam.sample}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.sample(sample_shape=(), seed=None, name='sample')` {#BetaWithSoftplusConcentration.sample}
 
 Generate samples of the specified shape.
 
@@ -494,7 +504,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.stddev(name='stddev')` {#ExponentialWithSoftplusLam.stddev}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.stddev(name='stddev')` {#BetaWithSoftplusConcentration.stddev}
 
 Standard deviation.
 
@@ -521,7 +531,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.survival_function(value, name='survival_function')` {#ExponentialWithSoftplusLam.survival_function}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.survival_function(value, name='survival_function')` {#BetaWithSoftplusConcentration.survival_function}
 
 Survival function.
 
@@ -547,14 +557,21 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.validate_args` {#ExponentialWithSoftplusLam.validate_args}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.total_concentration` {#BetaWithSoftplusConcentration.total_concentration}
+
+Sum of concentration parameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.validate_args` {#BetaWithSoftplusConcentration.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.ExponentialWithSoftplusLam.variance(name='variance')` {#ExponentialWithSoftplusLam.variance}
+#### `tf.contrib.distributions.BetaWithSoftplusConcentration.variance(name='variance')` {#BetaWithSoftplusConcentration.variance}
 
 Variance.
 

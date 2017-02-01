@@ -62,24 +62,24 @@ class CategoricalTest(test.TestCase):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_categorical(batch_shape, 10)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape())
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape())
-        self.assertAllEqual([], dist.event_shape().eval())
-        self.assertEqual(10, dist.num_classes.eval())
-        # num_classes is available as a constant because the shape is
+        self.assertAllEqual(batch_shape, dist.batch_shape)
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape)
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
+        self.assertEqual(10, dist.event_size.eval())
+        # event_size is available as a constant because the shape is
         # known at graph build time.
-        self.assertEqual(10, tensor_util.constant_value(dist.num_classes))
+        self.assertEqual(10, tensor_util.constant_value(dist.event_size))
 
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_categorical(
             batch_shape, constant_op.constant(
                 10, dtype=dtypes.int32))
-        self.assertAllEqual(len(batch_shape), dist.get_batch_shape().ndims)
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape())
-        self.assertAllEqual([], dist.event_shape().eval())
-        self.assertEqual(10, dist.num_classes.eval())
+        self.assertAllEqual(len(batch_shape), dist.batch_shape.ndims)
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape)
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
+        self.assertEqual(10, dist.event_size.eval())
 
   def testDtype(self):
     dist = make_categorical([], 5, dtype=dtypes.int32)

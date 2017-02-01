@@ -71,7 +71,6 @@ class Bernoulli(distribution.Distribution):
       ValueError: If p and logits are passed, or if neither are passed.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name) as ns:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
@@ -102,20 +101,20 @@ class Bernoulli(distribution.Distribution):
     """Probability of a `1` outcome (vs `0`)."""
     return self._probs
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.shape(self._logits)
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self._logits.get_shape()
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return array_ops.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    new_shape = array_ops.concat(([n], self.batch_shape()), 0)
+    new_shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
     uniform = random_ops.random_uniform(
         new_shape, seed=seed, dtype=self.probs.dtype)
     sample = math_ops.less(uniform, self.probs)
@@ -129,20 +128,20 @@ class Bernoulli(distribution.Distribution):
     # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
     # so we do this here.
 
-    broadcast = lambda logits, event: (
-        array_ops.ones_like(event) * logits,
-        array_ops.ones_like(logits) * event)
+    def _broadcast(logits, event):
+      return (array_ops.ones_like(event) * logits,
+              array_ops.ones_like(logits) * event)
 
     # First check static shape.
     if (event.get_shape().is_fully_defined() and
         logits.get_shape().is_fully_defined()):
       if event.get_shape() != logits.get_shape():
-        logits, event = broadcast(logits, event)
+        logits, event = _broadcast(logits, event)
     else:
       logits, event = control_flow_ops.cond(
           distribution_util.same_dynamic_shape(logits, event),
           lambda: (logits, event),
-          lambda: broadcast(logits, event))
+          lambda: _broadcast(logits, event))
     return -nn.sigmoid_cross_entropy_with_logits(labels=event, logits=logits)
 
   def _prob(self, event):
@@ -173,7 +172,6 @@ class BernoulliWithSigmoidProbs(Bernoulli):
                allow_nan_stats=True,
                name="BernoulliWithSigmoidProbs"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name) as ns:
       super(BernoulliWithSigmoidProbs, self).__init__(
           probs=nn.sigmoid(logits, name="sigmoid_probs"),

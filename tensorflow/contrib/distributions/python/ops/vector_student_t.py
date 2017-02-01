@@ -253,7 +253,6 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     graph_parents = [df, loc, scale_identity_multiplier, scale_diag,
                      scale_tril, scale_perturb_factor, scale_perturb_diag]
     with ops.name_scope(name) as ns:

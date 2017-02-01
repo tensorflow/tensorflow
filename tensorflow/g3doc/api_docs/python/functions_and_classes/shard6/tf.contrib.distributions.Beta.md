@@ -1,112 +1,101 @@
 Beta distribution.
 
-This distribution is parameterized by `a` and `b` which are shape
-parameters.
+The Beta distribution is defined over the `(0, 1)` interval using parameters
+`concentration1` (aka "alpha") and `concentration0` (aka "beta").
 
-#### Mathematical details
+#### Mathematical Details
 
-The Beta is a distribution over the interval (0, 1).
-The distribution has hyperparameters `a` and `b` and
-probability mass function (pdf):
+The probability density function (pdf) is,
 
-```pdf(x) = 1 / Beta(a, b) * x^(a - 1) * (1 - x)^(b - 1)```
+```none
+pdf(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+```
 
-where `Beta(a, b) = Gamma(a) * Gamma(b) / Gamma(a + b)`
-is the beta function.
+where:
 
+* `concentration1 = alpha`,
+* `concentration0 = beta`,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-This class provides methods to create indexed batches of Beta
-distributions. One entry of the broadcasted
-shape represents of `a` and `b` represents one single Beta distribution.
-When calling distribution functions (e.g. `dist.prob(x)`), `a`, `b`
-and `x` are broadcast to the same shape (if possible).
-Every entry in a/b/x corresponds to a single Beta distribution.
+The concentration parameters represent mean total counts of a `1` or a `0`,
+i.e.,
+
+```none
+concentration1 = alpha = mean * total_concentration
+concentration0 = beta  = (1. - mean) * total_concentration
+```
+
+where `mean` in `(0, 1)` and `total_concentration` is a positive real number
+representing a mean `total_count = concentration1 + concentration0`.
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
 
 #### Examples
 
-Creates 3 distributions.
-The distribution functions can be evaluated on x.
-
 ```python
-a = [1, 2, 3]
-b = [1, 2, 3]
-dist = Beta(a, b)
+# Create a batch of three Beta distributions.
+alpha = [1, 2, 3]
+beta = [1, 2, 3]
+dist = Beta(alpha, beta)
+
+dist.sample([4, 5])  # Shape [4, 5, 3]
+
+# `x` has three batch entries, each with two samples.
+x = [[.1, .4, .5],
+     [.2, .3, .5]]
+# Calculate the probability of each pair of samples under the corresponding
+# distribution in `dist`.
+dist.prob(x)         # Shape [2, 3]
 ```
 
 ```python
-# x same shape as a.
-x = [.2, .3, .7]
-dist.prob(x)  # Shape [3]
+# Create batch_shape=[2, 3] via parameter broadcast:
+alpha = [[1.], [2]]      # Shape [2, 1]
+beta = [3., 4, 5]        # Shape [3]
+dist = Beta(alpha, beta)
 
-# a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
-x = [[.1, .4, .5], [.2, .3, .5]]
-dist.prob(x)  # Shape [2, 3]
+# alpha broadcast as: [[1., 1, 1,],
+#                      [2, 2, 2]]
+# beta broadcast as:  [[3., 4, 5],
+#                      [3, 4, 5]]
+# batch_Shape [2, 3]
+dist.sample([4, 5])  # Shape [4, 5, 2, 3]
 
-# a/b will be broadcast to shape [5, 7, 3] to match x.
-x = [[...]]  # Shape [5, 7, 3]
-dist.prob(x)  # Shape [5, 7, 3]
-```
-
-Creates a 2-batch of 3-class distributions.
-
-```python
-a = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
-b = 5  # Shape []
-dist = Beta(a, b)
-
-# x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
-x = [.2, .3, .9]
-dist.prob(x)  # Shape [2]
+x = [.2, .3, .5]
+# x will be broadcast as [[.2, .3, .5],
+#                         [.2, .3, .5]],
+# thus matching batch_shape [2, 3].
+dist.prob(x)         # Shape [2, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(concentration1=None, concentration0=None, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
 ##### Args:
 
 
-*  <b>`a`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different Beta distributions. This also defines the
-     dtype of the distribution.
-*  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different Beta distributions.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
-    values for parameters `a`, `b`, and `x` in `prob` and `log_prob`.
-    If `False` and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch.
-dist = Beta(1.1, 2.0)
-
-# Define a 2-batch.
-dist = Beta([1.0, 2.0], [4.0, 5.0])
-```
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.a` {#Beta.a}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.a_b_sum` {#Beta.a_b_sum}
-
-Sum of parameters.
+*  <b>`concentration1`</b>: Positive floating-point `Tensor` indicating mean
+    number of successes; aka "alpha". Implies `self.dtype` and
+    `self.batch_shape`, i.e.,
+    `concentration1.shape = [N1, N2, ..., Nm] = self.batch_shape`.
+*  <b>`concentration0`</b>: Positive floating-point `Tensor` indicating mean
+    number of failures; aka "beta". Otherwise has same semantics as
+    `concentration1`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -132,19 +121,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.b` {#Beta.b}
+#### `tf.contrib.distributions.Beta.batch_shape` {#Beta.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Beta.batch_shape(name='batch_shape')` {#Beta.batch_shape}
+#### `tf.contrib.distributions.Beta.batch_shape_tensor(name='batch_shape_tensor')` {#Beta.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -169,6 +168,12 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 cdf(x) := P[X <= x]
 ```
 
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
+
 ##### Args:
 
 
@@ -180,6 +185,20 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.concentration0` {#Beta.concentration0}
+
+Concentration parameter associated with a `0` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.concentration1` {#Beta.concentration1}
+
+Concentration parameter associated with a `1` outcome.
 
 
 - - -
@@ -265,7 +284,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.event_shape(name='event_shape')` {#Beta.event_shape}
+#### `tf.contrib.distributions.Beta.event_shape` {#Beta.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.event_shape_tensor(name='event_shape_tensor')` {#Beta.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -278,34 +311,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.get_batch_shape()` {#Beta.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.get_event_shape()` {#Beta.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -368,10 +373,8 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -391,6 +394,12 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 #### `tf.contrib.distributions.Beta.log_prob(value, name='log_prob')` {#Beta.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -449,10 +458,10 @@ Mode.
 
 Additional documentation from `Beta`:
 
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+Note: The mode is undefined when `concentration1 <= 1` or
+`concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
+is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+exception is raised when one or more modes are undefined.
 
 
 - - -
@@ -532,10 +541,8 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
@@ -638,6 +645,13 @@ survival_function(x) = P[X > x]
 
   `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.total_concentration` {#Beta.total_concentration}
+
+Sum of concentration parameters.
 
 
 - - -

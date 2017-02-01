@@ -65,7 +65,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
       # pass.
       # Convergence of mean is +- 0.003 if n = 100M
       # Convergence of stddev is +- 0.00001 if n = 100M
-      self.assertEqual(p.get_batch_shape(), e_x.get_shape())
+      self.assertEqual(p.batch_shape, e_x.get_shape())
       self.assertAllClose(p.mean().eval(), e_x.eval(), rtol=0.01)
       self.assertAllClose(p.stddev().eval(), stddev.eval(), rtol=0.02)
 
@@ -91,7 +91,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
       # Convergence is +- 0.004 if n = 100k.
-      self.assertEqual(p.get_batch_shape(), prob.get_shape())
+      self.assertEqual(p.batch_shape, prob.get_shape())
       self.assertAllClose(0.5, prob.eval(), rtol=0.05)
 
 
@@ -120,7 +120,7 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
-      self.assertEqual(p.get_batch_shape(), e_x2.get_shape())
+      self.assertEqual(p.batch_shape, e_x2.get_shape())
       self.assertAllClose([1., (2 / 3.)**2], e_x2.eval(), rtol=0.02)
 
 
@@ -137,8 +137,8 @@ class ExpectationTest(test.TestCase):
       e_x2 = monte_carlo.expectation(math_ops.square, p, z=z, seed=0)
       var = e_x2 - math_ops.square(e_x)
 
-      self.assertEqual(p.get_batch_shape(), e_x.get_shape())
-      self.assertEqual(p.get_batch_shape(), e_x2.get_shape())
+      self.assertEqual(p.batch_shape, e_x.get_shape())
+      self.assertEqual(p.batch_shape, e_x2.get_shape())
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
