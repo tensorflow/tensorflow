@@ -8,7 +8,7 @@ if they are inside the subgraph, otherwise they are just ignored.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`op`</b>: the optional op to transform (or ignore).
 *  <b>`keep_if_possible`</b>: re-attach to the original op if possible, that is,
     if the source graph and the destination graph are the same.

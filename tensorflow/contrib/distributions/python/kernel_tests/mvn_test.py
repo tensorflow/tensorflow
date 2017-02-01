@@ -38,8 +38,8 @@ class MultivariateNormalShapeTest(test.TestCase):
       mvn = mvn_dist(mu, sigma)
       x = 2 * array_ops.ones_like(mu)
 
-      log_pdf = mvn.log_pdf(x)
-      pdf = mvn.pdf(x)
+      log_pdf = mvn.log_prob(x)
+      pdf = mvn.prob(x)
 
       mu_value = np.ones([3, 3, 2])
       sigma_value = np.zeros([3, 3, 2, 2])
@@ -239,8 +239,8 @@ class MultivariateNormalCholeskyTest(test.TestCase):
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
       x = self._rng.rand(2)
 
-      log_pdf = mvn.log_pdf(x)
-      pdf = mvn.pdf(x)
+      log_pdf = mvn.log_prob(x)
+      pdf = mvn.prob(x)
 
       scipy_mvn = stats.multivariate_normal(mean=mu, cov=sigma)
 
@@ -258,8 +258,8 @@ class MultivariateNormalCholeskyTest(test.TestCase):
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
       x = self._rng.rand(3, 2)
 
-      log_pdf = mvn.log_pdf(x)
-      pdf = mvn.pdf(x)
+      log_pdf = mvn.log_prob(x)
+      pdf = mvn.prob(x)
 
       scipy_mvn = stats.multivariate_normal(mean=mu, cov=sigma)
 
@@ -277,8 +277,8 @@ class MultivariateNormalCholeskyTest(test.TestCase):
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
       x = self._rng.rand(2)
 
-      log_pdf = mvn.log_pdf(x)
-      pdf = mvn.pdf(x)
+      log_pdf = mvn.log_prob(x)
+      pdf = mvn.prob(x)
 
       self.assertEqual((3,), log_pdf.get_shape())
       self.assertEqual((3,), pdf.get_shape())

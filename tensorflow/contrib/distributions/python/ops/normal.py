@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
+from tensorflow.contrib.distributions.python.ops import special_math
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,14 +35,35 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "Normal",
+    "NormalWithSoftplusScale",
+]
+
+
 class Normal(distribution.Distribution):
-  """The scalar Normal distribution with mean and stddev parameters mu, sigma.
+  """The Normal distribution with location `loc` and `scale` parameters.
 
   #### Mathematical details
 
-  The PDF of this distribution is:
+  The probability density function (pdf) is,
 
-  ```f(x) = sqrt(1/(2*pi*sigma^2)) exp(-(x-mu)^2/(2*sigma^2))```
+  ```none
+  pdf(x; mu, sigma) = exp(-0.5 (x - mu)**2 / sigma**2) / Z
+  Z = (2 pi sigma**2)**0.5
+  ```
+
+  where `loc = mu` is the mean, `scale = sigma` is the std. deviation, and, `Z`
+  is the normalization constant.
+
+  The Normal distribution is a member of the [location-scale family](
+  https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+  constructed as,
+
+  ```none
+  X ~ Normal(loc=0, scale=1)
+  Y = loc + scale * X
+  ```
 
   #### Examples
 
@@ -50,18 +71,18 @@ class Normal(distribution.Distribution):
 
   ```python
   # Define a single scalar Normal distribution.
-  dist = tf.contrib.distributions.Normal(mu=0., sigma=3.)
+  dist = tf.contrib.distributions.Normal(loc=0., scale=3.)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1.)
 
   # Define a batch of two scalar valued Normals.
   # The first has mean 1 and standard deviation 11, the second 2 and 22.
-  dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
+  dist = tf.contrib.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
-  dist.pdf([0, 1.5])
+  dist.prob([0, 1.5])
 
   # Get 3 samples, returning a 3 x 2 tensor.
   dist.sample([3])
@@ -72,83 +93,86 @@ class Normal(distribution.Distribution):
   ```python
   # Define a batch of two scalar valued Normals.
   # Both have mean 1, but different standard deviations.
-  dist = tf.contrib.distributions.Normal(mu=1., sigma=[11, 22.])
+  dist = tf.contrib.distributions.Normal(loc=1., scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
-  dist.pdf(3.0)
+  dist.prob(3.0)
   ```
 
   """
 
   def __init__(self,
-               mu,
-               sigma,
+               loc,
+               scale,
                validate_args=False,
                allow_nan_stats=True,
                name="Normal"):
-    """Construct Normal distributions with mean and stddev `mu` and `sigma`.
+    """Construct Normal distributions with mean and stddev `loc` and `scale`.
 
-    The parameters `mu` and `sigma` must be shaped in a way that supports
-    broadcasting (e.g. `mu + sigma` is a valid operation).
+    The parameters `loc` and `scale` must be shaped in a way that supports
+    broadcasting (e.g. `loc + scale` is a valid operation).
 
     Args:
-      mu: Floating point tensor, the means of the distribution(s).
-      sigma: Floating point tensor, the stddevs of the distribution(s).
-        sigma must contain only positive values.
-      validate_args: `Boolean`, default `False`.  Whether to assert that
-        `sigma > 0`. If `validate_args` is `False`, correct output is not
-        guaranteed when input is invalid.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: The name to give Ops created by the initializer.
+      loc: Floating point tensor; the means of the distribution(s).
+      scale: Floating point tensor; the stddevs of the distribution(s).
+        Must contain only positive values.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined.  When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
 
     Raises:
-      TypeError: if mu and sigma are different dtypes.
+      TypeError: if `loc` and `scale` have different `dtype`.
     """
     parameters = locals()
     parameters.pop("self")
-    with ops.name_scope(name, values=[mu, sigma]) as ns:
-      with ops.control_dependencies([check_ops.assert_positive(sigma)] if
+    with ops.name_scope(name, values=[loc, scale]) as ns:
+      with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
-        self._mu = array_ops.identity(mu, name="mu")
-        self._sigma = array_ops.identity(sigma, name="sigma")
-        contrib_tensor_util.assert_same_float_dtype((self._mu, self._sigma))
+        self._loc = array_ops.identity(loc, name="loc")
+        self._scale = array_ops.identity(scale, name="scale")
+        contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
     super(Normal, self).__init__(
-        dtype=self._sigma.dtype,
+        dtype=self._scale.dtype,
         is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
-        graph_parents=[self._mu, self._sigma],
+        graph_parents=[self._loc, self._scale],
         name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("mu", "sigma"), ([ops.convert_to_tensor(
+        zip(("loc", "scale"), ([ops.convert_to_tensor(
             sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
-  def mu(self):
+  def loc(self):
     """Distribution parameter for the mean."""
-    return self._mu
+    return self._loc
 
   @property
-  def sigma(self):
+  def scale(self):
     """Distribution parameter for standard deviation."""
-    return self._sigma
+    return self._scale
 
   def _batch_shape(self):
     return array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.mu), array_ops.shape(self.sigma))
+        array_ops.shape(self.loc),
+        array_ops.shape(self.scale))
 
   def _get_batch_shape(self):
     return array_ops.broadcast_static_shape(
-        self._mu.get_shape(), self.sigma.get_shape())
+        self.loc.get_shape(),
+        self.scale.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -159,12 +183,11 @@ class Normal(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat(([n], array_ops.shape(self.mean())), 0)
     sampled = random_ops.random_normal(
-        shape=shape, mean=0, stddev=1, dtype=self.mu.dtype, seed=seed)
-    return sampled * self.sigma + self.mu
+        shape=shape, mean=0., stddev=1., dtype=self.loc.dtype, seed=seed)
+    return sampled * self.scale + self.loc
 
   def _log_prob(self, x):
-    return (-0.5 * math.log(2. * math.pi) - math_ops.log(self.sigma)
-            -0.5 * math_ops.square(self._z(x)))
+    return self._log_unnormalized_prob(x) - self._log_normalization()
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
@@ -181,16 +204,22 @@ class Normal(distribution.Distribution):
   def _survival_function(self, x):
     return special_math.ndtr(-self._z(x))
 
+  def _log_unnormalized_prob(self, x):
+    return -0.5 * math_ops.square(self._z(x))
+
+  def _log_normalization(self):
+    return 0.5 * math.log(2. * math.pi) + math_ops.log(self.scale)
+
   def _entropy(self):
-    # Use broadcasting rules to calculate the full broadcast sigma.
-    sigma = self.sigma * array_ops.ones_like(self.mu)
-    return 0.5 * math.log(2. * math.pi * math.e) + math_ops.log(sigma)
+    # Use broadcasting rules to calculate the full broadcast scale.
+    scale = self.scale * array_ops.ones_like(self.loc)
+    return 0.5 * math.log(2. * math.pi * math.e) + math_ops.log(scale)
 
   def _mean(self):
-    return self.mu * array_ops.ones_like(self.sigma)
+    return self.loc * array_ops.ones_like(self.scale)
 
   def _stddev(self):
-    return self.sigma * array_ops.ones_like(self.mu)
+    return self.scale * array_ops.ones_like(self.loc)
 
   def _mode(self):
     return self._mean()
@@ -198,24 +227,24 @@ class Normal(distribution.Distribution):
   def _z(self, x):
     """Standardize input `x` to a unit normal."""
     with ops.name_scope("standardize", values=[x]):
-      return (x - self.mu) / self.sigma
+      return (x - self.loc) / self.scale
 
 
-class NormalWithSoftplusSigma(Normal):
-  """Normal with softplus applied to `sigma`."""
+class NormalWithSoftplusScale(Normal):
+  """Normal with softplus applied to `scale`."""
 
   def __init__(self,
-               mu,
-               sigma,
+               loc,
+               scale,
                validate_args=False,
                allow_nan_stats=True,
-               name="NormalWithSoftplusSigma"):
+               name="NormalWithSoftplusScale"):
     parameters = locals()
     parameters.pop("self")
-    with ops.name_scope(name, values=[sigma]) as ns:
-      super(NormalWithSoftplusSigma, self).__init__(
-          mu=mu,
-          sigma=nn.softplus(sigma, name="softplus_sigma"),
+    with ops.name_scope(name, values=[scale]) as ns:
+      super(NormalWithSoftplusScale, self).__init__(
+          loc=loc,
+          scale=nn.softplus(scale, name="softplus_scale"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
@@ -235,12 +264,12 @@ def _kl_normal_normal(n_a, n_b, name=None):
   Returns:
     Batchwise KL(n_a || n_b)
   """
-  with ops.name_scope(name, "kl_normal_normal", [n_a.mu, n_b.mu]):
+  with ops.name_scope(name, "kl_normal_normal", [n_a.loc, n_b.loc]):
     one = constant_op.constant(1, dtype=n_a.dtype)
     two = constant_op.constant(2, dtype=n_a.dtype)
     half = constant_op.constant(0.5, dtype=n_a.dtype)
-    s_a_squared = math_ops.square(n_a.sigma)
-    s_b_squared = math_ops.square(n_b.sigma)
+    s_a_squared = math_ops.square(n_a.scale)
+    s_b_squared = math_ops.square(n_b.scale)
     ratio = s_a_squared / s_b_squared
-    return (math_ops.square(n_a.mu - n_b.mu) / (two * s_b_squared) +
+    return (math_ops.square(n_a.loc - n_b.loc) / (two * s_b_squared) +
             half * (ratio - one - math_ops.log(ratio)))

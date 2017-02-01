@@ -48,7 +48,7 @@ class NormalTest(test.TestCase):
   def _testParamShapes(self, sample_shape, expected):
     with self.test_session():
       param_shapes = normal_lib.Normal.param_shapes(sample_shape)
-      mu_shape, sigma_shape = param_shapes["mu"], param_shapes["sigma"]
+      mu_shape, sigma_shape = param_shapes["loc"], param_shapes["scale"]
       self.assertAllEqual(expected, mu_shape.eval())
       self.assertAllEqual(expected, sigma_shape.eval())
       mu = array_ops.zeros(mu_shape)
@@ -59,7 +59,7 @@ class NormalTest(test.TestCase):
 
   def _testParamStaticShapes(self, sample_shape, expected):
     param_shapes = normal_lib.Normal.param_static_shapes(sample_shape)
-    mu_shape, sigma_shape = param_shapes["mu"], param_shapes["sigma"]
+    mu_shape, sigma_shape = param_shapes["loc"], param_shapes["scale"]
     self.assertEqual(expected, mu_shape)
     self.assertEqual(expected, sigma_shape)
 
@@ -74,13 +74,13 @@ class NormalTest(test.TestCase):
     self._testParamStaticShapes(
         tensor_shape.TensorShape(sample_shape), sample_shape)
 
-  def testNormalWithSoftplusSigma(self):
+  def testNormalWithSoftplusScale(self):
     with self.test_session():
       mu = array_ops.zeros((10, 3))
       rho = array_ops.ones((10, 3)) * -2.
-      normal = normal_lib.NormalWithSoftplusSigma(mu=mu, sigma=rho)
-      self.assertAllEqual(mu.eval(), normal.mu.eval())
-      self.assertAllEqual(nn_ops.softplus(rho).eval(), normal.sigma.eval())
+      normal = normal_lib.NormalWithSoftplusScale(loc=mu, scale=rho)
+      self.assertAllEqual(mu.eval(), normal.loc.eval())
+      self.assertAllEqual(nn_ops.softplus(rho).eval(), normal.scale.eval())
 
   def testNormalLogPDF(self):
     with self.test_session():
@@ -88,17 +88,17 @@ class NormalTest(test.TestCase):
       mu = constant_op.constant([3.0] * batch_size)
       sigma = constant_op.constant([math.sqrt(10.0)] * batch_size)
       x = np.array([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0], dtype=np.float32)
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_log_pdf = stats.norm(mu.eval(), sigma.eval()).logpdf(x)
 
-      log_pdf = normal.log_pdf(x)
+      log_pdf = normal.log_prob(x)
       self.assertAllClose(expected_log_pdf, log_pdf.eval())
       self.assertAllEqual(normal.batch_shape().eval(), log_pdf.get_shape())
       self.assertAllEqual(normal.batch_shape().eval(), log_pdf.eval().shape)
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
 
-      pdf = normal.pdf(x)
+      pdf = normal.prob(x)
       self.assertAllClose(np.exp(expected_log_pdf), pdf.eval())
       self.assertAllEqual(normal.batch_shape().eval(), pdf.get_shape())
       self.assertAllEqual(normal.batch_shape().eval(), pdf.eval().shape)
@@ -112,10 +112,10 @@ class NormalTest(test.TestCase):
       sigma = constant_op.constant([[math.sqrt(10.0), math.sqrt(15.0)]] *
                                    batch_size)
       x = np.array([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=np.float32).T
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_log_pdf = stats.norm(mu.eval(), sigma.eval()).logpdf(x)
 
-      log_pdf = normal.log_pdf(x)
+      log_pdf = normal.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(expected_log_pdf, log_pdf_values)
@@ -124,7 +124,7 @@ class NormalTest(test.TestCase):
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
       self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
 
-      pdf = normal.pdf(x)
+      pdf = normal.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
@@ -140,7 +140,7 @@ class NormalTest(test.TestCase):
       sigma = self._rng.rand(batch_size) + 1.0
       x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_cdf = stats.norm(mu, sigma).cdf(x)
 
       cdf = normal.cdf(x)
@@ -157,7 +157,7 @@ class NormalTest(test.TestCase):
       sigma = self._rng.rand(batch_size) + 1.0
       x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_sf = stats.norm(mu, sigma).sf(x)
 
       sf = normal.survival_function(x)
@@ -174,7 +174,7 @@ class NormalTest(test.TestCase):
       sigma = self._rng.rand(batch_size) + 1.0
       x = np.linspace(-100.0, 10.0, batch_size).astype(np.float64)
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_cdf = stats.norm(mu, sigma).logcdf(x)
 
       cdf = normal.log_cdf(x)
@@ -190,7 +190,7 @@ class NormalTest(test.TestCase):
       with g.as_default():
         mu = variables.Variable(dtype(0.0))
         sigma = variables.Variable(dtype(1.0))
-        dist = normal_lib.Normal(mu=mu, sigma=sigma)
+        dist = normal_lib.Normal(loc=mu, scale=sigma)
         x = np.array([-100., -20., -5., 0., 5., 20., 100.]).astype(dtype)
         for func in [
             dist.cdf, dist.log_cdf, dist.survival_function,
@@ -211,7 +211,7 @@ class NormalTest(test.TestCase):
       sigma = self._rng.rand(batch_size) + 1.0
       x = np.linspace(-10.0, 100.0, batch_size).astype(np.float64)
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       expected_sf = stats.norm(mu, sigma).logsf(x)
 
       sf = normal.log_survival_function(x)
@@ -226,7 +226,7 @@ class NormalTest(test.TestCase):
     with self.test_session():
       mu_v = 2.34
       sigma_v = 4.56
-      normal = normal_lib.Normal(mu=mu_v, sigma=sigma_v)
+      normal = normal_lib.Normal(loc=mu_v, scale=sigma_v)
 
       # scipy.stats.norm cannot deal with these shapes.
       expected_entropy = stats.norm(mu_v, sigma_v).entropy()
@@ -241,7 +241,7 @@ class NormalTest(test.TestCase):
     with self.test_session():
       mu_v = np.array([1.0, 1.0, 1.0])
       sigma_v = np.array([[1.0, 2.0, 3.0]]).T
-      normal = normal_lib.Normal(mu=mu_v, sigma=sigma_v)
+      normal = normal_lib.Normal(loc=mu_v, scale=sigma_v)
 
       # scipy.stats.norm cannot deal with these shapes.
       sigma_broadcast = mu_v * sigma_v
@@ -260,7 +260,7 @@ class NormalTest(test.TestCase):
       mu = [7.]
       sigma = [11., 12., 13.]
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
 
       self.assertAllEqual((3,), normal.mean().get_shape())
       self.assertAllEqual([7., 7, 7], normal.mean().eval())
@@ -274,7 +274,7 @@ class NormalTest(test.TestCase):
       mu = [1., 2., 3.]
       sigma = [7.]
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
 
       self.assertAllEqual((3,), normal.variance().get_shape())
       self.assertAllEqual([49., 49, 49], normal.variance().eval())
@@ -285,7 +285,7 @@ class NormalTest(test.TestCase):
       mu = [1., 2., 3.]
       sigma = [7.]
 
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
 
       self.assertAllEqual((3,), normal.stddev().get_shape())
       self.assertAllEqual([7., 7, 7], normal.stddev().eval())
@@ -297,7 +297,7 @@ class NormalTest(test.TestCase):
       mu_v = 3.0
       sigma_v = np.sqrt(3.0)
       n = constant_op.constant(100000)
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       samples = normal.sample(n)
       sample_values = samples.eval()
       # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
@@ -329,7 +329,7 @@ class NormalTest(test.TestCase):
       mu_v = [3.0, -3.0]
       sigma_v = [np.sqrt(2.0), np.sqrt(3.0)]
       n = constant_op.constant(100000)
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
       samples = normal.sample(n)
       sample_values = samples.eval()
       # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
@@ -355,7 +355,7 @@ class NormalTest(test.TestCase):
   def testNegativeSigmaFails(self):
     with self.test_session():
       normal = normal_lib.Normal(
-          mu=[1.], sigma=[-5.], validate_args=True, name="G")
+          loc=[1.], scale=[-5.], validate_args=True, name="G")
       with self.assertRaisesOpError("Condition x > 0 did not hold"):
         normal.mean().eval()
 
@@ -363,7 +363,7 @@ class NormalTest(test.TestCase):
     with self.test_session():
       mu = constant_op.constant([-3.0] * 5)
       sigma = constant_op.constant(11.0)
-      normal = normal_lib.Normal(mu=mu, sigma=sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
 
       self.assertEqual(normal.batch_shape().eval(), [5])
       self.assertEqual(normal.get_batch_shape(), tensor_shape.TensorShape([5]))
@@ -373,7 +373,7 @@ class NormalTest(test.TestCase):
   def testNormalShapeWithPlaceholders(self):
     mu = array_ops.placeholder(dtype=dtypes.float32)
     sigma = array_ops.placeholder(dtype=dtypes.float32)
-    normal = normal_lib.Normal(mu=mu, sigma=sigma)
+    normal = normal_lib.Normal(loc=mu, scale=sigma)
 
     with self.test_session() as sess:
       # get_batch_shape should return an "<unknown>" tensor.
@@ -392,8 +392,8 @@ class NormalTest(test.TestCase):
       mu_b = np.array([-3.0] * batch_size)
       sigma_b = np.array([0.5, 1.0, 1.5, 2.0, 2.5, 3.0])
 
-      n_a = normal_lib.Normal(mu=mu_a, sigma=sigma_a)
-      n_b = normal_lib.Normal(mu=mu_b, sigma=sigma_b)
+      n_a = normal_lib.Normal(loc=mu_a, scale=sigma_a)
+      n_b = normal_lib.Normal(loc=mu_b, scale=sigma_b)
 
       kl = kullback_leibler.kl(n_a, n_b)
       kl_val = sess.run(kl)

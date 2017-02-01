@@ -42,7 +42,7 @@ from tensorflow.python.platform import test
 
 class DynamicDecodeRNNTest(test.TestCase):
 
-  def _testDynamicDecodeRNN(self, time_major):
+  def _testDynamicDecodeRNN(self, time_major, maximum_iterations=None):
 
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
@@ -68,7 +68,8 @@ class DynamicDecodeRNNTest(test.TestCase):
               dtype=dtypes.float32, batch_size=batch_size))
 
       final_outputs, final_state = decoder.dynamic_decode_rnn(
-          my_decoder, output_time_major=time_major)
+          my_decoder, output_time_major=time_major,
+          maximum_iterations=maximum_iterations)
 
       def _t(shape):
         if time_major:
@@ -92,11 +93,15 @@ class DynamicDecodeRNNTest(test.TestCase):
           "final_state": final_state
       })
 
+      # Mostly a smoke test
+      time_steps = max_out
+      if maximum_iterations is not None:
+        time_steps = min(max_out, maximum_iterations)
       self.assertEqual(
-          _t((batch_size, max_out, cell_depth)),
+          _t((batch_size, time_steps, cell_depth)),
           sess_results["final_outputs"].rnn_output.shape)
       self.assertEqual(
-          _t((batch_size, max_out)),
+          _t((batch_size, time_steps)),
           sess_results["final_outputs"].sample_id.shape)
 
   def testDynamicDecodeRNNBatchMajor(self):
@@ -105,7 +110,14 @@ class DynamicDecodeRNNTest(test.TestCase):
   def testDynamicDecodeRNNTimeMajor(self):
     self._testDynamicDecodeRNN(time_major=True)
 
-  def testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(self):
+  def testDynamicDecodeRNNZeroMaxIters(self):
+    self._testDynamicDecodeRNN(time_major=True, maximum_iterations=0)
+
+  def testDynamicDecodeRNNOneMaxIter(self):
+    self._testDynamicDecodeRNN(time_major=True, maximum_iterations=1)
+
+  def _testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(
+      self, use_sequence_length):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
@@ -125,16 +137,21 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       # Match the variable scope of dynamic_rnn below so we end up
       # using the same variables
-      with vs.variable_scope("rnn"):
+      with vs.variable_scope("root") as scope:
         final_decoder_outputs, final_decoder_state = decoder.dynamic_decode_rnn(
-            my_decoder)
+            my_decoder,
+            # impute_finished=True ensures outputs and final state
+            # match those of dynamic_rnn called with sequence_length not None
+            impute_finished=use_sequence_length,
+            scope=scope)
 
-      with vs.variable_scope(vs.get_variable_scope(), reuse=True):
+      with vs.variable_scope(scope, reuse=True) as scope:
         final_rnn_outputs, final_rnn_state = rnn.dynamic_rnn(
             cell,
             inputs,
-            sequence_length=sequence_length,
-            initial_state=zero_state)
+            sequence_length=sequence_length if use_sequence_length else None,
+            initial_state=zero_state,
+            scope=scope)
 
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
@@ -148,9 +165,19 @@ class DynamicDecodeRNNTest(test.TestCase):
       # to dynamic_rnn, which also zeros out outputs and passes along state.
       self.assertAllClose(sess_results["final_decoder_outputs"].rnn_output,
                           sess_results["final_rnn_outputs"][:, 0:max_out, :])
-      self.assertAllClose(sess_results["final_decoder_state"],
-                          sess_results["final_rnn_state"])
+      if use_sequence_length:
+        self.assertAllClose(sess_results["final_decoder_state"],
+                            sess_results["final_rnn_state"])
 
+  def testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNNWithSeqLen(
+      self):
+    self._testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(
+        use_sequence_length=True)
+
+  def testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNNNoSeqLen(
+      self):
+    self._testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(
+        use_sequence_length=False)
 
 if __name__ == "__main__":
   test.main()

@@ -71,6 +71,22 @@ config_setting(
 )
 
 config_setting(
+    name = "debug",
+    values = {
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "FreeBSD",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import multiprocessing
 import platform
 import re
@@ -79,7 +80,7 @@ def gather_cpu_info():
 
   # Gather num_cores_allowed
   try:
-    with gfile.GFile('/proc/self/status') as fh:
+    with gfile.GFile('/proc/self/status', 'rb') as fh:
       nc = re.search(r'(?m)^Cpus_allowed:\s*(.*)$', fh.read())
     if nc:  # e.g. 'ff' => 8, 'fff' => 12
       cpu_info.num_cores_allowed = (
@@ -104,7 +105,7 @@ def gather_cpu_info():
   try:
     cpu_governors = set([
         gfile.GFile(f, 'r').readline().rstrip()
-        for f in gfile.Glob(
+        for f in glob.glob(
             '/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor')
     ])
     if cpu_governors:

@@ -100,6 +100,7 @@ exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 function get_failing_cpu_py_tests() {
     echo "
     //$1/tensorflow/python:basic_session_run_hooks_test + \
+    //$1/tensorflow/python:bigquery_reader_ops_test + \
     //$1/tensorflow/python:contrib_test + \
     //$1/tensorflow/python:dequantize_op_test + \
     //$1/tensorflow/python:directory_watcher_test + \

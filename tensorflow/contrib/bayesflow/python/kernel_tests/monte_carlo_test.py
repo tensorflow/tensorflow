@@ -48,8 +48,8 @@ class ExpectationImportanceSampleTest(test.TestCase):
       mu_q = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
       sigma_p = constant_op.constant([0.5, 0.5], dtype=dtypes.float64)
       sigma_q = constant_op.constant([1.0, 1.0], dtype=dtypes.float64)
-      p = distributions.Normal(mu=mu_p, sigma=sigma_p)
-      q = distributions.Normal(mu=mu_q, sigma=sigma_q)
+      p = distributions.Normal(loc=mu_p, scale=sigma_p)
+      q = distributions.Normal(loc=mu_q, scale=sigma_q)
 
       # Compute E_p[X].
       e_x = monte_carlo.expectation_importance_sampler(
@@ -105,8 +105,8 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
       mu_q = constant_op.constant([-1.0, 1.0], dtype=dtypes.float64)
       sigma_p = constant_op.constant([1.0, 2 / 3.], dtype=dtypes.float64)
       sigma_q = constant_op.constant([1.0, 1.0], dtype=dtypes.float64)
-      p = distributions.Normal(mu=mu_p, sigma=sigma_p)
-      q = distributions.Normal(mu=mu_q, sigma=sigma_q)
+      p = distributions.Normal(loc=mu_p, scale=sigma_p)
+      q = distributions.Normal(loc=mu_q, scale=sigma_q)
 
       # Compute E_p[X^2].
       # Should equal [1, (2/3)^2]
@@ -130,7 +130,7 @@ class ExpectationTest(test.TestCase):
     random_seed.set_random_seed(0)
     n = 20000
     with self.test_session():
-      p = distributions.Normal(mu=[1.0, -1.0], sigma=[0.3, 0.5])
+      p = distributions.Normal(loc=[1.0, -1.0], scale=[0.3, 0.5])
       # Compute E_p[X] and E_p[X^2].
       z = p.sample(n, seed=42)
       e_x = monte_carlo.expectation(lambda x: x, p, z=z, seed=42)
@@ -151,7 +151,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_raises_if_both_z_and_n_are_none(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = None
       n = None
       seed = None
@@ -160,7 +160,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_raises_if_both_z_and_n_are_not_none(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = dist.sample(seed=42)
       n = 1
       seed = None
@@ -169,7 +169,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_returns_n_samples_if_n_provided(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = None
       n = 10
       seed = None
@@ -178,7 +178,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_returns_z_if_z_provided(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = dist.sample(10, seed=42)
       n = None
       seed = None

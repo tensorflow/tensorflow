@@ -60,6 +60,13 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda_driver",
+    srcs = ["lib/%{cuda_driver_lib}"],
+    includes = ["include/"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "cudart",
     srcs = ["lib/%{cudart_lib}"],
     data = ["lib/%{cudart_lib}"],

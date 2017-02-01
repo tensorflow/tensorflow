@@ -1,10 +1,25 @@
-The scalar Normal distribution with mean and stddev parameters mu, sigma.
+The Normal distribution with location `loc` and `scale` parameters.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+The probability density function (pdf) is,
 
-```f(x) = sqrt(1/(2*pi*sigma^2)) exp(-(x-mu)^2/(2*sigma^2))```
+```none
+pdf(x; mu, sigma) = exp(-0.5 (x - mu)**2 / sigma**2) / Z
+Z = (2 pi sigma**2)**0.5
+```
+
+where `loc = mu` is the mean, `scale = sigma` is the std. deviation, and, `Z`
+is the normalization constant.
+
+The Normal distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Normal(loc=0, scale=1)
+Y = loc + scale * X
+```
 
 #### Examples
 
@@ -12,18 +27,18 @@ Examples of initialization of one or a batch of distributions.
 
 ```python
 # Define a single scalar Normal distribution.
-dist = tf.contrib.distributions.Normal(mu=0., sigma=3.)
+dist = tf.contrib.distributions.Normal(loc=0., scale=3.)
 
 # Evaluate the cdf at 1, returning a scalar.
 dist.cdf(1.)
 
 # Define a batch of two scalar valued Normals.
 # The first has mean 1 and standard deviation 11, the second 2 and 22.
-dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
 
 # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
 # returning a length two tensor.
-dist.pdf([0, 1.5])
+dist.prob([0, 1.5])
 
 # Get 3 samples, returning a 3 x 2 tensor.
 dist.sample([3])
@@ -34,40 +49,41 @@ Arguments are broadcast when possible.
 ```python
 # Define a batch of two scalar valued Normals.
 # Both have mean 1, but different standard deviations.
-dist = tf.contrib.distributions.Normal(mu=1., sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(loc=1., scale=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
-dist.pdf(3.0)
+dist.prob(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
 
-Construct Normal distributions with mean and stddev `mu` and `sigma`.
+Construct Normal distributions with mean and stddev `loc` and `scale`.
 
-The parameters `mu` and `sigma` must be shaped in a way that supports
-broadcasting (e.g. `mu + sigma` is a valid operation).
+The parameters `loc` and `scale` must be shaped in a way that supports
+broadcasting (e.g. `loc + scale` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: Floating point tensor, the stddevs of the distribution(s).
-    sigma must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `sigma > 0`. If `validate_args` is `False`, correct output is not
-    guaranteed when input is invalid.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`loc`</b>: Floating point tensor; the means of the distribution(s).
+*  <b>`scale`</b>: Floating point tensor; the stddevs of the distribution(s).
+    Must contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined.  When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+*  <b>`TypeError`</b>: if `loc` and `scale` have different `dtype`.
 
 
 - - -
@@ -113,7 +129,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.cdf(value, name='cdf', **condition_kwargs)` {#Normal.cdf}
+#### `tf.contrib.distributions.Normal.cdf(value, name='cdf')` {#Normal.cdf}
 
 Cumulative distribution function.
 
@@ -128,7 +144,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -158,6 +173,50 @@ intialization arguments.
 *  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
     of self.parameters and override_parameters_kwargs, i.e.,
     `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.covariance(name='covariance')` {#Normal.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
 
 
 - - -
@@ -262,7 +321,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Normal.log_cdf}
+#### `tf.contrib.distributions.Normal.loc` {#Normal.loc}
+
+Distribution parameter for the mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf')` {#Normal.log_cdf}
 
 Log cumulative distribution function.
 
@@ -281,7 +347,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -292,57 +357,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Normal.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Normal.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.log_prob(value, name='log_prob', **condition_kwargs)` {#Normal.log_prob}
+#### `tf.contrib.distributions.Normal.log_prob(value, name='log_prob')` {#Normal.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -351,7 +366,6 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -362,7 +376,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Normal.log_survival_function}
+#### `tf.contrib.distributions.Normal.log_survival_function(value, name='log_survival_function')` {#Normal.log_survival_function}
 
 Log survival function.
 
@@ -382,7 +396,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -402,13 +415,6 @@ Mean.
 #### `tf.contrib.distributions.Normal.mode(name='mode')` {#Normal.mode}
 
 Mode.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.mu` {#Normal.mu}
-
-Distribution parameter for the mean.
 
 
 - - -
@@ -481,57 +487,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.pdf(value, name='pdf', **condition_kwargs)` {#Normal.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.pmf(value, name='pmf', **condition_kwargs)` {#Normal.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.prob(value, name='prob', **condition_kwargs)` {#Normal.prob}
+#### `tf.contrib.distributions.Normal.prob(value, name='prob')` {#Normal.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -540,7 +496,6 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -566,7 +521,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Normal.sample}
+#### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample')` {#Normal.sample}
 
 Generate samples of the specified shape.
 
@@ -579,7 +534,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -589,7 +543,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sigma` {#Normal.sigma}
+#### `tf.contrib.distributions.Normal.scale` {#Normal.scale}
 
 Distribution parameter for standard deviation.
 
@@ -600,10 +554,30 @@ Distribution parameter for standard deviation.
 
 Standard deviation.
 
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
 
 - - -
 
-#### `tf.contrib.distributions.Normal.survival_function(value, name='survival_function', **condition_kwargs)` {#Normal.survival_function}
+#### `tf.contrib.distributions.Normal.survival_function(value, name='survival_function')` {#Normal.survival_function}
 
 Survival function.
 
@@ -620,7 +594,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -640,5 +613,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Normal.variance(name='variance')` {#Normal.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

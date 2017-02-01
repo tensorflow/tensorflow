@@ -369,6 +369,15 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
       attr->set_minimum(1);
     }
   }
+
+  // If the arg's dtype is resource we should mark the op as stateful as it
+  // likely touches a resource manager. This deliberately doesn't cover inputs /
+  // outputs which resolve to resource via Attrs as those mostly operate on
+  // resource handles as an opaque type (as opposed to ops which explicitly take
+  // / produce resources).
+  if (arg->type() == DT_RESOURCE) {
+    op_def->set_is_stateful(true);
+  }
 }
 
 #undef VERIFY

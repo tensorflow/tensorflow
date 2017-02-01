@@ -46,13 +46,6 @@ cc_library(
             exclude = ["cuda/cuda_platform_id.cc"],
         ),
     ),
-    data = [
-        "//tensorflow/core:cuda",
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cudnn",
-        "@local_config_cuda//cuda:cufft",
-        "@local_config_cuda//cuda:curand",
-    ],
     linkopts = select({
         "//tensorflow:FreeBSD": [],
         "//conditions:default": ["-ldl"],
@@ -60,8 +53,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
+        "//tensorflow/core:cuda",
         "//tensorflow/core:lib",
+        "@local_config_cuda//cuda:cublas",
+        "@local_config_cuda//cuda:cuda_driver",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn",
+        "@local_config_cuda//cuda:cufft",
+        "@local_config_cuda//cuda:curand",
     ],
     alwayslink = 1,
 )
