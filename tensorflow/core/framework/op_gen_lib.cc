@@ -91,8 +91,21 @@ Status OpGenOverrideMap::LoadFile(Env* env, const string& filename) {
 }
 
 static void StringReplace(const string& from, const string& to, string* s) {
-  std::vector<string> rest = str_util::Split(*s, from);
-  *s = str_util::Join(rest, to.c_str());
+  // Split *s into pieces delimited by `from`.
+  std::vector<string> split;
+  string::size_type pos = 0;
+  while (pos < s->size()) {
+    auto found = s->find(from, pos);
+    if (found == string::npos) {
+      split.push_back(s->substr(pos));
+      break;
+    } else {
+      split.push_back(s->substr(pos, found - pos));
+      pos = found + from.size();
+    }
+  }
+  // Join the pieces back together with a new delimiter.
+  *s = str_util::Join(split, to.c_str());
 }
 
 static void RenameInDocs(const string& from, const string& to, OpDef* op_def) {
@@ -120,7 +133,7 @@ static void RenameInDocs(const string& from, const string& to, OpDef* op_def) {
     StringReplace(from_quoted, to_quoted, op_def->mutable_summary());
   }
   if (!op_def->description().empty()) {
-    StringReplace(from_quoted, to_quoted, op_def->mutable_summary());
+    StringReplace(from_quoted, to_quoted, op_def->mutable_description());
   }
 }
 
