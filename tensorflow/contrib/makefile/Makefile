@@ -454,6 +454,7 @@ $(wildcard tensorflow/core/*/*/*testutil*) \
 $(wildcard tensorflow/core/*/*/*testlib*) \
 $(wildcard tensorflow/core/*/*/*main.cc) \
 $(wildcard tensorflow/core/debug/*.cc) \
+$(wildcard tensorflow/core/framework/op_gen_lib.cc) \
 $(wildcard tensorflow/core/graph/dot.*) \
 $(wildcard tensorflow/core/lib/gif/*) \
 $(wildcard tensorflow/core/lib/io/zlib*) \
