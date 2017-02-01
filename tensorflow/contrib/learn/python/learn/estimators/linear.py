@@ -35,6 +35,8 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -76,8 +78,12 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
   if not feature_columns:
     raise ValueError("feature_columns can't be empty.")
 
-  # Using a arbitrary input tensor to figure out batch_size.
-  batch_size = array_ops.shape(next(iter(columns_to_tensors.values())))[0]
+  # Using an arbitrary input tensor to figure out batch_size.
+  some_input = next(iter(columns_to_tensors.values()))
+  if isinstance(some_input, sparse_tensor.SparseTensor):
+    batch_size = tensor_util.constant_value(some_input.dense_shape)[0]
+  else:
+    batch_size = array_ops.shape(some_input)[0]
 
   bias_column = layers.real_valued_column(bias_column_name)
   columns_to_tensors[bias_column] = array_ops.ones([batch_size, 1],
