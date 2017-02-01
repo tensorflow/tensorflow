@@ -378,12 +378,12 @@ class MultivariateNormalCholeskyTest(test.TestCase):
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
 
       # Shapes known at graph construction time.
-      self.assertEqual((2,), tuple(mvn.get_event_shape().as_list()))
-      self.assertEqual((3, 5), tuple(mvn.get_batch_shape().as_list()))
+      self.assertEqual((2,), tuple(mvn.event_shape.as_list()))
+      self.assertEqual((3, 5), tuple(mvn.batch_shape.as_list()))
 
       # Shapes known at runtime.
-      self.assertEqual((2,), tuple(mvn.event_shape().eval()))
-      self.assertEqual((3, 5), tuple(mvn.batch_shape().eval()))
+      self.assertEqual((2,), tuple(mvn.event_shape_tensor().eval()))
+      self.assertEqual((3, 5), tuple(mvn.batch_shape_tensor().eval()))
 
 
 class MultivariateNormalFullTest(test.TestCase):

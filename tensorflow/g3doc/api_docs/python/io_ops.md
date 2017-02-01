@@ -2822,7 +2822,7 @@ Once successful, the following actions are also triggered:
 
 ### `tf.matching_files(pattern, name=None)` {#matching_files}
 
-Returns the set of files matching a pattern.
+Returns the set of files matching one or more glob patterns.
 
 Note that this routine only supports wildcard characters in the
 basename portion of the pattern, not in the directory portion.
@@ -2830,7 +2830,8 @@ basename portion of the pattern, not in the directory portion.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A `Tensor` of type `string`. A (scalar) shell wildcard pattern.
+*  <b>`pattern`</b>: A `Tensor` of type `string`.
+    Shell wildcard pattern(s). Scalar or vector of type string.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2896,12 +2897,12 @@ Save the list of files matching pattern, so it is only computed once.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A file pattern (glob).
+*  <b>`pattern`</b>: A file pattern (glob), or 1D tensor of file patterns.
 *  <b>`name`</b>: A name for the operations (optional).
 
 ##### Returns:
 
-  A variable that is initialized to the list of files matching pattern.
+  A variable that is initialized to the list of files matching the pattern(s).
 
 
 - - -

@@ -47,7 +47,9 @@ class CompilationCacheTest : public ClientLibraryTestBase {
     std::unique_ptr<Literal> result =
         client_
             ->ExecuteAndTransfer(computation, arguments,
-                                 /*output_layout=*/nullptr, &execution_profile)
+                                 /*shape_with_output_layout=*/nullptr,
+                                 /*compilation_options=*/nullptr,
+                                 &execution_profile)
             .ConsumeValueOrDie();
     LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR0<float>(expected_result),
                                 *result, error_spec_);
@@ -62,8 +64,9 @@ class CompilationCacheTest : public ClientLibraryTestBase {
     ExecutionProfile execution_profile;
     auto data_handle =
         client_
-            ->Execute(computation, arguments, /*output_layout=*/nullptr,
-                      &execution_profile)
+            ->Execute(computation, arguments,
+                      /*shape_with_output_layout=*/nullptr,
+                      /*compilation_options=*/nullptr, &execution_profile)
             .ConsumeValueOrDie();
     std::unique_ptr<Literal> result =
         client_->Transfer(*data_handle).ConsumeValueOrDie();

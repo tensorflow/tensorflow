@@ -114,7 +114,6 @@ class _OneHotCategorical(distribution.Distribution):
       name: `String` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[logits, probs]) as ns:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,
@@ -130,13 +129,8 @@ class _OneHotCategorical(distribution.Distribution):
         with ops.name_scope(name="batch_rank"):
           self._batch_rank = array_ops.rank(self._logits) - 1
 
-      logits_shape = array_ops.shape(self._logits, name="logits_shape")
-
       with ops.name_scope(name="event_size"):
-        self._event_size = logits_shape[-1]
-
-      with ops.name_scope(name="batch_shape"):
-        self._batch_shape_val = logits_shape[:-1]
+        self._event_size = array_ops.shape(self._logits)[-1]
 
     super(_OneHotCategorical, self).__init__(
         dtype=dtype,
@@ -164,17 +158,16 @@ class _OneHotCategorical(distribution.Distribution):
     """Vector of coordinatewise probabilities."""
     return self._probs
 
-  def _batch_shape(self):
-    # Use identity to inherit callers "name".
-    return array_ops.identity(self._batch_shape_val)
+  def _batch_shape_tensor(self):
+    return array_ops.shape(self.logits)[:-1]
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self.logits.get_shape()[:-1]
 
-  def _event_shape(self):
-    return array_ops.shape(self.logits)[-1]
+  def _event_shape_tensor(self):
+    return array_ops.shape(self.logits)[-1:]
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self.logits.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
@@ -224,8 +217,8 @@ class _OneHotCategorical(distribution.Distribution):
     ret = array_ops.reshape(
         nn_ops.softmax_cross_entropy_with_logits(labels=histogram_2d,
                                                  logits=logits_2d),
-        self.batch_shape())
-    ret.set_shape(self.get_batch_shape())
+        self.batch_shape_tensor())
+    ret.set_shape(self.batch_shape)
     return ret
 
   def _mode(self):

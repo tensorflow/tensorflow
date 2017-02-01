@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -59,6 +60,14 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  // Sets/returns settings that affect compilation of the module.
+  const CompilationOptions& compilation_options() const {
+    return compilation_options_;
+  }
+  void set_compilation_options(CompilationOptions options) {
+    compilation_options_.Swap(&options);
+  }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
@@ -85,6 +94,8 @@ class HloModuleConfig {
 
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
+
+  CompilationOptions compilation_options_;
 };
 
 }  // namespace xla

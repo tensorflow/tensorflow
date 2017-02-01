@@ -100,7 +100,6 @@ class Laplace(distribution.Distribution):
       TypeError: if `loc` and `scale` are of different dtype.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
@@ -133,22 +132,22 @@ class Laplace(distribution.Distribution):
     """Distribution parameter for scale."""
     return self._scale
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
         array_ops.shape(self.loc), array_ops.shape(self.scale))
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return array_ops.broadcast_static_shape(
         self.loc.get_shape(), self.scale.get_shape())
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], self.batch_shape()), 0)
+    shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
     # Sample uniformly-at-random from the open-interval (-1, 1).
     uniform_samples = random_ops.random_uniform(
         shape=shape,
@@ -214,7 +213,6 @@ class LaplaceWithSoftplusScale(Laplace):
                allow_nan_stats=True,
                name="LaplaceWithSoftplusScale"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[loc, scale]) as ns:
       super(LaplaceWithSoftplusScale, self).__init__(
           loc=loc,

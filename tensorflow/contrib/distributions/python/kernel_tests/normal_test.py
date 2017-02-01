@@ -93,17 +93,19 @@ class NormalTest(test.TestCase):
 
       log_pdf = normal.log_prob(x)
       self.assertAllClose(expected_log_pdf, log_pdf.eval())
-      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          log_pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          log_pdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, log_pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape, log_pdf.eval().shape)
 
       pdf = normal.prob(x)
       self.assertAllClose(np.exp(expected_log_pdf), pdf.eval())
-      self.assertAllEqual(normal.batch_shape().eval(), pdf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), pdf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), pdf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), pdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), pdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape, pdf.eval().shape)
 
   def testNormalLogPDFMultidimensional(self):
     with self.test_session():
@@ -119,19 +121,21 @@ class NormalTest(test.TestCase):
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(expected_log_pdf, log_pdf_values)
-      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), log_pdf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), log_pdf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), log_pdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          log_pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          log_pdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, log_pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape, log_pdf.eval().shape)
 
       pdf = normal.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
-      self.assertAllEqual(normal.batch_shape().eval(), pdf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), pdf_values.shape)
-      self.assertAllEqual(normal.get_batch_shape(), pdf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), pdf_values.shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), pdf_values.shape)
+      self.assertAllEqual(normal.batch_shape, pdf.get_shape())
+      self.assertAllEqual(normal.batch_shape, pdf_values.shape)
 
   def testNormalCDF(self):
     with self.test_session():
@@ -145,10 +149,10 @@ class NormalTest(test.TestCase):
 
       cdf = normal.cdf(x)
       self.assertAllClose(expected_cdf, cdf.eval(), atol=0)
-      self.assertAllEqual(normal.batch_shape().eval(), cdf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), cdf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), cdf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), cdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), cdf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), cdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, cdf.get_shape())
+      self.assertAllEqual(normal.batch_shape, cdf.eval().shape)
 
   def testNormalSurvivalFunction(self):
     with self.test_session():
@@ -162,10 +166,10 @@ class NormalTest(test.TestCase):
 
       sf = normal.survival_function(x)
       self.assertAllClose(expected_sf, sf.eval(), atol=0)
-      self.assertAllEqual(normal.batch_shape().eval(), sf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), sf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), sf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), sf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), sf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), sf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, sf.get_shape())
+      self.assertAllEqual(normal.batch_shape, sf.eval().shape)
 
   def testNormalLogCDF(self):
     with self.test_session():
@@ -179,10 +183,10 @@ class NormalTest(test.TestCase):
 
       cdf = normal.log_cdf(x)
       self.assertAllClose(expected_cdf, cdf.eval(), atol=0, rtol=1e-5)
-      self.assertAllEqual(normal.batch_shape().eval(), cdf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), cdf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), cdf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), cdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), cdf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), cdf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, cdf.get_shape())
+      self.assertAllEqual(normal.batch_shape, cdf.eval().shape)
 
   def testFiniteGradientAtDifficultPoints(self):
     for dtype in [np.float32, np.float64]:
@@ -216,10 +220,10 @@ class NormalTest(test.TestCase):
 
       sf = normal.log_survival_function(x)
       self.assertAllClose(expected_sf, sf.eval(), atol=0, rtol=1e-5)
-      self.assertAllEqual(normal.batch_shape().eval(), sf.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), sf.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), sf.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), sf.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), sf.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), sf.eval().shape)
+      self.assertAllEqual(normal.batch_shape, sf.get_shape())
+      self.assertAllEqual(normal.batch_shape, sf.eval().shape)
 
   def testNormalEntropyWithScalarInputs(self):
     # Scipy.stats.norm cannot deal with the shapes in the other test.
@@ -232,10 +236,12 @@ class NormalTest(test.TestCase):
       expected_entropy = stats.norm(mu_v, sigma_v).entropy()
       entropy = normal.entropy()
       self.assertAllClose(expected_entropy, entropy.eval())
-      self.assertAllEqual(normal.batch_shape().eval(), entropy.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), entropy.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), entropy.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), entropy.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          entropy.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          entropy.eval().shape)
+      self.assertAllEqual(normal.batch_shape, entropy.get_shape())
+      self.assertAllEqual(normal.batch_shape, entropy.eval().shape)
 
   def testNormalEntropy(self):
     with self.test_session():
@@ -249,10 +255,12 @@ class NormalTest(test.TestCase):
                                       2)
       entropy = normal.entropy()
       np.testing.assert_allclose(expected_entropy, entropy.eval())
-      self.assertAllEqual(normal.batch_shape().eval(), entropy.get_shape())
-      self.assertAllEqual(normal.batch_shape().eval(), entropy.eval().shape)
-      self.assertAllEqual(normal.get_batch_shape(), entropy.get_shape())
-      self.assertAllEqual(normal.get_batch_shape(), entropy.eval().shape)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          entropy.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(),
+                          entropy.eval().shape)
+      self.assertAllEqual(normal.batch_shape, entropy.get_shape())
+      self.assertAllEqual(normal.batch_shape, entropy.eval().shape)
 
   def testNormalMeanAndMode(self):
     with self.test_session():
@@ -308,14 +316,14 @@ class NormalTest(test.TestCase):
       self.assertAllClose(sample_values.mean(), mu_v, atol=1e-1)
       self.assertAllClose(sample_values.std(), sigma_v, atol=1e-1)
 
-      expected_samples_shape = (tensor_shape.TensorShape([n.eval(
-      )]).concatenate(tensor_shape.TensorShape(normal.batch_shape().eval())))
+      expected_samples_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
+          tensor_shape.TensorShape(normal.batch_shape_tensor().eval()))
 
       self.assertAllEqual(expected_samples_shape, samples.get_shape())
       self.assertAllEqual(expected_samples_shape, sample_values.shape)
 
       expected_samples_shape = (tensor_shape.TensorShape(
-          [n.eval()]).concatenate(normal.get_batch_shape()))
+          [n.eval()]).concatenate(normal.batch_shape))
 
       self.assertAllEqual(expected_samples_shape, samples.get_shape())
       self.assertAllEqual(expected_samples_shape, sample_values.shape)
@@ -342,13 +350,13 @@ class NormalTest(test.TestCase):
       self.assertAllClose(sample_values[:, 0, 1].mean(), mu_v[1], atol=1e-1)
       self.assertAllClose(sample_values[:, 0, 1].std(), sigma_v[1], atol=1e-1)
 
-      expected_samples_shape = (tensor_shape.TensorShape([n.eval(
-      )]).concatenate(tensor_shape.TensorShape(normal.batch_shape().eval())))
+      expected_samples_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
+          tensor_shape.TensorShape(normal.batch_shape_tensor().eval()))
       self.assertAllEqual(expected_samples_shape, samples.get_shape())
       self.assertAllEqual(expected_samples_shape, sample_values.shape)
 
       expected_samples_shape = (tensor_shape.TensorShape(
-          [n.eval()]).concatenate(normal.get_batch_shape()))
+          [n.eval()]).concatenate(normal.batch_shape))
       self.assertAllEqual(expected_samples_shape, samples.get_shape())
       self.assertAllEqual(expected_samples_shape, sample_values.shape)
 
@@ -365,10 +373,10 @@ class NormalTest(test.TestCase):
       sigma = constant_op.constant(11.0)
       normal = normal_lib.Normal(loc=mu, scale=sigma)
 
-      self.assertEqual(normal.batch_shape().eval(), [5])
-      self.assertEqual(normal.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(normal.event_shape().eval(), [])
-      self.assertEqual(normal.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(normal.batch_shape_tensor().eval(), [5])
+      self.assertEqual(normal.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(normal.event_shape_tensor().eval(), [])
+      self.assertEqual(normal.event_shape, tensor_shape.TensorShape([]))
 
   def testNormalShapeWithPlaceholders(self):
     mu = array_ops.placeholder(dtype=dtypes.float32)
@@ -377,12 +385,13 @@ class NormalTest(test.TestCase):
 
     with self.test_session() as sess:
       # get_batch_shape should return an "<unknown>" tensor.
-      self.assertEqual(normal.get_batch_shape(), tensor_shape.TensorShape(None))
-      self.assertEqual(normal.get_event_shape(), ())
-      self.assertAllEqual(normal.event_shape().eval(), [])
+      self.assertEqual(normal.batch_shape, tensor_shape.TensorShape(None))
+      self.assertEqual(normal.event_shape, ())
+      self.assertAllEqual(normal.event_shape_tensor().eval(), [])
       self.assertAllEqual(
-          sess.run(normal.batch_shape(), feed_dict={mu: 5.0,
-                                                    sigma: [1.0, 2.0]}), [2])
+          sess.run(normal.batch_shape_tensor(),
+                   feed_dict={mu: 5.0,
+                              sigma: [1.0, 2.0]}), [2])
 
   def testNormalNormalKL(self):
     with self.test_session() as sess:

@@ -1680,6 +1680,7 @@ tf_cc_tests(
         "colorspace_op_test.cc",
         "crop_and_resize_op_test.cc",
         "non_max_suppression_op_test.cc",
+        "resize_area_op_test.cc",
         "resize_bicubic_op_test.cc",
         "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",

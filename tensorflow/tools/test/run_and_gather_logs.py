@@ -18,15 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
 import shlex
 import sys
 
 from google.protobuf import json_format
 from google.protobuf import text_format
+
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -47,17 +48,7 @@ except ImportError as e:
 # pylint: enable=g-bad-import-order
 # pylint: enable=unused-import
 
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string("name", "", """Benchmark target identifier.""")
-flags.DEFINE_string("test_name", "", """Test target to run.""")
-flags.DEFINE_string("test_args", "", """Test arguments, space separated.""")
-flags.DEFINE_string("test_log_output", "", """Filename to write logs.""")
-flags.DEFINE_bool("test_log_output_use_tmpdir", False,
-                  """Store the log output into tmpdir?.""")
-flags.DEFINE_string("compilation_mode", "",
-                    """Mode used during this build (e.g. opt, dbg).""")
-flags.DEFINE_string("cc_flags", "", """CC flags used during this build.""")
+FLAGS = None
 
 
 def gather_build_configuration():
@@ -100,4 +91,36 @@ def main(unused_args):
 
 
 if __name__ == "__main__":
-  app.run()
+  parser = argparse.ArgumentParser()
+  parser.register(
+      "type", "bool", lambda v: v.lower() in ("true", "t", "y", "yes"))
+  parser.add_argument(
+      "--name", type=str, default="", help="Benchmark target identifier.")
+  parser.add_argument(
+      "--test_name", type=str, default="", help="Test target to run.")
+  parser.add_argument(
+      "--test_args",
+      type=str,
+      default="",
+      help="Test arguments, space separated.")
+  parser.add_argument(
+      "--test_log_output", type=str, default="", help="Filename to write logs.")
+  parser.add_argument(
+      "--test_log_output_use_tmpdir",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Store the log output into tmpdir?")
+  parser.add_argument(
+      "--compilation_mode",
+      type=str,
+      default="",
+      help="Mode used during this build (e.g. opt, dbg).")
+  parser.add_argument(
+      "--cc_flags",
+      type=str,
+      default="",
+      help="CC flags used during this build.")
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

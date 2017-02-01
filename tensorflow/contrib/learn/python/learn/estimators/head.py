@@ -41,6 +41,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.summary import summary
@@ -816,7 +817,8 @@ class _MultiClassHead(_SingleHead):
       train_op = None
       eval_metric_ops = None
       if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-        labels_tensor = _to_labels_tensor(labels, self._label_name)
+        labels_tensor = _to_labels_tensor(labels, self._label_name,
+                                          self._logits_dimension)
         loss = _training_loss(
             features,
             labels_tensor,
@@ -827,9 +829,11 @@ class _MultiClassHead(_SingleHead):
         if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
           train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
                                self.logits_dimension, self._loss_fn)
+        # MultiHead depends on labels being passed as a dict, not a single
+        # tensor.
         eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                           labels, predictions)
-
+                                           {self._label_name: labels_tensor},
+                                           predictions)
     return model_fn.ModelFnOps(
         mode=mode,
         predictions=predictions,
@@ -964,11 +968,19 @@ class _MultiClassHead(_SingleHead):
     return metrics
 
 
-def _to_labels_tensor(labels, label_name):
+def _to_labels_tensor(labels, label_name, num_classes=None):
   labels = labels[label_name] if isinstance(labels, dict) else labels
   labels = framework_lib.convert_to_tensor_or_sparse_tensor(labels)
   if isinstance(labels, sparse_tensor.SparseTensor):
-    raise ValueError("SparseTensor is not supported as labels.")
+    if num_classes is None:
+      raise ValueError("Must set num_classes when passing labels as a "
+                       "SparseTensor. Sparse labels are currently supported "
+                       "for MultiLabelHead only.")
+    if num_classes < 2:
+      raise ValueError("Must set num_classes >= 2 when passing labels as a "
+                       "SparseTensor.")
+    labels = math_ops.to_int64(
+        sparse_ops.sparse_to_indicator(labels, num_classes))
   return labels
 
 
