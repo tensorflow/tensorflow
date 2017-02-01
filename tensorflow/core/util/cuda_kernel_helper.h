@@ -142,27 +142,6 @@ USE_CUDA_ATOMIC(Add, uint32);
 USE_CUDA_ATOMIC(Add, uint64);
 USE_CUDA_ATOMIC(Add, float);
 
-// For atomicMax.
-USE_CUDA_ATOMIC(Max, int32);
-USE_CUDA_ATOMIC(Max, uint32);
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
-USE_CUDA_ATOMIC(Max, uint64);
-#else
-// The uint64 overload of atomicMax() is only available for __CUDA_ARCH__ >=
-// 350.  If not satisfied, we provide a custom implementation using atomicCAS().
-CUDA_ATOMIC_WRAPPER(Max, uint64) {
-  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
-  uint64 old = *address_as_ull, assumed;
-
-  do {
-    assumed = old;
-    old = atomicCAS(address_as_ull, assumed, max(val, assumed));
-  } while (assumed != old);
-
-  return old;
-}
-#endif
-
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
 USE_CUDA_ATOMIC(Add, double);
 #else
@@ -256,6 +235,27 @@ CUDA_ATOMIC_WRAPPER(Add, Eigen::half) {
     return ret;
   }
 }
+
+// For atomicMax.
+USE_CUDA_ATOMIC(Max, int32);
+USE_CUDA_ATOMIC(Max, uint32);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+USE_CUDA_ATOMIC(Max, uint64);
+#else
+// The uint64 overload of atomicMax() is only available for __CUDA_ARCH__ >=
+// 350.  If not satisfied, we provide a custom implementation using atomicCAS().
+CUDA_ATOMIC_WRAPPER(Max, uint64) {
+  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
+  uint64 old = *address_as_ull, assumed;
+
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed, max(val, assumed));
+  } while (assumed != old);
+
+  return old;
+}
+#endif
 
 template <typename T>
 __global__ void SetZero(const int nthreads, T* data) {
