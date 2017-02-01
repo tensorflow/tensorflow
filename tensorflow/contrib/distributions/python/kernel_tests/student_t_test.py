@@ -417,10 +417,10 @@ class StudentTTest(test.TestCase):
   def testPdfOfSampleMultiDims(self):
     with self.test_session() as sess:
       student = ds.StudentT(df=[7., 11.], loc=[[5.], [6.]], scale=3.)
-      self.assertAllEqual([], student.get_event_shape())
-      self.assertAllEqual([], student.event_shape().eval())
-      self.assertAllEqual([2, 2], student.get_batch_shape())
-      self.assertAllEqual([2, 2], student.batch_shape().eval())
+      self.assertAllEqual([], student.event_shape)
+      self.assertAllEqual([], student.event_shape_tensor().eval())
+      self.assertAllEqual([2, 2], student.batch_shape)
+      self.assertAllEqual([2, 2], student.batch_shape_tensor().eval())
       num = 50000
       samples = student.sample(num, seed=123456)
       pdfs = student.prob(samples)

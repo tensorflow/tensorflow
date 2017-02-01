@@ -580,10 +580,10 @@ class SavedModelExportUtilsTest(test.TestCase):
     export_dir_base = tempfile.mkdtemp() + "export/"
     export_dir_1 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(1)
+    time.sleep(2)
     export_dir_2 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
-    time.sleep(1)
+    time.sleep(2)
     export_dir_3 = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
 
@@ -676,7 +676,7 @@ def _create_test_export_dir(export_dir_base):
   export_dir = saved_model_export_utils.get_timestamped_export_dir(
       export_dir_base)
   gfile.MkDir(export_dir)
-  time.sleep(1)
+  time.sleep(2)
   return export_dir
 
 

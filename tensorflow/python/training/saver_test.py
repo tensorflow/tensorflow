@@ -565,6 +565,26 @@ class SaverTest(test.TestCase):
       ):
         save.save(sess, save_path)
 
+  def testSaveToURI(self):
+    save_path = "file://" + os.path.join(
+        self.get_temp_dir(), "uri")
+
+    # Build a graph with 2 parameter nodes, and Save and
+    # Restore nodes for them.
+    v0 = variables.Variable(10.0, name="v0")
+    v1 = variables.Variable(20.0, name="v1")
+    save = saver_module.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
+    init_all_op = variables.global_variables_initializer()
+
+    with self.test_session() as sess:
+      # Initialize all variables
+      sess.run(init_all_op)
+
+      # Check that the parameter nodes have been initialized.
+      self.assertEqual(10.0, v0.eval())
+      self.assertEqual(20.0, v1.eval())
+      save.save(sess, save_path)
+
 
 class SaveRestoreShardedTest(test.TestCase):
 

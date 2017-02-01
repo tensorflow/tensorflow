@@ -107,18 +107,18 @@ class MixtureTest(test.TestCase):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_univariate_mixture(batch_shape, num_components=10)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape())
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape())
-        self.assertAllEqual([], dist.event_shape().eval())
+        self.assertAllEqual(batch_shape, dist.batch_shape)
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape)
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
 
         for event_shape in ([1], [2]):
           dist = make_multivariate_mixture(
               batch_shape, num_components=10, event_shape=event_shape)
-          self.assertAllEqual(batch_shape, dist.get_batch_shape())
-          self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-          self.assertAllEqual(event_shape, dist.get_event_shape())
-          self.assertAllEqual(event_shape, dist.event_shape().eval())
+          self.assertAllEqual(batch_shape, dist.batch_shape)
+          self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+          self.assertAllEqual(event_shape, dist.event_shape)
+          self.assertAllEqual(event_shape, dist.event_shape_tensor().eval())
 
   def testBrokenShapesStatic(self):
     with self.assertRaisesWithPredicateMatch(ValueError,

@@ -698,9 +698,6 @@ py_test(
     name = "state_saving_rnn_estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/state_saving_rnn_estimator_test.py"],
-    #     data = [
-    #         "//tensorflow/contrib/layers:python/ops/_sparse_feature_cross_op.so",
-    #     ],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",

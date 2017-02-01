@@ -349,13 +349,18 @@ def make_export_strategy(serving_input_fn,
     An ExportStrategy that can be passed to the Experiment constructor.
   """
 
-  def export_fn(estimator, export_dir_base):
+  def export_fn(estimator,
+                export_dir_base,
+                checkpoint_path=None
+               ):
     """Exports the given Estimator as a SavedModel.
 
     Args:
       estimator: the Estimator to export.
       export_dir_base: A string containing a directory to write the exported
         graph and checkpoints.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
 
     Returns:
       The string path to the exported directory.
@@ -365,7 +370,8 @@ def make_export_strategy(serving_input_fn,
         serving_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        as_text=as_text)
+        as_text=as_text,
+        checkpoint_path=checkpoint_path)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result

@@ -45,6 +45,9 @@ class Client {
   //   layout to use as a hint when storing the output of the computation.
   //   Subsequent transfers of this output array to the client may be faster
   //   when using this layout.
+  // * If compilation_options is not nullptr, these options are passed to the
+  //   service to affect how it compiles our computation.  (The pointer does not
+  //   need to live beyond this call.)
   // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
   //   will be filled with profile data from the execution.
   // * If seed is set then that seed is used for the graph execution.
@@ -52,6 +55,7 @@ class Client {
       const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_output_layout = nullptr,
+      const CompilationOptions* compilation_options = nullptr,
       ExecutionProfile* execution_profile = nullptr, uint64 seed = 0);
 
   // A struct to represent a computation instance to be executed.
@@ -89,7 +93,8 @@ class Client {
   StatusOr<ExecutionHandle> ExecuteAsync(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const Shape* shape_with_output_layout = nullptr, uint64 seed = 0);
+      const Shape* shape_with_output_layout = nullptr,
+      const CompilationOptions* compilation_options = nullptr, uint64 seed = 0);
 
   // Waits until the given asynchronously launched execution of the computation
   // is complete and returns the execution result. Once this is called, the
@@ -137,6 +142,7 @@ class Client {
       const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_output_layout = nullptr,
+      const CompilationOptions* compilation_options = nullptr,
       ExecutionProfile* execution_profile = nullptr, uint64 seed = 0);
 
   // Unregister the memory for the given GlobalData on the device.

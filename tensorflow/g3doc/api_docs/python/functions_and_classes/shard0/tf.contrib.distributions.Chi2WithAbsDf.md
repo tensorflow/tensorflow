@@ -29,19 +29,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.alpha` {#Chi2WithAbsDf.alpha}
+#### `tf.contrib.distributions.Chi2WithAbsDf.batch_shape` {#Chi2WithAbsDf.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.batch_shape(name='batch_shape')` {#Chi2WithAbsDf.batch_shape}
+#### `tf.contrib.distributions.Chi2WithAbsDf.batch_shape_tensor(name='batch_shape_tensor')` {#Chi2WithAbsDf.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -52,13 +62,6 @@ independent distributions of this kind the instance represents.
 
 
 *  <b>`batch_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2WithAbsDf.beta` {#Chi2WithAbsDf.beta}
-
-Inverse scale parameter.
 
 
 - - -
@@ -84,6 +87,13 @@ cdf(x) := P[X <= x]
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.concentration` {#Chi2WithAbsDf.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -173,21 +183,24 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shannon entropy in nats.
 
-Additional documentation from `Gamma`:
 
-This is defined to be
+- - -
 
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
+#### `tf.contrib.distributions.Chi2WithAbsDf.event_shape` {#Chi2WithAbsDf.event_shape}
 
-where digamma(alpha) is the digamma function.
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2WithAbsDf.event_shape(name='event_shape')` {#Chi2WithAbsDf.event_shape}
+#### `tf.contrib.distributions.Chi2WithAbsDf.event_shape_tensor(name='event_shape_tensor')` {#Chi2WithAbsDf.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -200,34 +213,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2WithAbsDf.get_batch_shape()` {#Chi2WithAbsDf.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2WithAbsDf.get_event_shape()` {#Chi2WithAbsDf.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -363,8 +348,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -453,6 +438,13 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2WithAbsDf.rate` {#Chi2WithAbsDf.rate}
+
+Rate parameter.
 
 
 - - -

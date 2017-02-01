@@ -54,9 +54,9 @@ maxval = [[4.0, 6.0],
 u = Uniform(minval, maxval)
 
 # `event_shape` is `TensorShape([])`.
-event_shape = u.get_event_shape()
+event_shape = u.event_shape
 # `event_shape_t` is a `Tensor` which will evaluate to [].
-event_shape_t = u.event_shape
+event_shape_t = u.event_shape_tensor()
 
 # Sampling returns a sample per distribution.  `samples` has shape
 # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
@@ -171,12 +171,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.batch_shape(name='batch_shape')` {#Distribution.batch_shape}
+#### `tf.contrib.distributions.Distribution.batch_shape` {#Distribution.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.batch_shape_tensor(name='batch_shape_tensor')` {#Distribution.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -297,7 +314,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.event_shape(name='event_shape')` {#Distribution.event_shape}
+#### `tf.contrib.distributions.Distribution.event_shape` {#Distribution.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.event_shape_tensor(name='event_shape_tensor')` {#Distribution.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -310,34 +341,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.get_batch_shape()` {#Distribution.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.get_event_shape()` {#Distribution.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -

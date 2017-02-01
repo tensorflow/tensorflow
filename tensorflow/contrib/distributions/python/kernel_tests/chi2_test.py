@@ -88,7 +88,8 @@ class Chi2Test(test.TestCase):
       df_v = np.array([-1.3, -3.2, 5], dtype=np.float64)
       chi2 = chi2_lib.Chi2WithAbsDf(df=df_v)
       self.assertAllClose(
-          math_ops.floor(math_ops.abs(df_v)).eval(), chi2.df.eval())
+          math_ops.floor(math_ops.abs(df_v)).eval(),
+          chi2.df.eval())
 
 
 if __name__ == "__main__":

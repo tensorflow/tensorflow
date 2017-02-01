@@ -443,8 +443,8 @@ class ObservedStochasticTensor(StochasticTensor):
     with ops.name_scope(name, "ObservedStochasticTensor", [value]) as scope:
       self._name = scope
       self._dist = dist
-      dist_shape = self._dist.get_batch_shape().concatenate(
-          self._dist.get_event_shape())
+      dist_shape = self._dist.batch_shape.concatenate(
+          self._dist.event_shape)
       value = ops.convert_to_tensor(value)
       value_shape = value.get_shape()
 

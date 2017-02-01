@@ -73,19 +73,21 @@ class AdagradOptimizerTest(test.TestCase):
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = resource_variable_ops.ResourceVariable(
+            [[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
         loss = pred * pred
         sgd_op = adagrad.AdagradOptimizer(1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType(
+            [[1.0, 2.0], [3.0, 4.0]], var0.eval())
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            [[0, 1]], var0.eval(), atol=0.01)
+            [[0, 1], [3, 4]], var0.eval(), atol=0.01)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

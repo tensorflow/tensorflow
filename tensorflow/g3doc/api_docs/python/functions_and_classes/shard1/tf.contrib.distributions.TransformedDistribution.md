@@ -149,10 +149,11 @@ Construct a Transformed Distribution.
     `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
     `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python Boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`name`</b>: The name for the distribution. Default:
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
     `bijector.name + distribution.name`.
 
 
@@ -179,12 +180,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape(name='batch_shape')` {#TransformedDistribution.batch_shape}
+#### `tf.contrib.distributions.TransformedDistribution.batch_shape` {#TransformedDistribution.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.batch_shape_tensor(name='batch_shape_tensor')` {#TransformedDistribution.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -319,7 +337,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape(name='event_shape')` {#TransformedDistribution.event_shape}
+#### `tf.contrib.distributions.TransformedDistribution.event_shape` {#TransformedDistribution.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.event_shape_tensor(name='event_shape_tensor')` {#TransformedDistribution.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -332,34 +364,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.get_batch_shape()` {#TransformedDistribution.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.get_event_shape()` {#TransformedDistribution.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -

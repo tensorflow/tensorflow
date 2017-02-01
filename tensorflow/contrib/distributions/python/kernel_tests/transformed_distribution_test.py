@@ -55,9 +55,9 @@ class TransformedDistributionTest(test.TestCase):
 
       # sample
       sample = log_normal.sample(100000, seed=235)
-      self.assertAllEqual([], log_normal.get_event_shape())
+      self.assertAllEqual([], log_normal.event_shape)
       with self.test_session(graph=g):
-        self.assertAllEqual([], log_normal.event_shape().eval())
+        self.assertAllEqual([], log_normal.event_shape_tensor().eval())
         self.assertAllClose(
             sp_dist.mean(), np.mean(sample.eval()), atol=0.0, rtol=0.05)
 
@@ -107,8 +107,8 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllClose(
           [1, 2, 3, 2],
           array_ops.shape(multi_logit_normal.sample([1, 2, 3])).eval())
-      self.assertAllEqual([2], multi_logit_normal.get_event_shape())
-      self.assertAllEqual([2], multi_logit_normal.event_shape().eval())
+      self.assertAllEqual([2], multi_logit_normal.event_shape)
+      self.assertAllEqual([2], multi_logit_normal.event_shape_tensor().eval())
 
   def testEntropy(self):
     with self.test_session():
@@ -193,13 +193,13 @@ class ScalarToMultiTest(test.TestCase):
               actual_mean[i], actual_cov[i]).entropy()]
           for i in range(len(actual_cov))])
 
-      self.assertAllEqual([3], fake_mvn_static.get_event_shape())
-      self.assertAllEqual([2], fake_mvn_static.get_batch_shape())
+      self.assertAllEqual([3], fake_mvn_static.event_shape)
+      self.assertAllEqual([2], fake_mvn_static.batch_shape)
 
       self.assertAllEqual(tensor_shape.TensorShape(None),
-                          fake_mvn_dynamic.get_event_shape())
+                          fake_mvn_dynamic.event_shape)
       self.assertAllEqual(tensor_shape.TensorShape(None),
-                          fake_mvn_dynamic.get_batch_shape())
+                          fake_mvn_dynamic.batch_shape)
 
       x = fake_mvn_static.sample(5, seed=0).eval()
       for unsupported_fn in (fake_mvn_static.log_cdf,
@@ -233,8 +233,8 @@ class ScalarToMultiTest(test.TestCase):
             sample_mean,
             sample_cov,
             x,
-            fake_mvn.event_shape(),
-            fake_mvn.batch_shape(),
+            fake_mvn.event_shape_tensor(),
+            fake_mvn.batch_shape_tensor(),
             fake_mvn.log_prob(x),
             fake_mvn.prob(x),
             fake_mvn.entropy(),
