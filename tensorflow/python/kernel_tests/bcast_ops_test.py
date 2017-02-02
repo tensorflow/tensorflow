@@ -12,25 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.kernels.bcast_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.python.ops.gen_array_ops import _broadcast_args
 from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.platform import test
 
 
-class BcastOpsTest(tf.test.TestCase):
+class BcastOpsTest(test.TestCase):
+
+  def _GetBroadcastShape(self, xs, ys):
+    with self.test_session() as sess:
+      return sess.run(_broadcast_args(xs, ys))
 
   def _GetGradientArgs(self, xs, ys):
     with self.test_session() as sess:
       return sess.run(_broadcast_gradient_args(xs, ys))
 
   def testBasic(self):
+    r = self._GetBroadcastShape([2, 3, 5], [1])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([1], [2, 3, 5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([2, 3, 5], [5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([5], [2, 3, 5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([2, 3, 5], [3, 5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([3, 5], [2, 3, 5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([2, 3, 5], [3, 1])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([3, 1], [2, 3, 5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([2, 1, 5], [3, 1])
+    self.assertAllEqual(r, [2, 3, 5])
+
+    r = self._GetBroadcastShape([3, 1], [2, 1, 5])
+    self.assertAllEqual(r, [2, 3, 5])
+
+  def testBasicGradient(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
     self.assertAllEqual(r0, [])
     self.assertAllEqual(r1, [0, 1, 2])
@@ -72,6 +106,19 @@ class BcastOpsTest(tf.test.TestCase):
     self.assertAllEqual(r1, [1])
 
   def testZeroDims(self):
+    r = self._GetBroadcastShape([2, 0, 3, 0, 5], [3, 0, 5])
+    self.assertAllEqual(r, [2, 0, 3, 0, 5])
+
+    r = self._GetBroadcastShape([3, 0, 5], [2, 0, 3, 0, 5])
+    self.assertAllEqual(r, [2, 0, 3, 0, 5])
+
+    r = self._GetBroadcastShape([2, 0, 3, 0, 5], [3, 1, 5])
+    self.assertAllEqual(r, [2, 0, 3, 0, 5])
+
+    r = self._GetBroadcastShape([3, 1, 5], [2, 0, 3, 0, 5])
+    self.assertAllEqual(r, [2, 0, 3, 0, 5])
+
+  def testZeroDimsGradient(self):
     r0, r1 = self._GetGradientArgs([2, 0, 3, 0, 5], [3, 0, 5])
     self.assertAllEqual(r0, [])
     self.assertAllEqual(r1, [0, 1])
@@ -90,4 +137,4 @@ class BcastOpsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

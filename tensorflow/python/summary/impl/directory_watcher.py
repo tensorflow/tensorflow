@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import bisect
 
+from tensorflow.python.framework import errors
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary.impl import gcs
 from tensorflow.python.summary.impl import io_wrapper
 
 
@@ -86,8 +87,8 @@ class DirectoryWatcher(object):
     try:
       for event in self._LoadInternal():
         yield event
-    except (IOError, OSError):
-      if not io_wrapper.Exists(self._directory):
+    except errors.OpError:
+      if not gfile.Exists(self._directory):
         raise DirectoryDeletedError(
             'Directory %s has been permanently deleted' % self._directory)
 
@@ -177,13 +178,13 @@ class DirectoryWatcher(object):
       path: The full path of the file to watch.
     """
     old_path = self._path
-    if old_path and not gcs.IsGCSPath(old_path):
+    if old_path and not io_wrapper.IsGCSPath(old_path):
       try:
         # We're done with the path, so store its size.
-        size = io_wrapper.Size(old_path)
+        size = gfile.Stat(old_path).length
         logging.debug('Setting latest size of %s to %d', old_path, size)
         self._finalized_sizes[old_path] = size
-      except (IOError, OSError) as e:
+      except errors.OpError as e:
         logging.error('Unable to get size of %s: %s', old_path, e)
 
     self._path = path
@@ -209,7 +210,7 @@ class DirectoryWatcher(object):
 
     # Don't bother checking if the paths are GCS (which we can't check) or if
     # we've already detected an OOO write.
-    if not gcs.IsGCSPath(paths[0]) and not self._ooo_writes_detected:
+    if not io_wrapper.IsGCSPath(paths[0]) and not self._ooo_writes_detected:
       # Check the previous _OOO_WRITE_CHECK_COUNT paths for out of order writes.
       current_path_index = bisect.bisect_left(paths, self._path)
       ooo_check_start = max(0, current_path_index - self._OOO_WRITE_CHECK_COUNT)
@@ -229,7 +230,7 @@ class DirectoryWatcher(object):
   def _HasOOOWrite(self, path):
     """Returns whether the path has had an out-of-order write."""
     # Check the sizes of each path before the current one.
-    size = io_wrapper.Size(path)
+    size = gfile.Stat(path).length
     old_size = self._finalized_sizes.get(path, None)
     if size != old_size:
       if old_size is None:

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,7 +32,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+
+
+_beta_prob_note = """
+    Note that the argument `x` must be a non-negative floating point tensor
+    whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+    dimensions, the last dimension represents counts for the corresponding Beta
+    distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+"""
 
 
 class Beta(distribution.Distribution):
@@ -53,7 +63,7 @@ class Beta(distribution.Distribution):
 
 
   This class provides methods to create indexed batches of Beta
-  distributions. One entry of the broacasted
+  distributions. One entry of the broadcasted
   shape represents of `a` and `b` represents one single Beta distribution.
   When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
   and `x` are broadcast to the same shape (if possible).
@@ -98,7 +108,7 @@ class Beta(distribution.Distribution):
 
   """
 
-  def __init__(self, a, b, validate_args=True, allow_nan_stats=False,
+  def __init__(self, a, b, validate_args=False, allow_nan_stats=True,
                name="Beta"):
     """Initialize a batch of Beta distributions.
 
@@ -110,10 +120,10 @@ class Beta(distribution.Distribution):
       b:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different Beta distributions.
-      validate_args: Whether to assert valid values for parameters `a` and `b`,
-        and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid
+        values for parameters `a`, `b`, and `x` in `prob` and `log_prob`.
+        If `False` and inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -130,6 +140,8 @@ class Beta(distribution.Distribution):
     ```
 
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[a, b]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(a),
@@ -140,12 +152,21 @@ class Beta(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype((self._a, self._b))
         # Used for mean/mode/variance/entropy/sampling computations
         self._a_b_sum = self._a + self._b
-        super(Beta, self).__init__(
-            dtype=self._a_b_sum.dtype,
-            parameters={"a": self._a, "b": self._b, "a_b_sum": self._a_b_sum},
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Beta, self).__init__(
+        dtype=self._a_b_sum.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        parameters=parameters,
+        graph_parents=[self._a, self._b, self._a_b_sum],
+        name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("a", "b"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def a(self):
@@ -180,7 +201,8 @@ class Beta(distribution.Distribution):
     gamma1_sample = random_ops.random_gamma(
         [n,], a, dtype=self.dtype, seed=seed)
     gamma2_sample = random_ops.random_gamma(
-        [n,], b, dtype=self.dtype, seed=seed)
+        [n,], b, dtype=self.dtype,
+        seed=distribution_util.gen_new_seed(seed, "beta"))
     beta_sample = gamma1_sample / (gamma1_sample + gamma2_sample)
     return beta_sample
 
@@ -193,9 +215,11 @@ class Beta(distribution.Distribution):
                          math_ops.lgamma(self.a_b_sum))
     return log_unnormalized_prob - log_normalization
 
+  @distribution_util.AppendDocstring(_beta_prob_note)
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
+  @distribution_util.AppendDocstring(_beta_prob_note)
   def _log_cdf(self, x):
     return math_ops.log(self._cdf(x))
 
@@ -216,14 +240,16 @@ class Beta(distribution.Distribution):
   def _variance(self):
     return (self.a * self.b) / (self.a_b_sum**2. * (self.a_b_sum + 1.))
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
+  @distribution_util.AppendDocstring(
+      """Note that the mode for the Beta distribution is only defined
+      when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+      and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
+      will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = (self.a - 1.)/ (self.a_b_sum - 2.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           math_ops.logical_and(
               math_ops.greater(self.a, 1.),
               math_ops.greater(self.b, 1.)),
@@ -252,21 +278,48 @@ class Beta(distribution.Distribution):
     ], x)
 
 
-_prob_note = """
+class BetaWithSoftplusAB(Beta):
+  """Beta with softplus transform on `a` and `b`."""
 
-    Note that the argument `x` must be a non-negative floating point tensor
-    whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-    dimensions, the last dimension represents counts for the corresponding Beta
-    distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
-"""
+  def __init__(self,
+               a,
+               b,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="BetaWithSoftplusAB"):
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[a, b]) as ns:
+      super(BetaWithSoftplusAB, self).__init__(
+          a=nn.softplus(a, name="softplus_a"),
+          b=nn.softplus(b, name="softplus_b"),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters
 
-distribution_util.append_class_fun_doc(Beta.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Beta.prob, doc_str=_prob_note)
 
-distribution_util.append_class_fun_doc(Beta.mode, doc_str="""
+@kullback_leibler.RegisterKL(Beta, Beta)
+def _kl_beta_beta(d1, d2, name=None):
+  """Calculate the batched KL divergence KL(d1 || d2) with d1 and d2 Beta.
 
-    Note that the mode for the Beta distribution is only defined
-    when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-    and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-    will be raised rather than returning `NaN`.
-""")
+  Args:
+    d1: instance of a Beta distribution object.
+    d2: instance of a Beta distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_beta_beta".
+
+  Returns:
+    Batchwise KL(d1 || d2)
+  """
+  inputs = [d1.a, d1.b, d1.a_b_sum, d2.a_b_sum]
+  with ops.name_scope(name, "kl_beta_beta", inputs):
+    # ln(B(a', b') / B(a, b))
+    log_betas = (math_ops.lgamma(d2.a) + math_ops.lgamma(d2.b)
+                - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
+                - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
+    # (a - a')*psi(a) + (b - b')*psi(b) + (a' - a + b' - b)*psi(a + b)
+    digammas = ((d1.a - d2.a)*math_ops.digamma(d1.a)
+              + (d1.b - d2.b)*math_ops.digamma(d1.b)
+              + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
+    return log_betas + digammas

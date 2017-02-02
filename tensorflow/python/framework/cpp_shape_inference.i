@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 %include "tensorflow/python/platform/base.i"
+%include "tensorflow/python/lib/core/strings.i"
 
 %{
 #include "tensorflow/python/framework/cpp_shape_inference.h"

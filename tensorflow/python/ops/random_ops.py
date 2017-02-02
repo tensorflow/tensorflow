@@ -18,16 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -84,7 +80,7 @@ def random_normal(shape,
     return value
 
 
-ops.NoGradient("RandomStandardNormal")
+ops.NotDifferentiable("RandomStandardNormal")
 
 
 def parameterized_truncated_normal(shape,
@@ -181,8 +177,8 @@ def truncated_normal(shape,
     return value
 
 
-ops.NoGradient("ParameterizedTruncatedNormal")
-ops.NoGradient("TruncatedNormal")
+ops.NotDifferentiable("ParameterizedTruncatedNormal")
+ops.NotDifferentiable("TruncatedNormal")
 
 
 def random_uniform(shape,
@@ -250,7 +246,7 @@ def random_uniform(shape,
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
-ops.NoGradient("RandomUniform")
+ops.NotDifferentiable("RandomUniform")
 
 
 def random_shuffle(value, seed=None, name=None):
@@ -313,7 +309,7 @@ def random_crop(value, size, seed=None, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
-    check = logging_ops.Assert(
+    check = control_flow_ops.Assert(
         math_ops.reduce_all(shape >= size),
         ["Need value.shape >= size, got ", shape, size])
     shape = control_flow_ops.with_dependencies([check], shape)
@@ -359,15 +355,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
                                       seed2=seed2)
 
 
-@ops.RegisterShape("Multinomial")
-def _MultinomialShape(op):  # pylint: disable=invalid-name
-  logits_shape = op.inputs[0].get_shape().with_rank(2)
-  batch_size = logits_shape[0]
-  num_samples_or_none = tensor_util.constant_value(op.inputs[1])
-  return [tensor_shape.matrix(batch_size, num_samples_or_none)]
-
-
-ops.NoGradient("Multinomial")
+ops.NotDifferentiable("Multinomial")
 
 
 def random_gamma(shape,
@@ -394,6 +382,26 @@ def random_gamma(shape,
     samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
     # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
+    Note that for small alpha values, there is a chance you will draw a value of
+    exactly 0, which gets worse for lower-precision dtypes, even though zero is
+    not in the support of the gamma distribution.
+
+    Relevant cdfs (~chance you will draw a exactly-0 value):
+    ```
+      stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
+          0.91269738769897879
+      stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
+          0.41992668622045726
+      stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
+          0.00084322740680686662
+      stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
+          0.037583276135263931
+      stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
+          5.9514895726818067e-14
+      stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
+          2.3529843400647272e-108
+    ```
+
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output samples
       to be drawn per alpha/beta-parameterized distribution.
@@ -412,8 +420,8 @@ def random_gamma(shape,
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
-      values of type `dtype`.
+    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
+      with values of type `dtype`.
   """
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
@@ -429,33 +437,4 @@ def random_gamma(shape,
                                         seed2=seed2) / beta
 
 
-@ops.RegisterShape("RandomGamma")
-def _RandomGammaShape(op):  # pylint: disable=invalid-name
-  alphas_shape = op.inputs[1].get_shape()
-  shape_val = tensor_util.constant_value(op.inputs[0])
-  if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val).concatenate(alphas_shape)]
-  else:
-    shape_shape = op.inputs[0].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(
-        ndims=shape_shape[0].value).concatenate(alphas_shape)]
-
-
-ops.NoGradient("RandomGamma")
-
-
-@ops.RegisterShape("ParameterizedTruncatedNormal")
-@ops.RegisterShape("TruncatedNormal")
-@ops.RegisterShape("RandomStandardNormal")
-@ops.RegisterShape("RandomUniform")
-@ops.RegisterShape("RandomUniformInt")
-def _RandomShape(op):
-  shape_val = tensor_util.constant_value(op.inputs[0])
-  if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val)]
-  else:
-    shape_shape = op.inputs[0].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(ndims=shape_shape[0].value)]
-
-
-ops.RegisterShape("RandomShuffle")(common_shapes.unchanged_shape)
+ops.NotDifferentiable("RandomGamma")

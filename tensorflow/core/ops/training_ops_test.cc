@@ -30,15 +30,14 @@ static void TestGradAndIndicesErrorHandling(ShapeInferenceTestOp op,
                            grad_indices_spec, shape_spec_end);
   };
 
-  // mismatch between grad[1] and var[0].
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              shape_spec("[1]", "[?,2];[?]").c_str());
+  // mismatch between grad[1] and var[1].
+  INFER_ERROR("Dimension 1 in both shapes must be equal", op,
+              shape_spec("[?,1]", "[?,2];[?]").c_str());
   // grad[0] and indices[0] must match.
   INFER_ERROR("Dimensions must be equal, but are 1 and 2", op,
               shape_spec("?", "[2,?];[1]").c_str());
   // grad is wrong rank.
-  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op,
-              shape_spec("[1]", "[2];[?]").c_str());
+  INFER_ERROR("must be equal rank", op, shape_spec("[1]", "[?,2];[?]").c_str());
   // indices is wrong rank.
   INFER_ERROR("Shape must be rank 1 but is rank 2", op,
               shape_spec("[?]", "[?];[1,2]").c_str());
@@ -74,7 +73,7 @@ TEST(TrainingOpsTest, SparseApplyProximalGradientDescent_ShapeFn) {
   ShapeInferenceTestOp op("SparseApplyProximalGradientDescent");
 
   // Output is a merge of inputs 0 (var) and the non-indices part of 4 (delta).
-  INFER_OK(op, "[1,?];[];[];[];[?,?,2];[3]", "[d0_0,d4_2]");
+  INFER_OK(op, "[1,?];[];[];[];[?,2];[3]", "[d0_0,d4_1]");
 
   TestGradAndIndicesErrorHandling(op, "[];[];[]");
 
@@ -109,14 +108,14 @@ TEST(TrainingOpsTest, SparseApplyAdadelta_ShapeFn) {
 
   // Output is a merge of inputs 0, 1, 2, and non-indices part of 6 (var, accum,
   // accum_update, grad).
-  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[];[];[];[?,?,?,?,4];?",
-           "[d0_0,d1_1,d2_2,d6_4]");
+  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[];[];[];[?,?,?,4];?",
+           "[d0_0,d1_1,d2_2,d6_3]");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
               "[1];[2];[1];[];[];[];[1];?");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
               "[1];[1];[2];[];[];[];[1];?");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[1];[1];[];[];[];[?,2];?");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,1];[?,1];[];[];[];[?,2];?");
 
   TestGradAndIndicesErrorHandling(op, "?;?;?;?;?");
 
@@ -145,11 +144,11 @@ TEST(TrainingOpsTest, SparseApplyAdagrad_ShapeFn) {
 
   // Output is a merge of inputs 0, 1, and non-indices part of 3 (var, accum,
   // grad).
-  INFER_OK(op, "[1,?,?];[?,2,?];[];[?,?,?,3];?", "[d0_0,d1_1,d3_3]");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[2];[];[1];?");
-  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op,
-              "[1];[1];[];[2];?");
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[?,?,3];?", "[d0_0,d1_1,d3_2]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,2];[];[?,1];?");
+  INFER_ERROR("Shapes must be equal rank, but are 2 and 3", op,
+              "[?,1];[?,1];[];[?,?,2];?");
 
   TestGradAndIndicesErrorHandling(op, "?;?");
 
@@ -178,11 +177,11 @@ TEST(TrainingOpsTest, SparseApplyProximalAdagrad_ShapeFn) {
 
   // Output is a merge of inputs 0, 1, and the non-indices part of 5 (var,
   // accum, grad).
-  INFER_OK(op, "[1,?,?];[?,2,?];[];[];[];[?,?,?,3];?", "[d0_0,d1_1,d5_3]");
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[];[];[?,?,3];?", "[d0_0,d1_1,d5_2]");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
               "[1];[2];[];[];[];[?,1];?");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[1];[];[];[];[?,2];?");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,1];[];[];[];[?,2];?");
 
   TestGradAndIndicesErrorHandling(op, "?;?;?;?");
 
@@ -217,14 +216,14 @@ TEST(TrainingOpsTest, SparseApplyFtrl_ShapeFn) {
 
   // Output is a merge of inputs 0, 1, 2, and non-indices part of 3 (var, accum,
   // linear, grad).
-  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[?,?,?,?,4];?;[];[];[];[]",
-           "[d0_0,d1_1,d2_2,d3_4]");
+  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[?,?,?,4];?;[];[];[];[]",
+           "[d0_0,d1_1,d2_2,d3_3]");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
               "[1];[2];[1];[?,1];?;[];[];[];[]");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
               "[1];[1];[2];[?,1];?;[];[];[];[]");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[1];[1];[?,2];?;[];[];[];[]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,1];[?,1];[?,2];?;[];[];[];[]");
 
   TestGradAndIndicesErrorHandling(op, "?;?", ";?;?;?;?");
 
@@ -255,11 +254,11 @@ TEST(TrainingOpsTest, SparseApplyMomentum_ShapeFn) {
 
   // Output is a merge of inputs 0, 1, and non-indices part of 3 (var, accum,
   // grad).
-  INFER_OK(op, "[1,?,?];[?,2,?];[];[?,?,?,3];?;[]", "[d0_0,d1_1,d3_3]");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[2];[];[?,1];?;[]");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[1];[];[?,2];?;[]");
+  INFER_OK(op, "[1,?,?];[?,2,?];[];[?,?,3];?;[]", "[d0_0,d1_1,d3_2]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,2];[];[?,1];?;[]");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,1];[];[?,2];?;[]");
 
   TestGradAndIndicesErrorHandling(op, "?;?", ";?");
 
@@ -316,14 +315,14 @@ TEST(TrainingOpsTest, SparseApplyRMSProp_ShapeFn) {
 
   // Output is a merge of inputs 0, 1, 2, and the non-indices part of 7 (var,
   // ms, mom, and grad).
-  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[];[];[];[];[?,?,?,?,4];?",
-           "[d0_0,d1_1,d2_2,d7_4]");
+  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[];[];[];[];[?,?,?,4];?",
+           "[d0_0,d1_1,d2_2,d7_3]");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[2];[1];[];[];[];[];[?,1];?");
+              "[1];[2];[1];[];[];[];[];[1];?");
   INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[1];[2];[];[];[];[];[?,1];?");
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1];[1];[1];[];[];[];[];[?,2];?");
+              "[1];[1];[2];[];[];[];[];[1];?");
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 1 and 2", op,
+              "[?,1];[?,1];[?,1];[];[];[];[];[?,2];?");
 
   TestGradAndIndicesErrorHandling(op, "?;?;?;?;?;?");
 

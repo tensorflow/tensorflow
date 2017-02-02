@@ -17,19 +17,25 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 
 namespace tensorflow {
 
-Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map)
+Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map,
+             ShapeRefiner* refiner)
     : graph_(graph),
       status_(status),
       name_map_(name_map),
-      scope_used_(nullptr) {}
+      refiner_(refiner),
+      scope_used_(nullptr),
+      colocation_constraints_() {}
 
 Scope Scope::NewRootScope() {
-  return Scope(new Graph(OpRegistry::Global()), new Status, new Scope::NameMap);
+  Graph* graph = new Graph(OpRegistry::Global());
+  ShapeRefiner* refiner = new ShapeRefiner(graph->op_registry());
+  return Scope(graph, new Status, new Scope::NameMap, refiner);
 }
 
 Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,
@@ -38,6 +44,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,
       status_(other.status_),
       name_map_(copy_names ? other.name_map_
                            : std::shared_ptr<NameMap>(new NameMap)),
+      refiner_(other.refiner_),
       scope_used_(nullptr),
       control_deps_(other.control_deps_),
       name_(name),
@@ -52,6 +59,7 @@ Scope::Scope(const Scope& other, Scope::Tags::OpName, const string& name,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(name),
@@ -62,13 +70,14 @@ Scope::Scope(const Scope& other, Scope::Tags::OpName, const string& name,
       colocation_constraints_(other.colocation_constraints_) {}
 
 Scope::Scope(const Scope& other, Scope::Tags::ControlDeps,
-             std::vector<ops::Operation> control_deps, bool clear_control_deps)
+             std::vector<Operation> control_deps, bool clear_control_deps)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(clear_control_deps
-                        ? std::vector<ops::Operation>()
+                        ? std::vector<Operation>()
                         : (control_deps.insert(control_deps.begin(),
                                                other.control_deps_.begin(),
                                                other.control_deps_.end()),
@@ -84,6 +93,7 @@ Scope::Scope(const Scope& other, Scope::Tags::Device, const string& device)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -98,6 +108,7 @@ Scope::Scope(const Scope& other, Scope::Tags::SingleUseScope,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(new bool(false)),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -111,6 +122,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ExitOnError)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -125,6 +137,7 @@ Scope::Scope(const Scope& other, Scope::Tags::KernelLabel,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -135,10 +148,11 @@ Scope::Scope(const Scope& other, Scope::Tags::KernelLabel,
       colocation_constraints_(other.colocation_constraints_) {}
 
 Scope::Scope(const Scope& other, Scope::Tags::Colocate,
-             const ops::Operation& colocate_with_op, bool clear_colocations)
+             const Operation& colocate_with_op, bool clear_colocations)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -152,18 +166,15 @@ Scope::Scope(const Scope& other, Scope::Tags::Colocate,
               : other.GetColocationConstraints(colocate_with_op)) {}
 
 std::unordered_set<string> Scope::GetColocationConstraints(
-    const ops::Operation& colocate_with_op) const {
+    const Operation& colocate_with_op) const {
   std::unordered_set<string> current_constraints(colocation_constraints_);
   const NodeDef& node_def = colocate_with_op.node()->def();
-  if (node_def.attr().find("_class") != node_def.attr().end()) {
-    const AttrValue& loc = node_def.attr().find("_class")->second;
-    if (loc.value_case() == AttrValue::kList && loc.list().s_size() > 0) {
-      for (int i = 0; i < loc.list().s_size(); ++i) {
-        // Filter out the ones that don't have "loc:@" prefix
-        if (loc.list().s(i).find("loc:@") == 0) {
-          // Skip the "loc:@" prefix
-          current_constraints.insert(loc.list().s(i).substr(5));
-        }
+  std::vector<string> node_constraints;
+  if (GetNodeAttr(node_def, kColocationAttrName, &node_constraints).ok()) {
+    for (const string& entry : node_constraints) {
+      StringPiece s(entry);
+      if (s.Consume(kColocationGroupPrefix)) {
+        current_constraints.insert(s.ToString());
       }
     }
   } else {
@@ -175,7 +186,7 @@ std::unordered_set<string> Scope::GetColocationConstraints(
 void Scope::UpdateStatus(const Status s) const {
   status_->Update(s);
   if (exit_on_error_ && !status_->ok()) {
-    LOG(FATAL) << status_;
+    LOG(FATAL) << *status_;
   }
 }
 
@@ -215,8 +226,10 @@ void Scope::UpdateBuilder(NodeBuilder* builder) const {
     std::sort(constraints.begin(), constraints.end());
     // Add loc:@ prefix
     std::transform(constraints.begin(), constraints.end(), constraints.begin(),
-                   [](const string& s) { return strings::StrCat("loc:@", s); });
-    builder->Attr("_class", constraints);
+                   [](const string& s) {
+                     return strings::StrCat(kColocationGroupPrefix, s);
+                   });
+    builder->Attr(kColocationAttrName, constraints);
   }
   if (!device_.empty()) {
     builder->Device(device_);
@@ -285,21 +298,20 @@ Scope Scope::WithOpName(const string& op_name) const {
 }
 
 Scope Scope::WithControlDependencies(
-    const gtl::ArraySlice<ops::Operation>& control_deps) const {
-  return Scope(
-      *this, Scope::Tags::ControlDeps(),
-      std::vector<ops::Operation>(control_deps.begin(), control_deps.end()),
-      /* clear_control_deps */ false);
+    const gtl::ArraySlice<Operation>& control_deps) const {
+  return Scope(*this, Scope::Tags::ControlDeps(),
+               std::vector<Operation>(control_deps.begin(), control_deps.end()),
+               /* clear_control_deps */ false);
 }
 
-Scope Scope::WithControlDependencies(const ops::Output& control_dep) const {
+Scope Scope::WithControlDependencies(const Output& control_dep) const {
   return Scope(*this, Scope::Tags::ControlDeps(),
-               std::vector<ops::Operation>(1, control_dep.op()),
+               std::vector<Operation>(1, control_dep.op()),
                /* clear_control_deps */ false);
 }
 
 Scope Scope::WithNoControlDependencies() const {
-  return Scope(*this, Scope::Tags::ControlDeps(), std::vector<ops::Operation>(),
+  return Scope(*this, Scope::Tags::ControlDeps(), std::vector<Operation>(),
                /* clear_control_deps */ true);
 }
 
@@ -307,13 +319,13 @@ Scope Scope::WithDevice(const string& device) const {
   return Scope(*this, Scope::Tags::Device(), device);
 }
 
-Scope Scope::ColocateWith(const ops::Operation& op) const {
+Scope Scope::ColocateWith(const Operation& op) const {
   return Scope(*this, Scope::Tags::Colocate(), op,
                /* clear_colocations */ false);
 }
 
 Scope Scope::ClearColocation() const {
-  return Scope(*this, Scope::Tags::Colocate(), ops::Operation(),
+  return Scope(*this, Scope::Tags::Colocate(), Operation(),
                /* clear_colocations */ true);
 }
 

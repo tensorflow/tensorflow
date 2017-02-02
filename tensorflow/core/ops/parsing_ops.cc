@@ -27,7 +27,7 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {float,double,int32,uint8,int16,int8,int64}")
+    .Attr("out_type: {half,float,double,int32,uint8,int16,int8,int64}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
@@ -287,6 +287,7 @@ output: A Tensor of type `out_type`.
 REGISTER_OP("DecodeJSONExample")
     .Input("json_examples: string")
     .Output("binary_examples: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Convert JSON-encoded Example records to binary protocol buffer strings.
 
@@ -343,13 +344,14 @@ REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
     .Attr("out_type: {float, int32} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to the specified numeric type.
 
 (Note that int32 overflow results in an error while float overflow
 results in a rounded value.)
 
-out_type: The numeric type to interpret each string in string_tensor as.
+out_type: The numeric type to interpret each string in `string_tensor` as.
 output: A Tensor of the same shape as the input `string_tensor`.
 )doc");
 

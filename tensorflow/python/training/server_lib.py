@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six  # pylint: disable=unused-import
-
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -241,7 +239,7 @@ class ClusterSpec(object):
   mapping from job names to lists of network addresses (typically
   hostname-port pairs).
 
-  ```
+  ```python
   cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                              "worker1.example.com:2222",
                                              "worker2.example.com:2222"],
@@ -254,7 +252,7 @@ class ClusterSpec(object):
   needing to know the identity of (for example) all other worker
   tasks:
 
-  ```
+  ```python
   cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
                                   "ps": ["ps0.example.com:2222",
                                          "ps1.example.com:2222"]})

@@ -31,6 +31,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 #define TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 
+#include <cstddef>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 #include <initializer_list>  // NOLINT(build/include_order)
@@ -60,7 +62,7 @@ class InlinedVector {
   typedef T& reference;
   typedef const T& const_reference;
   typedef size_t size_type;
-  typedef ssize_t difference_type;
+  typedef std::ptrdiff_t difference_type;
   typedef pointer iterator;
   typedef const_pointer const_iterator;
 
@@ -352,7 +354,7 @@ class InlinedVector {
     size_t n = size();
     Destroy(base, n);
     if (!is_inline()) {
-      free(base);
+      port::Free(base);
     }
   }
 
@@ -433,7 +435,7 @@ class InlinedVector {
     }
 
     T* src = data();
-    T* dst = static_cast<T*>(malloc(target * sizeof(T)));
+    T* dst = static_cast<T*>(port::Malloc(target * sizeof(T)));
 
     // Need to copy elem before discarding src since it might alias src.
     InitType{}(dst + s, std::forward<Args>(args)...);
@@ -441,7 +443,7 @@ class InlinedVector {
     DiscardStorage();
 
     u_.data[kSize - 1] = kSentinel;
-    u_.data[kSize - 2] = target_lg;
+    u_.data[kSize - 2] = static_cast<unsigned char>(target_lg);
     set_size_internal(s);
     DCHECK_EQ(capacity(), target);
     set_outofline_pointer(dst);

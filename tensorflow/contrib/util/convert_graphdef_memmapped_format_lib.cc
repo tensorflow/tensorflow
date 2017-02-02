@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <unordered_set>
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/immutable_constant_op.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -45,13 +47,27 @@ class NodeConverter {
     const DataType tensor_data_type = tensor_proto.dtype();
     const TensorShapeProto tensor_shape = tensor_proto.tensor_shape();
 
+    // Check that the tensor type is POD, only these types are supported for
+    // memmapping.
+    // DataType enum is explicitly converted to int to avoid errors with passing
+    // enum type are a parameter type to std::unordered_set.
+    static std::unordered_set<int> supported_types{
+#define TYPE_FOR_SET(type) static_cast<int>(DataTypeToEnum<type>::value),
+        TF_CALL_POD_TYPES(TYPE_FOR_SET)
+#undef ADD_TYPE
+    };
+
+    if (supported_types.count(static_cast<int>(tensor_data_type)) == 0) {
+      return Status::OK();
+    }
+
     // Create Tensor from value and write it in memmapped format.
     Tensor parsed(tensor_proto.dtype());
     if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
       return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                      tensor_proto.DebugString());
     }
-    if (parsed.TotalBytes() < min_conversion_size_bytes) {
+    if (parsed.TotalBytes() < static_cast<size_t>(min_conversion_size_bytes)) {
       return Status::OK();
     }
 

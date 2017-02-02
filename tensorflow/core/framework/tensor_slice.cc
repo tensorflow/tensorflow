@@ -188,6 +188,11 @@ bool TensorSlice::Intersect(const TensorSlice& other,
   return true;
 }
 
+bool TensorSlice::operator==(const TensorSlice& other) const {
+  return dims() == other.dims() && starts_ == other.starts_ &&
+         lengths_ == other.lengths_;
+}
+
 void TensorSlice::ComputeRelative(const TensorSlice& sub,
                                   TensorSlice* relative) const {
   DCHECK_EQ(dims(), sub.dims());

@@ -25,7 +25,7 @@ Copy a subgraph.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if dst_graph is not a tf.Graph.
+*  <b>`TypeError`</b>: if `dst_graph` is not a `tf.Graph`.
 *  <b>`StandardError`</b>: if sgv cannot be converted to a SubGraphView using
     the same rules than the function subgraph.make_view.
 

@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -61,8 +61,8 @@ class InverseGamma(distribution.Distribution):
   def __init__(self,
                alpha,
                beta,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="InverseGamma"):
     """Construct InverseGamma distributions with parameters `alpha` and `beta`.
 
@@ -75,10 +75,11 @@ class InverseGamma(distribution.Distribution):
         alpha must contain only positive values.
       beta: Floating point tensor, the scale params of the distribution(s).
         beta must contain only positive values.
-      validate_args: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-        the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-        and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
+        `log_prob(x)`.  If `validate_args` is `False` and the inputs are
+        invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -87,6 +88,8 @@ class InverseGamma(distribution.Distribution):
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[alpha, beta]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(alpha),
@@ -94,12 +97,21 @@ class InverseGamma(distribution.Distribution):
       ] if validate_args else []):
         self._alpha = array_ops.identity(alpha, name="alpha")
         self._beta = array_ops.identity(beta, name="beta")
-        super(InverseGamma, self).__init__(
-            dtype=self._alpha.dtype,
-            parameters={"alpha": self._alpha, "beta": self._beta},
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(InverseGamma, self).__init__(
+        dtype=self._alpha.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        parameters=parameters,
+        graph_parents=[self._alpha, self._beta],
+        name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("alpha", "beta"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def alpha(self):
@@ -112,11 +124,12 @@ class InverseGamma(distribution.Distribution):
     return self._beta
 
   def _batch_shape(self):
-    return array_ops.shape(self.alpha + self.beta)
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.alpha), array_ops.shape(self.beta))
 
   def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.alpha.get_shape(),
-                                         self.beta.get_shape())
+    return array_ops.broadcast_static_shape(
+        self.alpha.get_shape(), self.beta.get_shape())
 
   def _event_shape(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -125,6 +138,7 @@ class InverseGamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
+    """See the documentation for tf.random_gamma for more details."""
     return 1. / random_ops.random_gamma([n], self.alpha, beta=self.beta,
                                         dtype=self.dtype, seed=seed)
 
@@ -148,17 +162,30 @@ class InverseGamma(distribution.Distribution):
     # function Q(a, x), which is what we want for the CDF.
     return math_ops.igammac(self.alpha, self.beta / x)
 
+  @distribution_util.AppendDocstring(
+      """This is defined to be
+
+      ```
+      entropy = alpha - log(beta) + log(Gamma(alpha))
+      + (1-alpha)digamma(alpha)
+      ```
+
+      where digamma(alpha) is the digamma function.""")
   def _entropy(self):
     return (self.alpha +
             math_ops.log(self.beta) +
             math_ops.lgamma(self.alpha) -
             (1. + self.alpha) * math_ops.digamma(self.alpha))
 
+  @distribution_util.AppendDocstring(
+      """The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
+      when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+      `False`, an exception will be raised rather than returning `NaN`""")
   def _mean(self):
     mean = self.beta / (self.alpha - 1.)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha > 1., mean,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -168,12 +195,16 @@ class InverseGamma(distribution.Distribution):
               message="mean not defined for components of self.alpha <= 1"),
       ], mean)
 
+  @distribution_util.AppendDocstring(
+      """Variance for inverse gamma is defined only for `alpha > 2`. If
+      `self.allow_nan_stats` is `False`, an exception will be raised rather
+      than returning `NaN`.""")
   def _variance(self):
     var = (math_ops.square(self.beta) /
            (math_ops.square(self.alpha - 1.) * (self.alpha - 2.)))
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
+      return array_ops.where(
           self.alpha > 2., var,
           array_ops.fill(self.batch_shape(), nan, name="nan"))
     else:
@@ -184,41 +215,26 @@ class InverseGamma(distribution.Distribution):
       ], var)
 
   def _mode(self):
+    """The mode of an inverse gamma distribution is `beta / (alpha + 1)`."""
     return self.beta / (self.alpha + 1.)
 
 
-distribution_util.append_class_fun_doc(InverseGamma.sample_n, doc_str="""
+class InverseGammaWithSoftplusAlphaBeta(InverseGamma):
+  """Inverse Gamma with softplus applied to `alpha` and `beta`."""
 
-    See the documentation for tf.random_gamma for more details.
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.entropy, doc_str="""
-
-    This is defined to be
-
-    ```
-    entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)
-    ```
-
-    where digamma(alpha) is the digamma function.
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.mean, doc_str="""
-
-    The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-    when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
-    `False`, an exception will be raised rather than returning `NaN`
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.variance, doc_str="""
-
-    Variance for inverse gamma is defined only for `alpha > 2`. If
-    `self.allow_nan_stats` is `False`, an exception will be raised rather
-    than returning `NaN`.
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.mode, doc_str="""
-
-    The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
-""")
+  def __init__(self,
+               alpha,
+               beta,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="InverseGammaWithSoftplusAlphaBeta"):
+    parameters = locals()
+    parameters.pop("self")
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
+      super(InverseGammaWithSoftplusAlphaBeta, self).__init__(
+          alpha=nn.softplus(alpha, name="softplus_alpha"),
+          beta=nn.softplus(beta, name="softplus_gamma"),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters

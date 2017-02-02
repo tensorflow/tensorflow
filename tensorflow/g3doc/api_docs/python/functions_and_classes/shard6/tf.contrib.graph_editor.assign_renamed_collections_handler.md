@@ -2,10 +2,13 @@
 
 Add the transformed elem to the (renamed) collections of elem.
 
+A collection is renamed only if is not a known key, as described in
+`tf.GraphKeys`.
+
 ##### Args:
 
 
 *  <b>`info`</b>: Transform._Info instance.
-*  <b>`elem`</b>: the original element (tf.Tensor or tf.Operation)
+*  <b>`elem`</b>: the original element (`tf.Tensor` or `tf.Operation`)
 *  <b>`elem_`</b>: the transformed element
 

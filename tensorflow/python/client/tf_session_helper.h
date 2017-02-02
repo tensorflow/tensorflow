@@ -30,12 +30,6 @@ namespace tensorflow {
 // Container types for the various arguments and temporary values used
 // in the wrapper.
 
-// A FeedVector is a vector of tensor name and numpy array pairs. The
-// name is a borrowed C string.
-typedef tensorflow::gtl::InlinedVector<std::pair<const char*, PyArrayObject*>,
-                                       8>
-    FeedVector;
-
 // A NameVector is a vector of tensor or operation names, as borrowed
 // C strings.
 typedef tensorflow::gtl::InlinedVector<const char*, 8> NameVector;
@@ -56,14 +50,17 @@ Safe_PyObjectPtr make_safe(PyObject* o);
 // stolen by the implementation (i.e. the implementation will
 // eventually call Py_DECREF on each array input).
 //
+// The PyObject* feed_dict must be a dictionary mapping strings to
+// NumPy arrays. This function does not modify its reference count.
+//
 // On success, the tensors corresponding to output_names[0,noutputs-1]
 // are placed in out_values[], and these outputs[] become the property
 // of the caller (the caller must eventually call Py_DECREF on them).
 //
 // On failure, out_status contains a tensorflow::Status with an error
 // message.
-void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
-                    const FeedVector& inputs, const NameVector& output_names,
+void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
+                    PyObject* feed_dict, const NameVector& output_names,
                     const NameVector& target_nodes, TF_Status* out_status,
                     PyObjectVector* out_values, TF_Buffer* run_outputs);
 
@@ -76,13 +73,17 @@ void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
 // message.
 //
 // NOTE: This is EXPERIMENTAL and subject to change.
-void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
+void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
+                          const NameVector& input_names,
                           const NameVector& output_names,
                           const NameVector& target_nodes, TF_Status* out_status,
                           const char** out_handle);
 
 // Continue to run the graph with additional feeds and fetches. The
 // execution state is uniquely identified by the handle.
+//
+// The PyObject* feed_dict must be a dictionary mapping strings to
+// NumPy arrays. This function does not modify its reference count.
 //
 // On success,  the tensors corresponding to output_names[0,noutputs-1]
 // are placed in out_values[], and these outputs[] become the property
@@ -92,8 +93,8 @@ void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
 // message.
 //
 // NOTE: This is EXPERIMENTAL and subject to change.
-void TF_PRun_wrapper(TF_Session* session, const char* handle,
-                     const FeedVector& inputs, const NameVector& output_names,
+void TF_PRun_wrapper(TF_DeprecatedSession* session, const char* handle,
+                     PyObject* feed_dict, const NameVector& output_names,
                      TF_Status* out_status, PyObjectVector* out_values);
 
 // Wrapper for TF_Reset that converts the string vectors to character arrays.

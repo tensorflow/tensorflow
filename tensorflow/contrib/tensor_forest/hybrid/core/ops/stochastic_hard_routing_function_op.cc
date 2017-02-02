@@ -31,6 +31,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -38,8 +39,11 @@
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::LeftProbability;
@@ -48,14 +52,25 @@ using tensorforest::LeftProbability;
 // that an instance is routed to each leaf node.'  It is defined in
 // 'Deep Neural Decision Forests' by Kontschieder et al.
 REGISTER_OP("StochasticHardRoutingFunction")
-  .Attr("tree_depth: int")
-  .Attr("random_seed: int")
-  .Input("input_data: float")
-  .Input("tree_parameters: float")
-  .Input("tree_biases: float")
-  .Output("path_probability: float")
-  .Output("path: int32")
-  .Doc(R"doc(
+    .Attr("tree_depth: int")
+    .Attr("random_seed: int")
+    .Input("input_data: float")
+    .Input("tree_parameters: float")
+    .Input("tree_biases: float")
+    .Output("path_probability: float")
+    .Output("path: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+      int64 tree_depth;
+      TF_RETURN_IF_ERROR(c->GetAttr("tree_depth", &tree_depth));
+
+      auto out = c->Matrix(c->Dim(input, 0), tree_depth);
+      c->set_output(0, out);
+      c->set_output(1, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
   Samples a path for each instance in `input_data` and returns the 
   probability of the path and the path taken.
 

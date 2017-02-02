@@ -171,7 +171,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   values for the current parameters, compute gradients in parallel, and then
   apply them together. It is compatible with in-graph replication (e.g. using
   gradient averaging as in the
-  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_multi_gpu_train.py)),
+  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
   `tf.train.SyncReplicasOptimizer`).
 
@@ -182,19 +182,12 @@ implementing **between-graph replication** and **asynchronous training**. It
 includes the code for the parameter server and worker tasks.
 
 ```python
+import argparse
+import sys
+
 import tensorflow as tf
 
-# Flags for defining the tf.train.ClusterSpec
-tf.app.flags.DEFINE_string("ps_hosts", "",
-                           "Comma-separated list of hostname:port pairs")
-tf.app.flags.DEFINE_string("worker_hosts", "",
-                           "Comma-separated list of hostname:port pairs")
-
-# Flags for defining the tf.train.Server
-tf.app.flags.DEFINE_string("job_name", "", "One of 'ps', 'worker'")
-tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
-
-FLAGS = tf.app.flags.FLAGS
+FLAGS = None
 
 
 def main(_):
@@ -226,8 +219,8 @@ def main(_):
           loss, global_step=global_step)
 
       saver = tf.train.Saver()
-      summary_op = tf.merge_all_summaries()
-      init_op = tf.initialize_all_variables()
+      summary_op = tf.summary.merge_all()
+      init_op = tf.global_variables_initializer()
 
     # Create a "supervisor", which oversees the training process.
     sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0),
@@ -253,7 +246,36 @@ def main(_):
     sv.stop()
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  # Flags for defining the tf.train.ClusterSpec
+  parser.add_argument(
+      "--ps_hosts",
+      type=str,
+      default="",
+      help="Comma-separated list of hostname:port pairs"
+  )
+  parser.add_argument(
+      "--worker_hosts",
+      type=str,
+      default="",
+      help="Comma-separated list of hostname:port pairs"
+  )
+  parser.add_argument(
+      "--job_name",
+      type=str,
+      default="",
+      help="One of 'ps', 'worker'"
+  )
+  # Flags for defining the tf.train.Server
+  parser.add_argument(
+      "--task_index",
+      type=int,
+      default=0,
+      help="Index of task within the job"
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 ```
 
 To start the trainer with two parameter servers and two workers, use the

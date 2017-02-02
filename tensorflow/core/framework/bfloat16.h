@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_BFLOAT16_H_
 #define TENSORFLOW_FRAMEWORK_BFLOAT16_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
+
+#if defined(PLATFORM_WINDOWS)  
+#include "tensorflow/core/platform/windows/cpu_info.h"  
+#endif  
 
 // Compact 16-bit encoding of floating point numbers. This representation uses
 // 1 bit for the sign, 8 bits for the exponent and 7 bits for the mantissa.  It
@@ -43,14 +47,10 @@ limitations under the License.
 // This type only supports conversion back and forth with float.
 //
 // This file must be compilable by nvcc.
+//
+// The type is defined in framework/numeric_types.h.
 
 namespace tensorflow {
-struct bfloat16 {
-  EIGEN_DEVICE_FUNC bfloat16() {}
-  EIGEN_DEVICE_FUNC explicit bfloat16(const uint16_t v) : value(v) {}
-
-  uint16_t value;
-};
 
 // Conversion routines between an array of float and bfloat16 of
 // "size".
@@ -58,16 +58,5 @@ void FloatToBFloat16(const float* src, bfloat16* dst, int64 size);
 void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size);
 
 }  // namespace tensorflow
-
-namespace Eigen {
-template <>
-struct NumTraits<tensorflow::bfloat16> : GenericNumTraits<uint16_t> {};
-
-EIGEN_STRONG_INLINE bool operator==(const tensorflow::bfloat16 a,
-                                    const tensorflow::bfloat16 b) {
-  return a.value == b.value;
-}
-
-}  // namespace Eigen
 
 #endif  // TENSORFLOW_FRAMEWORK_BFLOAT16_H_

@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,g-importing-member,wildcard-import
+# TODO(jart): Delete non-slim imports
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics
 from tensorflow.contrib.framework.python.ops.arg_scope import *
@@ -44,4 +45,3 @@ from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,line-too-long,g-importing-member,wildcard-import
 
 __all__ = make_all(__name__)
-

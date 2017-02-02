@@ -17,32 +17,36 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import tempfile
 
-import tensorflow as tf
-
-from tensorflow.contrib.learn.python.learn.estimators import random_forest
+# pylint: disable=g-backslash-continuation
+from tensorflow.contrib.learn.python.learn\
+        import metric_spec
+from tensorflow.contrib.tensor_forest.client\
+        import eval_metrics
+from tensorflow.contrib.tensor_forest.client\
+        import random_forest
+from tensorflow.contrib.tensor_forest.python\
+        import tensor_forest
 from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.python.platform import app
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('model_dir', '', 'Base directory for output models.')
-flags.DEFINE_string('data_dir', '/tmp/data/', 'Directory for storing data')
-
-flags.DEFINE_integer('train_steps', 1000, 'Number of training steps.')
-flags.DEFINE_string('batch_size', 1000,
-                    'Number of examples in a training batch.')
-flags.DEFINE_integer('num_trees', 100, 'Number of trees in the forest.')
-flags.DEFINE_integer('max_nodes', 1000, 'Max total nodes in a single tree.')
+FLAGS = None
 
 
 def build_estimator(model_dir):
   """Build an estimator."""
-  params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
+  params = tensor_forest.ForestHParams(
       num_classes=10, num_features=784,
       num_trees=FLAGS.num_trees, max_nodes=FLAGS.max_nodes)
-  return random_forest.TensorForestEstimator(params, model_dir=model_dir)
+  graph_builder_class = tensor_forest.RandomForestGraphs
+  if FLAGS.use_training_loss:
+    graph_builder_class = tensor_forest.TrainingLossForest
+  return random_forest.TensorForestEstimator(
+      params, graph_builder_class=graph_builder_class,
+      model_dir=model_dir)
 
 
 def train_and_eval():
@@ -52,20 +56,25 @@ def train_and_eval():
 
   estimator = build_estimator(model_dir)
 
-  # TensorForest's LossMonitor allows training to terminate early if the
+  # TensorForest's loss hook allows training to terminate early if the
   # forest is no longer growing.
   early_stopping_rounds = 100
-  check_every_n_steps = 100
-  monitor = random_forest.LossMonitor(early_stopping_rounds,
-                                      check_every_n_steps)
+  monitor = random_forest.TensorForestLossHook(early_stopping_rounds)
 
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
 
   estimator.fit(x=mnist.train.images, y=mnist.train.labels,
                 batch_size=FLAGS.batch_size, monitors=[monitor])
 
+  metric_name = 'accuracy'
+  metric = {metric_name:
+            metric_spec.MetricSpec(
+                eval_metrics.get_metric(metric_name),
+                prediction_key=eval_metrics.get_prediction_key(metric_name))}
+
   results = estimator.evaluate(x=mnist.test.images, y=mnist.test.labels,
-                               batch_size=FLAGS.batch_size)
+                               batch_size=FLAGS.batch_size,
+                               metrics=metric)
   for key in sorted(results):
     print('%s: %s' % (key, results[key]))
 
@@ -75,4 +84,48 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--model_dir',
+      type=str,
+      default='',
+      help='Base directory for output models.'
+  )
+  parser.add_argument(
+      '--data_dir',
+      type=str,
+      default='/tmp/data/',
+      help='Directory for storing data'
+  )
+  parser.add_argument(
+      '--train_steps',
+      type=int,
+      default=1000,
+      help='Number of training steps.'
+  )
+  parser.add_argument(
+      '--batch_size',
+      type=str,
+      default=1000,
+      help='Number of examples in a training batch.'
+  )
+  parser.add_argument(
+      '--num_trees',
+      type=int,
+      default=100,
+      help='Number of trees in the forest.'
+  )
+  parser.add_argument(
+      '--max_nodes',
+      type=int,
+      default=1000,
+      help='Max total nodes in a single tree.'
+  )
+  parser.add_argument(
+      '--use_training_loss',
+      type=bool,
+      default=False,
+      help='If true, use training loss as termination criteria.'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

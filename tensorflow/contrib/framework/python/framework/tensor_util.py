@@ -20,19 +20,27 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
+
 __all__ = [
     'assert_same_float_dtype',
+    'assert_scalar',
     'assert_scalar_int',
     'convert_to_tensor_or_sparse_tensor',
     'is_tensor',
     'reduce_sum_n',
+    'remove_squeezable_dimensions',
     'with_shape',
     'with_same_shape']
+
+
+convert_to_tensor_or_sparse_tensor = (
+    sparse_tensor.convert_to_tensor_or_sparse_tensor)
 
 
 def _assert_same_base_type(items, expected_type=None):
@@ -44,6 +52,7 @@ def _assert_same_base_type(items, expected_type=None):
         will be ignored.
     expected_type: Expected type. If not specified, assert all items are
         of the same base type.
+
   Returns:
     Validated type, or none if neither expected_type nor items provided.
 
@@ -93,23 +102,32 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   return dtype
 
 
-def assert_scalar_int(tensor):
+def assert_scalar_int(tensor, name=None):
   """Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
 
   Args:
-    tensor: Tensor to test.
+    tensor: `Tensor` to test.
+    name: Name of the op and of the new `Tensor` if one is created.
   Returns:
     `tensor`, for chaining.
   Raises:
     ValueError: if `tensor` is not 0-D, of type `tf.int32` or `tf.int64`.
   """
-  data_type = tensor.dtype
-  if data_type.base_dtype not in [dtypes.int32, dtypes.int64]:
-    raise ValueError('Unexpected type %s for %s.' % (data_type, tensor.name))
-  shape = tensor.get_shape()
-  if shape.ndims != 0:
-    raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
-  return tensor
+  with ops.name_scope(name, 'assert_scalar_int', [tensor]) as name_scope:
+    tensor = ops.convert_to_tensor(tensor)
+    data_type = tensor.dtype
+    if data_type.base_dtype not in [dtypes.int32, dtypes.int64]:
+      raise ValueError('Unexpected type %s for %s.' % (data_type, tensor.name))
+    return assert_scalar(tensor, name=name_scope)
+
+
+def assert_scalar(tensor, name=None):
+  with ops.name_scope(name, 'assert_scalar', [tensor]) as name_scope:
+    tensor = ops.convert_to_tensor(tensor, name=name_scope)
+    shape = tensor.get_shape()
+    if shape.ndims != 0:
+      raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
+    return tensor
 
 
 def reduce_sum_n(tensors, name=None):
@@ -130,11 +148,60 @@ def reduce_sum_n(tensors, name=None):
   """
   if not tensors:
     raise ValueError('No tensors provided.')
-  tensors = [math_ops.reduce_sum(t, name='%s/sum' % t.op.name) for t in tensors]
-  if len(tensors) == 1:
-    return tensors[0]
-  with ops.name_scope(name, 'reduce_sum_n', tensors) as scope:
-    return math_ops.add_n(tensors, name=scope)
+  with ops.name_scope(name, 'reduce_sum_n', tensors) as name_scope:
+    tensors = [
+        math_ops.reduce_sum(t, name='%s/sum' % t.op.name) for t in tensors]
+    if len(tensors) == 1:
+      return tensors[0]
+    return math_ops.add_n(tensors, name=name_scope)
+
+
+def remove_squeezable_dimensions(predictions, labels, name=None):
+  """Squeeze last dim if ranks of `predictions` and `labels` differ by 1.
+
+  This will use static shape if available. Otherwise, it will add graph
+  operations, which could result in a performance hit.
+
+  Args:
+    predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    labels: Label values, a `Tensor` whose dimensions match `predictions`.
+    name: Name of the op.
+
+  Returns:
+    Tuple of `predictions` and `labels`, possibly with last dim squeezed.
+  """
+  with ops.name_scope(name, 'remove_squeezable_dimensions',
+                      [predictions, labels]):
+    predictions = ops.convert_to_tensor(predictions)
+    labels = ops.convert_to_tensor(labels)
+    predictions_shape = predictions.get_shape()
+    predictions_rank = predictions_shape.ndims
+    labels_shape = labels.get_shape()
+    labels_rank = labels_shape.ndims
+    if (labels_rank is not None) and (predictions_rank is not None):
+      # Use static rank.
+      rank_diff = predictions_rank - labels_rank
+      if rank_diff == -1:
+        labels = array_ops.squeeze(labels, [-1])
+      elif rank_diff == 1:
+        predictions = array_ops.squeeze(predictions, [-1])
+      return predictions, labels
+
+    # Use dynamic rank.
+    rank_diff = array_ops.rank(predictions) - array_ops.rank(labels)
+    if (predictions_rank is None) or (
+        predictions_shape.dims[-1].is_compatible_with(1)):
+      predictions = control_flow_ops.cond(
+          math_ops.equal(1, rank_diff),
+          lambda: array_ops.squeeze(predictions, [-1]),
+          lambda: predictions)
+    if (labels_rank is None) or (
+        labels_shape.dims[-1].is_compatible_with(1)):
+      labels = control_flow_ops.cond(
+          math_ops.equal(-1, rank_diff),
+          lambda: array_ops.squeeze(labels, [-1]),
+          lambda: labels)
+    return predictions, labels
 
 
 def _all_equal(tensor0, tensor1):
@@ -191,7 +258,7 @@ def _assert_shape_op(expected_shape, actual_tensor):
   with ops.name_scope('assert_shape', values=[actual_tensor]) as scope:
     actual_shape = array_ops.shape(actual_tensor, name='actual')
     is_shape = _is_shape(expected_shape, actual_tensor, actual_shape)
-    return logging_ops.Assert(
+    return control_flow_ops.Assert(
         is_shape, [
             'Wrong shape for %s [expected] [actual].' % actual_tensor.name,
             expected_shape,
@@ -218,6 +285,7 @@ def with_same_shape(expected_tensor, tensor):
 
 def is_tensor(x):
   """Check for tensor types.
+
   Check whether an object is a tensor. Equivalent to
   `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 
@@ -227,7 +295,7 @@ def is_tensor(x):
   Returns:
     `True` if `x` is a tensor, `False` if not.
   """
-  tensor_types = (ops.Tensor, ops.SparseTensor, variables.Variable)
+  tensor_types = (ops.Tensor, sparse_tensor.SparseTensor, variables.Variable)
   return isinstance(x, tensor_types)
 
 
@@ -247,7 +315,7 @@ def with_shape(expected_shape, tensor):
   Raises:
     ValueError: if tensor has an invalid shape.
   """
-  if isinstance(tensor, ops.SparseTensor):
+  if isinstance(tensor, sparse_tensor.SparseTensor):
     raise ValueError('SparseTensor not supported.')
 
   # Shape type must be 1D int32.
@@ -297,36 +365,3 @@ def with_shape(expected_shape, tensor):
         tensor.name, expected_shape, actual_shape))
 
   return tensor
-
-
-def convert_to_tensor_or_sparse_tensor(
-    value, dtype=None, name=None, as_ref=False):
-  """Converts value to a `SparseTensor` or `Tensor`.
-
-  Args:
-    value: A `SparseTensor`, `SparseTensorValue`, or an object whose type has a
-      registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the
-      type is inferred from the type of `value`.
-    name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the result as a ref tensor. Only used if a new
-      `Tensor` is created.
-
-  Returns:
-    A `SparseTensor` or `Tensor` based on `value`.
-
-  Raises:
-    RuntimeError: If result type is incompatible with `dtype`.
-  """
-  if dtype is not None:
-    dtype = dtypes.as_dtype(dtype)
-  if isinstance(value, ops.SparseTensorValue):
-    value = ops.SparseTensor.from_value(value)
-  if isinstance(value, ops.SparseTensor):
-    if dtype and not dtype.is_compatible_with(value.dtype):
-      raise RuntimeError(
-          'Sparse dtype: requested = %s, actual = %s' % (
-              dtype.name, value.dtype.name))
-    return value
-  return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-

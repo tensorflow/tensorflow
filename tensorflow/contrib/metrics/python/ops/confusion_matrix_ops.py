@@ -18,70 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.metrics.python.ops import metric_ops_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import confusion_matrix as cm
 
 
-def confusion_matrix(predictions, labels, num_classes=None,
-                     dtype=dtypes.int32, name=None):
-  """Computes the confusion matrix from predictions and labels.
-
-  Calculate the Confusion Matrix for a pair of prediction and
-  label 1-D int arrays.
-
-  Considering a prediction array such as: `[1, 2, 3]`
-  And a label array such as: `[2, 2, 3]`
-
-  The confusion matrix returned would be the following one:
-      [[0, 0, 0]
-       [0, 1, 0]
-       [0, 1, 0]
-       [0, 0, 1]]
-
-  Where the matrix rows represent the prediction labels and the columns
-  represents the real labels. The confusion matrix is always a 2-D array
-  of shape [n, n], where n is the number of valid labels for a given
-  classification task. Both prediction and labels must be 1-D arrays of
-  the same shape in order for this function to work.
-
-  Args:
-    predictions: A 1-D array represeting the predictions for a given
-                 classification.
-    labels: A 1-D represeting the real labels for the classification task.
-    num_classes: The possible number of labels the classification task can
-                 have. If this value is not provided, it will be calculated
-                 using both predictions and labels array.
-    dtype: Data type of the confusion matrix.
-    name: Scope name.
-
-  Returns:
-    A k X k matrix represeting the confusion matrix, where k is the number of
-    possible labels in the classification task.
-
-  Raises:
-    ValueError: If both predictions and labels are not 1-D vectors and do not
-                have the same size.
-  """
-  with ops.name_scope(name, 'confusion_matrix',
-                      [predictions, labels, num_classes]) as name:
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
-        ops.convert_to_tensor(
-            predictions, name='predictions', dtype=dtypes.int64),
-        ops.convert_to_tensor(labels, name='labels', dtype=dtypes.int64))
-
-    if num_classes is None:
-      num_classes = math_ops.maximum(math_ops.reduce_max(predictions),
-                                     math_ops.reduce_max(labels)) + 1
-
-    shape = array_ops.pack([num_classes, num_classes])
-    indices = array_ops.transpose(array_ops.pack([predictions, labels]))
-    values = array_ops.ones_like(predictions, dtype)
-    cm_sparse = ops.SparseTensor(
-        indices=indices, values=values, shape=shape)
-    zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtype)
-
-    return sparse_ops.sparse_add(zero_matrix, cm_sparse)
+def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
+                     name=None, weights=None):
+  """Deprecated. Use tf.confusion_matrix instead."""
+  return cm.confusion_matrix(labels=labels, predictions=predictions,
+                             num_classes=num_classes, dtype=dtype, name=name,
+                             weights=weights)

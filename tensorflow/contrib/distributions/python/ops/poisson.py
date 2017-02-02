@@ -30,6 +30,13 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
+_poisson_prob_note = """
+Note thet the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
+"""
+
+
 class Poisson(distribution.Distribution):
   """Poisson distribution.
 
@@ -46,35 +53,39 @@ class Poisson(distribution.Distribution):
 
   def __init__(self,
                lam,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Poisson"):
     """Construct Poisson distributions.
 
     Args:
       lam: Floating point tensor, the rate parameter of the
         distribution(s). `lam` must be positive.
-      validate_args: Whether to assert that `lam > 0` as well as inputs to
-        pmf computations are non-negative integers. If validate_args is
-        `False`, then `pmf` computations might return NaN, as well as
-        can be evaluated at any real value.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `lam > 0` as well as inputs to pmf computations are non-negative
+        integers. If validate_args is `False`, then `pmf` computations might
+        return `NaN`, but can be evaluated at any real value.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution.
     """
+    parameters = locals()
+    parameters.pop("self")
     with ops.name_scope(name, values=[lam]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(lam)] if
                                     validate_args else []):
         self._lam = array_ops.identity(lam, name="lam")
-        super(Poisson, self).__init__(
-            dtype=self._lam.dtype,
-            parameters={"lam": self._lam},
-            is_continuous=False,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+    super(Poisson, self).__init__(
+        dtype=self._lam.dtype,
+        is_continuous=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._lam],
+        name=ns)
 
   @property
   def lam(self):
@@ -93,10 +104,12 @@ class Poisson(distribution.Distribution):
   def _get_event_shape(self):
     return tensor_shape.scalar()
 
+  @distribution_util.AppendDocstring(_poisson_prob_note)
   def _log_prob(self, x):
     x = self._assert_valid_sample(x, check_integer=True)
     return x * math_ops.log(self.lam) - self.lam - math_ops.lgamma(x + 1)
 
+  @distribution_util.AppendDocstring(_poisson_prob_note)
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
@@ -113,9 +126,10 @@ class Poisson(distribution.Distribution):
   def _variance(self):
     return array_ops.identity(self.lam)
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
+  @distribution_util.AppendDocstring(
+      """Note that when `lam` is an integer, there are actually two modes.
+      Namely, `lam` and `lam - 1` are both modes. Here we return
+      only the larger of the two modes.""")
   def _mode(self):
     return math_ops.floor(self.lam)
 
@@ -127,20 +141,3 @@ class Poisson(distribution.Distribution):
         dependencies += [distribution_util.assert_integer_form(
             x, message="x has non-integer components.")]
       return control_flow_ops.with_dependencies(dependencies, x)
-
-
-_prob_note = """
-
-    Note thet the input value must be a non-negative floating point tensor with
-    dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
-    legal if it is non-negative and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(Poisson.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Poisson.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Poisson.mode, doc_str="""
-
-    Note that when `lam` is an integer, there are actually two modes.
-    Namely, `lam` and `lam - 1` are both modes. Here we return
-    only the larger of the two modes.
-""")

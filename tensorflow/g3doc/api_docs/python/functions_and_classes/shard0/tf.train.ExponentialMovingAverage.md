@@ -80,7 +80,7 @@ saver.restore(...checkpoint filename...)
 
 - - -
 
-#### `tf.train.ExponentialMovingAverage.__init__(decay, num_updates=None, name='ExponentialMovingAverage')` {#ExponentialMovingAverage.__init__}
+#### `tf.train.ExponentialMovingAverage.__init__(decay, num_updates=None, zero_debias=False, name='ExponentialMovingAverage')` {#ExponentialMovingAverage.__init__}
 
 Creates a new ExponentialMovingAverage object.
 
@@ -88,7 +88,7 @@ The `apply()` method has to be called to create shadow variables and add
 ops to maintain moving averages.
 
 The optional `num_updates` parameter allows one to tweak the decay rate
-dynamically. .  It is typical to pass the count of training steps, usually
+dynamically. It is typical to pass the count of training steps, usually
 kept in a variable that is incremented at each step, in which case the
 decay rate is lower at the start of training.  This makes moving averages
 move faster.  If passed, the actual decay rate used is:
@@ -100,6 +100,8 @@ move faster.  If passed, the actual decay rate used is:
 
 *  <b>`decay`</b>: Float.  The decay to use.
 *  <b>`num_updates`</b>: Optional count of number of updates applied to variables.
+*  <b>`zero_debias`</b>: If `True`, zero debias moving-averages that are initialized
+    with tensors.
 *  <b>`name`</b>: String. Optional prefix name to use for the name of ops added in
     `apply()`.
 
@@ -114,11 +116,12 @@ Maintains moving averages of variables.
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
 They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-For `Tensor` objects, the shadow variables are initialized to 0.
+For `Tensor` objects, the shadow variables are initialized to 0 and zero
+debiased (see docstring in `assign_moving_average` for more details).
 
 shadow variables are created with `trainable=False` and added to the
 `GraphKeys.ALL_VARIABLES` collection.  They will be returned by calls to
-`tf.all_variables()`.
+`tf.global_variables()`.
 
 Returns an op that updates all shadow variables as described above.
 
@@ -186,7 +189,7 @@ Returns the `Variable` holding the average of `var`.
 ##### Returns:
 
   A `Variable` object or `None` if the moving average of `var`
-  is not maintained..
+  is not maintained.
 
 
 - - -

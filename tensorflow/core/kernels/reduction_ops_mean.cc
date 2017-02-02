@@ -17,9 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                               \
-  REGISTER_KERNEL_BUILDER(                                       \
-      Name("Mean").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Mean")                        \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::MeanReducer<type>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
@@ -31,6 +34,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Mean")                          \
           .Device(DEVICE_GPU)               \
           .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::MeanReducer<type>>);
 REGISTER_GPU_KERNELS(Eigen::half);

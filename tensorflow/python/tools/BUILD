@@ -7,14 +7,13 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -22,68 +21,43 @@ py_binary(
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "freeze_graph_test",
     size = "small",
-    srcs = [
-        "freeze_graph_test.py",
-    ],
+    srcs = ["freeze_graph_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":freeze_graph",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "graph_metrics_lib",
-    srcs = ["graph_metrics.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "graph_metrics",
-    srcs = [
-        "graph_metrics.py",
-    ],
-    main = "graph_metrics.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "graph_metrics_test",
-    size = "small",
-    srcs = [
-        "graph_metrics_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":graph_metrics_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
 py_binary(
     name = "inspect_checkpoint",
-    srcs = [
-        "inspect_checkpoint.py",
-    ],
+    srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -92,7 +66,8 @@ py_library(
     srcs = ["strip_unused_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
     ],
 )
@@ -103,22 +78,26 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "strip_unused_test",
     size = "small",
-    srcs = [
-        "strip_unused_test.py",
-    ],
+    srcs = ["strip_unused_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -128,8 +107,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused",
-        "//tensorflow:tensorflow_py",
+        ":strip_unused_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -139,22 +123,54 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "optimize_for_inference_test",
     size = "small",
-    srcs = [
-        "optimize_for_inference_test.py",
-    ],
+    srcs = ["optimize_for_inference_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "print_selective_registration_header",
+    srcs = ["print_selective_registration_header.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "print_selective_registration_header_test",
+    srcs = ["print_selective_registration_header_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":print_selective_registration_header",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
     ],
 )
 

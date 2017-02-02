@@ -17,9 +17,11 @@
 
 #include <limits>
 
+#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -50,25 +52,33 @@ T Sum(Tensor counts) {
   return count_sum(0);
 }
 
-// Get the DataColumnTypes number for the given feature.  The default type
-// is stored in index 0, individual feature types start at index 1.
-DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec);
+// Get the DataColumnTypes number for the given feature.
+DataColumnTypes FindDenseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec);
+DataColumnTypes FindSparseFeatureSpec(
+    int32 input_feature, const tensorforest::TensorForestDataSpec& spec);
 
-// Given an Eigen::Tensor type, calculate the Gini impurity, which we use
-// to determine the best split (lowest) and which nodes to allocate first
-// (highest).
-template<typename T>
-float WeightedGiniImpurity(const T& counts) {
+// Given an Eigen::Tensor type, calculate the Gini impurity.
+template <typename T>
+float RawWeightedGiniImpurity(const T& counts) {
   // Our split score is the Gini impurity times the number of examples
   // seen by the leaf.  If c(i) denotes the i-th class count and c = sum_i c(i)
   // then
   // score = c * (1 - sum_i ( c(i) / c )^2 )
   //       = c - sum_i c(i)^2 / c
-  const auto smoothed = counts + counts.constant(1.0f);
-  const auto sum = smoothed.sum();
-  const auto sum2 = smoothed.square().sum();
+  const auto sum = counts.sum();
+  const auto sum2 = counts.square().sum();
   Eigen::Tensor<float, 0, Eigen::RowMajor> ret = sum - (sum2 / sum);
   return ret(0);
+}
+
+// Given an Eigen::Tensor type, calculate the smoothed Gini impurity, which we
+// use to determine the best split (lowest) and which nodes to allocate first
+// (highest).
+template <typename T>
+float WeightedGiniImpurity(const T& counts) {
+  const auto smoothed = counts + counts.constant(1.0f);
+  return RawWeightedGiniImpurity(smoothed);
 }
 
 template<typename T1, typename T2>
@@ -99,12 +109,27 @@ bool BestSplitDominatesRegression(
     const Tensor& split_sums, const Tensor& split_squares,
     int32 accumulator);
 
+// Performs booststrap_samples bootstrap samples of the best split's class
+// counts and the second best splits's class counts, and returns true if at
+// least dominate_fraction of the time, the former has a better (lower)
+// Gini impurity.  Does not take over ownership of *rand.
+bool BestSplitDominatesClassificationBootstrap(
+    const Tensor& total_counts, const Tensor& split_counts, int32 accumulator,
+    float dominate_fraction, tensorflow::random::SimplePhilox* rand);
+
 // Returns true if the best split's Gini impurity is sufficiently smaller than
-// that of the next best split.
-bool BestSplitDominatesClassification(
-    const Tensor& total_counts,
-    const Tensor& split_counts, int32 accumulator,
-    float dominate_fraction);
+// that of the next best split, as measured by the Hoeffding Tree bound.
+bool BestSplitDominatesClassificationHoeffding(const Tensor& total_counts,
+                                               const Tensor& split_counts,
+                                               int32 accumulator,
+                                               float dominate_fraction);
+
+// Returns true if the best split's Gini impurity is sufficiently smaller than
+// that of the next best split, as measured by a Chebyshev bound.
+bool BestSplitDominatesClassificationChebyshev(const Tensor& total_counts,
+                                               const Tensor& split_counts,
+                                               int32 accumulator,
+                                               float dominate_fraction);
 
 // Initializes everything in the given tensor to the given value.
 template <typename T>
@@ -119,17 +144,19 @@ void Initialize(Tensor counts, T val = 0) {
 // Even though our input data is forced into float Tensors, it could have
 // originally been something else (e.g. categorical string data) which
 // we treat differently.
-bool DecideNode(const Tensor& point, int32 feature, float bias,
-                DataColumnTypes type = kDataFloat);
+bool DecideNode(const Tensor& dense_features,
+                const Tensor& sparse_input_indices,
+                const Tensor& sparse_input_values, int32 i, int32 feature,
+                float bias, const tensorforest::TensorForestDataSpec& spec);
 
 // Returns input_data(i, feature) > bias.
 template <typename T>
-bool DecideDenseNode(const T& input_data,
-                     int32 i, int32 feature, float bias,
-                     DataColumnTypes type = kDataFloat) {
-    CHECK_LT(i, input_data.dimensions()[0]);
-    CHECK_LT(feature, input_data.dimensions()[1]);
-    return Decide(input_data(i, feature), bias, type);
+bool DecideDenseNode(const T& input_data, int32 i, int32 feature, float bias,
+                     const tensorforest::TensorForestDataSpec& spec) {
+  CHECK_LT(i, input_data.dimensions()[0]);
+  CHECK_LT(feature, input_data.dimensions()[1]);
+  return Decide(input_data(i, feature), bias,
+                FindDenseFeatureSpec(feature, spec));
 }
 
 // If T is a sparse float matrix represented by sparse_input_indices and
@@ -167,23 +194,22 @@ float FindSparseValue(
   return 0.0;
 }
 
-// Returns t(i, feature) > bias, where t is the sparse tensor represented by
-// sparse_input_indices and sparse_input_values.
-template <typename T1, typename T2>
-bool DecideSparseNode(
-    const T1& sparse_input_indices,
-    const T2& sparse_input_values,
-    int32 i, int32 feature, float bias,
-    DataColumnTypes type = kDataFloat) {
-  return Decide(
-      FindSparseValue(sparse_input_indices, sparse_input_values, i, feature),
-      bias, type);
-}
-
 // Returns left/right decision between the input value and the threshold bias.
 // For floating point types, the decision is value > bias, but for
 // categorical data, it is value != bias.
 bool Decide(float value, float bias, DataColumnTypes type = kDataFloat);
+
+// Returns t(i, feature) > bias, where t is the sparse tensor represented by
+// sparse_input_indices and sparse_input_values.
+template <typename T1, typename T2>
+bool DecideSparseNode(const T1& sparse_input_indices,
+                      const T2& sparse_input_values, int32 i, int32 feature,
+                      float bias,
+                      const tensorforest::TensorForestDataSpec& spec) {
+  const float val =
+      FindSparseValue(sparse_input_indices, sparse_input_values, i, feature);
+  return Decide(val, bias, FindSparseFeatureSpec(feature, spec));
+}
 
 // Returns true if all the splits are initialized. Since they get initialized
 // in order, we can simply infer this from the last split.
@@ -205,6 +231,11 @@ inline bool CheckTensorBounds(OpKernelContext* context, const Tensor& tensor) {
   }
   return true;
 }
+
+void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
+                           float parent_sum, const float* parent_data,
+                           float valid_leaf_threshold, int num_outputs,
+                           std::vector<float>* mean);
 
 }  // namespace tensorforest
 }  // namespace tensorflow

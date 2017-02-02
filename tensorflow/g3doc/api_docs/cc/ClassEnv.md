@@ -78,9 +78,9 @@ The returned memory region can be accessed from many threads in parallel.
 
 The ownership of the returned ReadOnlyMemoryRegion is passed to the caller and the object should be deleted when is not used. The memory region object shouldn&apos;t live longer than the Env object.
 
-#### `bool tensorflow::Env::FileExists(const string &fname)` {#bool_tensorflow_Env_FileExists}
+#### `Status tensorflow::Env::FileExists(const string &fname)` {#Status_tensorflow_Env_FileExists}
 
-Returns true iff the named file exists.
+Returns OK if the named path exists and NOT_FOUND otherwise.
 
 
 
@@ -89,6 +89,18 @@ Returns true iff the named file exists.
 Stores in *result the names of the children of the specified directory. The names are relative to "dir".
 
 Original contents of *results are dropped.
+
+#### `virtual bool tensorflow::Env::MatchPath(const string &path, const string &pattern)=0` {#virtual_bool_tensorflow_Env_MatchPath}
+
+Returns true if the path matches the given pattern. The wildcards allowed in pattern are described in FileSystem::GetMatchingPaths.
+
+
+
+#### `Status tensorflow::Env::GetMatchingPaths(const string &pattern, std::vector< string > *results)` {#Status_tensorflow_Env_GetMatchingPaths}
+
+Given a pattern, stores in *results the set of paths that matches that pattern. *results is cleared.
+
+More details about `pattern` in FileSystem::GetMatchingPaths.
 
 #### `Status tensorflow::Env::DeleteFile(const string &fname)` {#Status_tensorflow_Env_DeleteFile}
 
@@ -110,11 +122,27 @@ PERMISSION_DENIED - dirname or some descendant is not writable
 
 UNIMPLEMENTED - Some underlying functions (like Delete) are not implemented
 
+#### `Status tensorflow::Env::RecursivelyCreateDir(const string &dirname)` {#Status_tensorflow_Env_RecursivelyCreateDir}
+
+Creates the specified directory and all the necessary subdirectories. Typical return codes.
+
+
+
+OK - successfully created the directory and sub directories, even if they were already created.
+
+PERMISSION_DENIED - dirname or some subdirectory is not writable.
+
 #### `Status tensorflow::Env::CreateDir(const string &dirname)` {#Status_tensorflow_Env_CreateDir}
 
-Creates the specified directory.
+Creates the specified directory. Typical return codes.
 
 
+
+OK - successfully created the directory.
+
+ALREADY_EXISTS - directory already exists.
+
+PERMISSION_DENIED - dirname is not writable.
 
 #### `Status tensorflow::Env::DeleteDir(const string &dirname)` {#Status_tensorflow_Env_DeleteDir}
 
@@ -156,15 +184,21 @@ Renames file src to target. If target already exists, it will be replaced.
 
 
 
+#### `string tensorflow::Env::GetExecutablePath()` {#string_tensorflow_Env_GetExecutablePath}
+
+Returns the absolute path of the current executable. It resolves symlinks if there is any.
+
+
+
 #### `virtual uint64 tensorflow::Env::NowMicros()=0` {#virtual_uint64_tensorflow_Env_NowMicros}
 
-Returns the number of micro-seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of micro-seconds since the Unix epoch.
 
 
 
 #### `virtual uint64 tensorflow::Env::NowSeconds()` {#virtual_uint64_tensorflow_Env_NowSeconds}
 
-Returns the number of seconds since some fixed point in time. Only useful for computing deltas of time.
+Returns the number of seconds since the Unix epoch.
 
 
 
@@ -199,6 +233,12 @@ Caller takes ownership of the result and must delete it eventually (the deletion
 
 
 #### `virtual Status tensorflow::Env::GetSymbolFromLibrary(void *handle, const char *symbol_name, void **symbol)=0` {#virtual_Status_tensorflow_Env_GetSymbolFromLibrary}
+
+
+
+
+
+#### `virtual string tensorflow::Env::FormatLibraryFileName(const string &name, const string &version)=0` {#virtual_string_tensorflow_Env_FormatLibraryFileName}
 
 
 

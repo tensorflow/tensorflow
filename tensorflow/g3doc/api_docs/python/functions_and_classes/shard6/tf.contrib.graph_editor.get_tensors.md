@@ -5,14 +5,14 @@ get all the tensors which are input or output of an op in the graph.
 ##### Args:
 
 
-*  <b>`graph`</b>: a tf.Graph.
+*  <b>`graph`</b>: a `tf.Graph`.
 
 ##### Returns:
 
-  A list of tf.Tensor.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if graph is not a tf.Graph.
+*  <b>`TypeError`</b>: if graph is not a `tf.Graph`.
 

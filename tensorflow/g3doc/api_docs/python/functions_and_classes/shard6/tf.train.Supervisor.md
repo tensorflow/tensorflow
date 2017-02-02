@@ -91,7 +91,7 @@ following values for the --master flag:
   details.
 
 * Specifying `'grpc://hostname:port'` requests a session that uses
-  the RPC interface to a specific , and also allows the in-process
+  the RPC interface to a specific host, and also allows the in-process
   master to access remote tensorflow workers. Often, it is
   appropriate to pass `server.target` (for some `tf.train.Server`
   named `server).
@@ -111,7 +111,7 @@ every 60 seconds, so we launch it with `sv.loop()`.
   ...
   sv = Supervisor(logdir='/tmp/mydir')
   with sv.managed_session(FLAGS.master) as sess:
-    sv.loop(60, print_loss, (sess))
+    sv.loop(60, print_loss, (sess, ))
     while not sv.should_stop():
       sess.run(my_train_op)
   ```
@@ -174,8 +174,8 @@ Create a `Supervisor`.
     ready to run the local_init_op.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from
-    `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
-    model is not checked for readiness before running local_init_op.
+    `tf.report_uninitialized_variables(tf.global_variables())`. If `None`,
+    the model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
@@ -195,7 +195,7 @@ Create a `Supervisor`.
     The directory will be created if it does not exist.
 *  <b>`summary_op`</b>: An `Operation` that returns a Summary for the event logs.
     Used by chief supervisors if a `logdir` was specified.  Defaults to the
-    operation returned from merge_all_summaries().  If `None`, summaries are
+    operation returned from summary.merge_all().  If `None`, summaries are
     not computed automatically.
 *  <b>`saver`</b>: A Saver object.  Used by chief supervisors if a `logdir` was
     specified.  Defaults to the saved returned by Saver().
@@ -203,7 +203,7 @@ Create a `Supervisor`.
 *  <b>`global_step`</b>: An integer Tensor of size 1 that counts steps.  The value
     from 'global_step' is used in summaries and checkpoint filenames.
     Default to the op named 'global_step' in the graph if it exists, is of
-    rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+    rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
     step is not recorded in summaries and checkpoint files.  Used by chief
     supervisors if a `logdir` was specified.
 *  <b>`save_summaries_secs`</b>: Number of seconds between the computation of

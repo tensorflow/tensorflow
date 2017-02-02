@@ -1,10 +1,10 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,9 +22,9 @@ from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.summary import summary
 from tensorflow.python.training import input as tf_input
 from tensorflow.python.training import queue_runner
 
@@ -131,8 +131,8 @@ class ParallelReader(io_ops.ReaderBase):
     for reader in self._readers:
       enqueue_ops.append(self._common_queue.enqueue(reader.read(queue)))
 
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(
-        self._common_queue, enqueue_ops))
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(self._common_queue, enqueue_ops))
 
     return self._common_queue.dequeue(name=name)
 
@@ -170,7 +170,9 @@ def parallel_read(data_sources,
                   shuffle=True,
                   dtypes=None,
                   capacity=256,
-                  min_after_dequeue=128):
+                  min_after_dequeue=128,
+                  seed=None,
+                  scope=None):
   """Reads multiple records in parallel from data_sources using n readers.
 
   It uses a ParallelReader to read from multiple files in  parallel using
@@ -199,37 +201,41 @@ def parallel_read(data_sources,
     capacity: integer, capacity of the common_queue.
     min_after_dequeue: integer, minimum number of records in the common_queue
       after dequeue. Needed for a good shuffle.
+    seed: A seed for RandomShuffleQueue.
+    scope: Optional name scope for the ops.
 
   Returns:
     key, value: a tuple of keys and values from the data_source.
   """
   data_files = get_data_files(data_sources)
-  with ops.name_scope('parallel_read'):
+  with ops.name_scope(scope, 'parallel_read'):
     filename_queue = tf_input.string_input_producer(
-        data_files, num_epochs=num_epochs, shuffle=shuffle)
+        data_files, num_epochs=num_epochs, shuffle=shuffle, seed=seed,
+        name='filenames')
     dtypes = dtypes or [tf_dtypes.string, tf_dtypes.string]
     if shuffle:
       common_queue = data_flow_ops.RandomShuffleQueue(
           capacity=capacity,
           min_after_dequeue=min_after_dequeue,
-          dtypes=dtypes)
+          dtypes=dtypes,
+          seed=seed,
+          name='common_queue')
     else:
-      common_queue = data_flow_ops.FIFOQueue(capacity=capacity, dtypes=dtypes)
+      common_queue = data_flow_ops.FIFOQueue(
+          capacity=capacity, dtypes=dtypes, name='common_queue')
 
-    logging_ops.scalar_summary('queue/%s/fraction_of_%d_full' %
-                               (common_queue.name, capacity),
-                               math_ops.to_float(common_queue.size()) *
-                               (1. / capacity))
+    summary.scalar('fraction_of_%d_full' % capacity,
+                   math_ops.to_float(common_queue.size()) * (1. / capacity))
 
-    return ParallelReader(reader_class,
-                          common_queue,
-                          num_readers=num_readers,
-                          reader_kwargs=reader_kwargs).read(filename_queue)
+    return ParallelReader(
+        reader_class,
+        common_queue,
+        num_readers=num_readers,
+        reader_kwargs=reader_kwargs).read(filename_queue)
 
 
-def single_pass_read(data_sources,
-                     reader_class,
-                     reader_kwargs=None):
+def single_pass_read(data_sources, reader_class, reader_kwargs=None,
+                     scope=None):
   """Reads sequentially the data_sources using the reader, doing a single pass.
 
   Args:
@@ -237,16 +243,15 @@ def single_pass_read(data_sources,
       /path/to/train@128, /path/to/train* or /tmp/.../train*
     reader_class: one of the io_ops.ReaderBase subclasses ex: TFRecordReader.
     reader_kwargs: an optional dict, of kwargs for the reader.
+    scope: Optional name scope for the ops.
 
   Returns:
     key, value: a tuple of keys and values from the data_source.
   """
   data_files = get_data_files(data_sources)
-  with ops.name_scope('single_pass_read'):
-    filename_queue = tf_input.string_input_producer(data_files,
-                                                    num_epochs=1,
-                                                    shuffle=False,
-                                                    capacity=1)
+  with ops.name_scope(scope, 'single_pass_read'):
+    filename_queue = tf_input.string_input_producer(
+        data_files, num_epochs=1, shuffle=False, capacity=1, name='filenames')
     reader_kwargs = reader_kwargs or {}
     return reader_class(**reader_kwargs).read(filename_queue)
 
@@ -275,5 +280,5 @@ def get_data_files(data_sources):
     else:
       data_files = [data_sources]
   if not data_files:
-    raise ValueError('No data files found in %s', data_sources)
+    raise ValueError('No data files found in %s' % (data_sources,))
   return data_files

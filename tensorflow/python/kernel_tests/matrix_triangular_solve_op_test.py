@@ -13,26 +13,38 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_triangular_solve."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.platform import test
 
 
-class MatrixTriangularSolveOpTest(tf.test.TestCase):
+class MatrixTriangularSolveOpTest(test.TestCase):
 
   def _verifySolveAllWays(self, x, y, batch_dims=None):
-    for lower in True, False:
-      for adjoint in True, False:
-        self._verifySolve(x,
-                          y,
-                          lower=lower,
-                          adjoint=adjoint,
-                          batch_dims=batch_dims)
+    for use_gpu in True, False:
+      for lower in True, False:
+        for adjoint in True, False:
+          self._verifySolve(
+              x,
+              y,
+              lower=lower,
+              adjoint=adjoint,
+              batch_dims=batch_dims,
+              use_gpu=use_gpu)
 
-  def _verifySolve(self, x, y, lower=True, adjoint=False, batch_dims=None):
+  def _verifySolve(self,
+                   x,
+                   y,
+                   lower=True,
+                   adjoint=False,
+                   batch_dims=None,
+                   use_gpu=False):
     for np_type in [np.float32, np.float64]:
       a = x.astype(np_type)
       b = y.astype(np_type)
@@ -52,26 +64,14 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
 
-      with self.test_session():
-        # Test the batch version, which works for ndim >= 2
-        tf_ans = tf.batch_matrix_triangular_solve(
+      with self.test_session(use_gpu=use_gpu):
+        tf_ans = linalg_ops.matrix_triangular_solve(
             a, b, lower=lower, adjoint=adjoint)
         out = tf_ans.eval()
-
         np_ans = np.linalg.solve(a_np, b)
-
         self.assertEqual(np_ans.shape, tf_ans.get_shape())
         self.assertEqual(np_ans.shape, out.shape)
         self.assertAllClose(np_ans, out)
-
-        if a.ndim == 2:
-          # Test the simple version
-          tf_ans = tf.matrix_triangular_solve(
-              a, b, lower=lower, adjoint=adjoint)
-          out = tf_ans.eval()
-          self.assertEqual(np_ans.shape, tf_ans.get_shape())
-          self.assertEqual(np_ans.shape, out.shape)
-          self.assertAllClose(np_ans, out)
 
   def testSolve(self):
     # 2x2 matrices, single right-hand side.
@@ -125,11 +125,8 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
     self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=True)
     self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=False)
     self._verifySolve(
-        np.empty([2, 0, 0]),
-        np.empty([2, 0, 0]),
-        lower=True,
-        batch_dims=[3, 2])
+        np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=True, batch_dims=[3, 2])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -23,7 +23,12 @@ py_library(
     srcs = ["input_data.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
@@ -63,6 +68,18 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "mnist_softmax",
+    srcs = [
+        "mnist_softmax.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "fully_connected_feed_test",
     size = "small",
@@ -72,7 +89,6 @@ py_test(
     args = [
         "--fake_data",
         "--max_steps=10",
-        "--train_dir=/tmp/mnist",
     ],
     main = "fully_connected_feed.py",
     srcs_version = "PY2AND3",

@@ -203,6 +203,42 @@ def _BiasAddGrad(op, received_grad):
   return (received_grad, gen_nn_ops.bias_add_grad(out_backprop=received_grad,
                                                   data_format=data_format))
 
+@ops.RegisterGradient("BiasAddGrad")
+def _BiasAddGradGrad(op, received_grad):
+  """Gradient for the BiasAddGrad op.
+
+  Args:
+    op: BiasAddGrad op for which we are calculating gradients.
+    received_grad: The gradients passed to the BiasAddGrad op.
+
+  Returns:
+    A single gradient Tensor for the input to BiasAddGrad (which
+    is the gradient of the bias term in BiasAdd)
+  """
+
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+
+  shape = array_ops.shape(op.inputs[0])
+  rank = array_ops.rank(op.inputs[0])
+  bias_shape = array_ops.shape(received_grad)
+
+  if data_format == b"NCHW":
+    expanded_shape = array_ops.concat([
+        array_ops.ones_like(shape[:-3]), bias_shape,
+        array_ops.ones_like(shape[-2:])
+    ], 0)
+    tile_mults = array_ops.concat([shape[:-3], [1], shape[-2:]], 0)
+  else:
+    expanded_shape = array_ops.concat(
+        [array_ops.ones_like(shape[:-1]), bias_shape], 0)
+    tile_mults = array_ops.concat([shape[:-1], [1]], 0)
+
+  expanded_grad = array_ops.reshape(received_grad, expanded_shape)
+  return array_ops.tile(expanded_grad, tile_mults)
+
 
 @ops.RegisterGradient("BiasAddV1")
 def _BiasAddGradV1(unused_bias_op, received_grad):
@@ -231,6 +267,15 @@ def _BiasAddGradV1(unused_bias_op, received_grad):
 @ops.RegisterGradient("Relu")
 def _ReluGrad(op, grad):
   return gen_nn_ops._relu_grad(grad, op.outputs[0])
+
+
+@ops.RegisterGradient("EluGrad")
+def _EluGradGrad(op, grad):
+  x = op.inputs[1]
+  return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
+          array_ops.where(
+              x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + 1),
+              array_ops.zeros(shape = array_ops.shape(x), dtype = x.dtype)))
 
 
 @ops.RegisterGradient("Relu6")
@@ -277,18 +322,33 @@ def _BroadcastMul(vec, mat):
 
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
 def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
+  """Gradient function for SoftmaxCrossEntropyWithLogits."""
   # grad_0 is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
   # There is no gradient for the labels
-  return _BroadcastMul(grad_0, op.outputs[1]), None
+  #
+  # Currently there is no way to take the second derivative of this op
+  # due to the fused implementation's interaction with tf.gradients(),
+  # so we make sure we prevent silently incorrect results by raising
+  # an error if the second derivative is requested via prevent_gradient.
+  softmax_grad_without_gradient = array_ops.prevent_gradient(op.outputs[1])
+  return _BroadcastMul(grad_0, softmax_grad_without_gradient), None
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
 def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
+  """Gradient function for SparseSoftmaxCrossEntropyWithLogits."""
   # grad_0 is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
   # There is no gradient for the labels
-  return _BroadcastMul(grad_0, op.outputs[1]), None
+  #
+  # Currently there is no way to take the second derivative of this op
+  # due to the fused implementation's interaction with tf.gradients(),
+  # so we make sure we prevent silently incorrect results by raising
+  # an error if the second derivative is requested via prevent_gradient.
+  sparse_softmax_grad_without_gradient = array_ops.prevent_gradient(
+      op.outputs[1])
+  return _BroadcastMul(grad_0, sparse_softmax_grad_without_gradient), None
 
 
 @ops.RegisterGradient("Conv2D")
@@ -435,6 +495,36 @@ def _BatchNormWithGlobalNormalizationGrad(op, grad):
   return dx, dm, dv, db, dg
 
 
+@ops.RegisterGradient("FusedBatchNorm")
+def _FusedBatchNormGrad(op, *grad):
+  """Return the gradients for the 3 inputs of BatchNorm.
+
+  Args:
+    op: The BatchNormOp for which we need to compute gradients.
+    *grad: An argument list for tensors of gradients wrt the outputs
+          with grad[0] as grad_y.
+
+  Returns:
+    grad_x: gradient for x, which is scale * rsqrt(variance + epsilon) *
+            [grad_y - mean(grad_y) - (x - mean(x)) *
+            mean(grad_y * (x - mean(x))) / (variance + epsilon)]
+
+    grad_scale: gradient for scale, which is sum(grad_y * (x - mean(x)) *
+                rsqrt(variance + epsilon))
+
+    grad_offset: gradient for offset, which is sum(grad_y)
+  """
+  return gen_nn_ops.fused_batch_norm_grad(
+      grad[0],
+      op.inputs[0],
+      op.inputs[1],
+      op.outputs[3],
+      op.outputs[4],
+      epsilon=op.get_attr("epsilon"),
+      data_format=op.get_attr("data_format"),
+      is_training=op.get_attr("is_training"))
+
+
 @ops.RegisterGradient("L2Loss")
 def _L2LossGrad(op, grad):
   """Return the gradients for L2Loss.
@@ -467,7 +557,7 @@ def _TopKGrad(op, grad, _):
 
   ind_lastdim = array_ops.gather(ind_shape, array_ops.size(ind_shape) - 1)
   # Flatten indices to 2D.
-  ind_2d = array_ops.reshape(op.outputs[1], array_ops.pack([-1, ind_lastdim]))
+  ind_2d = array_ops.reshape(op.outputs[1], array_ops.stack([-1, ind_lastdim]))
 
   in_lastdim = array_ops.gather(in_shape, array_ops.size(in_shape) - 1)
   outerdim = array_ops.shape(ind_2d)[0]

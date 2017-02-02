@@ -18,7 +18,7 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
@@ -53,17 +53,20 @@
 #                      additional flag --copt=-mavx or --copt=-mavx2, to
 #                      perform AVX or AVX2 builds, respectively. This requires
 #                      AVX- or AVX2-compatible CPUs.
+#   TF_BUILD_ENABLE_XLA:
+#                      If it is set to any non-empty value that is not "0",
+#                      will enable XLA and run XLA tests.
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
-#                      //tensorflow/...
+#                      //tensorflow/... -//tensorflow/compiler
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
-#   TF_BUILD_SERIAL_TESTS:
-#                      Build parallely, but test serially
-#                      (i.e., bazel test --job=1), potentially useful for
-#                      builds where the tests cannot be run in parallel due to
-#                      resource contention (e.g., for GPU builds)
+#   TF_GPU_COUNT:
+#                      Run this many parallel tests for serial builds.
+#                      For now, only can be edited for PIP builds.
+#                      TODO(gunan): Find a way to pass this environment variable
+#                      to the script bazel runs (using --run_under).
 #   TF_BUILD_TEST_TUTORIALS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
@@ -104,7 +107,6 @@ die () {
   exit 1
 }
 
-
 ##########################################################
 # Default configuration
 CI_BUILD_DIR="tensorflow/tools/ci_build"
@@ -123,16 +125,27 @@ DO_DOCKER=1
 BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
 BAZEL_CLEAN_CMD="bazel clean"
-BAZEL_SERIAL_FLAG="--jobs=1"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
+ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
+
+TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
-BAZEL_TARGET="//tensorflow/..."
+EXTRA_PARAMS=""
+
+export TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
+if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
+  BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
+else
+  BAZEL_TARGET="//tensorflow/compiler/..."
+  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
+fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
 
@@ -152,6 +165,7 @@ if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
   TF_BUILD_MAVX=$(to_lower ${TF_BUILD_MAVX})
 fi
 
+
 # Print parameter values
 echo "Required build parameters:"
 echo "  TF_BUILD_CONTAINER_TYPE=${TF_BUILD_CONTAINER_TYPE}"
@@ -166,12 +180,13 @@ echo "  TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
 echo "  TF_BUILD_APPEND_ARGUMENTS=${TF_BUILD_APPEND_ARGUMENTS}"
 echo "  TF_BUILD_BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}"
 echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
-echo "  TF_BUILD_SERIAL_TESTS=${TF_BUILD_SERIAL_TESTS}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
 echo "  TF_BUILD_OPTIONS=${TF_BUILD_OPTIONS}"
+echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
+
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
 # is available on path
@@ -236,14 +251,12 @@ elif [[ ${CTYPE} == "gpu" ]]; then
       echo ""
     fi
   fi
-elif [[ ${CTYPE} == "android" ]]; then
+elif [[ ${CTYPE} == "android" ]] || [[ ${CTYPE} == "android_full" ]]; then
   :
 else
   die "Unrecognized value in TF_BUILD_CONTAINER_TYPE: "\
 "\"${TF_BUILD_CONTAINER_TYPE}\""
 fi
-
-EXTRA_PARAMS=""
 
 # Determine if this is a benchmarks job
 RUN_BENCHMARKS=0
@@ -292,6 +305,9 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
+    MAVXDBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
+      ;;
     MAVX2)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
       ;;
@@ -319,6 +335,11 @@ else
   EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
 fi
 
+# For any "tool" dependencies in genrules, Bazel will build them for host
+# instead of the target configuration. We can save some build time by setting
+# this flag, and it only affects a few tests.
+EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
+
 # Process PIP install-test option
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
    [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
@@ -328,30 +349,21 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
   fi
 
   if [[ ${CTYPE} == "cpu" ]] || \
-     [[ ${CTYPE} == "debian.jessie.cpu" ]] || \
-     [[ ${CTYPE} == "gpu" ]]; then
-    # Run Bazel
-    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-    NO_PIP_MAIN_CMD=$(str_strip "${NO_PIP_MAIN_CMD}")
-
-    if [[ ! -z "${TF_BUILD_SERIAL_TESTS}" ]] &&
-       [[ "${TF_BUILD_SERIAL_TESTS}" != "0" ]]; then
-      # Break the operation into two steps: build and test
-      # The 1st (build) step will be done in parallel, as default
-      # But the 2nd (test) step will be done serially.
-
-      BUILD_ONLY_CMD="${BAZEL_BUILD_ONLY_CMD} ${OPT_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Build-only command: ${BUILD_ONLY_CMD}"
-
-      NO_PIP_MAIN_CMD="${BUILD_ONLY_CMD} && "\
-"${BAZEL_CMD} ${OPT_FLAG} ${BAZEL_SERIAL_FLAG} "\
-"${EXTRA_ARGS} ${BAZEL_TARGET}"
-      echo "Parallel-build + serial-test command: ${NO_PIP_MAIN_CMD}"
-    fi
+     [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+    # CPU only command, fully parallel.
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
+"${BAZEL_TARGET}"
+  elif [[ ${CTYPE} == "gpu" ]]; then
+    # GPU only command, run as many jobs as the GPU count only.
+    NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
+"--local_test_jobs=${TF_GPU_COUNT} "\
+"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
+    # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
+  elif [[ ${CTYPE} == "android_full" ]]; then
+    # Run android specific script for full android build.
+    NO_PIP_MAIN_CMD="${ANDROID_FULL_CMD} ${OPT_FLAG} "
   fi
 
 fi
@@ -506,6 +518,13 @@ fi
 
 chmod +x ${TMP_SCRIPT}
 
+# Map TF_BUILD container types to containers we actually have.
+if [[ "${CTYPE}" == "android_full" ]]; then
+  CONTAINER="android"
+else
+  CONTAINER=${CTYPE}
+fi
+
 FAILURE=0
 if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
   # Do a dry run: just print the final command
@@ -513,7 +532,7 @@ if [[ ! -z "${TF_BUILD_DRY_RUN}" ]] && [[ ${TF_BUILD_DRY_RUN} != "0" ]]; then
 else
   # Actually run the command
   if [[ "${DO_DOCKER}" == "1" ]]; then
-    ${DOCKER_MAIN_CMD} ${CTYPE} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
+    ${DOCKER_MAIN_CMD} ${CONTAINER} ${DOCKERFILE_FLAG} /tmp/tf_build.sh
   else
     ${TMP_SCRIPT}
   fi

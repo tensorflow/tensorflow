@@ -1,4 +1,4 @@
-### `tf.train.import_meta_graph(meta_graph_or_file, clear_devices=False)` {#import_meta_graph}
+### `tf.train.import_meta_graph(meta_graph_or_file, clear_devices=False, import_scope=None, **kwargs)` {#import_meta_graph}
 
 Recreates a Graph saved in a `MetaGraphDef` proto.
 
@@ -55,8 +55,11 @@ device assignments have not changed.
 
 *  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
     the path) containing a `MetaGraphDef`.
-*  <b>`clear_devices`</b>: Boolean which controls whether to clear device information
-    from graph_def. Default false.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during import.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to add. Only used when
+    initializing from protocol buffer.
+*  <b>`**kwargs`</b>: Optional keyed arguments.
 
 ##### Returns:
 

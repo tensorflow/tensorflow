@@ -2,6 +2,8 @@
 
 BatchToSpace for 4-D tensors of type T.
 
+This is a legacy version of the more general BatchToSpaceND.
+
 Rearranges (permutes) data from batch into blocks of spatial data, followed by
 cropping. This is the reverse transformation of SpaceToBatch. More specifically,
 this op outputs a copy of the input tensor where values from the `batch`
@@ -15,7 +17,7 @@ followed by cropping along the `height` and `width` dimensions.
     `[batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
       depth]`. Note that the batch size of the input tensor must be divisible by
     `block_size * block_size`.
-*  <b>`crops`</b>: A `Tensor` of type `int32`.
+*  <b>`crops`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
     how many elements to crop from the intermediate result across the spatial
     dimensions as follows:

@@ -215,6 +215,27 @@ class Stream {
   //
   // See DnnSupport::* for comments on the following methods.
 
+  Stream &ThenBatchNormalizationForward(
+      const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
+      const DeviceMemory<float> &offset,
+      const DeviceMemory<float> &estimated_mean,
+      const DeviceMemory<float> &estimated_variance,
+      const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      DeviceMemory<float> *y, DeviceMemory<float> *batch_mean,
+      DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
+      DeviceMemory<float> *saved_inv_var, bool is_training,
+      std::function<const DeviceMemory<float> &()> var_to_inv_var,
+      std::function<void()> inv_var_to_var);
+
+  Stream &ThenBatchNormalizationBackward(
+      const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
+      const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
+      const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
+      DeviceMemory<float> *offset_backprop);
+
   // TODO(leary) add double-precision version of this interface.
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,
@@ -223,6 +244,26 @@ class Stream {
                        const dnn::ConvolutionDescriptor &convolution_descriptor,
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
+
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
+
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int16> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
 
   Stream &ThenConvolveWithScratch(
       const dnn::BatchDescriptor &input_descriptor,
@@ -473,13 +514,67 @@ class Stream {
                        const DeviceMemory<float> &input_data,
                        DeviceMemory<float> *output_data);
 
+  // Same as ThenActivate, but also takes an options argument that can be used
+  // for platform-specific option flags.
+  Stream &ThenActivateWithOptions(dnn::ActivationMode activation_mode,
+                                  const dnn::BatchDescriptor &dimensions,
+                                  const DeviceMemory<float> &input_data,
+                                  DeviceMemory<float> *output_data,
+                                  uint64 options);
+
   Stream &ThenDepthConcatenate(
       port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
       port::ArraySlice<const DeviceMemory<float> *> input_data,
       DeviceMemory<float> *output_data);
 
+  Stream &ThenSpaceConcatenate(
+      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
+      port::ArraySlice<const DeviceMemory<float> *> input_data,
+      DeviceMemory<float> *output_data,
+      dnn::SpaceConcatenateMode concat_direction);
+
+  // Change the layout of the data by shrinking one dimension (or set of
+  // dimensions) and growing another dimension (or set of dimensions), while
+  // keeping the total number of data elements constant, and maintaining the
+  // current data ordering.
+  Stream &ThenReshape(const dnn::BatchDescriptor &input_dimensions,
+                      const DeviceMemory<float> &input_data,
+                      const dnn::BatchDescriptor &output_dimensions,
+                      DeviceMemory<float> *output_data);
+
+  // Depth to space takes an X by Y image with depth D*M² and changes it to an
+  // MX x MY image with depth D. Each input location (x,y) with depth D*M² in
+  // the input image is changed to an MxM contiguous area in the output image,
+  // with the values being laid out in raster order specified by
+  // DepthToSpaceLayout, and will have a new depth of D.
+  // See the DoDepthToSpace comment for more information.
+  Stream &ThenDepthToSpace(const dnn::BatchDescriptor &input_dimensions,
+                           const DeviceMemory<float> &input_data,
+                           const dnn::DepthToSpaceLayout &depth_to_space_layout,
+                           const int sqrt_depth_reduction,
+                           DeviceMemory<float> *output_data);
+
+  // Space to depth is the inverse of depth to space. Space to depth takes each
+  // non-overlapping M by M patch (in the X and Y dimensions) with depth D of
+  // the input, and transforms it to a 1 by 1 patch with depth D*M². If the
+  // input has size (MX, MY, D), the output has size (X, Y, D*M²). The number of
+  // data elements is not changed.
+  Stream &ThenSpaceToDepth(const dnn::BatchDescriptor &input_dimensions,
+                           const DeviceMemory<float> &input_data,
+                           const dnn::DepthToSpaceLayout &space_to_depth_layout,
+                           const int sqrt_depth_increase,
+                           DeviceMemory<float> *output_data);
+
   Stream &ThenElementwiseOperate(
       dnn::ElementwiseOperation operation,
+      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
+      port::ArraySlice<const DeviceMemory<float> *> input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      DeviceMemory<float> *output_data);
+
+  Stream &ThenElementwiseOperateScaledQuantized(
+      dnn::ElementwiseOperation operation,
+      port::ArraySlice<int> input_multiplicands, int output_divisor,
       port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
       port::ArraySlice<const DeviceMemory<float> *> input_data,
       const dnn::BatchDescriptor &output_dimensions,
@@ -494,6 +589,14 @@ class Stream {
                       const DeviceMemory<float> &input_data, int64 left_trim,
                       int64 right_trim, int64 top_trim, int64 bottom_trim,
                       DeviceMemory<float> *output_data);
+
+  // Grows the input tensor by replicating the X and Y dimensions. The batch and
+  // depth/feature_map dimensions are unchanged. Currently, the input tensor is
+  // limited to X=1 and Y=1.
+  Stream &ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
+                          const DeviceMemory<float> &input_data,
+                          int64 replicate_x, int64 replicate_y,
+                          DeviceMemory<float> *output_data);
 
   // See DnnSupport::DoMemcpyD2HQuantized.
   Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
@@ -527,6 +630,14 @@ class Stream {
         host_src.data(), host_src.size() * sizeof(ElementType),
         Quantization<ElementType>::kModeId, gpu_unquantized_dst);
   }
+
+  // See DnnSupport::DoCopyHostBuffer2Device.
+  Stream &ThenCopyHostBuffer2Device(HostBuffer *buffer_src,
+                                    DeviceMemory<float> *gpu_unquantized_dst);
+
+  // See DnnSupport::DoCopyDevice2HostBuffer.
+  Stream &ThenCopyDevice2HostBuffer(
+      const DeviceMemory<float> &gpu_unquantized_src, HostBuffer *buffer_dst);
 
   /////////////////
   // BLAS support
@@ -1505,6 +1616,12 @@ class Stream {
   }
 
   void SetError() { CheckError(false /* = operation_retcode */); }
+
+  void SetErrorAndLogNoDnnSupport() {
+    SetError();
+    LOG(WARNING) << "attempting to perform DNN operation using StreamExecutor "
+                    "without DNN support";
+  }
 
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;

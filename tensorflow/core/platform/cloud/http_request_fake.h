@@ -37,30 +37,42 @@ class FakeHttpRequest : public HttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)
-      : FakeHttpRequest(request, response, Status::OK(), nullptr) {}
+      : FakeHttpRequest(request, response, Status::OK(), nullptr, {}, 200) {}
+
+  /// Return the response with headers for the given request.
+  FakeHttpRequest(const string& request, const string& response,
+                  const std::map<string, string>& response_headers)
+      : FakeHttpRequest(request, response, Status::OK(), nullptr,
+                        response_headers, 200) {}
 
   /// \brief Return the response for the request and capture the POST body.
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
   FakeHttpRequest(const string& request, const string& response,
                   string* captured_post_body)
-      : FakeHttpRequest(request, response, Status::OK(), captured_post_body) {}
+      : FakeHttpRequest(request, response, Status::OK(), captured_post_body, {},
+                        200) {}
 
   /// \brief Return the response and the status for the given request.
   FakeHttpRequest(const string& request, const string& response,
-                  Status response_status)
-      : FakeHttpRequest(request, response, response_status, nullptr) {}
+                  Status response_status, uint64 response_code)
+      : FakeHttpRequest(request, response, response_status, nullptr, {},
+                        response_code) {}
 
   /// \brief Return the response and the status for the given request
   ///  and capture the POST body.
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
   FakeHttpRequest(const string& request, const string& response,
-                  Status response_status, string* captured_post_body)
+                  Status response_status, string* captured_post_body,
+                  const std::map<string, string>& response_headers,
+                  uint64 response_code)
       : expected_request_(request),
         response_(response),
         response_status_(response_status),
-        captured_post_body_(captured_post_body) {}
+        captured_post_body_(captured_post_body),
+        response_headers_(response_headers),
+        response_code_(response_code) {}
 
   Status Init() override { return Status::OK(); }
   Status SetUri(const string& uri) override {
@@ -83,18 +95,15 @@ class FakeHttpRequest : public HttpRequest {
     actual_request_ += "Delete: yes\n";
     return Status::OK();
   }
-  Status SetPostRequest(const string& body_filepath) override {
+  Status SetPutFromFile(const string& body_filepath, size_t offset) override {
     std::ifstream stream(body_filepath);
-    string content((std::istreambuf_iterator<char>(stream)),
-                   std::istreambuf_iterator<char>());
-    if (captured_post_body_) {
-      *captured_post_body_ = content;
-    } else {
-      actual_request_ += "Post body: " + content + "\n";
-    }
+    const string& content = string(std::istreambuf_iterator<char>(stream),
+                                   std::istreambuf_iterator<char>())
+                                .substr(offset);
+    actual_request_ += "Put body: " + content + "\n";
     return Status::OK();
   }
-  Status SetPostRequest(const char* buffer, size_t size) override {
+  Status SetPostFromBuffer(const char* buffer, size_t size) override {
     if (captured_post_body_) {
       *captured_post_body_ = string(buffer, size);
     } else {
@@ -103,7 +112,11 @@ class FakeHttpRequest : public HttpRequest {
     }
     return Status::OK();
   }
-  Status SetPostRequest() override {
+  Status SetPutEmptyBody() override {
+    actual_request_ += "Put: yes\n";
+    return Status::OK();
+  }
+  Status SetPostEmptyBody() override {
     if (captured_post_body_) {
       *captured_post_body_ = "<empty>";
     } else {
@@ -111,26 +124,23 @@ class FakeHttpRequest : public HttpRequest {
     }
     return Status::OK();
   }
-  Status SetResultBuffer(char* scratch, size_t size,
-                         StringPiece* result) override {
-    scratch_ = scratch;
-    size_ = size;
-    result_ = result;
+  Status SetResultBuffer(std::vector<char>* buffer) override {
+    buffer->clear();
+    buffer_ = buffer;
     return Status::OK();
   }
   Status Send() override {
     EXPECT_EQ(expected_request_, actual_request_) << "Unexpected HTTP request.";
-    if (scratch_ && result_) {
-      auto actual_size = std::min(response_.size(), size_);
-      memcpy(scratch_, response_.c_str(), actual_size);
-      *result_ = StringPiece(scratch_, actual_size);
+    if (buffer_) {
+      buffer_->insert(buffer_->begin(), response_.c_str(),
+                      response_.c_str() + response_.size());
     }
     return response_status_;
   }
 
   // This function just does a simple replacing of "/" with "%2F" instead of
   // full url encoding.
-  virtual string EscapeString(const string& str) override {
+  string EscapeString(const string& str) override {
     const string victim = "/";
     const string encoded = "%2F";
 
@@ -143,15 +153,22 @@ class FakeHttpRequest : public HttpRequest {
     return copy_str;
   }
 
+  string GetResponseHeader(const string& name) const override {
+    const auto header = response_headers_.find(name);
+    return header != response_headers_.end() ? header->second : "";
+  }
+
+  virtual uint64 GetResponseCode() const override { return response_code_; }
+
  private:
-  char* scratch_ = nullptr;
-  size_t size_ = 0;
-  StringPiece* result_ = nullptr;
+  std::vector<char>* buffer_ = nullptr;
   string expected_request_;
   string actual_request_;
   string response_;
   Status response_status_;
   string* captured_post_body_ = nullptr;
+  std::map<string, string> response_headers_;
+  uint64 response_code_ = 0;
 };
 
 /// Fake HttpRequest factory for testing.

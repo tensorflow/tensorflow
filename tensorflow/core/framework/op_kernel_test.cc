@@ -334,6 +334,36 @@ TEST_F(OpKernelTest, SaveTempTrue) {
   delete params.device;
 }
 
+TEST_F(OpKernelTest, InputDtype) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  params.record_tensor_accesses = false;
+  params.device = new DummyDevice(env, params.record_tensor_accesses);
+  Status status;
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({}));
+  Tensor b(DT_INT32, TensorShape({}));
+  Tensor c(DT_UINT8, TensorShape({}));
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
+                                            TensorValue(&c)};
+  params.inputs = &inputs;
+  OpKernelContext* ctx = new OpKernelContext(&params);
+
+  DataType dtype;
+  EXPECT_FALSE(ctx->input_dtype("non_existent_input", &dtype).ok());
+  ASSERT_TRUE(ctx->input_dtype("a", &dtype).ok());
+  EXPECT_EQ(dtype, DT_FLOAT);
+  ASSERT_TRUE(ctx->input_dtype("b", &dtype).ok());
+  EXPECT_EQ(dtype, DT_INT32);
+  delete ctx;
+  delete params.device;
+}
+
 class OpKernelBuilderTest : public ::testing::Test {
  protected:
   // Each attr is described by a "name|type|value".
@@ -381,7 +411,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     DeviceTypeVector devices;
     TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
     bool found = false;
-    for (DeviceType dt : devices) {
+    for (const DeviceType& dt : devices) {
       if (dt == device_type) {
         found = true;
       }
@@ -414,7 +444,7 @@ class OpKernelBuilderTest : public ::testing::Test {
       DeviceTypeVector devices;
       if (errors::IsNotFound(status)) {
         TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
-        for (DeviceType dt : devices) {
+        for (const DeviceType& dt : devices) {
           EXPECT_NE(dt, device_type);
         }
       } else {

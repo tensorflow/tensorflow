@@ -8,7 +8,7 @@ To create a cluster with two jobs and five tasks, you specify the
 mapping from job names to lists of network addresses (typically
 hostname-port pairs).
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                            "worker1.example.com:2222",
                                            "worker2.example.com:2222"],
@@ -21,7 +21,7 @@ to network addresses. This enables a server to be configured without
 needing to know the identity of (for example) all other worker
 tasks:
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
                                 "ps": ["ps0.example.com:2222",
                                        "ps1.example.com:2222"]})
@@ -55,6 +55,20 @@ addresses.
 #### Other Methods
 - - -
 
+#### `tf.train.ClusterSpec.__bool__()` {#ClusterSpec.__bool__}
+
+
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__eq__(other)` {#ClusterSpec.__eq__}
+
+
+
+
+- - -
+
 #### `tf.train.ClusterSpec.__init__(cluster)` {#ClusterSpec.__init__}
 
 Creates a `ClusterSpec`.
@@ -72,6 +86,20 @@ Creates a `ClusterSpec`.
 
 *  <b>`TypeError`</b>: If `cluster` is not a dictionary mapping strings to lists
     of strings, and not a `tf.train.ClusterDef` protobuf.
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__ne__(other)` {#ClusterSpec.__ne__}
+
+
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__nonzero__()` {#ClusterSpec.__nonzero__}
+
+
 
 
 - - -

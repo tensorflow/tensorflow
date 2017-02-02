@@ -29,6 +29,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Name of the attribute used to encode node colocation constraints.
+//
+// Nodes can be co-located on the same device. Desire for explicit co-location
+// is described by list(string) attribute containing the name of colocation
+// groups.
+extern const char* const kColocationAttrName;
+
+// String prefix applied to the operation name for colocation constraints.
+extern const char* const kColocationGroupPrefix;
+
 // Produce a human-readable version of a NodeDef that is more concise
 // than a text-format proto.
 string SummarizeNodeDef(const NodeDef& node_def);
@@ -54,6 +64,14 @@ void AddNodeAttr(StringPiece name, std::initializer_list<T> value,
   SetAttrValue(value, &attr_value);
   node_def->mutable_attr()->insert(
       AttrValueMap::value_type(name.ToString(), attr_value));
+}
+
+// Adds an attr to an attr value map.
+template <class T>
+void AddAttr(StringPiece name, T&& value, AttrValueMap* map) {
+  AttrValue attr_value;
+  SetAttrValue(value, &attr_value);
+  map->insert(AttrValueMap::value_type(name.ToString(), attr_value));
 }
 
 class AttrSlice {
@@ -131,6 +149,9 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
+
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<NameAttrList>* value);  // type: "list(func)"
 
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()

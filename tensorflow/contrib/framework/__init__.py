@@ -24,12 +24,12 @@
 @@is_strictly_increasing
 @@is_tensor
 @@reduce_sum_n
-@@safe_embedding_lookup_sparse
 @@with_shape
 @@with_same_shape
 
 ## Deprecation
 @@deprecated
+@@deprecated_args
 @@deprecated_arg_values
 
 ## Arg_Scope
@@ -60,6 +60,14 @@
 @@model_variable
 @@variable
 @@VariableDeviceChooser
+@@zero_initializer
+
+## Checkpoint utilities
+
+@@load_checkpoint
+@@list_variables
+@@load_variable
+@@init_from_checkpoint
 """
 
 from __future__ import absolute_import
@@ -72,5 +80,6 @@ import sys
 from tensorflow.contrib.framework.python.framework import *
 from tensorflow.contrib.framework.python.ops import *
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

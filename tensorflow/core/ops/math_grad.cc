@@ -62,7 +62,7 @@ REGISTER_OP_GRADIENT("Neg", NegGrad);
 Status InvGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"y"}, "Inv", {"x"}},
+      {{"y"}, "Reciprocal", {"x"}},
       {{"y2"}, "Square", {"y"}, {}, {"dy"}},
       {{"y2_neg"}, "Neg", {"y2"}},
       {{"dx"}, "Mul", {"dy", "y2_neg"}}
@@ -70,6 +70,7 @@ Status InvGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Inv", InvGrad);
+REGISTER_OP_GRADIENT("Reciprocal", InvGrad);
 
 Status SquareGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -87,7 +88,7 @@ Status SqrtGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
       {{"y"}, "Sqrt", {"x"}},
-      {{"y_inv"}, "Inv", {"y"}, {}, {"dy"}},
+      {{"y_inv"}, "Reciprocal", {"y"}, {}, {"dy"}},
       FDH::Const("const", 0.5f),
       {{"half"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
       {{"a"}, "Mul", {"half", "y_inv"}},  // .5 * 1/y
@@ -100,7 +101,7 @@ REGISTER_OP_GRADIENT("Sqrt", SqrtGrad);
 Status RsqrtGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"x_inv"}, "Inv", {"x"}, {}, {"dy"}},
+      {{"x_inv"}, "Reciprocal", {"x"}, {}, {"dy"}},
       {{"y"}, "Rsqrt", {"x"}},
       FDH::Const("const", -.5f),
       {{"neghalf"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
@@ -122,15 +123,37 @@ Status ExpGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Exp", ExpGrad);
 
+Status Expm1Grad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"y"}, "Exp", {"x"}},
+      {{"dx"}, "Mul", {"dy", "y"}},           // dy * y
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Expm1", Expm1Grad);
+
 Status LogGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      {{"x_inv"}, "Inv", {"x"}, {}, {"dy"}},
+      {{"x_inv"}, "Reciprocal", {"x"}, {}, {"dy"}},
       {{"dx"}, "Mul", {"dy", "x_inv"}},           // dy * 1/x
   });
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Log", LogGrad);
+
+Status Log1pGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      FDH::Const("const", 1.0f),
+      {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+      {{"a"}, "Add", {"one", "x"}},
+      {{"dx"}, "Div", {"dy", "a"}},           // dy / (1 + x)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Log1p", Log1pGrad);
 
 Status TanhGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -201,7 +224,7 @@ Status AcosGrad(const AttrSlice& attrs, FunctionDef* g) {
     {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
     {{"a"}, "Sub", {"one", "x2"}}, // 1 - x^2
     {{"b"}, "Sqrt", {"a"}},
-    {{"inv"}, "Inv", {"b"}},
+    {{"inv"}, "Reciprocal", {"b"}},
     {{"neg"}, "Neg", {"inv"}},
     {{"dx"}, "Mul", {"dy", "neg"}}
   });
@@ -217,7 +240,7 @@ Status AsinGrad(const AttrSlice& attrs, FunctionDef* g) {
     {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
     {{"a"}, "Sub", {"one", "x2"}}, // 1 - x^2
     {{"b"}, "Sqrt", {"a"}},
-    {{"inv"}, "Inv", {"b"}},
+    {{"inv"}, "Reciprocal", {"b"}},
     {{"dx"}, "Mul", {"dy", "inv"}}
   });
   // clang-format on
@@ -231,7 +254,7 @@ Status AtanGrad(const AttrSlice& attrs, FunctionDef* g) {
     FDH::Const("const", 1.0f),
     {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
     {{"a"}, "Add", {"one", "x2"}}, // 1 + x^2
-    {{"inv"}, "Inv", {"a"}},
+    {{"inv"}, "Reciprocal", {"a"}},
     {{"dx"}, "Mul", {"dy", "inv"}}
   });
   // clang-format on
@@ -242,7 +265,7 @@ Status TanGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
     {{"cosx"}, "Cos", {"x"}},
-    {{"secx"}, "Inv", {"cosx"}},
+    {{"secx"}, "Reciprocal", {"cosx"}},
     {{"secx2"}, "Square", {"secx"}},
     {{"dx"}, "Mul", {"dy", "secx2"}}
   });
@@ -291,6 +314,7 @@ Status GradForBinaryCwise(FunctionDef* g, std::vector<FDH::Node> body) {
   };
   nodes.insert(nodes.end(), body.begin(), body.end());
   std::vector<FDH::Node> reshapes = {
+    {{"rx", "ry"}, "BroadcastGradientArgs", {"sx", "sy"}},
     {{"sum_gx"}, "Sum", {"gx", "rx"}},
     {{"dx"}, "Reshape", {"sum_gx", "sx"}},
     {{"sum_gy"}, "Sum", {"gy", "ry"}},
@@ -300,12 +324,11 @@ Status GradForBinaryCwise(FunctionDef* g, std::vector<FDH::Node> body) {
 
   // clang-format on
   for (auto& n : nodes) {
-    if (n.attr.empty()) {
+    // "BroadcastGradientArgs" doesn't need any attrs.
+    if (n.attr.empty() && n.op != "BroadcastGradientArgs") {
       n.attr = {{"T", "$T"}};
     }
   }
-  // "BroadcastGradientArgs" doesn't need any attrs.
-  nodes.push_back({{"rx", "ry"}, "BroadcastGradientArgs", {"sx", "sy"}});
   *g = FDH::Define(
       // Arg defs
       {"x: T", "y: T", "dz: T"},
@@ -372,6 +395,19 @@ Status DivGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Div", DivGrad);
+
+Status RealDivGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"gx"}, "RealDiv", {"dz", "y"}},
+      {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dz"}},
+      {{"nx_y2"}, "RealDiv", {"nx", "y2"}},
+      {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("RealDiv", RealDivGrad);
 
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -482,18 +518,14 @@ Status GradForReductionOp(FunctionDef* g, std::vector<FDH::Node> body) {
    FDH::Const("zero", 0),
    FDH::Const("one", 1),
    // stitch_idx0 = Range(0, x_rank, 1)
-   {{"stitch_idx1"}, "Identity", {"i"}, {{"T", DT_INT32}}},
-   {{"stitch_idx"}, "_ListToArray", {"stitch_idx0", "stitch_idx1"},
-    {{"Tin", DataTypeSlice{DT_INT32, DT_INT32}},
-     {"T", DT_INT32}, {"N", 2}}},
-   {{"stitch_val0"}, "Identity", {"x_shape"}, {{"T", DT_INT32}}},
-   {{"stitch_val1"}, "Fill", {"i_shape", "one"}, {{"T", DT_INT32}}},
-   {{"stitch_val"}, "_ListToArray", {"stitch_val0", "stitch_val1"},
-    {{"Tin", DataTypeSlice{DT_INT32, DT_INT32}},
-     {"T", DT_INT32}, {"N", 2}}},
-   {{"y_shape"}, "DynamicStitch", {"stitch_idx", "stitch_val"},
-                 {{"N", 2}, {"T", DT_INT32}}},
-   {{"tile_scaling"}, "Div", {"x_shape", "y_shape"}, {{"T", DT_INT32}}},
+   {{"stitch_val1"}, "Fill", {"i_shape:output:0", "one:output:0"},
+    {{"T", DT_INT32}}},
+   {{"y_shape"}, "DynamicStitch",
+    {"stitch_idx0:output:0", "i",
+     "x_shape:output:0", "stitch_val1:output:0"},
+    {{"N", 2}, {"T", DT_INT32}}},
+   {{"tile_scaling"}, "Div", {"x_shape:output:0", "y_shape:merged:0"},
+    {{"T", DT_INT32}}},
    {{"di"}, "ZerosLike", {"i"}, {{"T", DT_INT32}}}
   };
   // clang-format on
@@ -504,41 +536,46 @@ Status GradForReductionOp(FunctionDef* g, std::vector<FDH::Node> body) {
     }
   }
   // "Range" doesn't need any attr.
-  nodes.push_back({{"stitch_idx0"}, "Range", {"zero", "x_rank", "one"}, {}});
-  *g = FDH::Define(
-      // Arg defs
-      {"x:T", "i:int32", "dy:T"},
-      // Ret val defs
-      {"dx:T", "di:int32"},
-      // Attr defs
-      {{"T: {half, float, double}"}},
-      // Nodes
-      nodes);
+  nodes.push_back({{"stitch_idx0"},
+                   "Range",
+                   {"zero:output:0", "x_rank:output:0", "one:output:0"},
+                   {}});
+  *g = FDH::Create("_",
+                   // Input defs
+                   {"x:T", "i:int32", "dy:T"},
+                   // Ret val defs
+                   {"dx:T", "di:int32"},
+                   // Attr defs
+                   {{"T: {half, float, double}"}},
+                   // Nodes
+                   nodes,
+                   // Return values
+                   {{"dx", "dx:output:0"}, {"di", "di:y:0"}});
   return Status::OK();
 }
 
 Status SumGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForReductionOp(g, {
-    {{"dy_reshaped"}, "Reshape", {"dy", "y_shape"}},
-    {{"dx"}, "Tile", {"dy_reshaped", "tile_scaling"}},
+    {{"dy_reshaped"}, "Reshape", {"dy", "y_shape:merged:0"}},
+    {{"dx"}, "Tile", {"dy_reshaped:output:0", "tile_scaling:z:0"}},
   });
   // clang-format on
-  return Status::OK();
 }
 REGISTER_OP_GRADIENT("Sum", SumGrad);
 
 Status MeanGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForReductionOp(g, {
-    {{"factor"}, "Prod", {"tile_scaling", "zero"}, {{"T", DT_INT32}}},
-    {{"factor_T"}, "Cast", {"factor"}, {{"SrcT", DT_INT32}, {"DstT", "$T"}}},
-    {{"dy_scaled"}, "Div", {"dy", "factor_T"}},
-    {{"dy_reshaped"}, "Reshape", {"dy_scaled", "y_shape"}},
-    {{"dx"}, "Tile", {"dy_reshaped", "tile_scaling"}},
+    {{"factor"}, "Prod", {"tile_scaling:z:0", "zero:output:0"},
+                   {{"T", DT_INT32}}},
+    {{"factor_T"}, "Cast", {"factor:output:0"},
+                   {{"SrcT", DT_INT32}, {"DstT", "$T"}}},
+    {{"dy_scaled"}, "Div", {"dy", "factor_T:y:0"}},
+    {{"dy_reshaped"}, "Reshape", {"dy_scaled:z:0", "y_shape:merged:0"}},
+    {{"dx"}, "Tile", {"dy_reshaped:output:0", "tile_scaling:z:0"}},
   });
   // clang-format on
-  return Status::OK();
 }
 REGISTER_OP_GRADIENT("Mean", MeanGrad);
 
@@ -674,5 +711,9 @@ REGISTER_OP_NO_GRADIENT("LogicalNot");
 // Sequence generation ops.
 REGISTER_OP_NO_GRADIENT("Range");
 REGISTER_OP_NO_GRADIENT("LinSpace");
+
+REGISTER_OP_NO_GRADIENT("Floor");
+REGISTER_OP_NO_GRADIENT("FloorDiv");
+REGISTER_OP_NO_GRADIENT("TruncateDiv");
 
 }  // end namespace tensorflow

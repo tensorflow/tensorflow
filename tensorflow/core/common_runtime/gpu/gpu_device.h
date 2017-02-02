@@ -41,7 +41,7 @@ namespace tensorflow {
 class BaseGPUDevice : public LocalDevice {
  public:
   BaseGPUDevice(const SessionOptions& options, const string& name,
-                Bytes memory_limit, BusAdjacency bus_adjacency, int gpu_id,
+                Bytes memory_limit, const DeviceLocality& locality, int gpu_id,
                 const string& physical_device_desc, Allocator* gpu_allocator,
                 Allocator* cpu_allocator, bool sync_every_op,
                 int32 max_streams);
@@ -79,6 +79,14 @@ class BaseGPUDevice : public LocalDevice {
 
   void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
                              DeviceContext* dc, Allocator* allocator) override;
+
+  // Returns the id of this device within the native driver system; e.g., for
+  // CUDA this is the ordinal of the GPU within the system.
+  int gpu_id() const { return gpu_id_; }
+
+  // The executor that provides control for the device; e.g., for CUDA this
+  // corresponds to the cuda context.
+  gpu::StreamExecutor* executor() const { return executor_; }
 
  protected:
   Allocator* gpu_allocator_;  // not owned
@@ -118,7 +126,8 @@ class BaseGPUDeviceFactory : public DeviceFactory {
 
   virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
                                          const string& name, Bytes memory_limit,
-                                         BusAdjacency bus_adjacency, int gpu_id,
+                                         const DeviceLocality& locality,
+                                         int gpu_id,
                                          const string& physical_device_desc,
                                          Allocator* gpu_allocator,
                                          Allocator* cpu_allocator) = 0;

@@ -76,9 +76,9 @@ string ToGuard(const std::string& path) {
 }
 
 // Change:     Into:
-//   ABC         // ABC
-//               //
-//   DEF         // DEF
+//   ABC         /// ABC
+//               ///
+//   DEF         /// DEF
 string MakeComment(StringPiece text, StringPiece indent) {
   string ret;
   while (!text.empty()) {
@@ -89,9 +89,9 @@ string MakeComment(StringPiece text, StringPiece indent) {
       if (text[newline] != ' ') last_non_space = newline;
     }
     if (last_non_space == -1) {
-      strings::StrAppend(&ret, indent, "//\n");
+      strings::StrAppend(&ret, indent, "///\n");
     } else {
-      strings::StrAppend(&ret, indent, "// ",
+      strings::StrAppend(&ret, indent, "/// ",
                          text.substr(0, last_non_space + 1), "\n");
     }
     text.remove_prefix(newline + 1);
@@ -171,8 +171,10 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
       return PrintString(attr_value.s());
     case AttrValue::kI:
       return strings::StrCat(attr_value.i());
-    case AttrValue::kF:
-      return strings::StrCat(attr_value.f());
+    case AttrValue::kF: {
+      const float f = attr_value.f();
+      return strings::StrCat(attr_value.f(), floorf(f) == f ? ".0" : "", "f");
+    }
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
@@ -199,7 +201,8 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().f(i));
+          const float f = attr_value.list().f(i);
+          strings::StrAppend(&ret, f, floorf(f) == f ? ".0" : "", "f");
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
@@ -403,7 +406,7 @@ OpInfo::OpInfo(const OpDef& op_def) : op_def(op_def) {
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     const auto& arg(op_def.input_arg(i));
     arg_types.push_back(strings::StrCat(
-        "::tensorflow::ops::", ArgIsList(arg) ? "InputList" : "Input"));
+        "::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
     arg_names.push_back(AvoidCPPKeywords(arg.name()));
 
     // TODO(keveman): Include input type information.
@@ -442,8 +445,8 @@ OpInfo::OpInfo(const OpDef& op_def) : op_def(op_def) {
   for (int i = 0; i < op_def.output_arg_size(); ++i) {
     const auto& arg = op_def.output_arg(i);
     bool is_list = ArgIsList(arg);
-    output_types.push_back(strings::StrCat("::tensorflow::ops::",
-                                           is_list ? "OutputList" : "Output"));
+    output_types.push_back(
+        strings::StrCat("::tensorflow::", is_list ? "OutputList" : "Output"));
     output_names.push_back(AvoidCPPKeywords(arg.name()));
     is_list_output.push_back(is_list);
   }
@@ -534,26 +537,26 @@ void OpInfo::WriteClassDecl(WritableFile* h) const {
   if (output_types.empty()) {
     // Allow casting this class to Operation.
     strings::StrAppend(&class_decl,
-                       "  operator ::tensorflow::ops::Operation() const { "
+                       "  operator ::tensorflow::Operation() const { "
                        "return operation; }\n");
   } else if (output_types.size() == 1) {
     if (is_list_output[0]) {
       // Write the subscript operator, allowing out[i] for the list-typed
       // output.
       strings::StrAppend(&class_decl,
-                         "  ::tensorflow::ops::Output operator[](size_t index) "
+                         "  ::tensorflow::Output operator[](size_t index) "
                          "const { return ",
                          output_names[0], "[index]; }\n\n");
 
     } else {
       // Write type cast functions, allowing casting this class to Input and
       // Output.
-      strings::StrAppend(
-          &class_decl, "  operator ::tensorflow::ops::Output() const { return ",
-          output_names[0], "; }\n");
-      strings::StrAppend(
-          &class_decl, "  operator ::tensorflow::ops::Input() const { return ",
-          output_names[0], "; }\n");
+      strings::StrAppend(&class_decl,
+                         "  operator ::tensorflow::Output() const { return ",
+                         output_names[0], "; }\n");
+      strings::StrAppend(&class_decl,
+                         "  operator ::tensorflow::Input() const { return ",
+                         output_names[0], "; }\n");
       // Write node() to get the Node* directly.
       strings::StrAppend(&class_decl,
                          "  ::tensorflow::Node* node() const { return ",
@@ -692,6 +695,14 @@ string OpInfo::GetConstructorBody() const {
   strings::StrAppend(&body, "  ", scope_str, ".UpdateBuilder(&builder);\n");
   strings::StrAppend(&body, "  ", scope_str, ".UpdateStatus(builder.Finalize(",
                      scope_str, ".graph(), &ret));\n");
+  strings::StrAppend(&body, "  ", return_on_error, "\n");
+
+  // TODO(b/28152992): Enable this code-path once we have converted
+  // all python shape functions to call their C++ versions.
+
+  // strings::StrAppend(&body, "  ", scope_str, ".UpdateStatus(", scope_str,
+  //                    ".refiner()->AddNode(ret));\n");
+
   GetOutput(&body);
   return body;
 }
@@ -783,6 +794,11 @@ namespace ops {
   TF_CHECK_OK(cc->Append(cc_header));
 
   for (const auto& op_def : ops.op()) {
+    if (op_def.name() == "Const") {
+      // We use a hand-written wrapper for "Const", since the
+      // generated code depends on it.
+      continue;
+    }
     WriteCCOp(op_def, h.get(), cc.get());
   }
 

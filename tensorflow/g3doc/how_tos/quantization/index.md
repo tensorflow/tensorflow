@@ -91,11 +91,11 @@ eight-bit computations:
 ```sh
 curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz -o /tmp/inceptionv3.tgz
 tar xzf /tmp/inceptionv3.tgz -C /tmp/
-bazel build tensorflow/contrib/quantization/tools:quantize_graph
-bazel-bin/tensorflow/contrib/quantization/tools/quantize_graph \
---input=/tmp/classify_image_graph_def.pb \
---output_node_names="softmax" --output=/tmp/quantized_graph.pb \
---mode=eightbit
+bazel build tensorflow/tools/quantization/tools:quantize_graph
+bazel-bin/tensorflow/tools/quantization/tools/quantize_graph \
+  --input=/tmp/classify_image_graph_def.pb \
+  --output_node_names="softmax" --output=/tmp/quantized_graph.pb \
+  --mode=eightbit
 ```
 
 This will produce a new model that runs the same operations as the original, but
@@ -200,10 +200,9 @@ Quantized | Float
 The advantages of this format are that it can represent arbitrary magnitudes of
 ranges, they don't have to be symmetrical, it can represent signed and unsigned
 values, and the linear spread makes doing multiplications straightforward. There
-are alternatives like [Song Han's code books]
-(http://arxiv.org/pdf/1510.00149.pdf) that can use lower bit depths by
-non-linearly distributing the float values across the representation, but these
-tend to be more expensive to calculate on.
+are alternatives like [Song Han's code books](http://arxiv.org/pdf/1510.00149.pdf)
+that can use lower bit depths by non-linearly distributing the float values
+across the representation, but these tend to be more expensive to calculate on.
 
 The advantage of having a strong and clear definition of the quantized format is
 that it's always possible to convert back and forth from float for operations
@@ -226,11 +225,11 @@ results from 8-bit inputs.
 
 We've found that we can get extremely good performance on mobile and embedded
 devices by using eight-bit arithmetic rather than floating-point. You can see
-the framework we use to optimize matrix multiplications at [gemmlowp]
-(https://github.com/google/gemmlowp). We still need to apply all the lessons
-we've learned to the TensorFlow ops to get maximum performance on mobile, but
-we're actively working on that. Right now, this quantized implementation is a
-reasonably fast and accurate reference implementation that we're hoping will
-enable wider support for our eight-bit models on a wider variety of devices. We
-also hope that this demonstration will encourage the community to explore what's
-possible with low-precision neural networks.
+the framework we use to optimize matrix multiplications at
+[gemmlowp](https://github.com/google/gemmlowp). We still need to apply all the
+lessons we've learned to the TensorFlow ops to get maximum performance on
+mobile, but we're actively working on that. Right now, this quantized
+implementation is a reasonably fast and accurate reference implementation that
+we're hoping will enable wider support for our eight-bit models on a wider
+variety of devices. We also hope that this demonstration will encourage the
+community to explore what's possible with low-precision neural networks.

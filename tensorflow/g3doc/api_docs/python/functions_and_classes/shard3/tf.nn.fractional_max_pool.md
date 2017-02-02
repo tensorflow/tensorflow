@@ -29,8 +29,7 @@ Then, row_pooling_sequence should satisfy:
 4.  length(row_pooling_sequence) = output_row_length+1
 
 For more details on fractional max pooling, see this paper:
-[Benjamin Graham, Fractional Max-Pooling]
-(http://arxiv.org/abs/1412.6071)
+[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
 
 ##### Args:
 
@@ -47,7 +46,7 @@ For more details on fractional max pooling, see this paper:
 *  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
     When set to True, generates the pooling sequence in a
     pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
     difference between pseudorandom and random.
 *  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
     When set to True, it means when pooling, the values at the boundary

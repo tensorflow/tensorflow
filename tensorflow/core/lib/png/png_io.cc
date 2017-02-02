@@ -64,7 +64,7 @@ static void Convert8to16(const uint8* p8, int num_comps, int p8_row_bytes,
   for (; height-- != 0;
        CPTR_INC(uint8, p8, bump8), PTR_INC(uint16, p16, bump16)) {
     for (int w = width; w-- != 0; --p8, --p16) {
-      uint pix = *p8;
+      uint32 pix = *p8;
       pix |= pix << 8;
       *p16 = static_cast<uint16>(pix);
     }

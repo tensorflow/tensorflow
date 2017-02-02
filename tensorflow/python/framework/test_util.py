@@ -23,7 +23,7 @@ import contextlib
 import math
 import random
 import re
-import sys
+import tempfile
 import threading
 
 import numpy as np
@@ -74,7 +74,7 @@ def assert_ops_in_graph(expected_ops, graph):
   return actual_ops
 
 
-def assert_equal_graph_def(actual, expected):
+def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -84,6 +84,8 @@ def assert_equal_graph_def(actual, expected):
   Args:
     actual: The `GraphDef` we have.
     expected: The `GraphDef` we expected.
+    checkpoint_v2: boolean determining whether to ignore randomized attribute
+        values that appear in V2 checkpoints.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.
@@ -95,10 +97,34 @@ def assert_equal_graph_def(actual, expected):
   if not isinstance(expected, graph_pb2.GraphDef):
     raise TypeError("Expected tf.GraphDef for expected, got %s" %
                     type(expected).__name__)
+
+  if checkpoint_v2:
+    _strip_checkpoint_v2_randomized(actual)
+    _strip_checkpoint_v2_randomized(expected)
+
   diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
   if diff:
     raise AssertionError(compat.as_str(diff))
+
+
+# Matches attributes named via _SHARDED_SUFFIX in
+# tensorflow/python/training/saver.py
+_SHARDED_SAVE_OP_PATTERN = "_temp_[0-9a-z]{32}/part"
+
+
+def _strip_checkpoint_v2_randomized(graph_def):
+  for node in graph_def.node:
+    delete_keys = []
+    for attr_key in node.attr:
+      attr_tensor_value = node.attr[attr_key].tensor
+      if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
+        attr_tensor_string_value = attr_tensor_value.string_val[0]
+        if (attr_tensor_string_value and
+            re.match(_SHARDED_SAVE_OP_PATTERN, attr_tensor_string_value)):
+          delete_keys.append(attr_key)
+    for attr_key in delete_keys:
+      del node.attr[attr_key]
 
 
 def IsGoogleCudaEnabled():
@@ -129,6 +155,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def tearDown(self):
     for thread in self._threads:
       self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+
     self._ClearCachedSession()
 
   def _ClearCachedSession(self):
@@ -137,8 +164,17 @@ class TensorFlowTestCase(googletest.TestCase):
       self._cached_session = None
 
   def get_temp_dir(self):
+    """Returns a unique temporary directory for the test to use.
+
+    Across different test runs, this method will return a different folder.
+    This will ensure that across different runs tests will not be able to
+    pollute each others environment.
+
+    Returns:
+      string, the path to the unique temporary directory created for this test.
+    """
     if not self._tempdir:
-      self._tempdir = googletest.GetTempDir()
+      self._tempdir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     return self._tempdir
 
   def _AssertProtoEquals(self, a, b):
@@ -432,7 +468,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
       # print out which elements violate such conditions.
-      cond = np.abs(a - b) > atol + rtol * np.abs(b)
+      cond = np.logical_or(
+          np.abs(a - b) > atol + rtol * np.abs(b), np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
@@ -444,6 +481,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close rhs = ", y)
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
+      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
 
   def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6):
@@ -533,7 +571,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError(e)
+        raise AssertionError("Exception of type %s: %s" %
+                             (str(type(e)), str(e)))
   # pylint: enable=g-doc-return-or-yield
 
   def assertRaisesOpError(self, expected_err_re_or_predicate):

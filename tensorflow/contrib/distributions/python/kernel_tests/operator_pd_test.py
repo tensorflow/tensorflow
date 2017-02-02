@@ -18,12 +18,20 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 # For private members.
+from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib.distributions.python.ops import operator_pd
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.platform import test
 
-distributions = tf.contrib.distributions
+distributions = distributions_lib
 
 
 class OperatorShape(operator_pd.OperatorPDBase):
@@ -37,17 +45,17 @@ class OperatorShape(operator_pd.OperatorPDBase):
     return True
 
   def get_shape(self):
-    return tf.TensorShape(self._stored_shape)
+    return tensor_shape.TensorShape(self._stored_shape)
 
   def _shape(self):
-    return tf.shape(np.random.rand(*self._stored_shape))
+    return array_ops.shape(np.random.rand(*self._stored_shape))
 
   @property
   def name(self):
     return "OperatorShape"
 
   def dtype(self):
-    return tf.int32
+    return dtypes.int32
 
   @property
   def inputs(self):
@@ -58,14 +66,14 @@ class OperatorSqrtSolve(OperatorShape):
   """Operator implements .sqrt_solve."""
 
   def __init__(self, chol_array):
-    self._chol = tf.convert_to_tensor(chol_array)
+    self._chol = ops.convert_to_tensor(chol_array)
     super(OperatorSqrtSolve, self).__init__(chol_array.shape)
 
   def _sqrt_solve(self, rhs):
-    return tf.matrix_triangular_solve(self._chol, rhs, lower=True)
+    return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _batch_sqrt_solve(self, rhs):
-    return tf.batch_matrix_triangular_solve(self._chol, rhs, lower=True)
+    return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_sqrt_solve(x)
@@ -75,31 +83,30 @@ class OperatorSolve(OperatorShape):
   """Operator implements .solve."""
 
   def __init__(self, chol):
-    self._pos_def_matrix = tf.batch_matmul(chol, chol, adj_y=True)
+    self._pos_def_matrix = math_ops.matmul(chol, chol, adjoint_b=True)
     super(OperatorSolve, self).__init__(chol.shape)
 
   def _solve(self, rhs):
-    return tf.matrix_solve(self._pos_def_matrix, rhs)
+    return linalg_ops.matrix_solve(self._pos_def_matrix, rhs)
 
   def _batch_solve(self, rhs):
-    return tf.batch_matrix_solve(self._pos_def_matrix, rhs)
+    return linalg_ops.matrix_solve(self._pos_def_matrix, rhs)
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_solve(x)
 
 
-class OperatorPDBaseTest(tf.test.TestCase):
+class OperatorPDBaseTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState(42)
 
   def _random_cholesky_array(self, shape):
     mat = self._rng.rand(*shape)
-    chol = distributions.batch_matrix_diag_transform(mat,
-                                                     transform=tf.nn.softplus)
+    chol = distributions.matrix_diag_transform(mat, transform=nn_ops.softplus)
     # Zero the upper triangle because we're using this as a true Cholesky factor
     # in our tests.
-    return tf.batch_matrix_band_part(chol, -1, 0).eval()
+    return array_ops.matrix_band_part(chol, -1, 0).eval()
 
   def _numpy_inv_quadratic_form_on_vectors(self, chol, x):
     # Numpy works with batches now (calls them "stacks").
@@ -107,7 +114,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
     whitened = np.linalg.solve(chol, x_expanded)
     return (whitened**2).sum(axis=-1).sum(axis=-1)
 
-  def test_all_shapes_methods_defined_by_the_one_abstractproperty_shape(self):
+  def testAllShapesMethodsDefinedByTheOneAbstractpropertyShape(self):
 
     shape = (1, 2, 3, 3)
     with self.test_session():
@@ -123,7 +130,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
       self.assertEqual((1, 2), operator.get_batch_shape())
       self.assertEqual((1, 2, 3), operator.get_vector_shape())
 
-  def test_iqfov_x_rank_same_as_broadcast_rank_using_sqrt_solve(self):
+  def testIqfovXRankSameAsBroadcastRankUsingSqrtSolve(self):
     with self.test_session():
       for batch_shape in [(), (2,)]:
         for k in [1, 3]:
@@ -141,7 +148,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
           numpy_qf = self._numpy_inv_quadratic_form_on_vectors(chol, x)
           self.assertAllClose(numpy_qf, qf.eval())
 
-  def test_iqfov_x_rank_greater_than_broadcast_rank_using_sqrt_solve(self):
+  def testIqfovXRankGreaterThanBroadcastRankUsingSqrtSolve(self):
     with self.test_session():
       for batch_shape in [(), (2,), (2, 3)]:
         for k in [1, 4]:
@@ -159,7 +166,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
           self.assertEqual(batch_shape, qf.get_shape())
           self.assertAllClose(numpy_qf, qf.eval())
 
-  def test_iqfov_x_rank_two_greater_than_broadcast_rank_using_sqrt_solve(self):
+  def testIqfovXRankTwoGreaterThanBroadcastRankUsingSqrtSolve(self):
     with self.test_session():
       for batch_shape in [(2, 3), (2, 3, 4), (2, 3, 4, 5)]:
         for k in [1, 4]:
@@ -177,7 +184,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
           self.assertEqual(batch_shape, qf.get_shape())
           self.assertAllClose(numpy_qf, qf.eval())
 
-  def test_iqfov_x_rank_same_as_broadcast_rank_using_solve(self):
+  def testIqfovXRankSameAsBroadcastRankUsingSolve(self):
     with self.test_session():
       for batch_shape in [(), (2,)]:
         for k in [1, 3]:
@@ -195,7 +202,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
           numpy_qf = self._numpy_inv_quadratic_form_on_vectors(chol, x)
           self.assertAllClose(numpy_qf, qf.eval())
 
-  def test_iqfov_x_rank_greater_than_broadcast_rank_using_solve(self):
+  def testIqfovXRankGreaterThanBroadcastRankUsingSolve(self):
     with self.test_session():
       for batch_shape in [(2,), (2, 3)]:
         for k in [1, 4]:
@@ -213,7 +220,7 @@ class OperatorPDBaseTest(tf.test.TestCase):
           self.assertEqual(batch_shape, qf.get_shape())
           self.assertAllClose(numpy_qf, qf.eval())
 
-  def test_iqfov_x_rank_two_greater_than_broadcast_rank_using_solve(self):
+  def testIqfovXRankTwoGreaterThanBroadcastRankUsingSolve(self):
     with self.test_session():
       for batch_shape in [(2, 3), (2, 3, 4), (2, 3, 4, 5)]:
         for k in [1, 4]:
@@ -232,123 +239,131 @@ class OperatorPDBaseTest(tf.test.TestCase):
           self.assertAllClose(numpy_qf, qf.eval())
 
 
-class FlipMatrixToVectorTest(tf.test.TestCase):
+class FlipMatrixToVectorTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState()
 
-  def test_matrix_and_vector_batch_shapes_the_same(self):
+  def testMatrixAndVectorBatchShapesTheSame(self):
     batch_shape = [6, 2, 3]
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd.flip_matrix_to_vector(
-            mat, batch_shape, static_batch_shape)
+        vec = operator_pd.flip_matrix_to_vector(mat, batch_shape,
+                                                static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 2, 3, 4), vec_v.shape)
         self.assertAllEqual(mat[1, 2, 3, 4], vec_v[4, 1, 2, 3])
 
-  def test_matrix_and_vector_batch_shapes_same_rank_but_permuted(self):
+  def testMatrixAndVectorBatchShapesSameRankButPermuted(self):
     batch_shape = [6, 3, 2]
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd.flip_matrix_to_vector(
-            mat, batch_shape, static_batch_shape)
+        vec = operator_pd.flip_matrix_to_vector(mat, batch_shape,
+                                                static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 3, 2, 4), vec_v.shape)
 
-  def test_vector_batch_shape_longer_than_matrix_batch_shape(self):
+  def testVectorBatchShapeLongerThanMatrixBatchShape(self):
     batch_shape = [2, 3, 2, 3]
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd.flip_matrix_to_vector(
-            mat, batch_shape, static_batch_shape)
+        vec = operator_pd.flip_matrix_to_vector(mat, batch_shape,
+                                                static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((2, 3, 2, 3, 4), vec_v.shape)
 
-  def test_matrix_batch_shape_has_a_singleton_that_vec_batch_shape_doesnt(self):
+  def testMatrixBatchShapeHasASingletonThatVecBatchShapeDoesnt(self):
     batch_shape = [6, 3]
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
         mat = self._rng.rand(1, 3, 4, 6)
-        vec = operator_pd.flip_matrix_to_vector(
-            mat, batch_shape, static_batch_shape)
+        vec = operator_pd.flip_matrix_to_vector(mat, batch_shape,
+                                                static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 3, 4), vec_v.shape)
         self.assertAllEqual(mat[0, 2, 3, 4], vec_v[4, 2, 3])
 
 
-class FlipVectorToMatrixTest(tf.test.TestCase):
+class FlipVectorToMatrixTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState()
 
-  def test_when_x_batch_rank_is_same_as_batch_rank_arg(self):
+  def testWhenXBatchRankIsSameAsBatchRankArg(self):
     batch_shape = [4, 5]
     x = self._rng.rand(4, 5, 6)
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
-        mat = operator_pd.flip_vector_to_matrix(
-            x, batch_shape, static_batch_shape)
+        mat = operator_pd.flip_vector_to_matrix(x, batch_shape,
+                                                static_batch_shape)
         mat_v = mat.eval()
         expected_mat_v = x.reshape(x.shape + (1,))
         self.assertAllEqual(expected_mat_v, mat_v)
 
-  def test_when_x_has_one_larger_larger_batch_rank_than_batch_rank_arg(self):
+  def testWhenXHasOneLargerLargerBatchRankThanBatchRankArg(self):
     batch_shape = [4, 5]
     x = self._rng.rand(3, 4, 5, 6)
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
-        mat = operator_pd.flip_vector_to_matrix(
-            x, batch_shape, static_batch_shape)
+        mat = operator_pd.flip_vector_to_matrix(x, batch_shape,
+                                                static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((4, 5, 6, 3), mat_v.shape)
         self.assertAllEqual(x[2, 2, 2, 1], mat_v[2, 2, 1, 2])
 
-  def test_when_batch_shape_requires_reshape_of_vector_batch_shape(self):
+  def testWhenBatchShapeRequiresReshapeOfVectorBatchShape(self):
     batch_shape = [5, 4]
     x = self._rng.rand(3, 4, 5, 6)  # Note x has (4,5) and batch_shape is (5, 4)
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
-        mat = operator_pd.flip_vector_to_matrix(
-            x, batch_shape, static_batch_shape)
+        mat = operator_pd.flip_vector_to_matrix(x, batch_shape,
+                                                static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((5, 4, 6, 3), mat_v.shape)
 
-  def test_when_x_has_two_larger_larger_batch_rank_than_batch_rank_arg(self):
+  def testWhenXHasTwoLargerLargerBatchRankThanBatchRankArg(self):
     batch_shape = [4, 5]
     x = self._rng.rand(2, 3, 4, 5, 6)
     for static_batch_shape in [
-        tf.TensorShape(batch_shape), tf.TensorShape(None)]:
+        tensor_shape.TensorShape(batch_shape), tensor_shape.TensorShape(None)
+    ]:
       with self.test_session():
-        mat = operator_pd.flip_vector_to_matrix(
-            x, batch_shape, static_batch_shape)
+        mat = operator_pd.flip_vector_to_matrix(x, batch_shape,
+                                                static_batch_shape)
         mat_v = mat.eval()
-        self.assertAllEqual((4, 5, 6, 2*3), mat_v.shape)
+        self.assertAllEqual((4, 5, 6, 2 * 3), mat_v.shape)
 
 
-class ExtractBatchShapeTest(tf.test.TestCase):
+class ExtractBatchShapeTest(test.TestCase):
 
   def setUp(self):
     self._rng = np.random.RandomState()
 
-  def test_x_has_empty_batch_shape(self):
+  def testXHasEmptyBatchShape(self):
     with self.test_session():
       x = self._rng.rand(2, 3)
       num_event_dims = 2
       batch_shape = operator_pd.extract_batch_shape(x, num_event_dims)
       self.assertAllEqual([], batch_shape.eval())
 
-  def test_x_has_non_empty_batch_shape(self):
+  def testXHasNonEmptyBatchShape(self):
     with self.test_session():
       x = self._rng.rand(2, 3, 4, 5)
       num_event_dims = 2
@@ -357,4 +372,4 @@ class ExtractBatchShapeTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

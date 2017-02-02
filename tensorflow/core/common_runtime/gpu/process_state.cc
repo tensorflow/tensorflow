@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 // If these flags need to be runtime configurable, consider adding
 // options to ConfigProto.
@@ -125,7 +126,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
     gpu::StreamExecutor* se =
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
-    if (bus_id < static_cast<int64>(gpu_visitors_.size())) {
+    if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
       for (auto v : gpu_visitors_[bus_id]) {
         gpu_allocators_[gpu_id]->AddAllocVisitor(v);
       }
@@ -173,7 +174,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
 
 Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   if (!HasGPUDevice() || !FLAGS_brain_mem_reg_cuda_dma) {
-    return GetCPUAllocator(numa_node);
+    return cpu_allocator();
   }
   // Although we're temporarily ignoring numa_node, check for legality.
   CHECK_GE(numa_node, 0);
@@ -181,23 +182,38 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // different numa_nodes.  For now, just one.
   numa_node = 0;
   mutex_lock lock(mu_);
-  while (static_cast<int>(cuda_host_allocators_.size()) <= numa_node) {
-    // CUDAHost alloc the same across all gpus, so just get the
-    // executor for the first device.
-    gpu::Platform* gpu_platform = GPUMachineManager();
-    gpu::StreamExecutor* se = gpu_platform->ExecutorForDevice(0).ValueOrDie();
-    CHECK(se);
-    Allocator* allocator = nullptr;
-    static constexpr bool kCudaHostMemoryUseBFC = true;
-    if (kCudaHostMemoryUseBFC) {
-      allocator =
-          new BFCAllocator(new CUDAHostAllocator(se), 1LL << 36 /*64GB max*/,
-                           true /*allow_growth*/, "cuda_host_bfc" /*name*/);
-    } else {
-      allocator = new PoolAllocator(
-          100 /*pool_size_limit*/, true /*auto_resize*/,
-          new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host");
+
+  // Find the first valid StreamExecutor to request CUDA host memory
+  // through, since any will work.
+  //
+  // This search isn't super clean, and it would be nice to use a
+  // better source of information about which executor to use.  For
+  // example, process_state could maybe save the first stream executor
+  // it knows is valid.
+  gpu::StreamExecutor* se = nullptr;
+  for (size_t i = 0; i < gpu_allocators_.size(); ++i) {
+    if (gpu_allocators_[i] != nullptr) {
+      se = GPUMachineManager()->ExecutorForDevice(i).ValueOrDie();
+      break;
     }
+  }
+
+  CHECK_NE(nullptr, se);
+
+  while (static_cast<int>(cuda_host_allocators_.size()) <= numa_node) {
+    // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
+    int64 cuda_host_mem_limit_in_mb = -1;
+    Status status = ReadInt64FromEnvVar("TF_CUDA_HOST_MEM_LIMIT_IN_MB",
+                                        1LL << 16 /*64GB max by default*/,
+                                        &cuda_host_mem_limit_in_mb);
+    if (!status.ok()) {
+      LOG(ERROR) << "GetCUDAHostAllocator: " << status.error_message();
+    }
+    int64 cuda_host_mem_limit = cuda_host_mem_limit_in_mb * (1LL << 20);
+    Allocator* allocator =
+        new BFCAllocator(new CUDAHostAllocator(se), cuda_host_mem_limit,
+                         true /*allow_growth*/, "cuda_host_bfc" /*name*/);
+
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.
@@ -227,7 +243,7 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
     gpu::StreamExecutor* se =
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     if (gpu_allocators_[gpu_id] &&
-        se->GetDeviceDescription().numa_node() == bus_id) {
+        (se->GetDeviceDescription().numa_node() + 1) == bus_id) {
       gpu_allocators_[gpu_id]->AddAllocVisitor(visitor);
     }
   }

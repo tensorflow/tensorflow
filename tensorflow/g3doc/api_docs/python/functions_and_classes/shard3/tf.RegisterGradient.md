@@ -14,7 +14,7 @@ following gradient function would be registered:
 ```python
 @tf.RegisterGradient("Sub")
 def _sub_grad(unused_op, grad):
-  return grad, tf.neg(grad)
+  return grad, tf.negative(grad)
 ```
 
 The decorator argument `op_type` is the string type of an
@@ -32,5 +32,14 @@ Creates a new decorator with `op_type` as the Operation type.
 
 *  <b>`op_type`</b>: The string type of an operation. This corresponds to the
     `OpDef.name` field for the proto that defines the operation.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.RegisterGradient.__call__(f)` {#RegisterGradient.__call__}
+
+Registers the function `f` as gradient function for `op_type`.
 
 

@@ -23,7 +23,7 @@ REGISTER_OP("PyFunc")
     .Output("output: Tout")
     .Attr("token: string")
     .Attr("Tin: list(type) >= 0")
-    .Attr("Tout: list(type)")
+    .Attr("Tout: list(type) >=0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -45,7 +45,8 @@ REGISTER_OP("PyFuncStateless")
     .Output("output: Tout")
     .Attr("token: string")
     .Attr("Tin: list(type) >= 0")
-    .Attr("Tout: list(type)")
+    .Attr("Tout: list(type) >= 0")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A stateless version of PyFunc.
 )doc");

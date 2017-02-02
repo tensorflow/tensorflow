@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
@@ -52,7 +53,7 @@ def gfile_copy_callback(files_to_copy, export_dir_path):
       basename in the export directory.
     export_dir_path: Directory to copy the files to.
   """
-  logging.info("Write assest into: %s using gfile_copy.", export_dir_path)
+  logging.info("Write assets into: %s using gfile_copy.", export_dir_path)
   gfile.MakeDirs(export_dir_path)
   for source_filepath, basename in files_to_copy.items():
     new_path = os.path.join(
@@ -129,7 +130,13 @@ class Exporter(object):
   """
 
   def __init__(self, saver):
-    self._saver = saver
+    # Makes a copy of the saver-def and disables garbage-collection, since the
+    # exporter enforces garbage-collection independently. Specifically, since
+    # the exporter performs atomic copies of the saver output, it is required
+    # that garbage-collection via the underlying saver be disabled.
+    saver_def = saver.as_saver_def()
+    saver_def.ClearField("max_to_keep")
+    self._saver = tf_saver.Saver(saver_def=saver_def)
     self._has_init = False
     self._assets_to_copy = {}
 

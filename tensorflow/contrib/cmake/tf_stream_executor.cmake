@@ -47,19 +47,21 @@ file(GLOB tf_stream_executor_srcs
     "${tensorflow_source_dir}/tensorflow/stream_executor/platform/default/*.h"
 )
 
+if (tensorflow_ENABLE_GPU)    
+    file(GLOB tf_stream_executor_gpu_srcs
+        "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*.cc"
+    )
+    list(APPEND tf_stream_executor_srcs ${tf_stream_executor_gpu_srcs})
+endif()    
+
 #file(GLOB_RECURSE tf_stream_executor_test_srcs
 #    "${tensorflow_source_dir}/tensorflow/stream_executor/*_test.cc"
 #    "${tensorflow_source_dir}/tensorflow/stream_executor/*_test.h"
 #)
-#
 #list(REMOVE_ITEM tf_stream_executor_srcs ${tf_stream_executor_test_srcs}) 
 
 add_library(tf_stream_executor OBJECT ${tf_stream_executor_srcs})
 
-target_include_directories(tf_stream_executor PRIVATE
-    ${tensorflow_source_dir}
-    ${eigen_INCLUDE_DIRS}
-)
 add_dependencies(tf_stream_executor
     tf_core_lib
 )
@@ -69,14 +71,3 @@ add_dependencies(tf_stream_executor
 #    tf_protos_cc
 #    tf_core_lib
 #)
-
-target_compile_options(tf_stream_executor PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-
-# C++11
-target_compile_features(tf_stream_executor PRIVATE
-    cxx_rvalue_references
-)
-

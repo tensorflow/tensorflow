@@ -13,70 +13,51 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class SvdOpTest(tf.test.TestCase):
+class SvdOpTest(test.TestCase):
 
   def testWrongDimensions(self):
-    # The input to svd should be 2-dimensional tensor.
-    scalar = tf.constant(1.)
-    with self.assertRaises(ValueError):
-      tf.svd(scalar)
-    vector = tf.constant([1., 2.])
-    with self.assertRaises(ValueError):
-      tf.svd(vector)
-    tensor = tf.constant([[[1., 2.], [3., 4.]], [[1., 2.], [3., 4.]]])
-    with self.assertRaises(ValueError):
-      tf.svd(tensor)
-    scalar = tf.constant(1. + 1.0j)
-    with self.assertRaises(ValueError):
-      tf.svd(scalar)
-    vector = tf.constant([1. + 1.0j, 2. + 2.0j])
-    with self.assertRaises(ValueError):
-      tf.svd(vector)
-    tensor = tf.constant([[[1. + 1.0j, 2. + 2.0j], [3. + 3.0j, 4. + 4.0j]],
-                          [[1. + 1.0j, 2. + 2.0j], [3. + 3.0j, 4. + 4.0j]]])
-    with self.assertRaises(ValueError):
-      tf.svd(tensor)
-
-    # The input to batch_svd should be a tensor of at least rank 2.
-    scalar = tf.constant(1.)
-    with self.assertRaises(ValueError):
-      tf.batch_svd(scalar)
-    vector = tf.constant([1., 2.])
-    with self.assertRaises(ValueError):
-      tf.batch_svd(vector)
-    scalar = tf.constant(1. + 1.0j)
-    with self.assertRaises(ValueError):
-      tf.batch_svd(scalar)
-    vector = tf.constant([1. + 1.0j, 2. + 2.0j])
-    with self.assertRaises(ValueError):
-      tf.batch_svd(vector)
+    # The input to svd should be a tensor of at least rank 2.
+    scalar = constant_op.constant(1.)
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be at least rank 2 but is rank 0"):
+      linalg_ops.svd(scalar)
+    vector = constant_op.constant([1., 2.])
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be at least rank 2 but is rank 1"):
+      linalg_ops.svd(vector)
 
 
-def _GetSvdOpTest(dtype_, shape_):
+def _GetSvdOpTest(dtype_, shape_, use_static_shape_):
+
+  is_complex = dtype_ in (np.complex64, np.complex128)
+  is_single = dtype_ in (np.float32, np.complex64)
 
   def CompareSingularValues(self, x, y):
-    if dtype_ in (np.float32, np.complex64):
+    if is_single:
       tol = 5e-5
     else:
       tol = 1e-14
-    self.assertAllClose(np.real(x), np.real(y),
-                        atol=(np.real(x)[0] + np.real(y)[0]) * tol)
-    self.assertAllClose(np.imag(x), np.imag(y),
-                        atol=(np.imag(x)[0] + np.imag(y)[0]) * tol)
+    self.assertAllClose(x, y, atol=(x[0] + y[0]) * tol)
 
   def CompareSingularVectors(self, x, y, rank):
-    if dtype_ in (np.float32, np.complex64):
+    if is_single:
       atol = 5e-4
     else:
-      atol = 1e-14
+      atol = 5e-14
     # We only compare the first 'rank' singular vectors since the
     # remainder form an arbitrary orthonormal basis for the
     # (row- or column-) null space, whose exact value depends on
@@ -87,20 +68,14 @@ def _GetSvdOpTest(dtype_, shape_):
     x = x[..., 0:rank]
     y = y[..., 0:rank]
     # Singular vectors are only unique up to sign (complex phase factor for
-    # complex matrices), so we normalize the signs first.
-    if dtype_ in (np.float32, np.float64):
-      signs = np.sign(np.sum(np.divide(x, y), -2, keepdims=True))
-      x *= signs
-      self.assertAllClose(x, y, atol=atol)
-    else:
-      phases = np.divide(np.sum(np.divide(y, x), -2, keepdims=True),
-                         np.abs(np.sum(np.divide(y, x), -2, keepdims=True)))
-      x *= phases
-      self.assertAllClose(np.real(x), np.real(y), atol=atol)
-      self.assertAllClose(np.imag(x), np.imag(y), atol=atol)
+    # complex matrices), so we normalize the sign first.
+    sum_of_ratios = np.sum(np.divide(y, x), -2, keepdims=True)
+    phases = np.divide(sum_of_ratios, np.abs(sum_of_ratios))
+    x *= phases
+    self.assertAllClose(x, y, atol=atol)
 
   def CheckApproximation(self, a, u, s, v, full_matrices):
-    if dtype_ in (np.float32, np.complex64):
+    if is_single:
       tol = 1e-5
     else:
       tol = 1e-14
@@ -108,99 +83,98 @@ def _GetSvdOpTest(dtype_, shape_):
     batch_shape = a.shape[:-2]
     m = a.shape[-2]
     n = a.shape[-1]
-    diag_s = tf.cast(tf.batch_matrix_diag(s), dtype=dtype_)
+    diag_s = math_ops.cast(array_ops.matrix_diag(s), dtype=dtype_)
     if full_matrices:
       if m > n:
-        zeros = tf.zeros(batch_shape + (m - n, n), dtype=dtype_)
-        diag_s = tf.concat(a.ndim - 2, [diag_s, zeros])
+        zeros = array_ops.zeros(batch_shape + (m - n, n), dtype=dtype_)
+        diag_s = array_ops.concat([diag_s, zeros], a.ndim - 2)
       elif n > m:
-        zeros = tf.zeros(batch_shape + (m, n - m), dtype=dtype_)
-        diag_s = tf.concat(a.ndim - 1, [diag_s, zeros])
-    a_recon = tf.batch_matmul(tf.cast(u, dtype=dtype_),
-                              tf.cast(diag_s, dtype=dtype_))
-    a_recon = tf.batch_matmul(a_recon, tf.cast(v, dtype=dtype_), adj_y=True)
-    self.assertAllClose(np.real(a_recon.eval()),
-                        np.real(a), rtol=tol, atol=tol)
-    self.assertAllClose(np.imag(a_recon.eval()),
-                        np.imag(a), rtol=tol, atol=tol)
+        zeros = array_ops.zeros(batch_shape + (m, n - m), dtype=dtype_)
+        diag_s = array_ops.concat([diag_s, zeros], a.ndim - 1)
+    a_recon = math_ops.matmul(u, diag_s)
+    a_recon = math_ops.matmul(a_recon, v, adjoint_b=True)
+    self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = tf.batch_matmul(x, x, adj_x=True)
-    identity = tf.batch_matrix_band_part(tf.ones_like(xx), 0, 0)
-    if dtype_ in (np.float32, np.complex64):
+    xx = math_ops.matmul(x, x, adjoint_a=True)
+    identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
+    if is_single:
       tol = 1e-5
     else:
       tol = 1e-14
-    self.assertAllClose(np.real(identity.eval()),
-                        np.real(xx.eval()), atol=tol)
-    self.assertAllClose(np.imag(identity.eval()),
-                        np.imag(xx.eval()), atol=tol)
+    self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
 
   def Test(self):
     np.random.seed(1)
-    if dtype_ in (np.float32, np.float64):
-      x = np.random.uniform(low=-1.0, high=1.0,
-                            size=np.prod(shape_)).reshape(shape_).astype(dtype_)
-    elif dtype == np.complex64:
-      x = np.random.uniform(low=-1.0, high=1.0,
-                        size=np.prod(shape_)).reshape(shape_).astype(np.float32)
-      + 1j * np.random.uniform(low=-1.0, high=1.0,
-                        size=np.prod(shape_)).reshape(shape_).astype(np.float32)
-    else:
-      x = np.random.uniform(low=-1.0, high=1.0,
-                        size=np.prod(shape_)).reshape(shape_).astype(np.float64)
-      + 1j * np.random.uniform(low=-1.0, high=1.0,
-                        size=np.prod(shape_)).reshape(shape_).astype(np.float64)
+    x_np = np.random.uniform(
+        low=-1.0, high=1.0, size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+    if is_complex:
+      x_np += 1j * np.random.uniform(
+          low=-1.0, high=1.0,
+          size=np.prod(shape_)).reshape(shape_).astype(dtype_)
+
     for compute_uv in False, True:
       for full_matrices in False, True:
-        with self.test_session():
-          if x.ndim == 2:
-            if compute_uv:
-              tf_s, tf_u, tf_v = tf.svd(tf.constant(x),
-                                        compute_uv=compute_uv,
-                                        full_matrices=full_matrices)
-            else:
-              tf_s = tf.svd(tf.constant(x),
-                            compute_uv=compute_uv,
-                            full_matrices=full_matrices)
+        with self.test_session() as sess:
+          if use_static_shape_:
+            x_tf = constant_op.constant(x_np)
           else:
-            if compute_uv:
-              tf_s, tf_u, tf_v = tf.batch_svd(
-                  tf.constant(x),
-                  compute_uv=compute_uv,
-                  full_matrices=full_matrices)
-            else:
-              tf_s = tf.batch_svd(
-                  tf.constant(x),
-                  compute_uv=compute_uv,
-                  full_matrices=full_matrices)
+            x_tf = array_ops.placeholder(dtype_)
+
           if compute_uv:
-            np_u, np_s, np_v = np.linalg.svd(x,
+            s_tf, u_tf, v_tf = linalg_ops.svd(x_tf,
+                                              compute_uv=compute_uv,
+                                              full_matrices=full_matrices)
+            if use_static_shape_:
+              s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+            else:
+              s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf],
+                                                      feed_dict={x_tf: x_np})
+          else:
+            s_tf = linalg_ops.svd(x_tf,
+                                  compute_uv=compute_uv,
+                                  full_matrices=full_matrices)
+            if use_static_shape_:
+              s_tf_val = sess.run(s_tf)
+            else:
+              s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
+
+          if compute_uv:
+            u_np, s_np, v_np = np.linalg.svd(x_np,
                                              compute_uv=compute_uv,
                                              full_matrices=full_matrices)
           else:
-            np_s = np.linalg.svd(x,
+            s_np = np.linalg.svd(x_np,
                                  compute_uv=compute_uv,
                                  full_matrices=full_matrices)
-          CompareSingularValues(self, np_s, tf_s.eval())
+          # We explicitly avoid the situation where numpy eliminates a first
+          # dimension that is equal to one
+          s_np = np.reshape(s_np, s_tf_val.shape)
+
+          CompareSingularValues(self, s_np, s_tf_val)
           if compute_uv:
-            CompareSingularVectors(self, np_u, tf_u.eval(), min(shape_[-2:]))
-            CompareSingularVectors(self, np.swapaxes(np_v, -2, -1), tf_v.eval(),
+            CompareSingularVectors(self, u_np, u_tf_val, min(shape_[-2:]))
+            CompareSingularVectors(self,
+                                   np.conj(np.swapaxes(v_np, -2, -1)), v_tf_val,
                                    min(shape_[-2:]))
-            CheckApproximation(self, x, tf_u, tf_s, tf_v, full_matrices)
-            CheckUnitary(self, tf_u)
-            CheckUnitary(self, tf_v)
+            CheckApproximation(self, x_np, u_tf_val, s_tf_val, v_tf_val,
+                               full_matrices)
+            CheckUnitary(self, u_tf_val)
+            CheckUnitary(self, v_tf_val)
 
   return Test
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   for dtype in np.float32, np.float64, np.complex64, np.complex128:
     for rows in 1, 2, 5, 10, 32, 100:
       for cols in 1, 2, 5, 10, 32, 100:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
           shape = batch_dims + (rows, cols)
-          name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
-          setattr(SvdOpTest, 'testSvd_' + name, _GetSvdOpTest(dtype, shape))
-  tf.test.main()
+          for use_static_shape in True, False:
+            name = "%s_%s_%s" % (dtype.__name__, "_".join(map(str, shape)),
+                                 use_static_shape)
+            setattr(SvdOpTest, "testSvd_" + name,
+                    _GetSvdOpTest(dtype, shape, use_static_shape))
+  test.main()

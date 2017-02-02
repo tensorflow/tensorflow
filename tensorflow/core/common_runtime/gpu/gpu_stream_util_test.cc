@@ -107,7 +107,7 @@ TEST_F(GpuStreamUtilTest, StreamOverrides) {
   auto root = Scope::NewRootScope().ExitOnError();
   ops::_Recv(root.WithOpName("input"), DT_FLOAT, "input", "/cpu:0", 0,
              "/gpu:0");
-  ops::Output n = ops::MatMul(root, {}, {});
+  Output n = ops::MatMul(root, {}, {});
   ops::_Send(root.WithOpName("output"), n, "output", "/gpu:0", 0, "/cpu:0");
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&g));
@@ -129,7 +129,7 @@ TEST_F(GpuStreamUtilTest, StreamOverrides) {
   // Nodes should be assigned to streams by op type.
   for (const auto& it : node_to_stream_id) {
     Node* n = g.FindNodeId(it.first);
-    const string op = n->type_string();
+    const string& op = n->type_string();
     const int stream = it.second;
     if (op == "Const") {
       EXPECT_EQ(stream, 90);

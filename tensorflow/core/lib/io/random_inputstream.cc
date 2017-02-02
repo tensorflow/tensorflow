@@ -19,8 +19,15 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 
-RandomAccessInputStream::RandomAccessInputStream(RandomAccessFile* file)
-    : file_(file) {}
+RandomAccessInputStream::RandomAccessInputStream(RandomAccessFile* file,
+                                                 bool owns_file)
+    : file_(file), owns_file_(owns_file) {}
+
+RandomAccessInputStream::~RandomAccessInputStream() {
+  if (owns_file_) {
+    delete file_;
+  }
+}
 
 Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
                                            string* result) {

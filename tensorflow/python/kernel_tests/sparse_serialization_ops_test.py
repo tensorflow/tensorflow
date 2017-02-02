@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for SerializeSparse."""
 
 from __future__ import absolute_import
@@ -20,65 +19,89 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.platform import test
 
 
-class SerializeSparseTest(tf.test.TestCase):
+class SerializeSparseTest(test.TestCase):
 
   def _SparseTensorPlaceholder(self, dtype=None):
-    if dtype is None: dtype = tf.int32
-    return tf.SparseTensor(
-        tf.placeholder(tf.int64),
-        tf.placeholder(dtype),
-        tf.placeholder(tf.int64))
+    if dtype is None:
+      dtype = dtypes.int32
+    return sparse_tensor_lib.SparseTensor(
+        array_ops.placeholder(dtypes.int64),
+        array_ops.placeholder(dtype), array_ops.placeholder(dtypes.int64))
 
   def _SparseTensorValue_5x6(self, permutation):
-    ind = np.array([
-        [0, 0],
-        [1, 0], [1, 3], [1, 4],
-        [3, 2], [3, 3]]).astype(np.int64)
+    ind = np.array([[0, 0], [1, 0], [1, 3], [1, 4], [3, 2],
+                    [3, 3]]).astype(np.int64)
     val = np.array([0, 10, 13, 14, 32, 33]).astype(np.int32)
 
     ind = ind[permutation]
     val = val[permutation]
 
     shape = np.array([5, 6]).astype(np.int64)
-    return tf.SparseTensorValue(ind, val, shape)
+    return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
   def _SparseTensorValue_3x4(self, permutation):
-    ind = np.array([
-        [0, 0],
-        [1, 0], [1, 2], [1, 3],
-        [2, 2], [2, 3]]).astype(np.int64)
+    ind = np.array([[0, 0], [1, 0], [1, 2], [1, 3], [2, 2],
+                    [2, 3]]).astype(np.int64)
     val = np.array([0, 10, 13, 14, 32, 33]).astype(np.int32)
 
     ind = ind[permutation]
     val = val[permutation]
 
     shape = np.array([3, 4]).astype(np.int64)
-    return tf.SparseTensorValue(ind, val, shape)
+    return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
   def _SparseTensorValue_1x1x1(self):
     ind = np.array([[0, 0, 0]]).astype(np.int64)
     val = np.array([0]).astype(np.int32)
     shape = np.array([3, 4, 5]).astype(np.int64)
-    return tf.SparseTensorValue(ind, val, shape)
+    return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
   def testSerializeDeserializeMany(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
+      sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
+      serialized0 = sparse_ops.serialize_sparse(sp_input0)
+      serialized1 = sparse_ops.serialize_sparse(sp_input1)
+      serialized_concat = array_ops.stack([serialized0, serialized1])
+
+      sp_deserialized = sparse_ops.deserialize_many_sparse(
+          serialized_concat, dtype=dtypes.int32)
+
+      combined_indices, combined_values, combined_shape = sess.run(
+          sp_deserialized)
+
+      self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
+      self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
+      self.assertAllEqual(combined_indices[6:, 0], [1] * 6)  # minibatch 1
+      self.assertAllEqual(combined_indices[6:, 1:], sp_input1[0])
+      self.assertAllEqual(combined_values[:6], sp_input0[1])
+      self.assertAllEqual(combined_values[6:], sp_input1[1])
+      self.assertAllEqual(combined_shape, [2, 5, 6])
+
+  def testFeedSerializeDeserializeMany(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
-      serialized0 = tf.serialize_sparse(sp_input0)
-      serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized0 = sparse_ops.serialize_sparse(sp_input0)
+      serialized1 = sparse_ops.serialize_sparse(sp_input1)
+      serialized_concat = array_ops.stack([serialized0, serialized1])
 
-      sp_deserialized = tf.deserialize_many_sparse(
-          serialized_concat, dtype=tf.int32)
+      sp_deserialized = sparse_ops.deserialize_many_sparse(
+          serialized_concat, dtype=dtypes.int32)
 
       combined_indices, combined_values, combined_shape = sess.run(
-          sp_deserialized, {sp_input0: input0_val, sp_input1: input1_val})
+          sp_deserialized, {sp_input0: input0_val,
+                            sp_input1: input1_val})
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], input0_val[0])
@@ -94,18 +117,21 @@ class SerializeSparseTest(tf.test.TestCase):
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
       values_value = np.array([b"a", b"b", b"c"])
       shape_value = np.array([4, 5], dtype=np.int64)
-      sparse_tensor = self._SparseTensorPlaceholder(dtype=tf.string)
-      serialized = tf.serialize_many_sparse(sparse_tensor)
-      deserialized = tf.deserialize_many_sparse(serialized, dtype=tf.string)
+      sparse_tensor = self._SparseTensorPlaceholder(dtype=dtypes.string)
+      serialized = sparse_ops.serialize_many_sparse(sparse_tensor)
+      deserialized = sparse_ops.deserialize_many_sparse(
+          serialized, dtype=dtypes.string)
       serialized_value, deserialized_value = sess.run(
           [serialized, deserialized],
-          feed_dict={sparse_tensor.indices: indices_value,
-                     sparse_tensor.values: values_value,
-                     sparse_tensor.shape: shape_value})
+          feed_dict={
+              sparse_tensor.indices: indices_value,
+              sparse_tensor.values: values_value,
+              sparse_tensor.dense_shape: shape_value
+          })
       self.assertEqual(serialized_value.shape, (4, 3))
       self.assertAllEqual(deserialized_value.indices, indices_value)
       self.assertAllEqual(deserialized_value.values, values_value)
-      self.assertAllEqual(deserialized_value.shape, shape_value)
+      self.assertAllEqual(deserialized_value.dense_shape, shape_value)
 
   def testDeserializeFailsWrongType(self):
     with self.test_session(use_gpu=False) as sess:
@@ -113,18 +139,19 @@ class SerializeSparseTest(tf.test.TestCase):
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
-      serialized0 = tf.serialize_sparse(sp_input0)
-      serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized0 = sparse_ops.serialize_sparse(sp_input0)
+      serialized1 = sparse_ops.serialize_sparse(sp_input1)
+      serialized_concat = array_ops.stack([serialized0, serialized1])
 
-      sp_deserialized = tf.deserialize_many_sparse(
-          serialized_concat, dtype=tf.int64)
+      sp_deserialized = sparse_ops.deserialize_many_sparse(
+          serialized_concat, dtype=dtypes.int64)
 
       with self.assertRaisesOpError(
           r"Requested SparseTensor of type int64 but "
           r"SparseTensor\[0\].values.dtype\(\) == int32"):
-        sess.run(
-            sp_deserialized, {sp_input0: input0_val, sp_input1: input1_val})
+        sess.run(sp_deserialized,
+                 {sp_input0: input0_val,
+                  sp_input1: input1_val})
 
   def testDeserializeFailsInconsistentRank(self):
     with self.test_session(use_gpu=False) as sess:
@@ -132,29 +159,30 @@ class SerializeSparseTest(tf.test.TestCase):
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_1x1x1()
-      serialized0 = tf.serialize_sparse(sp_input0)
-      serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized0 = sparse_ops.serialize_sparse(sp_input0)
+      serialized1 = sparse_ops.serialize_sparse(sp_input1)
+      serialized_concat = array_ops.stack([serialized0, serialized1])
 
-      sp_deserialized = tf.deserialize_many_sparse(
-          serialized_concat, dtype=tf.int32)
+      sp_deserialized = sparse_ops.deserialize_many_sparse(
+          serialized_concat, dtype=dtypes.int32)
 
       with self.assertRaisesOpError(
           r"Inconsistent rank across SparseTensors: rank prior to "
           r"SparseTensor\[1\] was: 3 but rank of SparseTensor\[1\] is: 4"):
-        sess.run(
-            sp_deserialized, {sp_input0: input0_val, sp_input1: input1_val})
+        sess.run(sp_deserialized,
+                 {sp_input0: input0_val,
+                  sp_input1: input1_val})
 
   def testDeserializeFailsInvalidProto(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
-      serialized0 = tf.serialize_sparse(sp_input0)
+      serialized0 = sparse_ops.serialize_sparse(sp_input0)
       serialized1 = ["a", "b", "c"]
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized_concat = array_ops.stack([serialized0, serialized1])
 
-      sp_deserialized = tf.deserialize_many_sparse(
-          serialized_concat, dtype=tf.int32)
+      sp_deserialized = sparse_ops.deserialize_many_sparse(
+          serialized_concat, dtype=dtypes.int32)
 
       with self.assertRaisesOpError(
           r"Could not parse serialized_sparse\[1, 0\]"):
@@ -162,4 +190,4 @@ class SerializeSparseTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

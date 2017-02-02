@@ -39,60 +39,6 @@ using tensorforest::CheckTensorBounds;
 using tensorforest::Initialize;
 using tensorforest::WeightedGiniImpurity;
 
-REGISTER_OP("UpdateFertileSlots")
-    .Attr("regression: bool = False")
-    .Input("finished: int32")
-    .Input("non_fertile_leaves: int32")
-    .Input("non_fertile_leaf_scores: float")
-    .Input("end_of_tree: int32")
-    .Input("accumulator_sums: float")
-    .Input("node_to_accumulator: int32")
-    .Input("stale_leaves: int32")
-    .Output("node_map_updates: int32")
-    .Output("accumulators_cleared: int32")
-    .Output("accumulators_allocated: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Matrix(c->MakeDim(2), InferenceContext::kUnknownDim));
-      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Updates accumulator slots to reflect finished or newly fertile nodes.
-
-finished:= A 1-d int32 tensor containing the indices of fertile nodes that
-  are ready to decide on a split.
-non_fertile_leaves:= A 1-d int32 tensor containing the indices of all the
-  currently non-fertile leaves.  If there are free accumulator slots after
-  deallocation, UpdateFertileSlots will consider these nodes (plus the ones
-  in new_leaves) and potentially turn some of them fertile.
-non_fertile_leaf_scores: `non_fertile_leaf_scores[i]` is the splitting score
-  of the non-fertile leaf `non_fertile_leaves[i]`.
-end_of_tree: The end of tree tensor from the previous training iteration, used
-  with the finished input to calculate a list of new leaf indices created by
-  GrowTree, which will be considered to become fertile if there are free
-  slots.
-accumulator_sums: For classification, `accumulator_sums[a][c]` records how
-  many training examples have class c and have ended up in the fertile node
-  associated with accumulator slot a.  It has the total sum in entry 0 for
-  convenience. For regression, it is the same except it contains the sum
-  of the input labels that have been seen, and entry 0 contains the number
-  of training examples that have been seen.
-node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
-  fertile node i, or -1 if node i isn't fertile.
-stale_leaves:= A 1-d int32 tensor containing the indices of all leaves that
-  have stopped accumulating statistics because they are too old.
-node_map_updates:= A 2-d int32 tensor describing the changes that need to
-  be applied to the node_to_accumulator map.  Intended to be used with
-  `tf.scatter_update(node_to_accumulator,
-                     node_map_updates[0],
-                     node_map_updates[1])`.
-accumulators_cleared:= A 1-d int32 tensor containing the indices of all
-  the accumulator slots that need to be cleared.
-accumulators_allocated:= A 1-d int32 tensor containing the indices of all
-  the accumulator slots that need to be allocated.
-
-)doc");
 
 class UpdateFertileSlots : public OpKernel {
  public:
@@ -112,6 +58,7 @@ class UpdateFertileSlots : public OpKernel {
     const Tensor& accumulator_sums = context->input(4);
     const Tensor& node_to_accumulator = context->input(5);
     const Tensor& stale_leaves = context->input(6);
+    const Tensor& node_sums = context->input(7);
 
     OP_REQUIRES(context, finished.shape().dims() == 1,
                 errors::InvalidArgument(
@@ -195,6 +142,8 @@ class UpdateFertileSlots : public OpKernel {
         non_fertile_leaves, non_fertile_leaf_scores, eot, num_new_leaves,
         static_cast<int32>(accumulator_sums.shape().dim_size(1)), &leaf_heap);
 
+    const auto sums = node_sums.unaligned_flat<float>();
+    const int32 num_columns = node_sums.shape().dim_size(1);
     // Allocate leaves.
     std::unique_ptr<HeapValuesType> values(
         leaf_heap.Extract());
@@ -209,6 +158,18 @@ class UpdateFertileSlots : public OpKernel {
         VLOG(1) << "No allocators left.";
         break;
       }
+      // For classification, don't make a node fertile until it is unpure.
+      if (!regression_) {
+        // Add 1 here because index 0 contains the sum of the weights across
+        // classes.
+        Eigen::array<int, 1> offsets = {node.first * num_columns + 1};
+        Eigen::array<int, 1> extents = {num_columns - 1};
+        const auto node_counts = sums.slice(offsets, extents);
+        // TODO(thomaswc): Implement a faster check for pure nodes.
+        if (tensorforest::RawWeightedGiniImpurity(node_counts) == 0) {
+          continue;
+        }
+      }
       VLOG(1) << "setting node " << node.first << " to accumulator "
               << accumulator;
       ++num_accumulators_allocated;
@@ -219,7 +180,8 @@ class UpdateFertileSlots : public OpKernel {
     }
 
     // Construct and fill outputs.
-    SetNodeMapUpdates(accumulators_to_node, finished, stale_leaves, context);
+    SetNodeMapUpdates(finished_accumulators, accumulators_to_node, finished,
+                      stale_leaves, context);
     SetAccumulatorsCleared(finished_accumulators,
                            accumulators_to_node, context);
     SetAccumulatorsAllocated(accumulators_to_node, context);
@@ -236,47 +198,79 @@ class UpdateFertileSlots : public OpKernel {
   typedef TopN<std::pair<int32, float>, OrderBySecondGreater> LeafHeapType;
   typedef std::vector<std::pair<int32, float>> HeapValuesType;
 
-  // Creates an update tensor for node to accumulator map.  Sets finished and
-  // stale nodes to -1 (no accumulator assigned) and newly allocated nodes to
-  // their accumulator.
+  // Creates an update tensor for the node to accumulator and accumulator to
+  // node maps.  Sets finished and stale nodes to -1 (no accumulator assigned)
+  // and newly allocated nodes to their accumulator.  De-allocated accumulators
+  // are also set to -1.
   void SetNodeMapUpdates(
+      const std::set<int32>& finished_accumulators,
       const std::unordered_map<int32, int32>& accumulators_to_node,
       const Tensor& finished, const Tensor& stale, OpKernelContext* context) {
-    // Node map updates.
-    Tensor* output_node_map = nullptr;
-    TensorShape node_map_shape;
-    node_map_shape.AddDim(2);
-    node_map_shape.AddDim(
-        accumulators_to_node.size() +
-        static_cast<int32>(stale.shape().dim_size(0) +
-                           finished.shape().dim_size(0)));
+    // Node-to-accumulator map updates.
+    Tensor* output_n2a_map = nullptr;
+    TensorShape n2a_map_shape;
+    n2a_map_shape.AddDim(2);
+    n2a_map_shape.AddDim(accumulators_to_node.size() +
+                         static_cast<int32>(stale.shape().dim_size(0) +
+                                            finished.shape().dim_size(0)));
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, node_map_shape,
-                                            &output_node_map));
+                   context->allocate_output(0, n2a_map_shape, &output_n2a_map));
 
-    auto out_node = output_node_map->tensor<int32, 2>();
-    int32 output_slot = 0;
+    // Calculate how many finished accumulators were not re-used, so that
+    // we can properly size the a2n output.
+    std::vector<int32> totally_finished_accumulators;
+    for (const int32 finished_accumulator : finished_accumulators) {
+      if (!gtl::FindOrNull(accumulators_to_node, finished_accumulator)) {
+        totally_finished_accumulators.push_back(finished_accumulator);
+      }
+    }
+
+    // Accumulator-to-node map updates.
+    Tensor* output_a2n_map = nullptr;
+    TensorShape a2n_map_shape;
+    a2n_map_shape.AddDim(2);
+    a2n_map_shape.AddDim(accumulators_to_node.size() +
+                         totally_finished_accumulators.size());
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, a2n_map_shape, &output_a2n_map));
+
+    auto out_n2a = output_n2a_map->tensor<int32, 2>();
+    auto out_a2n = output_a2n_map->tensor<int32, 2>();
+    int32 n2a_slot = 0;
+    int32 a2n_slot = 0;
 
     // Set finished nodes to -1.
     const auto finished_vec = finished.unaligned_flat<int32>();
     for (int32 i = 0; i < finished_vec.size(); ++i) {
-      out_node(0, output_slot) = finished_vec(i);
-      out_node(1, output_slot)  = -1;
-      ++output_slot;
+      out_n2a(0, n2a_slot) = finished_vec(i);
+      out_n2a(1, n2a_slot) = -1;
+      ++n2a_slot;
     }
     // Set stale nodes to -1.
     const auto stale_vec = stale.unaligned_flat<int32>();
     for (int32 i = 0; i < stale_vec.size(); ++i) {
-      out_node(0, output_slot) = stale_vec(i);
-      out_node(1, output_slot)  = -1;
-      ++output_slot;
+      out_n2a(0, n2a_slot) = stale_vec(i);
+      out_n2a(1, n2a_slot) = -1;
+      ++n2a_slot;
+    }
+
+    for (const int32 finished_accumulator : totally_finished_accumulators) {
+      out_a2n(0, a2n_slot) = finished_accumulator;
+      out_a2n(1, a2n_slot) = -1;
+      ++a2n_slot;
     }
 
     // Set newly allocated nodes to their allocator.
     for (const auto& node_alloc_pair : accumulators_to_node) {
-      out_node(0, output_slot) = node_alloc_pair.second;
-      out_node(1, output_slot) = node_alloc_pair.first;
-      ++output_slot;
+      VLOG(1) << "a2n[" << node_alloc_pair.first
+              << "] = " << node_alloc_pair.second;
+      out_n2a(0, n2a_slot) = node_alloc_pair.second;
+      out_n2a(1, n2a_slot) = node_alloc_pair.first;
+      ++n2a_slot;
+
+      out_a2n(0, a2n_slot) = node_alloc_pair.first;
+      out_a2n(1, a2n_slot) = node_alloc_pair.second;
+      ++a2n_slot;
     }
   }
 
@@ -297,8 +291,7 @@ class UpdateFertileSlots : public OpKernel {
     TensorShape cleared_shape;
     cleared_shape.AddDim(cleared.size());
     OP_REQUIRES_OK(context,
-                   context->allocate_output(1, cleared_shape,
-                                            &output_cleared));
+                   context->allocate_output(2, cleared_shape, &output_cleared));
 
     auto out = output_cleared->unaligned_flat<int32>();
 
@@ -318,9 +311,8 @@ class UpdateFertileSlots : public OpKernel {
     Tensor* output_allocated = nullptr;
     TensorShape allocated_shape;
     allocated_shape.AddDim(accumulators_to_node.size());
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(2, allocated_shape,
-                                            &output_allocated));
+    OP_REQUIRES_OK(context, context->allocate_output(3, allocated_shape,
+                                                     &output_allocated));
 
     auto out = output_allocated->unaligned_flat<int32>();
     int32 output_slot = 0;

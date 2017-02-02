@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -44,6 +43,32 @@ namespace tensorflow {
 // a good cuckoo path with less data movement (see
 // http://www.cs.cmu.edu/~dga/papers/cuckoo-eurosys14.pdf )
 
+namespace presized_cuckoo_map {
+// Utility function to compute (x * y) >> 64, or "multiply high".
+// On x86-64, this is a single instruction, but not all platforms
+// support the __uint128_t type, so we provide a generic
+// implementation as well.
+inline uint64 multiply_high_u64(uint64 x, uint64 y) {
+#if defined(__SIZEOF_INT128__)
+  return (uint64)(((__uint128_t)x * (__uint128_t)y) >> 64);
+#else
+  // For platforms without int128 support, do it the long way.
+  uint64 x_lo = x & 0xffffffff;
+  uint64 x_hi = x >> 32;
+  uint64 buckets_lo = y & 0xffffffff;
+  uint64 buckets_hi = y >> 32;
+  uint64 prod_hi = x_hi * buckets_hi;
+  uint64 prod_lo = x_lo * buckets_lo;
+  uint64 prod_mid1 = x_hi * buckets_lo;
+  uint64 prod_mid2 = x_lo * buckets_hi;
+  uint64 carry =
+      ((prod_mid1 & 0xffffffff) + (prod_mid2 & 0xffffffff) + (prod_lo >> 32)) >>
+      32;
+  return prod_hi + (prod_mid1 >> 32) + (prod_mid2 >> 32) + carry;
+#endif
+}
+}
+
 template <class value>
 class PresizedCuckooMap {
  public:
@@ -67,18 +92,14 @@ class PresizedCuckooMap {
     }
     buckets_.clear();
     buckets_.resize(num_buckets_, empty_bucket);
-#if !defined(__GCUDACC__) && !defined(__GCUDACC_HOST__) && \
-    !defined(IS_MOBILE_PLATFORM)
-    buckets_divisor_ = Eigen::internal::TensorIntDivisor<uint64>(num_buckets_);
-#endif
   }
 
   // Returns false if k is already in table or if the table
   // is full; true otherwise.
   bool InsertUnique(const key_type k, const value& v) {
     uint64 tk = key_transform(k);
-    uint64 b1 = fast_mod_by_buckets(tk);
-    uint64 b2 = fast_mod_by_buckets(h2(tk));
+    uint64 b1 = fast_map_to_buckets(tk);
+    uint64 b2 = fast_map_to_buckets(h2(tk));
 
     // Merged find and duplicate checking.
     uint64 target_bucket = 0;
@@ -107,8 +128,8 @@ class PresizedCuckooMap {
   // Returns true if found.  Sets *out = value.
   bool Find(const key_type k, value* out) const {
     uint64 tk = key_transform(k);
-    return FindInBucket(k, fast_mod_by_buckets(tk), out) ||
-           FindInBucket(k, fast_mod_by_buckets(h2(tk)), out);
+    return FindInBucket(k, fast_map_to_buckets(tk), out) ||
+           FindInBucket(k, fast_map_to_buckets(h2(tk)), out);
   }
 
  private:
@@ -180,9 +201,9 @@ class PresizedCuckooMap {
       return e;
     }
 
-    bool empty() { return head_ == tail_; }
+    bool empty() const { return head_ == tail_; }
 
-    bool full() { return ((tail_ + 1) % kMaxQueueSize) == head_; }
+    bool full() const { return ((tail_ + 1) % kMaxQueueSize) == head_; }
 
     void reset() { head_ = tail_ = 0; }
 
@@ -210,13 +231,13 @@ class PresizedCuckooMap {
     return m * ((h >> 32) | (h << 32));
   }
 
-  // alt_bucket identifies the "other" bucket for key k, whether
+  // alt_bucket identifies the "other" bucket for key k, where
   // other is "the one that isn't bucket b"
   inline uint64 alt_bucket(key_type k, uint64 b) const {
-    if (fast_mod_by_buckets(k) != b) {
-      return fast_mod_by_buckets(k);
+    if (fast_map_to_buckets(k) != b) {
+      return fast_map_to_buckets(k);
     }
-    return fast_mod_by_buckets(h2(k));
+    return fast_map_to_buckets(h2(k));
   }
 
   inline void InsertInternal(key_type k, const value& v, uint64 b, int slot) {
@@ -306,22 +327,17 @@ class PresizedCuckooMap {
     return false;
   }
 
-  inline uint64 fast_mod_by_buckets(uint64 x) const {
-// Omitting the optimized bucket mod for CUDA platforms
-// until Eigen supports 2^63 divisors on GPU.
-#if !defined(__GCUDACC__) && !defined(__GCUDACC_HOST__) && \
-    !defined(IS_MOBILE_PLATFORM)
-    x &= ~(1ULL << 63);  // Fast div can only handle 2^63-1
-    return x - num_buckets_ * (x / buckets_divisor_);
-#else
-    return x % num_buckets_;
-#endif
+  inline uint64 fast_map_to_buckets(uint64 x) const {
+    // Map x (uniform in 2^64) to the range [0, num_buckets_ -1]
+    // using Lemire's alternative to modulo reduction:
+    // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+    // Instead of x % N, use (x * N) >> 64.
+    return presized_cuckoo_map::multiply_high_u64(x, num_buckets_);
   }
 
   // Set upon initialization: num_entries / kLoadFactor / kSlotsPerBucket.
   uint64 num_buckets_;
   std::vector<Bucket> buckets_;
-  Eigen::internal::TensorIntDivisor<uint64> buckets_divisor_;  // for fast mod
 
   std::unique_ptr<CuckooPathQueue> cpq_;
   CuckooPathEntry visited_[kVisitedListSize];

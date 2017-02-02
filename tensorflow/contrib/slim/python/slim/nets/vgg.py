@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -37,13 +37,20 @@ Usage:
 @@vgg_16
 @@vgg_19
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
-slim = tf.contrib.slim
+from tensorflow.contrib import layers
+from tensorflow.contrib.framework.python.ops import arg_scope
+from tensorflow.contrib.layers.python.layers import layers as layers_lib
+from tensorflow.contrib.layers.python.layers import regularizers
+from tensorflow.contrib.layers.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
 
 
 def vgg_arg_scope(weight_decay=0.0005):
@@ -55,11 +62,12 @@ def vgg_arg_scope(weight_decay=0.0005):
   Returns:
     An arg_scope.
   """
-  with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                      activation_fn=tf.nn.relu,
-                      weights_regularizer=slim.l2_regularizer(weight_decay),
-                      biases_initializer=tf.zeros_initializer):
-    with slim.arg_scope([slim.conv2d], padding='SAME') as arg_sc:
+  with arg_scope(
+      [layers.conv2d, layers_lib.fully_connected],
+      activation_fn=nn_ops.relu,
+      weights_regularizer=regularizers.l2_regularizer(weight_decay),
+      biases_initializer=init_ops.zeros_initializer()):
+    with arg_scope([layers.conv2d], padding='SAME') as arg_sc:
       return arg_sc
 
 
@@ -87,38 +95,44 @@ def vgg_a(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_scope(scope, 'vgg_a', [inputs]) as sc:
-    end_points_collection = sc.name + '_end_points'
+  with variable_scope.variable_scope(scope, 'vgg_a', [inputs]) as sc:
+    end_points_collection = sc.original_name_scope + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
-    with slim.arg_scope([slim.conv2d, slim.max_pool2d],
-                        outputs_collections=end_points_collection):
-      net = slim.repeat(inputs, 1, slim.conv2d, 64, [3, 3], scope='conv1')
-      net = slim.max_pool2d(net, [2, 2], scope='pool1')
-      net = slim.repeat(net, 1, slim.conv2d, 128, [3, 3], scope='conv2')
-      net = slim.max_pool2d(net, [2, 2], scope='pool2')
-      net = slim.repeat(net, 2, slim.conv2d, 256, [3, 3], scope='conv3')
-      net = slim.max_pool2d(net, [2, 2], scope='pool3')
-      net = slim.repeat(net, 2, slim.conv2d, 512, [3, 3], scope='conv4')
-      net = slim.max_pool2d(net, [2, 2], scope='pool4')
-      net = slim.repeat(net, 2, slim.conv2d, 512, [3, 3], scope='conv5')
-      net = slim.max_pool2d(net, [2, 2], scope='pool5')
+    with arg_scope(
+        [layers.conv2d, layers_lib.max_pool2d],
+        outputs_collections=end_points_collection):
+      net = layers_lib.repeat(
+          inputs, 1, layers.conv2d, 64, [3, 3], scope='conv1')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool1')
+      net = layers_lib.repeat(net, 1, layers.conv2d, 128, [3, 3], scope='conv2')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool2')
+      net = layers_lib.repeat(net, 2, layers.conv2d, 256, [3, 3], scope='conv3')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool3')
+      net = layers_lib.repeat(net, 2, layers.conv2d, 512, [3, 3], scope='conv4')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool4')
+      net = layers_lib.repeat(net, 2, layers.conv2d, 512, [3, 3], scope='conv5')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool5')
       # Use conv2d instead of fully_connected layers.
-      net = slim.conv2d(net, 4096, [7, 7], padding='VALID', scope='fc6')
-      net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                         scope='dropout6')
-      net = slim.conv2d(net, 4096, [1, 1], scope='fc7')
-      net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                         scope='dropout7')
-      net = slim.conv2d(net, num_classes, [1, 1],
-                        activation_fn=None,
-                        normalizer_fn=None,
-                        scope='fc8')
+      net = layers.conv2d(net, 4096, [7, 7], padding='VALID', scope='fc6')
+      net = layers_lib.dropout(
+          net, dropout_keep_prob, is_training=is_training, scope='dropout6')
+      net = layers.conv2d(net, 4096, [1, 1], scope='fc7')
+      net = layers_lib.dropout(
+          net, dropout_keep_prob, is_training=is_training, scope='dropout7')
+      net = layers.conv2d(
+          net,
+          num_classes, [1, 1],
+          activation_fn=None,
+          normalizer_fn=None,
+          scope='fc8')
       # Convert end_points_collection into a end_point dict.
-      end_points = dict(tf.get_collection(end_points_collection))
+      end_points = utils.convert_collection_to_dict(end_points_collection)
       if spatial_squeeze:
-        net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
+        net = array_ops.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+
+
 vgg_a.default_image_size = 224
 
 
@@ -146,38 +160,44 @@ def vgg_16(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_scope(scope, 'vgg_16', [inputs]) as sc:
-    end_points_collection = sc.name + '_end_points'
+  with variable_scope.variable_scope(scope, 'vgg_16', [inputs]) as sc:
+    end_points_collection = sc.original_name_scope + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
-    with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
-                        outputs_collections=end_points_collection):
-      net = slim.repeat(inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
-      net = slim.max_pool2d(net, [2, 2], scope='pool1')
-      net = slim.repeat(net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
-      net = slim.max_pool2d(net, [2, 2], scope='pool2')
-      net = slim.repeat(net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
-      net = slim.max_pool2d(net, [2, 2], scope='pool3')
-      net = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
-      net = slim.max_pool2d(net, [2, 2], scope='pool4')
-      net = slim.repeat(net, 3, slim.conv2d, 512, [3, 3], scope='conv5')
-      net = slim.max_pool2d(net, [2, 2], scope='pool5')
+    with arg_scope(
+        [layers.conv2d, layers_lib.fully_connected, layers_lib.max_pool2d],
+        outputs_collections=end_points_collection):
+      net = layers_lib.repeat(
+          inputs, 2, layers.conv2d, 64, [3, 3], scope='conv1')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool1')
+      net = layers_lib.repeat(net, 2, layers.conv2d, 128, [3, 3], scope='conv2')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool2')
+      net = layers_lib.repeat(net, 3, layers.conv2d, 256, [3, 3], scope='conv3')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool3')
+      net = layers_lib.repeat(net, 3, layers.conv2d, 512, [3, 3], scope='conv4')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool4')
+      net = layers_lib.repeat(net, 3, layers.conv2d, 512, [3, 3], scope='conv5')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool5')
       # Use conv2d instead of fully_connected layers.
-      net = slim.conv2d(net, 4096, [7, 7], padding='VALID', scope='fc6')
-      net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                         scope='dropout6')
-      net = slim.conv2d(net, 4096, [1, 1], scope='fc7')
-      net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                         scope='dropout7')
-      net = slim.conv2d(net, num_classes, [1, 1],
-                        activation_fn=None,
-                        normalizer_fn=None,
-                        scope='fc8')
+      net = layers.conv2d(net, 4096, [7, 7], padding='VALID', scope='fc6')
+      net = layers_lib.dropout(
+          net, dropout_keep_prob, is_training=is_training, scope='dropout6')
+      net = layers.conv2d(net, 4096, [1, 1], scope='fc7')
+      net = layers_lib.dropout(
+          net, dropout_keep_prob, is_training=is_training, scope='dropout7')
+      net = layers.conv2d(
+          net,
+          num_classes, [1, 1],
+          activation_fn=None,
+          normalizer_fn=None,
+          scope='fc8')
       # Convert end_points_collection into a end_point dict.
-      end_points = dict(tf.get_collection(end_points_collection))
+      end_points = utils.convert_collection_to_dict(end_points_collection)
       if spatial_squeeze:
-        net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
+        net = array_ops.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+
+
 vgg_16.default_image_size = 224
 
 
@@ -205,38 +225,44 @@ def vgg_19(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_scope(scope, 'vgg_19', [inputs]) as sc:
+  with variable_scope.variable_scope(scope, 'vgg_19', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
-    with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
-                        outputs_collections=end_points_collection):
-      net = slim.repeat(inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
-      net = slim.max_pool2d(net, [2, 2], scope='pool1')
-      net = slim.repeat(net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
-      net = slim.max_pool2d(net, [2, 2], scope='pool2')
-      net = slim.repeat(net, 4, slim.conv2d, 256, [3, 3], scope='conv3')
-      net = slim.max_pool2d(net, [2, 2], scope='pool3')
-      net = slim.repeat(net, 4, slim.conv2d, 512, [3, 3], scope='conv4')
-      net = slim.max_pool2d(net, [2, 2], scope='pool4')
-      net = slim.repeat(net, 4, slim.conv2d, 512, [3, 3], scope='conv5')
-      net = slim.max_pool2d(net, [2, 2], scope='pool5')
+    with arg_scope(
+        [layers.conv2d, layers_lib.fully_connected, layers_lib.max_pool2d],
+        outputs_collections=end_points_collection):
+      net = layers_lib.repeat(
+          inputs, 2, layers.conv2d, 64, [3, 3], scope='conv1')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool1')
+      net = layers_lib.repeat(net, 2, layers.conv2d, 128, [3, 3], scope='conv2')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool2')
+      net = layers_lib.repeat(net, 4, layers.conv2d, 256, [3, 3], scope='conv3')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool3')
+      net = layers_lib.repeat(net, 4, layers.conv2d, 512, [3, 3], scope='conv4')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool4')
+      net = layers_lib.repeat(net, 4, layers.conv2d, 512, [3, 3], scope='conv5')
+      net = layers_lib.max_pool2d(net, [2, 2], scope='pool5')
       # Use conv2d instead of fully_connected layers.
-      net = slim.conv2d(net, 4096, [7, 7], padding='VALID', scope='fc6')
-      net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                         scope='dropout6')
-      net = slim.conv2d(net, 4096, [1, 1], scope='fc7')
-      net = slim.dropout(net, dropout_keep_prob, is_training=is_training,
-                         scope='dropout7')
-      net = slim.conv2d(net, num_classes, [1, 1],
-                        activation_fn=None,
-                        normalizer_fn=None,
-                        scope='fc8')
+      net = layers.conv2d(net, 4096, [7, 7], padding='VALID', scope='fc6')
+      net = layers_lib.dropout(
+          net, dropout_keep_prob, is_training=is_training, scope='dropout6')
+      net = layers.conv2d(net, 4096, [1, 1], scope='fc7')
+      net = layers_lib.dropout(
+          net, dropout_keep_prob, is_training=is_training, scope='dropout7')
+      net = layers.conv2d(
+          net,
+          num_classes, [1, 1],
+          activation_fn=None,
+          normalizer_fn=None,
+          scope='fc8')
       # Convert end_points_collection into a end_point dict.
-      end_points = dict(tf.get_collection(end_points_collection))
+      end_points = utils.convert_collection_to_dict(end_points_collection)
       if spatial_squeeze:
-        net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
+        net = array_ops.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+
+
 vgg_19.default_image_size = 224
 
 # Alias

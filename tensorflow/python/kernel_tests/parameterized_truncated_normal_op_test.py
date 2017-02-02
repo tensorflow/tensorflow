@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for ParameterizedTruncatedNormalOp."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,9 +24,15 @@ import timeit
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
 class TruncatedNormalMoments(object):
@@ -96,11 +103,11 @@ def z_test(real, expected, i, num_samples):
   return abs((real[i] - moment_mean) / math.sqrt(total_variance))
 
 
-class ParameterizedTruncatedNormalTest(tf.test.TestCase):
-  use_gpu = False
+class ParameterizedTruncatedNormalTest(test.TestCase):
+  _use_gpu = False
   z_limit = 6.0
 
-  # Stop at moment 20 to avoid numerical errors in the theoretical moments.
+  # Stop at moment 10 to avoid numerical errors in the theoretical moments.
   max_moment = 10
 
   def validateMoments(self, shape, mean, stddev, minval, maxval, seed=1618):
@@ -108,10 +115,12 @@ class ParameterizedTruncatedNormalTest(tf.test.TestCase):
       # TruncatedNormalMoments requires scipy.stats.
       # Give up early if we are unable to import it.
       import scipy.stats  # pylint: disable=g-import-not-at-top,unused-variable
-      tf.set_random_seed(seed)
-      with self.test_session(use_gpu=self.use_gpu):
-        samples = random_ops.parameterized_truncated_normal(
-            shape, mean, stddev, minval, maxval).eval()
+      random_seed.set_random_seed(seed)
+      with self.test_session(use_gpu=self._use_gpu):
+        samples = random_ops.parameterized_truncated_normal(shape, mean, stddev,
+                                                            minval,
+                                                            maxval).eval()
+        assert (~np.isnan(samples)).all()
       moments = calculate_moments(samples, self.max_moment)
       expected_moments = TruncatedNormalMoments(mean, stddev, minval, maxval)
       num_samples = functools.reduce(lambda x, y: x * y, shape, 1)
@@ -119,7 +128,7 @@ class ParameterizedTruncatedNormalTest(tf.test.TestCase):
         self.assertLess(
             z_test(moments, expected_moments, i, num_samples), self.z_limit)
     except ImportError as e:
-      tf.logging.warn("Cannot test truncated normal op: %s" % str(e))
+      tf_logging.warn("Cannot test truncated normal op: %s" % str(e))
 
   def validateKolmogorovSmirnov(self,
                                 shape,
@@ -130,10 +139,12 @@ class ParameterizedTruncatedNormalTest(tf.test.TestCase):
                                 seed=1618):
     try:
       import scipy.stats  # pylint: disable=g-import-not-at-top
-      tf.set_random_seed(seed)
-      with self.test_session(use_gpu=self.use_gpu):
-        samples = random_ops.parameterized_truncated_normal(
-            shape, mean, stddev, minval, maxval).eval()
+      random_seed.set_random_seed(seed)
+      with self.test_session(use_gpu=self._use_gpu):
+        samples = random_ops.parameterized_truncated_normal(shape, mean, stddev,
+                                                            minval,
+                                                            maxval).eval()
+      assert (~np.isnan(samples)).all()
       minval = max(mean - stddev * 10, minval)
       maxval = min(mean + stddev * 10, maxval)
       dist = scipy.stats.norm(loc=mean, scale=stddev)
@@ -146,7 +157,7 @@ class ParameterizedTruncatedNormalTest(tf.test.TestCase):
       pvalue = scipy.stats.kstest(samples, truncated_cdf)[1]
       self.assertGreater(pvalue, 1e-10)
     except ImportError as e:
-      tf.logging.warn("Cannot test truncated normal op: %s" % str(e))
+      tf_logging.warn("Cannot test truncated normal op: %s" % str(e))
 
   def testDefaults(self):
     self.validateMoments([10**5], 0.0, 1.0, -2.0, 2.0)
@@ -173,27 +184,45 @@ class ParameterizedTruncatedNormalTest(tf.test.TestCase):
     self.validateKolmogorovSmirnov([10**5], 0.0, 0.1, 0.05, 0.10)
 
 
+class ParameterizedTruncatedNormalGpuTest(ParameterizedTruncatedNormalTest):
+  _use_gpu = True
+
+
 # Benchmarking code
-def parameterized_vs_naive(shape, num_iters):
+def parameterized_vs_naive(shape, num_iters, use_gpu=False):
   np.random.seed(1618)  # Make it reproducible.
 
   # No CSE/CF.
-  optimizer_options = tf.OptimizerOptions(opt_level=tf.OptimizerOptions.L0)
-  config = tf.ConfigProto(
-      graph_options=tf.GraphOptions(optimizer_options=optimizer_options))
+  optimizer_options = config_pb2.OptimizerOptions(
+      opt_level=config_pb2.OptimizerOptions.L0)
+  config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+      optimizer_options=optimizer_options))
 
-  with tf.Session(config=config) as sess:
-    param_op = tf.group(random_ops.parameterized_truncated_normal(shape))
-    naive_op = tf.group(random_ops.truncated_normal(shape))
+  with session.Session(config=config) as sess:
+    with ops.device("/cpu:0" if not use_gpu else None):
+      param_op = control_flow_ops.group(
+          random_ops.parameterized_truncated_normal(shape))
+      naive_op = control_flow_ops.group(random_ops.truncated_normal(shape))
 
+    # Burn-in to avoid session setup costs in the timing.
+    sess.run(param_op)
+    sess.run(param_op)
     param_dt = timeit.timeit(lambda: sess.run(param_op), number=num_iters)
+    sess.run(naive_op)
+    sess.run(naive_op)
     naive_dt = timeit.timeit(lambda: sess.run(naive_op), number=num_iters)
     return param_dt, naive_dt
 
 
-class TruncatedNormalBenchmark(tf.test.Benchmark):
+class TruncatedNormalBenchmark(test.Benchmark):
 
-  def benchmarkParameterizedOpVsNaiveOp(self):
+  def benchmarkParameterizedOpVsNaiveOpCpu(self):
+    self._benchmarkParameterizedOpVsNaiveOp(False)
+
+  def benchmarkParameterizedOpVsNaiveOpGpu(self):
+    self._benchmarkParameterizedOpVsNaiveOp(True)
+
+  def _benchmarkParameterizedOpVsNaiveOp(self, use_gpu):
     num_iters = 50
     print(("Composition of new ParameterizedTruncatedNormalOp vs. "
            "naive TruncatedNormalOp [%d iters]") % num_iters)
@@ -201,17 +230,17 @@ class TruncatedNormalBenchmark(tf.test.Benchmark):
 
     for shape in [[10000, 100], [1000, 1000], [1000000], [100, 100, 100],
                   [20, 20, 20, 20]]:
-      p_dt, n_dt = parameterized_vs_naive(shape, num_iters)
+      p_dt, n_dt = parameterized_vs_naive(shape, num_iters, use_gpu)
       print("%s\t%.3f\t%.3f\t%.2f" % (shape, p_dt, n_dt, p_dt / n_dt))
 
       shape_str = "-".join(map(str, shape))
-      self.report_benchmark(name="parameterized_shape" + shape_str,
-                            iters=num_iters,
-                            wall_time=p_dt)
-      self.report_benchmark(name="naive_shape" + shape_str,
-                            iters=num_iters,
-                            wall_time=n_dt)
+      self.report_benchmark(
+          name="parameterized_shape" + shape_str,
+          iters=num_iters,
+          wall_time=p_dt)
+      self.report_benchmark(
+          name="naive_shape" + shape_str, iters=num_iters, wall_time=n_dt)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

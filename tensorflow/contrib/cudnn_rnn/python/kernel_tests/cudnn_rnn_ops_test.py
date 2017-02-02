@@ -18,27 +18,124 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import os
+import unittest
+from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
+from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 
 
 class CudnnRNNTest(TensorFlowTestCase):
 
   def _CreateModel(self, rnn_mode, num_layers, num_units, input_size):
     if rnn_mode == "lstm":
-      model = tf.contrib.cudnn_rnn.CudnnLSTM(num_layers, num_units, input_size)
+      model = cudnn_rnn_ops.CudnnLSTM(num_layers, num_units, input_size)
     elif rnn_mode == "gru":
-      model = tf.contrib.cudnn_rnn.CudnnGRU(num_layers, num_units, input_size)
+      model = cudnn_rnn_ops.CudnnGRU(num_layers, num_units, input_size)
     elif rnn_mode == "rnn_tanh":
-      model = tf.contrib.cudnn_rnn.CudnnRNNTanh(num_layers, num_units,
-                                                input_size)
+      model = cudnn_rnn_ops.CudnnRNNTanh(num_layers, num_units, input_size)
     elif rnn_mode == "rnn_relu":
-      model = tf.contrib.cudnn_rnn.CudnnRNNRelu(num_layers, num_units,
-                                                input_size)
+      model = cudnn_rnn_ops.CudnnRNNRelu(num_layers, num_units, input_size)
     else:
       raise ValueError("Invalid rnn_mode: %s" % rnn_mode)
     return model
+
+  def _create_params_savable(self, params, model):
+    """Create a RNNParamsSaveable for the weight and bias parameters.
+
+    Args:
+      params: a Variable for weight and bias parameters.
+      model: a CudnnRNN model.
+    """
+    params_saveable = cudnn_rnn_ops.RNNParamsSaveable(model.params_to_canonical,
+                                                      model.canonical_to_params,
+                                                      params)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
+
+  def _testSaveRestoreVariable(self, rnn_mode):
+    model = self._CreateModel(rnn_mode, num_layers=2, num_units=7, input_size=3)
+    random_seed.set_random_seed(1234)
+    params_size_t = model.params_size()
+    params = variables.Variable(
+        random_ops.random_uniform([params_size_t]), validate_shape=False)
+    self._create_params_savable(params, model)
+    save_path = os.path.join(self.get_temp_dir(), "save-restore-variable-test")
+    saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      params_v = sess.run(params)
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+    with self.test_session(use_gpu=True) as sess:
+      reset_params = state_ops.assign(params, array_ops.zeros([params_size_t]))
+      sess.run(reset_params)
+      saver.restore(sess, save_path)
+      params_v_restored = sess.run(params)
+      self.assertAllEqual(params_v, params_v_restored)
+
+  def _testSaveRestoreOutput(self, rnn_mode):
+    num_layers = 2
+    num_units = 7
+    input_size = 7
+    seq_length = 10
+    batch_size = 5
+    dir_count = 1
+    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
+    params_size_t = model.params_size()
+    params = variables.Variable(
+        array_ops.ones([params_size_t]), validate_shape=False)
+    self._create_params_savable(params, model)
+    save_path = os.path.join(self.get_temp_dir(), "save-restore-output-test")
+    saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
+
+    has_input_c = (rnn_mode == "lstm")
+    input_data = array_ops.ones([seq_length, batch_size, input_size])
+    input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
+    if has_input_c:
+      input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
+      outputs = model(
+          input_data=input_data,
+          input_h=input_h,
+          input_c=input_c,
+          params=params,
+          is_training=False)
+    else:
+      outputs = model(
+          input_data=input_data,
+          input_h=input_h,
+          params=params,
+          is_training=False)
+    total_sum = sum(map(math_ops.reduce_sum, outputs))
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      total_sum_v = sess.run(total_sum)
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+    with self.test_session(use_gpu=True) as sess:
+      reset_params = state_ops.assign(params, array_ops.zeros([params_size_t]))
+      sess.run(reset_params)
+      saver.restore(sess, save_path)
+      total_sum_v_restored = sess.run(total_sum)
+      self.assertAllEqual(total_sum_v, total_sum_v_restored)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSaveRestore(self):
+    rnn_modes = ["lstm", "gru", "rnn_tanh", "rnn_relu"]
+    for rnn_mode in rnn_modes:
+      self._testSaveRestoreVariable(rnn_mode)
+      self._testSaveRestoreOutput(rnn_mode)
 
   def _MinLSTMParamSize(self,
                         num_layers,
@@ -62,9 +159,9 @@ class CudnnRNNTest(TensorFlowTestCase):
       params_size_v = sess.run(params_size)
       self.assertLessEqual(min_params_size, params_size_v)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testLSTMParamsSize(self):
-    if not tf.test.is_built_with_cuda():
-      return
     test_configs = [
         [4, 200, 200],
         [4, 200, 300],
@@ -73,7 +170,7 @@ class CudnnRNNTest(TensorFlowTestCase):
         [2, 200, 100],
         [3, 200, 400],
     ]
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       for (num_layers, num_units, input_size) in test_configs:
         self._testOneLSTMParamsSize(num_layers, num_units, input_size)
 
@@ -83,12 +180,12 @@ class CudnnRNNTest(TensorFlowTestCase):
     model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
     has_input_c = (rnn_mode == "lstm")
     params_size_t = model.params_size()
-    input_data = tf.ones([seq_length, batch_size, input_size])
-    input_h = tf.ones([num_layers * dir_count, batch_size, num_units])
+    input_data = array_ops.ones([seq_length, batch_size, input_size])
+    input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
+    params = variables.Variable(
+        array_ops.ones([params_size_t]), validate_shape=False)
     if has_input_c:
-      input_c = tf.ones([num_layers * dir_count, batch_size, num_units])
-    params = tf.Variable(tf.ones([params_size_t]), validate_shape=False)
-    if has_input_c:
+      input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
       output, output_h, output_c = model(
           input_data=input_data,
           input_h=input_h,
@@ -101,68 +198,76 @@ class CudnnRNNTest(TensorFlowTestCase):
           input_h=input_h,
           params=params,
           is_training=False)
-    output_sum = tf.reduce_sum(output)
-    output_h_sum = tf.reduce_sum(output_h)
+    output_sum = math_ops.reduce_sum(output)
+    output_h_sum = math_ops.reduce_sum(output_h)
     total_sum = output_sum + output_h_sum
     if has_input_c:
-      output_c_sum = tf.reduce_sum(output_c)
+      output_c_sum = math_ops.reduce_sum(output_c)
       total_sum += output_c_sum
     with self.test_session(use_gpu=True) as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       total_sum_v = sess.run([total_sum])
       self.assertAllClose(
           total_sum_v[0], expected, atol=tolerance, rtol=tolerance)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testSimpleInference(self):
-    if not tf.test.is_built_with_cuda():
-      return
     test_configs = [
-        ["lstm",
-         231833.22,
-         1e-2,
-         {
-             "num_layers": 4,
-             "num_units": 200,
-             "input_size": 200,
-             "batch_size": 20,
-             "seq_length": 10,
-             "dir_count": 1,
-         },],
-        ["gru",
-         56000,
-         1e-2,
-         {
-             "num_layers": 4,
-             "num_units": 200,
-             "input_size": 200,
-             "batch_size": 20,
-             "seq_length": 10,
-             "dir_count": 1,
-         },],
-        ["rnn_tanh",
-         56000,
-         1e-2,
-         {
-             "num_layers": 4,
-             "num_units": 200,
-             "input_size": 200,
-             "batch_size": 20,
-             "seq_length": 10,
-             "dir_count": 1,
-         },],
-        ["rnn_relu",
-         130688,
-         1e-2,
-         {
-             "num_layers": 2,
-             "num_units": 8,
-             "input_size": 4,
-             "batch_size": 4,
-             "seq_length": 2,
-             "dir_count": 1,
-         },],
+        [
+            "lstm",
+            231833.22,
+            1e-2,
+            {
+                "num_layers": 4,
+                "num_units": 200,
+                "input_size": 200,
+                "batch_size": 20,
+                "seq_length": 10,
+                "dir_count": 1,
+            },
+        ],
+        [
+            "gru",
+            56000,
+            1e-2,
+            {
+                "num_layers": 4,
+                "num_units": 200,
+                "input_size": 200,
+                "batch_size": 20,
+                "seq_length": 10,
+                "dir_count": 1,
+            },
+        ],
+        [
+            "rnn_tanh",
+            56000,
+            1e-2,
+            {
+                "num_layers": 4,
+                "num_units": 200,
+                "input_size": 200,
+                "batch_size": 20,
+                "seq_length": 10,
+                "dir_count": 1,
+            },
+        ],
+        [
+            "rnn_relu",
+            130688,
+            1e-2,
+            {
+                "num_layers": 2,
+                "num_units": 8,
+                "input_size": 4,
+                "batch_size": 4,
+                "seq_length": 2,
+                "dir_count": 1,
+            },
+        ],
     ]
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       for config in test_configs:
         rnn_mode = config[0]
         expected = config[1]
@@ -176,19 +281,20 @@ class CudnnRNNTest(TensorFlowTestCase):
   def _testOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
                              batch_size, seq_length, dir_count, tolerance):
     has_input_c = (rnn_mode == "lstm")
-    tf.set_random_seed(1234)
+    random_seed.set_random_seed(1234)
     model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
     params_size_t = model.params_size()
-    input_data = tf.Variable(
-        tf.random_uniform([seq_length, batch_size, input_size]))
-    input_h = tf.Variable(
-        tf.random_uniform([num_layers * dir_count, batch_size, num_units]))
+    input_data = variables.Variable(
+        random_ops.random_uniform([seq_length, batch_size, input_size]))
+    input_h = variables.Variable(
+        random_ops.random_uniform(
+            [num_layers * dir_count, batch_size, num_units]))
+    params = variables.Variable(
+        random_ops.random_uniform([params_size_t]), validate_shape=False)
     if has_input_c:
-      input_c = tf.Variable(
-          tf.random_uniform([num_layers * dir_count, batch_size, num_units]))
-    params = tf.Variable(
-        tf.random_uniform([params_size_t]), validate_shape=False)
-    if has_input_c:
+      input_c = variables.Variable(
+          random_ops.random_uniform(
+              [num_layers * dir_count, batch_size, num_units]))
       output, output_h, output_c = model(
           input_data=input_data,
           input_h=input_h,
@@ -197,11 +303,11 @@ class CudnnRNNTest(TensorFlowTestCase):
     else:
       output, output_h = model(
           input_data=input_data, input_h=input_h, params=params)
-    output_sum = tf.reduce_sum(output)
-    output_h_sum = tf.reduce_sum(output_h)
+    output_sum = math_ops.reduce_sum(output)
+    output_h_sum = math_ops.reduce_sum(output_h)
     total_sum = output_sum + output_h_sum
     if has_input_c:
-      output_c_sum = tf.reduce_sum(output_c)
+      output_c_sum = math_ops.reduce_sum(output_c)
       total_sum += output_c_sum
 
     with self.test_session(use_gpu=True) as sess:
@@ -214,59 +320,67 @@ class CudnnRNNTest(TensorFlowTestCase):
       if has_input_c:
         inputs_and_shapes.append(
             (input_c, [num_layers * dir_count, batch_size, num_units]),)
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       all_inputs = [entry[0] for entry in inputs_and_shapes]
       all_shapes = [entry[1] for entry in inputs_and_shapes]
-      err = tf.test.compute_gradient_error(all_inputs, all_shapes, total_sum,
-                                           [1])
+      err = gradient_checker.compute_gradient_error(all_inputs, all_shapes,
+                                                    total_sum, [1])
       self.assertLess(err, tolerance)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testSimpleTraining(self):
-    if not tf.test.is_built_with_cuda():
-      return
     test_configs = [
-        ["lstm",
-         1e-2,
-         {
-             "num_layers": 2,
-             "num_units": 3,
-             "input_size": 4,
-             "batch_size": 3,
-             "seq_length": 4,
-             "dir_count": 1,
-         },],
-        ["gru",
-         4e-3,
-         {
-             "num_layers": 2,
-             "num_units": 3,
-             "input_size": 4,
-             "batch_size": 3,
-             "seq_length": 4,
-             "dir_count": 1,
-         },],
-        ["rnn_tanh",
-         5e-3,
-         {
-             "num_layers": 2,
-             "num_units": 3,
-             "input_size": 4,
-             "batch_size": 3,
-             "seq_length": 4,
-             "dir_count": 1,
-         },],
-        ["rnn_relu",
-         3e-1,
-         {
-             "num_layers": 2,
-             "num_units": 3,
-             "input_size": 4,
-             "batch_size": 3,
-             "seq_length": 4,
-             "dir_count": 1,
-         },],
+        [
+            "lstm",
+            1e-2,
+            {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        ],
+        [
+            "gru",
+            4e-3,
+            {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        ],
+        [
+            "rnn_tanh",
+            5e-3,
+            {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        ],
+        [
+            "rnn_relu",
+            3e-1,
+            {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        ],
     ]
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       for config in test_configs:
         rnn_mode = config[0]
         tolerance = config[1]

@@ -8,28 +8,32 @@ Monitors allow user instrumentation of the training process.
 Monitors are useful to track training, report progress, request early
 stopping and more. Monitors use the observer pattern and notify at the following
 points:
- - when training begins
- - before a training step
- - after a training step
- - when training ends
+
+* when training begins
+* before a training step
+* after a training step
+* when training ends
 
 Monitors are not intended to be reusable.
 
 There are a few pre-defined monitors:
- - CaptureVariable: saves a variable's values
- - GraphDump: intended for debug only - saves all tensor values
- - PrintTensor: outputs one or more tensor values to log
- - SummarySaver: saves summaries to a summary writer
- - ValidationMonitor: runs model validation, by periodically calculating eval
-     metrics on a separate data set; supports optional early stopping
+
+* `CaptureVariable`: saves a variable's values
+* `GraphDump`: intended for debug only - saves all tensor values
+* `PrintTensor`: outputs one or more tensor values to log
+* `SummarySaver`: saves summaries to a summary writer
+* `ValidationMonitor`: runs model validation, by periodically calculating eval
+    metrics on a separate data set; supports optional early stopping
 
 For more specific needs, you can create custom monitors by extending one of the
 following classes:
- - BaseMonitor: the base class for all monitors
- - EveryN: triggers a callback every N training steps
+
+* `BaseMonitor`: the base class for all monitors
+* `EveryN`: triggers a callback every N training steps
 
 Example:
 
+```python
   class ExampleMonitor(monitors.BaseMonitor):
     def __init__(self):
       print 'Init'
@@ -52,6 +56,9 @@ Example:
   example_monitor = ExampleMonitor()
   linear_regressor.fit(
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
+```
+
+## Ops
 
 - - -
 
@@ -85,9 +92,13 @@ Monitors can either be run on all workers or, more commonly, restricted
 to run exclusively on the elected chief worker.
 - - -
 
-#### `tf.contrib.learn.monitors.BaseMonitor.__init__()` {#BaseMonitor.__init__}
+#### `tf.contrib.learn.monitors.BaseMonitor.__init__(*args, **kwargs)` {#BaseMonitor.__init__}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-05.
+Instructions for updating:
+Monitors are deprecated. Please use tf.train.SessionRunHook.
 
 
 - - -
@@ -188,6 +199,8 @@ calls. If failure occurred in the process, will be called as well.
 #### `tf.contrib.learn.monitors.BaseMonitor.set_estimator(estimator)` {#BaseMonitor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -392,6 +405,8 @@ Callback after a step is finished or `end()` is called.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -466,7 +481,7 @@ Returns the values captured so far.
 
 ### `class tf.contrib.learn.monitors.CheckpointSaver` {#CheckpointSaver}
 
-Saves checkpoints every N steps.
+Saves checkpoints every N steps or N seconds.
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaver.__init__}
@@ -558,6 +573,8 @@ End epoch.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -620,7 +637,7 @@ Base class for monitors that execute callbacks every N steps.
 This class adds three new callbacks:
   - every_n_step_begin
   - every_n_step_end
-  - every_n_pos_step
+  - every_n_post_step
 
 The callbacks are executed every n steps, or optionally every step for the
 first m steps, where m and n can both be user-specified.
@@ -632,7 +649,7 @@ When extending this class, note that if you wish to use any of the
     super(ExampleMonitor, self).step_begin(step)
     return []
 
-Failing to call the super implementation will cause unpredictible behavior.
+Failing to call the super implementation will cause unpredictable behavior.
 
 The `every_n_post_step()` callback is also called after the last step if it
 was not already called through the regular conditions.  Note that
@@ -788,6 +805,8 @@ In addition, the callback has the opportunity to stop training by returning
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -859,27 +878,33 @@ Initializes ExportMonitor. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will both become required args.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will both become required args.
 
-    Args:
-      every_n_steps: Run monitor every N steps.
-      export_dir: str, folder to export.
-      input_fn: A function that takes no argument and returns a tuple of
-        (features, targets), where features is a dict of string key to `Tensor`
-        and targets is a `Tensor` that's currently not used (and so can be
-        `None`).
-      input_feature_key: String key into the features dict returned by
-        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input.
-      exports_to_keep: int, number of exports to keep.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `dict` of `Tensor`s for predictions.
-      default_batch_size: Default batch size of the `Example` placeholder.
+##### Args:
 
-    Raises:
-      ValueError: If `input_fn` and `input_feature_key` are not both defined or
-        are not both `None`.
+
+*  <b>`every_n_steps`</b>: Run monitor every N steps.
+*  <b>`export_dir`</b>: str, folder to export.
+*  <b>`input_fn`</b>: A function that takes no argument and returns a tuple of
+    (features, labels), where features is a dict of string key to `Tensor`
+    and labels is a `Tensor` that's currently not used (and so can be
+    `None`).
+*  <b>`input_feature_key`</b>: String key into the features dict returned by
+    `input_fn` that corresponds to the raw `Example` strings `Tensor` that
+    the exported model will take as input. Should be `None` if and only if
+    you're passing in a `signature_fn` that does not use the first arg
+    (`Tensor` of `Example` strings).
+*  <b>`exports_to_keep`</b>: int, number of exports to keep.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `dict` of `Tensor`s for predictions.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `input_fn` and `input_feature_key` are not both defined or
+    are not both `None`.
 
 
 - - -
@@ -994,6 +1019,20 @@ Callback before every n'th step begins.
 
 - - -
 
+#### `tf.contrib.learn.monitors.ExportMonitor.last_export_dir` {#ExportMonitor.last_export_dir}
+
+Returns the directory containing the last completed export.
+
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added on 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because the
+  estimator being fitted does not yet return a value during export.
+
+
+- - -
+
 #### `tf.contrib.learn.monitors.ExportMonitor.post_step(step, session)` {#ExportMonitor.post_step}
 
 
@@ -1011,6 +1050,8 @@ Callback before every n'th step begins.
 #### `tf.contrib.learn.monitors.ExportMonitor.set_estimator(estimator)` {#ExportMonitor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1217,6 +1258,8 @@ calls. If failure occurred in the process, will be called as well.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -1371,6 +1414,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.LoggingTrainable.set_estimator(estimator)` {#LoggingTrainable.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1558,6 +1603,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.NanLoss.set_estimator(estimator)` {#NanLoss.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1748,6 +1795,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.PrintTensor.set_estimator(estimator)` {#PrintTensor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -2114,6 +2163,8 @@ calls. If failure occurred in the process, will be called as well.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -2155,8 +2206,8 @@ Initializes a `SummarySaver` monitor.
 
 
 *  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
-      buffer, as output by TF summary methods like `scalar_summary` or
-      `merge_all_summaries`.
+      buffer, as output by TF summary methods like `summary.scalar` or
+      `summary.merge_all`.
 *  <b>`save_steps`</b>: `int`, save summaries every N steps. See `EveryN`.
 *  <b>`output_dir`</b>: `string`, the directory to save the summaries to. Only used
       if no `summary_writer` is supplied.
@@ -2333,7 +2384,7 @@ Can do early stopping on validation metrics if `early_stopping_rounds` is
 provided.
 - - -
 
-#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
+#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, hooks=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
 
 Initializes a ValidationMonitor.
 
@@ -2348,6 +2399,8 @@ Initializes a ValidationMonitor.
 *  <b>`every_n_steps`</b>: Check for new checkpoints to evaluate every N steps. If a
       new checkpoint is found, it is evaluated. See `EveryN`.
 *  <b>`metrics`</b>: See `BaseEstimator.evaluate`.
+*  <b>`hooks`</b>: A list of `SessionRunHook` hooks to pass to the
+    `Estimator`'s `evaluate` function.
 *  <b>`early_stopping_rounds`</b>: `int`. If the metric indicated by
       `early_stopping_metric` does not change according to
       `early_stopping_metric_minimize` for this many steps, then training
@@ -2505,6 +2558,8 @@ Callback before every n'th step begins.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -2579,6 +2634,27 @@ Wraps monitors into a SessionRunHook.
 
 - - -
 
+#### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.after_create_session(session, coord)` {#RunHookAdapterForMonitors.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
 #### `tf.contrib.learn.monitors.RunHookAdapterForMonitors.after_run(run_context, run_values)` {#RunHookAdapterForMonitors.after_run}
 
 
@@ -2610,9 +2686,9 @@ Wraps monitors into a SessionRunHook.
 
 ### `class tf.contrib.learn.monitors.SummaryWriterCache` {#SummaryWriterCache}
 
-Cache for summary writers.
+Cache for file writers.
 
-This class caches summary writers, one per directory.
+This class caches file writers, one per directory.
 - - -
 
 #### `tf.contrib.learn.monitors.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
@@ -2624,7 +2700,7 @@ Clear cached summary writers. Currently only used for unit tests.
 
 #### `tf.contrib.learn.monitors.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
 
-Returns the SummaryWriter for the specified directory.
+Returns the FileWriter for the specified directory.
 
 ##### Args:
 
@@ -2633,7 +2709,29 @@ Returns the SummaryWriter for the specified directory.
 
 ##### Returns:
 
-  A `SummaryWriter`.
+  A `FileWriter`.
 
+
+
+- - -
+
+### `tf.contrib.learn.monitors.replace_monitors_with_hooks(monitors_or_hooks, estimator)` {#replace_monitors_with_hooks}
+
+Wraps monitors with a hook.
+
+`Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+monitor, you can wrap it with a hook using function. It is recommended to
+implement hook version of your monitor.
+
+##### Args:
+
+
+*  <b>`monitors_or_hooks`</b>: A `list` may contain both monitors and hooks.
+*  <b>`estimator`</b>: An `Estimator` that monitor will be used with.
+
+##### Returns:
+
+  Returns a list of hooks. If there is any monitor in the given list, it is
+  replaced by a hook.
 
 

@@ -33,6 +33,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* const kColocationAttrName = "_class";
+const char* const kColocationGroupPrefix = "loc:@";
+
 AttrSlice::AttrSlice(const NodeDef& node_def)
     : ndef_(&node_def), attrs_(&ndef_->attr()) {}
 
@@ -179,6 +182,17 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
   *value = &attr_value->func();
+  return Status::OK();
+}
+
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<NameAttrList>* value) {
+  const AttrValue* attr_value;
+  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
+  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
+  for (const auto& v : attr_value->list().func()) {
+    value->emplace_back(v);
+  }
   return Status::OK();
 }
 

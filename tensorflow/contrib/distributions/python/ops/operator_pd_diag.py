@@ -82,7 +82,7 @@ class OperatorPDDiagBase(operator_pd.OperatorPDBase):
   def _shape(self):
     d_shape = array_ops.shape(self._diag)
     k = array_ops.gather(d_shape, array_ops.size(d_shape) - 1)
-    return array_ops.concat(0, (d_shape, [k]))
+    return array_ops.concat((d_shape, [k]), 0)
 
   @abc.abstractmethod
   def _batch_log_det(self):
@@ -176,20 +176,20 @@ class OperatorPDDiag(OperatorPDDiagBase):
 
   def _batch_log_det(self):
     return math_ops.reduce_sum(
-        math_ops.log(self._diag), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_solve(x)
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return diag_mat * x
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return math_ops.sqrt(diag_mat) * x
 
@@ -202,15 +202,15 @@ class OperatorPDDiag(OperatorPDDiagBase):
     return rhs / math_ops.sqrt(diag_mat)
 
   def _to_dense(self):
-    return array_ops.batch_matrix_diag(self._diag)
+    return array_ops.matrix_diag(self._diag)
 
   def _sqrt_to_dense(self):
-    return array_ops.batch_matrix_diag(math_ops.sqrt(self._diag))
+    return array_ops.matrix_diag(math_ops.sqrt(self._diag))
 
   def _add_to_tensor(self, mat):
-    mat_diag = array_ops.batch_matrix_diag_part(mat)
+    mat_diag = array_ops.matrix_diag_part(mat)
     new_diag = self._diag + mat_diag
-    return array_ops.batch_matrix_set_diag(mat, new_diag)
+    return array_ops.matrix_set_diag(mat, new_diag)
 
 
 class OperatorPDSqrtDiag(OperatorPDDiagBase):
@@ -267,7 +267,8 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
 
   def _batch_log_det(self):
     return 2 * math_ops.reduce_sum(
-        math_ops.log(self._diag), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)),
+        reduction_indices=[-1])
 
   def _inv_quadratic_form_on_vectors(self, x):
     # This Operator is defined in terms of diagonal entries of the sqrt.
@@ -275,13 +276,13 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return math_ops.square(diag_mat) * x
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return diag_mat * x
 
@@ -294,12 +295,12 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
     return rhs / diag_mat
 
   def _to_dense(self):
-    return array_ops.batch_matrix_diag(math_ops.square(self._diag))
+    return array_ops.matrix_diag(math_ops.square(self._diag))
 
   def _sqrt_to_dense(self):
-    return array_ops.batch_matrix_diag(self._diag)
+    return array_ops.matrix_diag(self._diag)
 
   def _add_to_tensor(self, mat):
-    mat_diag = array_ops.batch_matrix_diag_part(mat)
+    mat_diag = array_ops.matrix_diag_part(mat)
     new_diag = math_ops.square(self._diag) + mat_diag
-    return array_ops.batch_matrix_set_diag(mat, new_diag)
+    return array_ops.matrix_set_diag(mat, new_diag)

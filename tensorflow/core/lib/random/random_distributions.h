@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <math.h>
+#undef _USE_MATH_DEFINES
+
 #include <string.h>
 #include <algorithm>
 

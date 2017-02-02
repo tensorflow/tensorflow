@@ -30,6 +30,11 @@ shift 1
 
 # Enable support for Google Cloud Platform (GCP)
 export TF_NEED_GCP=1
+# Enable support for HDFS
+export TF_NEED_HDFS=1
+
+# Enable XLA support
+export TF_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
 
 if [[ "$1" == "--disable-gcp" ]]; then
   export TF_NEED_GCP=0
@@ -47,8 +52,7 @@ else
 fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-echo '' > test_input.txt
-./configure < test_input.txt
+yes "" | ./configure
 popd
 
 # Gather and print build information

@@ -2,19 +2,27 @@
 
 Computes a 1-D convolution given 3-D input and filter tensors.
 
-Given an input tensor of shape [batch, in_width, in_channels]
+Given an input tensor of shape
+  [batch, in_width, in_channels]
+if data_format is "NHWC", or
+  [batch, in_channels, in_width]
+if data_format is "NCHW",
 and a filter / kernel tensor of shape
 [filter_width, in_channels, out_channels], this op reshapes
 the arguments to pass them to conv2d to perform the equivalent
 convolution operation.
 
-Internally, this op reshapes the input tensors and invokes
-`tf.nn.conv2d`.  A tensor of shape [batch, in_width, in_channels]
-is reshaped to [batch, 1, in_width, in_channels], and the filter
-is reshaped to [1, filter_width, in_channels, out_channels].
-The result is then reshaped back to [batch, out_width, out_channels]
-(where out_width is a function of the stride and padding as in
-conv2d) and returned to the caller.
+Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
+For example, if `data_format` does not start with "NC", a tensor of shape
+  [batch, in_width, in_channels]
+is reshaped to
+  [batch, 1, in_width, in_channels],
+and the filter is reshaped to
+  [1, filter_width, in_channels, out_channels].
+The result is then reshaped back to
+  [batch, out_width, out_channels]
+(where out_width is a function of the stride and padding as in conv2d) and
+returned to the caller.
 
 ##### Args:
 
@@ -34,4 +42,9 @@ conv2d) and returned to the caller.
 ##### Returns:
 
   A `Tensor`.  Has the same type as input.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `data_format` is invalid.
 

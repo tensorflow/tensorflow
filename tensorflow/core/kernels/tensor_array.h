@@ -19,6 +19,8 @@ limitations under the License.
 #include <limits.h>
 #include <vector>
 
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -130,10 +132,12 @@ class TensorArray : public ResourceBase {
   // 'N' elements.  While the underlying storage is a std::vector and
   // can hold more than MAX_INT entries, in practice we do not expect
   // users to construct this many Tensors for storage in a TensorArray.
-  TensorArray(const DataType& dtype, const Tensor& handle, int32 N,
+  TensorArray(const string& key, const DataType& dtype, const Tensor& handle,
+              int32 N, const PartialTensorShape& element_shape,
               bool dynamic_size, bool multiple_writes_aggregate, bool is_grad,
               int32 marked_size, bool clear_after_read)
-      : dtype_(dtype),
+      : key_(key),
+        dtype_(dtype),
         handle_(handle),
         closed_(false),
         dynamic_size_(dynamic_size),
@@ -142,6 +146,7 @@ class TensorArray : public ResourceBase {
         clear_after_read_(clear_after_read),
         is_grad_(is_grad),
         marked_size_(marked_size),
+        element_shape_(element_shape),
         tensors_(N) {}
 
   // Write PersistentTensor 'value' to index 'index'.
@@ -182,10 +187,13 @@ class TensorArray : public ResourceBase {
 
   template <typename Device, typename T>
   Status WriteOrAggregateMany(OpKernelContext* ctx,
+                              const std::vector<int32>& indices,
                               std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
-    for (int32 i = values->size() - 1; i >= 0; --i) {
-      Status s = LockedWriteOrAggregate<Device, T>(ctx, i, &(*values)[i]);
+    int32 i = 0;
+    for (const int32 ix : indices) {
+      Status s = LockedWriteOrAggregate<Device, T>(ctx, ix, &(*values)[i]);
+      ++i;
       TF_RETURN_IF_ERROR(s);
     }
     return Status::OK();
@@ -214,19 +222,37 @@ class TensorArray : public ResourceBase {
   }
 
   template <typename Device, typename T>
-  Status ReadMany(OpKernelContext* ctx, std::vector<PersistentTensor>* values,
-                  int32 size) {
+  Status ReadMany(OpKernelContext* ctx, const std::vector<int32>& indices,
+                  std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
     values->clear();
-    values->resize(size);
-    for (std::size_t i = 0; i < size; ++i) {
-      Status s = LockedRead<Device, T>(ctx, i, &(*values)[i]);
+    values->resize(indices.size());
+    int32 i = 0;
+    for (const int32 ix : indices) {
+      Status s = LockedRead<Device, T>(ctx, ix, &(*values)[i]);
+      ++i;
       if (!s.ok()) return s;
     }
     return Status::OK();
   }
 
   DataType ElemType() const { return dtype_; }
+
+  PartialTensorShape ElemShape() {
+    mutex_lock l(mu_);
+    return element_shape_;
+  }
+
+  Status SetElemShape(const PartialTensorShape& candidate) {
+    mutex_lock l(mu_);
+    PartialTensorShape new_element_shape_;
+    Status s = element_shape_.MergeWith(candidate, &new_element_shape_);
+    if (!s.ok()) {
+      return s;
+    }
+    element_shape_ = new_element_shape_;
+    return Status::OK();
+  }
 
   string DebugString() override {
     mutex_lock l(mu_);
@@ -309,6 +335,10 @@ class TensorArray : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* handle() { return &handle_; }
 
+  ResourceHandle resource_handle(OpKernelContext* ctx) {
+    return MakePerStepResourceHandle<TensorArray>(ctx, key_);
+  }
+
  private:
   Status LockedWrite(OpKernelContext* ctx, const int32 index,
                      PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -329,6 +359,8 @@ class TensorArray : public ResourceBase {
     }
     return Status::OK();
   }
+
+  const string key_;
 
   const DataType dtype_;
   Tensor handle_;
@@ -356,9 +388,13 @@ class TensorArray : public ResourceBase {
   // True iff this is a gradient tensor array.
   bool is_grad_;
 
-  // The size of the TensorArray after an unpack or split is performed.
+  // The size of the TensorArray after a (legacy) unpack or split is performed.
   // -1 if there has been no unpack or split performed on the TensorArray.
   int32 marked_size_;
+
+  // The shape of each element in the TensorArray, may be partially known or not
+  // known at all.
+  PartialTensorShape element_shape_ GUARDED_BY(mu_);
 
   // TensorAndState is used to keep track of the PersistentTensors
   // stored in the TensorArray, along with their shapes, and a boolean
@@ -414,6 +450,14 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
         ": Could not write to TensorArray index ", index,
         " because the value dtype is ", DataTypeString(value_t->dtype()),
         " but TensorArray dtype is ", DataTypeString(dtype_), ".");
+  }
+  if (!element_shape_.IsCompatibleWith(value_t->shape())) {
+    return errors::InvalidArgument(
+        "TensorArray ", handle_.vec<string>()(1),
+        ": Could not write to TensorArray index ", index,
+        " because the value shape is ", value_t->shape().DebugString(),
+        " which is incompatible with the TensorArray's element shape: ",
+        element_shape_.DebugString(), ".");
   }
 
   if (t.read) {

@@ -19,7 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
+from tensorflow.contrib.framework.python.ops import gen_variable_ops
+from tensorflow.contrib.util import loader
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -29,8 +33,11 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver as tf_saver
+from tensorflow.python.training import training_util
 
 
 __all__ = ['add_model_variable',
@@ -41,6 +48,7 @@ __all__ = ['add_model_variable',
            'assign_from_values',
            'assign_from_values_fn',
            'create_global_step',
+           'filter_variables',
            'get_global_step',
            'get_or_create_global_step',
            'get_local_variables',
@@ -53,28 +61,29 @@ __all__ = ['add_model_variable',
            'local_variable',
            'model_variable',
            'variable',
-           'VariableDeviceChooser']
+           'VariableDeviceChooser',
+           'zero_initializer']
+
+
+def zero_initializer(ref, use_locking=True, name="zero_initializer"):
+  """Initialize 'ref' with all zeros, ref tensor should be uninitialized.
+  If already initialized, you will get ValueError. This op is intended to
+  save memory during initialization.
+  Args:
+    ref: ref of the tensor need to be zero initialized.
+    name: optional name for this operation.
+  Returns:
+    ref that initialized.
+  Raises:
+    ValueError: If ref tensor is initialized.
+  """
+  loader.load_op_library(
+      resource_loader.get_path_to_datafile("_variable_ops.so"))
+  return gen_variable_ops.zero_initializer(ref, name=name)
 
 
 def assert_global_step(global_step_tensor):
-  """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
-
-  Args:
-    global_step_tensor: `Tensor` to test.
-  """
-  if not (isinstance(global_step_tensor, variables.Variable) or
-          isinstance(global_step_tensor, ops.Tensor)):
-    raise TypeError('Existing "global_step" must be a Variable or Tensor.')
-
-  if not global_step_tensor.dtype.base_dtype.is_integer:
-    raise TypeError(
-        'Existing "global_step" does not have integer type: %s' %
-        global_step_tensor.dtype)
-
-  if global_step_tensor.get_shape().ndims != 0:
-    raise TypeError(
-        'Existing "global_step" is not scalar: %s' %
-        global_step_tensor.get_shape())
+  training_util.assert_global_step(global_step_tensor)
 
 
 def assert_or_get_global_step(graph=None, global_step_tensor=None):
@@ -101,39 +110,8 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
   return global_step_tensor
 
 
-# TODO(ptucker): Change supervisor to use this when it's migrated to core.
 def get_global_step(graph=None):
-  """Get the global step tensor.
-
-  The global step tensor must be an integer variable. We first try to find it
-  in the collection `GLOBAL_STEP`, or by name `global_step:0`.
-
-  Args:
-    graph: The graph to find the global step in. If missing, use default graph.
-
-  Returns:
-    The global step variable, or `None` if none was found.
-
-  Raises:
-    TypeError: If the global step tensor has a non-integer type, or if it is not
-      a `Variable`.
-  """
-  graph = ops.get_default_graph() if graph is None else graph
-  global_step_tensor = None
-  global_step_tensors = graph.get_collection(ops.GraphKeys.GLOBAL_STEP)
-  if len(global_step_tensors) == 1:
-    global_step_tensor = global_step_tensors[0]
-  elif not global_step_tensors:
-    try:
-      global_step_tensor = graph.get_tensor_by_name('global_step:0')
-    except KeyError:
-      return None
-  else:
-    logging.error('Multiple tensors in global_step collection.')
-    return None
-
-  assert_global_step(global_step_tensor)
-  return global_step_tensor
+  return training_util.get_global_step(graph)
 
 
 def create_global_step(graph=None):
@@ -154,10 +132,14 @@ def create_global_step(graph=None):
     raise ValueError('"global_step" already exists.')
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    collections = [ops.GraphKeys.VARIABLES, ops.GraphKeys.GLOBAL_STEP]
-    return variable(ops.GraphKeys.GLOBAL_STEP, shape=[], dtype=dtypes.int64,
-                    initializer=init_ops.zeros_initializer, trainable=False,
-                    collections=collections)
+    collections = [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP]
+    return variable(
+        ops.GraphKeys.GLOBAL_STEP,
+        shape=[],
+        dtype=dtypes.int64,
+        initializer=init_ops.zeros_initializer(),
+        trainable=False,
+        collections=collections)
 
 
 def get_or_create_global_step(graph=None):
@@ -194,9 +176,10 @@ def local_variable(initial_value, validate_shape=True, name=None):
 
 
 @contrib_add_arg_scope
-def variable(name, shape=None, dtype=dtypes.float32, initializer=None,
+def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
-             caching_device=None, device=None):
+             caching_device=None, device=None,
+             partitioner=None, custom_getter=None):
   """Gets an existing variable with these parameters or creates a new one.
 
   Args:
@@ -208,35 +191,45 @@ def variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
-      If None it would default to tf.GraphKeys.VARIABLES.
+      If None it would default to `tf.GraphKeys.GLOBAL_VARIABLES`.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
     device: Optional device to place the variable. It can be an string or a
       function that is called to get the device for the variable.
+    partitioner: Optional callable that accepts a fully defined `TensorShape`
+      and dtype of the `Variable` to be created, and returns a list of
+      partitions for each axis (currently only one axis can be partitioned).
+    custom_getter: Callable that allows overwriting the internal
+      get_variable method and has to have the same signature.
 
   Returns:
     The created or existing variable.
   """
-  collections = list(collections or [ops.GraphKeys.VARIABLES])
+  collections = list(collections or [ops.GraphKeys.GLOBAL_VARIABLES])
 
   # Remove duplicates
   collections = set(collections)
+  getter = variable_scope.get_variable
+  if custom_getter is not None:
+    getter = custom_getter
   with ops.device(device or ''):
-    return variable_scope.get_variable(name, shape=shape, dtype=dtype,
-                                       initializer=initializer,
-                                       regularizer=regularizer,
-                                       trainable=trainable,
-                                       collections=collections,
-                                       caching_device=caching_device)
+    return getter(name, shape=shape, dtype=dtype,
+                  initializer=initializer,
+                  regularizer=regularizer,
+                  trainable=trainable,
+                  collections=collections,
+                  caching_device=caching_device,
+                  partitioner=partitioner)
 
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                    regularizer=None, trainable=True, collections=None,
-                   caching_device=None, device=None):
+                   caching_device=None, device=None, partitioner=None,
+                   custom_getter=None):
   """Gets an existing model variable with these parameters or creates a new one.
 
   Args:
@@ -248,25 +241,32 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
-      Note that the variable is always also added to the `GraphKeys.VARIABLES`
-      and `GraphKeys.MODEL_VARIABLES` collections.
+      Note that the variable is always also added to the
+      `GraphKeys.GLOBAL_VARIABLES` and `GraphKeys.MODEL_VARIABLES` collections.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
     device: Optional device to place the variable. It can be an string or a
       function that is called to get the device for the variable.
+    partitioner: Optional callable that accepts a fully defined `TensorShape`
+      and dtype of the `Variable` to be created, and returns a list of
+      partitions for each axis (currently only one axis can be partitioned).
+    custom_getter: Callable that allows overwriting the internal
+      get_variable method and has to have the same signature.
 
   Returns:
     The created or existing variable.
   """
   collections = list(collections or [])
-  collections += [ops.GraphKeys.VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
-  return variable(name, shape=shape, dtype=dtype,
-                  initializer=initializer, regularizer=regularizer,
-                  trainable=trainable, collections=collections,
-                  caching_device=caching_device, device=device)
+  collections += [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
+  var = variable(name, shape=shape, dtype=dtype,
+                 initializer=initializer, regularizer=regularizer,
+                 trainable=trainable, collections=collections,
+                 caching_device=caching_device, device=device,
+                 partitioner=partitioner, custom_getter=custom_getter)
+  return var
 
 
 def add_model_variable(var):
@@ -279,17 +279,22 @@ def add_model_variable(var):
     ops.add_to_collection(ops.GraphKeys.MODEL_VARIABLES, var)
 
 
-def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
+def get_variables(scope=None, suffix=None,
+                  collection=ops.GraphKeys.GLOBAL_VARIABLES):
   """Gets the list of variables, filtered by scope and/or suffix.
 
   Args:
-    scope: an optional scope for filtering the variables to return.
+    scope: an optional scope for filtering the variables to return. Can be a
+      variable scope or a string.
     suffix: an optional suffix for filtering the variables to return.
-    collection: in which collection search for. Defaults to GraphKeys.VARIABLES.
+    collection: in which collection search for. Defaults to
+      `GraphKeys.GLOBAL_VARIABLES`.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
+  if isinstance(scope, variable_scope.VariableScope):
+    scope = scope.name
   if suffix is not None:
     if ':' not in suffix:
       suffix += ':'
@@ -305,20 +310,20 @@ def get_model_variables(scope=None, suffix=None):
     suffix: an optional suffix for filtering the variables to return.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.MODEL_VARIABLES)
 
 
 def get_local_variables(scope=None, suffix=None):
-  """Gets the list of model variables, filtered by scope and/or suffix.
+  """Gets the list of local variables, filtered by scope and/or suffix.
 
   Args:
     scope: an optional scope for filtering the variables to return.
     suffix: an optional suffix for filtering the variables to return.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.LOCAL_VARIABLES)
 
@@ -431,7 +436,7 @@ def assign_from_values(var_names_to_values):
 
   for var_name in var_names_to_values:
     var_value = var_names_to_values[var_name]
-    var = ops.get_collection(ops.GraphKeys.VARIABLES, var_name)
+    var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, var_name)
     if not var:
       raise ValueError('Variable %s wasnt found', var_name)
     elif len(var) > 1:
@@ -494,8 +499,8 @@ def assign_from_checkpoint(model_path, var_list):
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        None, it would return  no_op(), None.
 
   Returns:
     the restore_op and the feed_dict that need to be run to restore var_list.
@@ -626,3 +631,63 @@ class VariableDeviceChooser(object):
       device_spec.job = self._job_name
       device_spec.task = task_id
     return device_spec.to_string()
+
+
+def filter_variables(var_list, include_patterns=None, exclude_patterns=None,
+                     reg_search=True):
+  """Filter a list of variables using regular expressions.
+
+  First includes variables according to the list of include_patterns.
+  Afterwards, eliminates variables according to the list of exclude_patterns.
+
+  For example, one can obtain a list of variables with the weights of all
+  convolutional layers (depending on the network definition) by:
+
+  ```python
+  variables = tf.contrib.framework.get_model_variables()
+  conv_weight_variables = tf.contrib.framework.filter_variables(
+      variables,
+      include_patterns=['Conv'],
+      exclude_patterns=['biases', 'Logits'])
+  ```
+
+  Args:
+    var_list: list of variables.
+    include_patterns: list of regular expressions to include. Defaults to None,
+        which means all variables are selected according to the include rules.
+        A variable is included if it matches any of the include_patterns.
+    exclude_patterns: list of regular expressions to exclude. Defaults to None,
+        which means all variables are selected according to the exclude rules.
+        A variable is excluded if it matches any of the exclude_patterns.
+    reg_search: boolean. If True (default), performs re.search to find matches
+        (i.e. pattern can match any substring of the variable name). If False,
+        performs re.match (i.e. regexp should match from the beginning of the
+        variable name).
+
+  Returns:
+    filtered list of variables.
+  """
+  if reg_search:
+    reg_exp_func = re.search
+  else:
+    reg_exp_func = re.match
+
+  # First include variables.
+  if include_patterns is None:
+    included_variables = list(var_list)
+  else:
+    included_variables = []
+    for var in var_list:
+      if any(reg_exp_func(ptrn, var.name) for ptrn in include_patterns):
+        included_variables.append(var)
+
+  # Afterwards, exclude variables.
+  if exclude_patterns is None:
+    filtered_variables = included_variables
+  else:
+    filtered_variables = []
+    for var in included_variables:
+      if not any(reg_exp_func(ptrn, var.name) for ptrn in exclude_patterns):
+        filtered_variables.append(var)
+
+  return filtered_variables

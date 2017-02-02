@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 __all__ = [
@@ -40,15 +41,16 @@ __all__ = [
 # special_math_test.py.
 LOGNDTR_FLOAT64_LOWER = -20
 LOGNDTR_FLOAT32_LOWER = -10
+
 # Upper bound values were chosen by examining for which values of 'x'
 # Log[cdf(x)] is 0, after which point we need to use the approximation
 # Log[cdf(x)] = Log[1 - cdf(-x)] approx -cdf(-x).  We chose a value slightly
 # conservative, meaning we use the approximation earlier than needed.
-LOGNDTR_FLOAT32_UPPER = 5
 LOGNDTR_FLOAT64_UPPER = 8
+LOGNDTR_FLOAT32_UPPER = 5
 
 
-def ndtr(x, name=None):
+def ndtr(x, name="ndtr"):
   """Normal distribution function.
 
   Returns the area under the Gaussian probability density function, integrated
@@ -74,7 +76,7 @@ def ndtr(x, name=None):
     TypeError: if `x` is not floating-type.
   """
 
-  with ops.name_scope(name, "ndtr", values=[x]):
+  with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.as_numpy_dtype not in [np.float32, np.float64]:
       raise TypeError(
@@ -89,15 +91,15 @@ def _ndtr(x):
       0.5 * math.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
   w = x * half_sqrt_2
   z = math_ops.abs(w)
-  y = math_ops.select(math_ops.less(z, half_sqrt_2),
+  y = array_ops.where(math_ops.less(z, half_sqrt_2),
                       1. + math_ops.erf(w),
-                      math_ops.select(math_ops.greater(w, 0.),
+                      array_ops.where(math_ops.greater(w, 0.),
                                       2. - math_ops.erfc(z),
                                       math_ops.erfc(z)))
   return 0.5 * y
 
 
-def log_ndtr(x, series_order=3, name=None):
+def log_ndtr(x, series_order=3, name="log_ndtr"):
   """Log Normal distribution function.
 
   For details of the Normal distribution function see `ndtr`.
@@ -114,9 +116,9 @@ def log_ndtr(x, series_order=3, name=None):
   The `lower_segment` is set based on the precision of the input:
 
   ```
-  lower_segment = { -20.  x.dtype=float64
+  lower_segment = { -20,  x.dtype=float64
                   { -10,  x.dtype=float32
-  upper_segment = {   8.  x.dtype=float64
+  upper_segment = {   8,  x.dtype=float64
                   {   5,  x.dtype=float32
   ```
 
@@ -145,16 +147,16 @@ def log_ndtr(x, series_order=3, name=None):
   Raises:
     TypeError: if `x.dtype` is not handled.
     TypeError: if `series_order` is a not Python `integer.`
-    ValueError:  if `series_order` is not in `[1, 30]`.
+    ValueError:  if `series_order` is not in `[0, 30]`.
   """
   if not isinstance(series_order, int):
     raise TypeError("series_order must be a Python integer.")
-  if series_order < 1:
-    raise ValueError("series_order must be positive.")
+  if series_order < 0:
+    raise ValueError("series_order must be non-negative.")
   if series_order > 30:
     raise ValueError("series_order must be <= 30.")
 
-  with ops.name_scope(name, "log_ndtr", values=[x]):
+  with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
 
     if x.dtype.as_numpy_dtype == np.float64:
@@ -174,13 +176,18 @@ def log_ndtr(x, series_order=3, name=None):
     # * We use one fixed series_order for all of 'x', rather than adaptive.
     # * Our docstring properly reflects that this is an asymptotic series, not a
     #   Tayor series.  We also provided a correct bound on the remainder.
-
-    return math_ops.select(
+    # * We need to use the max/min in the _log_ndtr_lower arg to avoid nan when
+    #   x=0. This happens even though the branch is unchosen because when x=0
+    #   the gradient of a select involves the calculation 1*dy+0*(-inf)=nan
+    #   regardless of whether dy is finite. Note that the minimum is a NOP if
+    #   the branch is chosen.
+    return array_ops.where(
         math_ops.greater(x, upper_segment),
         -_ndtr(-x),  # log(1-x) ~= -x, x << 1
-        math_ops.select(math_ops.greater(x, lower_segment),
-                        math_ops.log(_ndtr(x)),
-                        _log_ndtr_lower(x, series_order)))
+        array_ops.where(math_ops.greater(x, lower_segment),
+                        math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
+                        _log_ndtr_lower(math_ops.minimum(x, lower_segment),
+                                        series_order)))
 
 
 def _log_ndtr_lower(x, series_order):
@@ -188,19 +195,24 @@ def _log_ndtr_lower(x, series_order):
   x_2 = math_ops.square(x)
   # Log of the term multiplying (1 + sum)
   log_scale = -0.5 * x_2 - math_ops.log(-x) - 0.5 * math.log(2. * math.pi)
+  return log_scale + math_ops.log(_log_ndtr_asymptotic_series(x, series_order))
 
-  # Compute the summation.
+
+def _log_ndtr_asymptotic_series(x, series_order):
+  """Calculates the asymptotic series used in log_ndtr."""
+  if series_order <= 0:
+    return 1.
+  x_2 = math_ops.square(x)
   even_sum = 0.
   odd_sum = 0.
   x_2n = x_2  # Start with x^{2*1} = x^{2*n} with n = 1.
   for n in range(1, series_order + 1):
     if n % 2:
-      odd_sum -= _double_factorial(2 * n - 1) / x_2n
+      odd_sum += _double_factorial(2 * n - 1) / x_2n
     else:
       even_sum += _double_factorial(2 * n - 1) / x_2n
     x_2n *= x_2
-
-  return log_scale + math_ops.log(1. + even_sum + odd_sum)
+  return 1. + even_sum - odd_sum
 
 
 def _double_factorial(n):

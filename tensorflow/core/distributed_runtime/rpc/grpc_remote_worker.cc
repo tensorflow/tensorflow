@@ -74,6 +74,12 @@ class GrpcRemoteWorker : public WorkerInterface {
                      RunGraphResponse* response, StatusCallback done) override {
     IssueRequest(request, response, rungraph_, std::move(done), call_opts);
   }
+  void RunGraphAsync(CallOptions* call_opts, RunGraphRequestWrapper* request,
+                     MutableRunGraphResponseWrapper* response,
+                     StatusCallback done) override {
+    IssueRequest(&request->ToProto(), get_proto_from_wrapper(response),
+                 rungraph_, std::move(done), call_opts);
+  }
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
@@ -132,8 +138,8 @@ class GrpcRemoteWorker : public WorkerInterface {
             // the RecvTensor response can not have been sent before
             // the RecvTensor request, and must have been sent before
             // it was received.
-            send_start_usec =
-                std::max(start_usec, response->metadata().send_start_micros());
+            send_start_usec = std::max(start_usec, static_cast<int64>(
+                response->metadata().send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
           const string& key = request->rendezvous_key();
@@ -250,7 +256,6 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Support for logging.
   WorkerCacheLogger* logger_;
-  bool retry_unavailable_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
 };

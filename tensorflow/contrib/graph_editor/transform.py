@@ -20,12 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 from copy import deepcopy
+from functools import partial
 
 from six import iteritems
 from six import iterkeys
 from six import string_types
 from six import StringIO
-
 from tensorflow.contrib.graph_editor import edit
 from tensorflow.contrib.graph_editor import reroute
 from tensorflow.contrib.graph_editor import select
@@ -87,18 +87,24 @@ def keep_t_if_possible_handler(info, t):
 def assign_renamed_collections_handler(info, elem, elem_):
   """Add the transformed elem to the (renamed) collections of elem.
 
+  A collection is renamed only if is not a known key, as described in
+  `tf.GraphKeys`.
+
   Args:
     info: Transform._Info instance.
-    elem: the original element (tf.Tensor or tf.Operation)
+    elem: the original element (`tf.Tensor` or `tf.Operation`)
     elem_: the transformed element
   """
-  # TODO(fkp): handle known special cases
-  for name, collection in iteritems(
-      elem.graph._collections):  # pylint: disable=protected-access
+  known_collection_names = util.get_predefined_collection_names()
+  for name, collection in iteritems(info.collections):
     if elem not in collection:
       continue
-    collection_name_ = info.transformer.new_name(name)
-    info.graph_.add_to_collection(collection_name_, elem_)
+
+    if name in known_collection_names:
+      transformed_name = name
+    else:
+      transformed_name = info.transformer.new_name(name)
+    info.graph_.add_to_collection(transformed_name, elem_)
 
 
 def transform_op_if_inside_handler(info, op, keep_if_possible=True):
@@ -128,11 +134,11 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
 
 
 def copy_op_handler(info, op, copy_shape=True):
-  """Copy a tf.Operation.
+  """Copy a `tf.Operation`.
 
   Args:
     info: Transform._Info instance.
-    op: the tf.Operation to be copied.
+    op: the `tf.Operation` to be copied.
     copy_shape: also copy the shape of the tensor
   Returns:
     A copy of op.
@@ -145,11 +151,16 @@ def copy_op_handler(info, op, copy_shape=True):
   control_inputs_ = [ci for ci in control_inputs_ if ci is not None]
 
   # Transform it if any:
-  original_op_ = info.transformer.transform_original_op_hanlder(info,
+  original_op_ = info.transformer.transform_original_op_handler(info,
                                                                 op._original_op)
 
   # Transform inputs:
   inputs_ = [info.transformer._transform_t(t) for t in op.inputs]
+
+  # Leave inputs empty if a graph cycle was found.
+  if None in inputs_:
+    info.cyclic_ops.append(op)
+    inputs_ = []
 
   # Clone the node def:
   node_def_ = deepcopy(op._node_def)
@@ -229,6 +240,7 @@ class Transformer(object):
     def __init__(self, transformer, sgv, dst_graph, dst_scope, src_scope):
       self.transformer = transformer
       self.sgv = sgv
+      self.sgv_inputs_set = frozenset(sgv.inputs)
       self.ops = frozenset(sgv.ops)
       self.control_outputs = util.ControlOutputs(sgv.graph)
       self.graph = sgv.graph
@@ -237,6 +249,9 @@ class Transformer(object):
       self.scope_ = dst_scope
       self.transformed_ops = {}
       self.transformed_ts = {}
+      self.collections = dict((key, self.graph.get_collection(key))
+                              for key in self.graph.get_all_collection_keys())
+      self.cyclic_ops = []
 
   class ResultInfo(object):
     """"Contains information about the result of a transform operation."""
@@ -266,11 +281,13 @@ class Transformer(object):
             "Expected a tf.Tensor or a tf.Operation, got a {}".format(
                 type(top)))
 
-    def _transformed_elem(self, original_top):
+    def _transformed_elem(self, original_top, missing_fn=None):
       """Return the transformed op/tensor corresponding to the original one.
 
       Args:
         original_top: the original tensor/operation.
+        missing_fn: function handling the case where the counterpart
+          cannot be found. By default, None is returned.
       Returns:
         the transformed tensor/operation (or None if no match is found).
       """
@@ -279,17 +296,19 @@ class Transformer(object):
         for original, transformed in iteritems(transformed_map):
           if original.name == original_top:
             return transformed
-        return None
+        return None if missing_fn is None else missing_fn(original_top)
       else:
         if original_top not in transformed_map:
-          return None
+          return None if missing_fn is None else missing_fn(original_top)
         return transformed_map[original_top]
 
-    def _original_elem(self, transformed_top):
+    def _original_elem(self, transformed_top, missing_fn=None):
       """Return the original op/tensor corresponding to the transformed one.
 
       Args:
         transformed_top: the transformed tensor/operation.
+        missing_fn: function handling the case where the counterpart
+          cannot be found. By default, None is returned.
       Returns:
         the original tensor/operation (or None if no match is found).
       """
@@ -301,9 +320,9 @@ class Transformer(object):
       for original, transformed in iteritems(transformed_map):
         if finder(transformed):
           return original
-      return None
+      return None if missing_fn is None else missing_fn(transformed_top)
 
-    def transformed(self, original):
+    def transformed(self, original, missing_fn=None):
       """Return the transformed op/tensor corresponding to the original one.
 
       Note that the output of this function mimics the hierarchy
@@ -313,12 +332,15 @@ class Transformer(object):
 
       Args:
         original: the original tensor/operation.
+        missing_fn: function handling the case where the counterpart
+          cannot be found. By default, None is returned.
       Returns:
         the transformed tensor/operation (or None if no match is found).
       """
-      return util.transform_tree(original, self._transformed_elem)
+      transformed_elem = partial(self._transformed_elem, missing_fn=missing_fn)
+      return util.transform_tree(original, transformed_elem)
 
-    def original(self, transformed):
+    def original(self, transformed, missing_fn=None):
       """Return the original op/tensor corresponding to the transformed one.
 
       Note that the output of this function mimics the hierarchy
@@ -328,10 +350,13 @@ class Transformer(object):
 
       Args:
         transformed: the transformed tensor/operation.
+        missing_fn: function handling the case where the counterpart
+          cannot be found. By default, None is returned.
       Returns:
         the original tensor/operation (or None if no match is found).
       """
-      return util.transform_tree(transformed, self._original_elem)
+      original_elem = partial(self._original_elem, missing_fn=missing_fn)
+      return util.transform_tree(transformed, original_elem)
 
     def __str__(self):
       res = StringIO()
@@ -356,7 +381,7 @@ class Transformer(object):
     """Transformer constructor.
 
     The following members can be modified:
-    transform_op_handler: handle the transformation of a tf.Operation.
+    transform_op_handler: handle the transformation of a `tf.Operation`.
       This handler defaults to a simple copy.
     assign_collections_handler: handle the assignment of collections.
       This handler defaults to assigning new collections created under the
@@ -369,7 +394,7 @@ class Transformer(object):
       in sgv.inputs. This handler defaults to a transform which keep the same
       input if the source and destination graphs are the same, otherwise
       use placeholders.
-    transform_original_op_hanlder: handle the transform of original_op. This
+    transform_original_op_handler: handle the transform of original_op. This
       handler defaults to transforming original_op only if they are in the
       subgraph, otherwise they are ignored.
     """
@@ -380,7 +405,7 @@ class Transformer(object):
     self.assign_collections_handler = assign_renamed_collections_handler
     self.transform_external_input_handler = replace_t_with_placeholder_handler
     self.transform_external_hidden_input_handler = keep_t_if_possible_handler
-    self.transform_original_op_hanlder = transform_op_if_inside_handler
+    self.transform_original_op_handler = transform_op_if_inside_handler
 
     # temporary per-call variable
     self._info = None
@@ -411,7 +436,7 @@ class Transformer(object):
         information about the transform, including mapping between
         original and transformed tensors and operations.
     Raises:
-      ValueError: if the argumens are invalid.
+      ValueError: if the arguments are invalid.
     """
     sgv = subgraph.make_view(sgv)
     if not isinstance(dst_graph, tf_ops.Graph):
@@ -424,10 +449,7 @@ class Transformer(object):
     if dst_scope and not reuse_dst_scope:
       dst_scope = util.scope_finalize(dst_graph.unique_name(dst_scope[:-1]))
 
-    if sgv.graph is dst_graph and not dst_scope:
-      logging.warning("The source and the destination are the same! "
-                      "Beware: in-place transormation are currently "
-                      "experimental.")
+    # Create temporary info used during this transform call
     self._info = Transformer._Info(self, sgv, dst_graph, dst_scope, src_scope)
 
     # Transform the graph starting from the output tensors.
@@ -438,12 +460,20 @@ class Transformer(object):
     # without any outputs. So the walk is now finalized from those roots.
     remaining_ops = [op for op in self._info.sgv.ops
                      if op not in self._info.transformed_ops]
-    remaining_roots = [
-        op for op in remaining_ops
-        if not op.outputs and not self._info.control_outputs.get(op)
-    ]
+    remaining_roots = [op for op in remaining_ops if not op.outputs]
     for op in remaining_roots:
       self._transform_op(op)
+
+    # Finalize cyclic ops:
+    for op in self._info.cyclic_ops:
+      logging.debug("Finalizing cyclic op: %s", op.name)
+      op_ = self._info.transformed_ops[op]
+      inputs_ = [self._info.transformed_ts[t] for t in op.inputs]
+      if None in inputs_:
+        raise ValueError("Could not find all the inputs of cyclic op: {}"
+                         .format(op_.name))
+      for input_id, t_ in enumerate(inputs_):
+        op_._update_input(input_id, t_)  # pylint: disable=protected-access
 
     sgv_ = self._transform_sgv(sgv)
 
@@ -499,15 +529,19 @@ class Transformer(object):
     Returns:
       The transformed tensor.
     """
+    logging.debug("Transforming tensor: %s", t.name)
     if t in self._info.transformed_ts:
       return self._info.transformed_ts[t]
+
+    # Mark as None to detect cycle.
+    self._info.transformed_ts[t] = None
 
     op, op_index = t.op, t.value_index
 
     # If op is not in the subgraph:
     if op not in self._info.ops:
       # t_ is an input of the subgraph
-      if t in self._info.sgv.inputs:
+      if t in self._info.sgv_inputs_set:
         t_ = self.transform_external_input_handler(self._info, t)
       # t_ is a hidden input of the subgraph
       else:
@@ -543,6 +577,8 @@ class Transformer(object):
 
     # All to all the active devices
     for device_function in reversed(self._info.graph_._device_function_stack):
+      if device_function is None:
+        break
       op_._set_device(device_function(op_))
     # pylint: enable=protected-access
 
@@ -595,7 +631,7 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
       information about the transform, including mapping between
       original and transformed tensors and operations.
   Raises:
-    TypeError: if dst_graph is not a tf.Graph.
+    TypeError: if `dst_graph` is not a `tf.Graph`.
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
@@ -664,7 +700,7 @@ def graph_replace(target_ts, replacement_ts, dst_scope="",
   """Create a new graph which compute the targets from the replaced Tensors.
 
   Args:
-    target_ts: a single tf.Tensor or an iterabble of tf.Tensor.
+    target_ts: a single tf.Tensor or an iterable of tf.Tensor.
     replacement_ts: dictionary mapping from original tensors to replaced tensors
     dst_scope: the destination scope.
     src_scope: the source scope.
@@ -695,5 +731,7 @@ def graph_replace(target_ts, replacement_ts, dst_scope="",
   # Create a copy of the relevant subgraph
   _, info = copy_with_input_replacements(
       ops, replacement_ts, None, dst_scope, src_scope, reuse_dst_scope)
-  # Return the transformed targets
-  return info.transformed(target_ts)
+  # Return the transformed targets but keep the original if the transformed
+  # counterpart cannot be found
+  missing_fn = lambda original_t: original_t
+  return info.transformed(target_ts, missing_fn)

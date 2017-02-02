@@ -17,33 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import load_library
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
-_gru_ops_so = load_library.load_op_library(
+_gru_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_gru_ops.so"))
-assert _gru_ops_so, "Could not load _gru_ops.so."
-
-
-@ops.RegisterShape("GRUBlockCellGrad")
-def _GRUBlockCellGradShape(op):
-  batch_size = op.inputs[0].get_shape().with_rank(2)[0]
-  input_size = op.inputs[0].get_shape().with_rank(2)[1]
-  cell_size = op.inputs[1].get_shape().with_rank(2)[1]
-  twice_cell_size = op.inputs[2].get_shape().with_rank(2)[1]
-
-  return [tensor_shape.TensorShape([batch_size, input_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, twice_cell_size])]
 
 
 @ops.RegisterGradient("GRUBlockCell")
@@ -97,29 +82,18 @@ def _GRUBlockCellGrad(op, *grad):
   d_x, d_h_prev, d_c_bar, d_r_bar_u_bar = _gru_ops_so.gru_block_cell_grad(
       x, h_prev, w_ru, w_c, b_ru, b_c, r, u, c, d_h)
 
-  x_h_prev = array_ops.concat(1, [x, h_prev])
+  x_h_prev = array_ops.concat([x, h_prev], 1)
   d_w_ru = math_ops.matmul(x_h_prev, d_r_bar_u_bar, transpose_a=True)
   d_b_ru = nn_ops.bias_add_grad(d_r_bar_u_bar)
 
-  x_h_prevr = array_ops.concat(1, [x, h_prev * r])
+  x_h_prevr = array_ops.concat([x, h_prev * r], 1)
   d_w_c = math_ops.matmul(x_h_prevr, d_c_bar, transpose_a=True)
   d_b_c = nn_ops.bias_add_grad(d_c_bar)
 
   return d_x, d_h_prev, d_w_ru, d_w_c, d_b_ru, d_b_c
 
 
-@ops.RegisterShape("GRUBlockCell")
-def _GRUBlockCellShape(op):
-  batch_size = op.inputs[0].get_shape().with_rank(2)[0]
-  cell_size = op.inputs[1].get_shape().with_rank(2)[1]
-
-  return (tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]))
-
-
-class GRUBlockCell(rnn_cell.RNNCell):
+class GRUBlockCell(core_rnn_cell.RNNCell):
   r"""Block GRU cell implementation.
 
   The implementation is based on:  http://arxiv.org/abs/1406.1078
@@ -127,9 +101,11 @@ class GRUBlockCell(rnn_cell.RNNCell):
 
   This kernel op implements the following mathematical equations:
 
-  Baises are initialized with :
-  `b_ru` - constant_initializer(1.0)
-  `b_c` - constant_initializer(0.0)
+  Biases are initialized with:
+
+  * `b_ru` - constant_initializer(1.0)
+  * `b_c` - constant_initializer(0.0)
+
   ```
   x_h_prev = [x, h_prev]
 

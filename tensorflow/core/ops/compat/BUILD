@@ -28,6 +28,7 @@ cc_library(
 tf_cc_test(
     name = "backwards_compatibility_test",
     size = "small",
+    srcs = ["backwards_compatibility_test.cc"],
     data = [
         ":ops_history.v0.pbtxt",
         "//tensorflow/core:ops/ops.pbtxt",

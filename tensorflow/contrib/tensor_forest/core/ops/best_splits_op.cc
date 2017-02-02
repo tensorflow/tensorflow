@@ -35,52 +35,6 @@ using tensorforest::BestFeatureClassification;
 using tensorforest::BestFeatureRegression;
 using tensorforest::CheckTensorBounds;
 
-REGISTER_OP("BestSplits")
-    .Attr("regression: bool = false")
-    .Input("finished_nodes: int32")
-    .Input("node_to_accumulator: int32")
-    .Input("split_sums: float")
-    .Input("split_squares: float")
-    .Input("accumulator_sums: float")
-    .Input("accumulator_sqaures: float")
-    .Output("split_indices: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle finished_nodes;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &finished_nodes));
-      c->set_output(0, c->Vector(c->Dim(finished_nodes, 0)));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-  Returns the index of the best split for each finished node.
-
-  For classification, the best split is the split with the lowest weighted
-  Gini impurity, as calculated from the statistics in `split_sums` and
-  `accumulator_sums`. For regression we use the lowest variance, incoporating
-  the *_squares as well.
-
-  finished_nodes:= A 1-d int32 tensor containing the indices of finished nodes.
-  node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
-    fertile node i, or -1 if node i isn't fertile.
-  split_sums:= a 3-d tensor where `split_sums[a][s]` summarizes the
-    training labels for examples that fall into the fertile node associated with
-    accumulator slot s and have then taken the *left* branch of candidate split
-    s.  For a classification problem, `split_sums[a][s][c]` is the count of such
-    examples with class c and for regression problems, `split_sums[a][s]` is the
-    sum of the regression labels for such examples.
-  split_squares: Same as split_sums, but it contains the sum of the
-    squares of the regression labels.  Only used for regression.  For
-    classification problems, pass a dummy tensor into this.
-  accumulator_sums:= a 2-d tensor where `accumulator_sums[a]` summarizes the
-    training labels for examples that fall into the fertile node associated with
-    accumulator slot s.  For a classification problem, `accumulator_sums[a][c]`
-    is the count of such examples with class c and for regression problems,
-    `accumulator_sums[a]` is the sum of the regression labels for such examples.
-  accumulator_squares: Same as accumulator_sums, but it contains the sum of the
-    squares of the regression labels.  Only used for regression.  For
-    classification problems, pass a dummy tensor into this.
-  split_indices: `split_indices[i]` contains the index of the split to use for
-    `finished_nodes[i]`.
-)doc");
 
 class BestSplits : public OpKernel {
  public:

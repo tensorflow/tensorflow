@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,8 +74,8 @@ inline bool IsGradientNode(const Graph* graph, const Node* node) {
 // Returns true if the root tensor op type is known, false otherwise.
 bool FindType(const Graph* graph, const Node* node, bool* signed_input,
               bool* range_given, float* input_min, float* input_max) {
-  const string src_op = node->type_string();
-  if (src_op == "Const" || src_op == "Variable") {
+  const string& src_op = node->type_string();
+  if (src_op == "Const" || src_op == "Variable" || src_op == "VariableV2") {
     *signed_input = true;
     *range_given = false;
   } else if (src_op == "Relu") {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <ctype.h>
 #include <vector>
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
 namespace str_util {
@@ -83,8 +84,8 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
-                       string* error) {
+bool CUnescapeInternal(StringPiece source, char* dest,
+                       string::size_type* dest_len, string* error) {
   char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
@@ -195,11 +196,25 @@ bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
   return true;
 }
 
+template <typename T>
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::function<bool(StringPiece, T*)> converter,
+                         std::vector<T>* result) {
+  result->clear();
+  std::vector<string> num_strings = Split(text, delim);
+  for (const auto& s : num_strings) {
+    T num;
+    if (!converter(s, &num)) return false;
+    result->push_back(num);
+  }
+  return true;
+}
+
 }  // namespace
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
-  int dest_size;
+  string::size_type dest_size;
   if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
                          error)) {
     return false;
@@ -278,6 +293,14 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
   return false;
 }
 
+bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
+  if (s->ends_with(expected)) {
+    s->remove_suffix(expected.size());
+    return true;
+  }
+  return false;
+}
+
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
@@ -324,14 +347,22 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
 
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
-  result->clear();
-  std::vector<string> num_strings = Split(text, delim);
-  for (const auto& s : num_strings) {
-    int32 num;
-    if (!strings::safe_strto32(s, &num)) return false;
-    result->push_back(num);
-  }
-  return true;
+  return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
+}
+
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::vector<int64>* result) {
+  return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
+}
+
+bool SplitAndParseAsFloats(StringPiece text, char delim,
+                           std::vector<float>* result) {
+  return SplitAndParseAsInts<float>(text, delim,
+                                    [](StringPiece str, float* value) {
+                                      return strings::safe_strtof(
+                                          str.ToString().c_str(), value);
+                                    },
+                                    result);
 }
 
 }  // namespace str_util

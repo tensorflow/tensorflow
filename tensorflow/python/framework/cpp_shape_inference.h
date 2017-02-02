@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
 #define THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
 
+// Must be included first
+#include "tensorflow/python/lib/core/numpy.h"
+
 #include <vector>
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,15 +35,18 @@ namespace swig {
 // Returns an error, or OK, in <out_status> according to whether the shape
 // inference was successful.
 //
-// On success, <*output_shapes> is populated with the inferred output shapes (as
-// serialized TensorShapeProtos).
-// <*output_shapes> must be empty when this function is called.
+// On success, returns a vector populated with the inferred output shapes (as
+// serialized CppShapeInferenceResult protos) followed by a serialized
+// CppShapeInferenceInputsNeeded proto.
 //
 // This is temporary code to be used during the migration
 // from python shape inference functions to C++ shape inference functions.
 std::vector<string> RunCppShapeInference(
     const string& serialized_node_def,
-    const std::vector<string>& input_serialized_shapes, TF_Status* out_status);
+    const std::vector<string>& input_serialized_shapes,
+    PyObject* input_constant_tensor_values,
+    const std::vector<string>& input_constant_tensor_as_shape_values,
+    TF_Status* out_status);
 
 }  // namespace swig
 }  // namespace tensorflow

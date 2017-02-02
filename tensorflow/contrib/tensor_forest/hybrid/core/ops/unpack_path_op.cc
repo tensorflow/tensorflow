@@ -27,6 +27,7 @@
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/types.h"
@@ -34,11 +35,30 @@
 
 namespace tensorflow {
 
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+
 REGISTER_OP("UnpackPath")
-  .Input("path: int32")
-  .Input("path_values: float")
-  .Output("unpacked_path: float")
-  .Doc(R"doc(
+    .Input("path: int32")
+    .Input("path_values: float")
+    .Output("unpacked_path: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input, params;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &params));
+
+      auto num_points = c->Dim(input, 0);
+
+      auto tree_depth = c->Dim(params, 1);
+      int64 num_nodes = InferenceContext::kUnknownDim;
+      if (c->ValueKnown(tree_depth)) {
+        num_nodes = (1 << c->Value(tree_depth)) - 1;
+      }
+
+      c->set_output(0, c->Matrix(num_points, num_nodes));
+      return Status::OK();
+    })
+    .Doc(R"doc(
   Takes a batch of paths through a tree and a batch of values along those paths
   and returns a batch_size by num_nodes encoding of the path values.
 

@@ -27,6 +27,7 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
@@ -44,6 +45,31 @@ package(default_visibility = [
 ])
 
 cc_library(
+    name = "message_wrappers",
+    srcs = ["message_wrappers.cc"],
+    hdrs = ["message_wrappers.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_test(
+    name = "message_wrappers_test",
+    size = "small",
+    srcs = ["message_wrappers_test.cc"],
+    deps = [
+        ":message_wrappers",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "worker_env",
     hdrs = ["worker_env.h"],
     deps = [],
@@ -58,10 +84,26 @@ cc_library(
     ],
     deps = [
         ":call_options",
+        ":message_wrappers",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "worker",
+    srcs = ["worker.cc"],
+    hdrs = [
+        "worker.h",
+    ],
+    deps = [
+        ":graph_mgr",
+        ":rendezvous_mgr_interface",
+        ":worker_interface",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -125,6 +167,7 @@ cc_library(
     name = "master_interface",
     hdrs = ["master_interface.h"],
     deps = [
+        ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
     ],
@@ -137,7 +180,7 @@ cc_library(
     deps = [
         ":call_options",
         ":master_env",
-        ":master_session_interface",
+        ":master_session",
         ":remote_device",
         ":worker_cache",
         ":worker_interface",
@@ -156,8 +199,10 @@ cc_library(
     srcs = ["master_session.cc"],
     hdrs = ["master_session.h"],
     deps = [
+        ":call_options",
         ":master_env",
-        ":master_session_interface",
+        ":message_wrappers",
+        ":scheduler",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -171,6 +216,17 @@ cc_library(
 )
 
 cc_library(
+    name = "local_master",
+    srcs = ["local_master.cc"],
+    hdrs = ["local_master.h"],
+    deps = [
+        ":master",
+        ":master_interface",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "rendezvous_mgr_interface",
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],
@@ -180,10 +236,14 @@ cc_library(
 )
 
 cc_library(
-    name = "master_session_interface",
-    srcs = [],
-    hdrs = ["master_session_interface.h"],
-    deps = ["//tensorflow/core:lib"],
+    name = "scheduler",
+    srcs = ["scheduler.cc"],
+    hdrs = ["scheduler.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow_opensource",
+    ],
 )
 
 cc_library(
@@ -263,13 +323,14 @@ cc_library(
 # TODO(mrry): Move executor_test.cc to ../common_runtime when once it no longer depends
 # on grpc_testlib.
 tf_cuda_cc_tests(
+    name = "executor_tests",
     size = "medium",
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    tests = [
+    srcs = [
         "executor_test.cc",
         #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
         ":remote_device",
@@ -298,13 +359,12 @@ tf_cuda_cc_tests(
     ],
 )
 
-tf_cuda_cc_tests(
+tf_cuda_cc_test(
+    name = "remote_device_test",
     size = "small",
+    srcs = ["remote_device_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["manual"],
-    tests = [
-        "remote_device_test.cc",
-    ],
     deps = [
         ":master",
         ":remote_device",
@@ -325,5 +385,29 @@ tf_cuda_cc_tests(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "@grpc//:grpc++_unsecure",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "rpcbench_test",
+    size = "small",
+    srcs = ["rpcbench_test.cc"],
+    linkstatic = 1,
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_testlib_ops",
+        "//tensorflow/core/kernels:aggregate_ops",
+        "//tensorflow/core/kernels:array",
     ],
 )

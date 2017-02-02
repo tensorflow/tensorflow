@@ -184,7 +184,7 @@ class StreamExecutorInterface {
   }
   virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
                       const BlockDim &block_dims, const KernelBase &k,
-                      const std::vector<KernelArg> &args) {
+                      const KernelArgsArrayBase &args) {
     return false;
   }
   virtual void *Allocate(uint64 size) = 0;
@@ -199,14 +199,14 @@ class StreamExecutorInterface {
   virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
   virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                                  uint64 size) = 0;
-  virtual bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                 const void *host_src, uint64 size) = 0;
-  virtual bool SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &gpu_src,
-                                 uint64 size) = 0;
-  virtual bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                               const DeviceMemoryBase &gpu_src,
-                                               uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                         const void *host_src, uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(void *host_dst,
+                                         const DeviceMemoryBase &gpu_src,
+                                         uint64 size) = 0;
+  virtual port::Status SynchronousMemcpyDeviceToDevice(
+      DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
+      uint64 size) = 0;
   virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
                        uint64 size) = 0;
   virtual bool Memset(Stream *stream, DeviceMemoryBase *location,
@@ -257,9 +257,6 @@ class StreamExecutorInterface {
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
   virtual DeviceDescription *PopulateDeviceDescription() const = 0;
-
-  virtual KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has

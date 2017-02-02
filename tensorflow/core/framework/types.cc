@@ -37,6 +37,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
+const char* const DEVICE_SYCL = "SYCL";
 
 string DataTypeString(DataType dtype) {
   if (IsRefType(dtype)) {
@@ -84,9 +85,11 @@ string DataTypeString(DataType dtype) {
       return "bfloat16";
     case DT_HALF:
       return "half";
+    case DT_RESOURCE:
+      return "resource";
     default:
-      LOG(FATAL) << "Unrecognized DataType enum value " << dtype;
-      return "";
+      LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
+      return strings::StrCat("unknown dtype enum (", dtype, ")");
   }
 }
 
@@ -159,6 +162,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "half" || sp == "float16") {
     *dt = DT_HALF;
     return true;
+  } else if (sp == "resource") {
+    *dt = DT_RESOURCE;
+    return true;
   }
   return false;
 }
@@ -178,7 +184,7 @@ DataTypeVector AllTypes() {
   return {DT_FLOAT,   DT_DOUBLE, DT_INT32,  DT_UINT8,     DT_INT16,
           DT_UINT16,  DT_INT8,   DT_STRING, DT_COMPLEX64, DT_COMPLEX128,
           DT_INT64,   DT_BOOL,   DT_QINT8,  DT_QUINT8,    DT_QINT16,
-          DT_QUINT16, DT_QINT32, DT_HALF};
+          DT_QUINT16, DT_QINT32, DT_HALF,   DT_RESOURCE};
 }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)

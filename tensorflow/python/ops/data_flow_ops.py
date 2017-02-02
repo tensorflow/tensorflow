@@ -20,11 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import hashlib
 import re
+import threading
 
 import six
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -33,10 +34,12 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _as_type_list(dtypes):
@@ -204,8 +207,8 @@ class QueueBase(object):
     reduced_shapes = [
         six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
 
-    queue_refs = [x.queue_ref for x in queues]
-    selected_queue = control_flow_ops.ref_select(index, queue_refs)
+    queue_refs = array_ops.stack([x.queue_ref for x in queues])
+    selected_queue = array_ops.gather(queue_refs, index)
     return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
@@ -241,7 +244,7 @@ class QueueBase(object):
     dictionary with tensor values.
 
     If it is a dictionary, the queue must have been constructed with a
-    `names` attribute and the dictionary keys must math the queue names.
+    `names` attribute and the dictionary keys must match the queue names.
     If the queue was constructed with a `names` attribute, `vals` must
     be a dictionary.
 
@@ -325,7 +328,12 @@ class QueueBase(object):
       for val, shape in zip(vals, self._shapes):
         val.get_shape().assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue(self._queue_ref, vals, name=scope)
+      if self._queue_ref.dtype == _dtypes.resource:
+        return gen_data_flow_ops._queue_enqueue_v2(
+            self._queue_ref, vals, name=scope)
+      else:
+        return gen_data_flow_ops._queue_enqueue(
+            self._queue_ref, vals, name=scope)
 
   def enqueue_many(self, vals, name=None):
     """Enqueues zero or more elements to this queue.
@@ -366,7 +374,7 @@ class QueueBase(object):
             val.get_shape().with_rank_at_least(1)[0])
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops._queue_enqueue_many(
+      return gen_data_flow_ops._queue_enqueue_many_v2(
           self._queue_ref, vals, name=scope)
 
   def _dequeue_return_value(self, tensors):
@@ -401,7 +409,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed, the queue is empty, and there are no pending
-    enqueue operations that can fulfil this request,
+    enqueue operations that can fulfill this request,
     `tf.errors.OutOfRangeError` will be raised. If the session is
     [closed](../../api_docs/python/client.md#Session.close),
     `tf.errors.CancelledError` will be raised.
@@ -414,8 +422,12 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Dequeue" % self._name
-    ret = gen_data_flow_ops._queue_dequeue(
-        self._queue_ref, self._dtypes, name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      ret = gen_data_flow_ops._queue_dequeue_v2(
+          self._queue_ref, self._dtypes, name=name)
+    else:
+      ret = gen_data_flow_ops._queue_dequeue(
+          self._queue_ref, self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
@@ -438,7 +450,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed, the queue contains fewer than `n` elements, and
-    there are no pending enqueue operations that can fulfil this
+    there are no pending enqueue operations that can fulfill this
     request, `tf.errors.OutOfRangeError` will be raised. If the
     session is [closed](../../api_docs/python/client.md#Session.close),
     `tf.errors.CancelledError` will be raised.
@@ -453,7 +465,7 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueMany" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_many(
+    ret = gen_data_flow_ops._queue_dequeue_many_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
@@ -494,7 +506,7 @@ class QueueBase(object):
     if name is None:
       name = "%s_DequeueUpTo" % self._name
 
-    ret = gen_data_flow_ops._queue_dequeue_up_to(
+    ret = gen_data_flow_ops._queue_dequeue_up_to_v2(
         self._queue_ref, n=n, component_types=self._dtypes, name=name)
 
     # NOTE(mrry): Not using a shape function because we need access to
@@ -528,9 +540,14 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Close" % self._name
-    return gen_data_flow_ops._queue_close(
-        self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
-        name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops._queue_close_v2(
+          self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
+          name=name)
+    else:
+      return gen_data_flow_ops._queue_close(
+          self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
+          name=name)
 
   def size(self, name=None):
     """Compute the number of elements in this queue.
@@ -543,7 +560,10 @@ class QueueBase(object):
     """
     if name is None:
       name = "%s_Size" % self._name
-    return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops._queue_size_v2(self._queue_ref, name=name)
+    else:
+      return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
 
 
 class RandomShuffleQueue(QueueBase):
@@ -603,12 +623,17 @@ class RandomShuffleQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    # If shared_name is provided and an op seed was not provided, we must ensure
-    # that we use the same seed for all queues with the same shared_name.
-    if shared_name is not None and seed is None:
-      seed = hash(shared_name)
     seed1, seed2 = random_seed.get_seed(seed)
-    queue_ref = gen_data_flow_ops._random_shuffle_queue(
+    if seed1 is None and seed2 is None:
+      seed1, seed2 = 0, 0
+    elif seed is None and shared_name is not None:
+      # This means that graph seed is provided but op seed is not provided.
+      # If shared_name is also provided, make seed2 depend only on the graph
+      # seed and shared_name. (seed2 from get_seed() is generally dependent on
+      # the id of the last op created.)
+      string = (str(seed1) + shared_name).encode("utf-8")
+      seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
+    queue_ref = gen_data_flow_ops._random_shuffle_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
         shared_name=shared_name, name=name)
@@ -659,7 +684,7 @@ class FIFOQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    queue_ref = gen_data_flow_ops._fifo_queue(
+    queue_ref = gen_data_flow_ops._fifo_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -726,7 +751,7 @@ class PaddingFIFOQueue(QueueBase):
                        "but received %d dtypes and %d shapes."
                        % (len(dtypes), len(shapes)))
 
-    queue_ref = gen_data_flow_ops._padding_fifo_queue(
+    queue_ref = gen_data_flow_ops._padding_fifo_queue_v2(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -782,7 +807,7 @@ class PriorityQueue(QueueBase):
     types = _as_type_list(types)
     shapes = _as_shape_list(shapes, types)
 
-    queue_ref = gen_data_flow_ops._priority_queue(
+    queue_ref = gen_data_flow_ops._priority_queue_v2(
         component_types=types, shapes=shapes, capacity=capacity,
         shared_name=shared_name, name=name)
 
@@ -1029,7 +1054,21 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
+@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
+  """Returns an Op that initializes all tables of the default graph.
+
+  Args:
+    name: Optional name for the initialization op.
+
+  Returns:
+    An Op that initializes all tables.  Note that if there are
+    not tables the returned Op is a NoOp.
+  """
+  return tables_initializer(name)
+
+
+def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
   Args:
@@ -1045,157 +1084,594 @@ def initialize_all_tables(name="init_all_tables"):
   return control_flow_ops.no_op(name=name)
 
 
-ops.NoGradient("LookupTableFind")
-ops.NoGradient("LookupTableInsert")
-ops.NoGradient("LookupTableSize")
-ops.NoGradient("HashTable")
-ops.NoGradient("InitializeTable")
-ops.NoGradient("InitializeTableFromTextFile")
-ops.NoGradient("MutableHashTable")
-ops.NoGradient("MutableHashTableOfTensors")
+ops.NotDifferentiable("LookupTableFind")
+ops.NotDifferentiable("LookupTableInsert")
+ops.NotDifferentiable("LookupTableSize")
+ops.NotDifferentiable("HashTable")
+ops.NotDifferentiable("InitializeTable")
+ops.NotDifferentiable("InitializeTableFromTextFile")
+ops.NotDifferentiable("MutableDenseHashTable")
+ops.NotDifferentiable("MutableHashTable")
+ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
-ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Queue")(common_shapes.scalar_shape)
-ops.RegisterShape("FIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PriorityQueue")(common_shapes.scalar_shape)
+class ConditionalAccumulatorBase(object):
+  """A conditional accumulator for aggregating gradients.
+
+  Up-to-date gradients (i.e., time step at which gradient was computed is
+  equal to the accumulator's time step) are added to the accumulator.
+
+  Extraction of the average gradient is blocked until the required number of
+  gradients has been accumulated.
+  """
+
+  def __init__(self, dtype, shape, accumulator_ref):
+    """Creates a new ConditionalAccumulator.
+
+    Args:
+      dtype: Datatype of the accumulated gradients.
+      shape: Shape of the accumulated gradients.
+      accumulator_ref: A handle to the conditional accumulator, created by sub-
+        classes
+    """
+    self._dtype = dtype
+    if shape is not None:
+      self._shape = tensor_shape.TensorShape(shape)
+    else:
+      self._shape = tensor_shape.unknown_shape()
+    self._accumulator_ref = accumulator_ref
+    self._name = self._accumulator_ref.op.name.split("/")[-1]
+
+  @property
+  def accumulator_ref(self):
+    """The underlying accumulator reference."""
+    return self._accumulator_ref
+
+  @property
+  def name(self):
+    """The name of the underlying accumulator."""
+    return self._name
+
+  @property
+  def dtype(self):
+    """The datatype of the gradients accumulated by this accumulator."""
+    return self._dtype
+
+  def num_accumulated(self, name=None):
+    """Number of gradients that have currently been aggregated in accumulator.
+
+    Args:
+      name: Optional name for the operation.
+
+    Returns:
+      Number of accumulated gradients currently in accumulator.
+    """
+    if name is None:
+      name = "%s_NumAccumulated" % self._name
+    return gen_data_flow_ops.accumulator_num_accumulated(
+        self._accumulator_ref, name=name)
+
+  def set_global_step(self, new_global_step, name=None):
+    """Sets the global time step of the accumulator.
+
+    The operation logs a warning if we attempt to set to a time step that is
+    lower than the accumulator's own time step.
+
+    Args:
+      new_global_step: Value of new time step. Can be a variable or a constant
+      name: Optional name for the operation.
+
+    Returns:
+      Operation that sets the accumulator's time step.
+    """
+    return gen_data_flow_ops.accumulator_set_global_step(
+        self._accumulator_ref,
+        math_ops.to_int64(ops.convert_to_tensor(new_global_step)),
+        name=name)
 
 
-def _ScalarToVoidShape(op):
-  """Shape function for ops that take a scalar and produce no outputs."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
+class ConditionalAccumulator(ConditionalAccumulatorBase):
+  """A conditional accumulator for aggregating gradients.
 
-# NOTE(mrry): The following ops use higher-level information in the
-# Queue class to provide shape information.
-ops.RegisterShape("QueueDequeue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueUpTo")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueClose")(_ScalarToVoidShape)
+  Up-to-date gradients (i.e., time step at which gradient was computed is
+  equal to the accumulator's time step) are added to the accumulator.
 
-ops.RegisterShape("Stack")(common_shapes.scalar_shape)
-ops.RegisterShape("StackPush")(common_shapes.unknown_shape)
-ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
-ops.RegisterShape("StackClose")(_ScalarToVoidShape)
+  Extraction of the average gradient is blocked until the required number of
+  gradients has been accumulated.
+  """
 
-# NOTE(mrry): Uses higher-level information in the Barrier class to
-# provide shape information.
-ops.RegisterShape("BarrierReadySize")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierIncompleteSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Barrier")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierTakeMany")(common_shapes.unknown_shape)
-ops.RegisterShape("BarrierClose")(_ScalarToVoidShape)
+  def __init__(self,
+               dtype,
+               shape=None,
+               shared_name=None,
+               name="conditional_accumulator"):
+    """Creates a new ConditionalAccumulator.
 
+    Args:
+      dtype: Datatype of the accumulated gradients.
+      shape: Shape of the accumulated gradients.
+      shared_name: Optional. If non-empty, this accumulator will be shared under
+        the given name across multiple sessions.
+      name: Optional name for the accumulator.
+    """
+    accumulator_ref = gen_data_flow_ops.conditional_accumulator(
+        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+    super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
-@ops.RegisterShape("BarrierInsertMany")
-def _BarrierInsertManyShape(op):
-  unused_handle_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  values_shape = op.inputs[2].get_shape().with_rank_at_least(1)
-  keys_shape.assert_is_compatible_with(values_shape[0])
-  return []
+  def apply_grad(self, grad, local_step=0, name=None):
+    """Attempts to apply a gradient to the accumulator.
 
+    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    is less than the accumulator's global time step.
 
-# NOTE(yuanbyu): We probably can do better here.
-ops.RegisterShape("GetSessionHandle")(common_shapes.scalar_shape)
-ops.RegisterShape("GetSessionTensor")(common_shapes.unknown_shape)
-ops.RegisterShape("DeleteSessionTensor")(_ScalarToVoidShape)
+    Args:
+      grad: The gradient tensor to be applied.
+      local_step: Time step at which the gradient was computed.
+      name: Optional name for the operation.
 
+    Returns:
+      The operation that (conditionally) applies a gradient to the accumulator.
 
-@ops.RegisterShape("DynamicPartition")
-def _DynamicPartitionShape(op):
-  """Shape function for data_flow_ops.dynamic_partition."""
-  data_shape = op.inputs[0].get_shape()
-  partitions_shape = op.inputs[1].get_shape()
-  # If we don't know the rank of partitions, we don't know anything
-  mid = partitions_shape.ndims
-  if mid is None:
-    result_shape = tensor_shape.unknown_shape()
-  else:
-    # data_shape must start with partitions_shape
-    partitions_shape.assert_is_compatible_with(data_shape[:mid])
-    # The partition shape is dynamic in the 0th dimension, and matches
-    # data_shape in the remaining dimensions.
-    result_shape = tensor_shape.TensorShape([None]).concatenate(
-        data_shape[mid:])
-  return [result_shape] * op.get_attr("num_partitions")
+    Raises:
+      ValueError: If grad is of the wrong shape
+    """
+    grad = ops.convert_to_tensor(grad, self._dtype)
+    grad.get_shape().assert_is_compatible_with(self._shape)
+    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    return gen_data_flow_ops.accumulator_apply_gradient(
+        self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
+  def take_grad(self, num_required, name=None):
+    """Attempts to extract the average gradient from the accumulator.
 
-@ops.RegisterShape("DynamicStitch")
-def _DynamicStitchShape(op):
-  """Shape function for data_flow_ops.dynamic_stitch."""
-  num_partitions = op.get_attr("N")
-  indices_shapes = [t.get_shape() for t in op.inputs[0:num_partitions]]
-  data_shapes = [t.get_shape() for t in op.inputs[num_partitions:]]
-  output_shape = tensor_shape.unknown_shape()
-  extra_shape = tensor_shape.TensorShape(None)
-  for indices_shape, data_shape in zip(indices_shapes, data_shapes):
-    indices_ndims = indices_shape.ndims
-    if indices_ndims is not None:
-      # Assert that data_shape starts with indices_shape
-      indices_shape.merge_with(data_shape[:indices_ndims])
-      # The rest belongs to output
-      extra_shape = extra_shape.merge_with(data_shape[indices_ndims:])
-  return [tensor_shape.TensorShape([None]).concatenate(extra_shape)]
+    The operation blocks until sufficient number of gradients have been
+    successfully applied to the accumulator.
+
+    Once successful, the following actions are also triggered:
+    - Counter of accumulated gradients is reset to 0.
+    - Aggregated gradient is reset to 0 tensor.
+    - Accumulator's internal time step is incremented by 1.
+
+    Args:
+      num_required: Number of gradients that needs to have been aggregated
+      name: Optional name for the operation
+
+    Returns:
+      A tensor holding the value of the average gradient.
+
+    Raises:
+      InvalidArgumentError: If num_required < 1
+    """
+    return gen_data_flow_ops.accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
 
 
-@ops.RegisterShape("LookupTableFind")
-def _LookupTableFindShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.unknown_shape()]
+class SparseConditionalAccumulator(ConditionalAccumulatorBase):
+  """A conditional accumulator for aggregating sparse gradients.
+
+  Sparse gradients are represented by IndexedSlices.
+
+  Up-to-date gradients (i.e., time step at which gradient was computed is
+  equal to the accumulator's time step) are added to the accumulator.
+
+  Extraction of the average gradient is blocked until the required number of
+  gradients has been accumulated.
+
+  Args:
+    dtype: Datatype of the accumulated gradients.
+    shape: Shape of the accumulated gradients.
+    shared_name: Optional. If non-empty, this accumulator will be shared under
+      the given name across multiple sessions.
+    name: Optional name for the accumulator.
+  """
+
+  def __init__(self,
+               dtype,
+               shape=None,
+               shared_name=None,
+               name="sparse_conditional_accumulator"):
+    accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
+        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+    super(SparseConditionalAccumulator,
+          self).__init__(dtype, shape, accumulator_ref)
+
+  def apply_indexed_slices_grad(self, grad, local_step=0, name=None):
+    """Attempts to apply a gradient to the accumulator.
+
+    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    is less than the accumulator's global time step.
+
+    Args:
+      grad: The gradient IndexedSlices to be applied.
+      local_step: Time step at which the gradient was computed.
+      name: Optional name for the operation.
+
+    Returns:
+      The operation that (conditionally) applies a gradient to the accumulator.
+
+    Raises:
+      InvalidArgumentError: If grad is of the wrong shape
+    """
+    return self.apply_grad(
+        grad_indices=grad.indices,
+        grad_values=grad.values,
+        grad_shape=grad.dense_shape,
+        local_step=local_step,
+        name=name)
+
+  def apply_grad(self,
+                 grad_indices,
+                 grad_values,
+                 grad_shape=None,
+                 local_step=0,
+                 name=None):
+    """Attempts to apply a sparse gradient to the accumulator.
+
+    The attempt is silently dropped if the gradient is stale, i.e., local_step
+    is less than the accumulator's global time step.
+
+    A sparse gradient is represented by its indices, values and possibly empty
+    or None shape. Indices must be a vector representing the locations of
+    non-zero entries in the tensor. Values are the non-zero slices of the
+    gradient, and must have the same first dimension as indices, i.e., the nnz
+    represented by indices and values must be consistent. Shape, if not empty or
+    None, must be consistent with the accumulator's shape (if also provided).
+
+    Example:
+      A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+        indices: [1,2]
+        values: [[0,1],[2,3]]
+        shape: [3, 2]
+
+    Args:
+      grad_indices: Indices of the sparse gradient to be applied.
+      grad_values: Values of the sparse gradient to be applied.
+      grad_shape: Shape of the sparse gradient to be applied.
+      local_step: Time step at which the gradient was computed.
+      name: Optional name for the operation.
+
+    Returns:
+      The operation that (conditionally) applies a gradient to the accumulator.
+
+    Raises:
+      InvalidArgumentError: If grad is of the wrong shape
+    """
+    local_step = math_ops.to_int64(ops.convert_to_tensor(local_step))
+    return gen_data_flow_ops.sparse_accumulator_apply_gradient(
+        self._accumulator_ref,
+        local_step=local_step,
+        gradient_indices=math_ops.to_int64(grad_indices),
+        gradient_values=grad_values,
+        gradient_shape=math_ops.to_int64([] if grad_shape is None else
+                                         grad_shape),
+        has_known_shape=(grad_shape is not None),
+        name=name)
+
+  def take_grad(self, num_required, name=None):
+    """Attempts to extract the average gradient from the accumulator.
+
+    The operation blocks until sufficient number of gradients have been
+    successfully applied to the accumulator.
+
+    Once successful, the following actions are also triggered:
+    - Counter of accumulated gradients is reset to 0.
+    - Aggregated gradient is reset to 0 tensor.
+    - Accumulator's internal time step is incremented by 1.
+
+    Args:
+      num_required: Number of gradients that needs to have been aggregated
+      name: Optional name for the operation
+
+    Returns:
+      A tuple of indices, values, and shape representing the average gradient.
+
+    Raises:
+      InvalidArgumentError: If num_required < 1
+    """
+    return gen_data_flow_ops.sparse_accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+
+  def take_indexed_slices_grad(self, num_required, name=None):
+    """Attempts to extract the average gradient from the accumulator.
+
+    The operation blocks until sufficient number of gradients have been
+    successfully applied to the accumulator.
+
+    Once successful, the following actions are also triggered:
+    - Counter of accumulated gradients is reset to 0.
+    - Aggregated gradient is reset to 0 tensor.
+    - Accumulator's internal time step is incremented by 1.
+
+    Args:
+      num_required: Number of gradients that needs to have been aggregated
+      name: Optional name for the operation
+
+    Returns:
+      An IndexedSlices holding the value of the average gradient.
+
+    Raises:
+      InvalidArgumentError: If num_required < 1
+    """
+    return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    return ops.IndexedSlices(
+        indices=return_val.indices,
+        values=return_val.values,
+        dense_shape=return_val.shape)
 
 
-@ops.RegisterShape("LookupTableInsert")
-@ops.RegisterShape("LookupTableImport")
-def _LookupTableInsertShape(op):
-  """Shape function for data_flow_ops._lookup_table_insert."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
+class StagingArea(object):
+  """Class for staging inputs. No ordering guarantees.
+
+  A `StagingArea` is a TensorFlow data structure that stores tensors across
+  multiple steps, and exposes operations that can put and get
+  tensors.
+
+  Each `StagingArea` element is a tuple of one or more tensors, where each
+  tuple component has a static dtype, and may have a static shape.
+
+  The capacity of a `StagingArea` is unbounded and supports multiple
+  concurrent producers and consumers; and provides exactly-once delivery.
+
+  Each element of a `StagingArea` is a fixed-length tuple of tensors whose
+  dtypes are described by `dtypes`, and whose shapes are optionally described
+  by the `shapes` argument.
+
+  If the `shapes` argument is specified, each component of a staging area
+  element must have the respective fixed shape. If it is
+  unspecified, different elements may have different shapes,
+  """
+
+  _identifier = 0
+  _lock = threading.Lock()
+
+  def __init__(self, dtypes, shapes=None, names=None, shared_name=None):
+    """Constructs a staging area object.
+
+    The two optional lists, `shapes` and `names`, must be of the same length
+    as `dtypes` if provided.  The values at a given index `i` indicate the
+    shape and name to use for the corresponding queue component in `dtypes`.
+
+    Args:
+      dtypes:  A list of types.  The length of dtypes must equal the number
+        of tensors in each element.
+      shapes: (Optional.) Constraints on the shapes of tensors in an element.
+        A list of shape tuples or None. This list is the same length
+        as dtypes.  If the shape of any tensors in the element are constrained,
+        all must be; shapes can be None if the shapes should not be constrained.
+      names: (Optional.) If provided, the `get()` and
+        `put()` methods will use dictionaries with these names as keys.
+        Must be None or a list or tuple of the same length as `dtypes`.
+      shared_name: (Optional.) A name to be used for the shared object. By
+        passing the same name to two different python objects they will share
+        the underlying staging area. Must be a string.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+    if shared_name is None:
+      self._name = ops.get_default_graph().unique_name("StagingArea")
+    elif isinstance(shared_name, six.string_types):
+      self._name = shared_name
+    else:
+      raise ValueError("shared_name must be a string")
+    self._dtypes = dtypes
+    if shapes is not None:
+      if len(shapes) != len(dtypes):
+        raise ValueError("StagingArea shapes must be the same length as dtypes")
+      self._shapes = [tensor_shape.TensorShape(s) for s in shapes]
+    else:
+      self._shapes = [tensor_shape.unknown_shape() for _ in self._dtypes]
+    if names is not None:
+      if len(names) != len(dtypes):
+        raise ValueError("StagingArea names must be the same length as dtypes")
+      self._names = names
+    else:
+      self._names = None
+
+  @property
+  def name(self):
+    """The name of the staging area."""
+    return self._name
+
+  @property
+  def dtypes(self):
+    """The list of dtypes for each component of a staging area element."""
+    return self._dtypes
+
+  @property
+  def shapes(self):
+    """The list of shapes for each component of a staging area element."""
+    return self._shapes
+
+  @property
+  def names(self):
+    """The list of names for each component of a staging area element."""
+    return self._names
+
+  def _check_put_dtypes(self, vals):
+    """Validate and convert `vals` to a list of `Tensor`s.
+
+    The `vals` argument can be a Tensor, a list or tuple of tensors, or a
+    dictionary with tensor values.
+
+    If it is a dictionary, the staging area must have been constructed with a
+    `names` attribute and the dictionary keys must match the staging area names.
+    If the staging area was constructed with a `names` attribute, `vals` must
+    be a dictionary.
+
+    Args:
+      vals: A tensor, a list or tuple of tensors, or a dictionary..
+
+    Returns:
+      A list of `Tensor` objects.
+
+    Raises:
+      ValueError: If `vals` is invalid.
+    """
+    if isinstance(vals, dict):
+      if not self._names:
+        raise ValueError(
+            "Staging areas must have names to enqueue a dictionary")
+      if sorted(self._names) != sorted(vals.keys()):
+        raise ValueError("Keys in dictionary to put do not match names "
+                         "of staging area. Dictionary: (%s), Queue: (%s)" %
+                         (sorted(vals.keys()), sorted(self._names)))
+      # The order of values in `self._names` indicates the order in which the
+      # tensors in the dictionary `vals` must be listed.
+      vals = [vals[k] for k in self._names]
+    else:
+      if self._names:
+        raise ValueError("You must enqueue a dictionary in a staging area "
+                         "with names")
+      if not isinstance(vals, (list, tuple)):
+        vals = [vals]
+
+    tensors = []
+    for i, (val, dtype) in enumerate(zip(vals, self._dtypes)):
+      tensors.append(
+          ops.convert_to_tensor(
+              val, dtype=dtype, name="component_%d" % i))
+
+    return tensors
+
+  def _scope_vals(self, vals):
+    """Return a list of values to pass to `name_scope()`.
+
+    Args:
+      vals: A tensor, a list or tuple of tensors, or a dictionary.
+
+    Returns:
+      The values in vals as a list.
+    """
+    if isinstance(vals, (list, tuple)):
+      return vals
+    elif isinstance(vals, dict):
+      return vals.values()
+    else:
+      return [vals]
+
+  def put(self, values, name=None):
+    with ops.name_scope(name, "%s_put" % self._name,
+                        self._scope_vals(values)) as scope:
+      vals = self._check_put_dtypes(values)
+      if len(values) != len(self._dtypes):
+        raise ValueError("Unexpected number of inputs " + str(len(values)) +
+                         "vs " + str(len(self._dtypes)))
+      for val, dtype in zip(vals, self._dtypes):
+        if val.dtype != dtype:
+          raise ValueError("Datatypes do not match. " + str(val.dtype) + " != "
+                           + str(dtype))
+
+      for val, shape in zip(vals, self._shapes):
+        val.get_shape().assert_is_compatible_with(shape)
+
+      return gen_data_flow_ops.stage(vals, shared_name=self._name, name=scope)
+
+  def _get_return_value(self, tensors):
+    """Return the value to return from a get op.
+
+    If the staging area has names, return a dictionary with the
+    names as keys.  Otherwise return either a single tensor
+    or a list of tensors depending on the length of `tensors`.
+
+    Args:
+      tensors: List of tensors from the get op.
+
+    Returns:
+      A single tensor, a list of tensors, or a dictionary
+      of tensors.
+    """
+    if self._names:
+      # The returned values in `tensors` are in the same order as
+      # the names in `self._names`.
+      return {n: tensors[i] for i, n in enumerate(self._names)}
+    elif len(tensors) == 1:
+      return tensors[0]
+    else:
+      return tensors
+
+  def get(self, name=None):
+    """Gets one element from this staging area.
+
+    If the staging area is empty when this operation executes, it will block
+    until there is an element to dequeue.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      The tuple of tensors that was gotten.
+    """
+    if name is None:
+      name = "%s_get" % self._name
+
+    ret = gen_data_flow_ops.unstage(self._dtypes, shared_name=self._name,
+                                    name=name)
+
+    for output, shape in zip(ret, self._shapes):
+      output.set_shape(shape)
+
+    return self._get_return_value(ret)
 
 
-@ops.RegisterShape("LookupTableSize")
-def _LookupTableSizeShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.scalar()]
+class RecordInput(object):
+  """RecordInput asynchronously reads and randomly yields TFRecords.
 
+  A RecordInput Op will continuously read a batch of records asynchronously
+  into a buffer of some fixed capacity. It can also asynchronously yield
+  random records from this buffer.
 
-@ops.RegisterShape("LookupTableExport")
-def _LookupTableExportShape(op):
-  """Shape function for data_flow_ops._lookup_table_export_values."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = tensor_shape.vector(None)
-  values_shape = tensor_shape.unknown_shape()
-  return [keys_shape, values_shape]
+  It will not start yielding until at least `buffer_size / 2` elements have been
+  placed into the buffer so that sufficient randomization can take place.
 
+  The order the files are read will be shifted each epoch by `shift_amount` so
+  that the data is presented in a different order every epoch.
+  """
 
-@ops.RegisterShape("HashTable")
-@ops.RegisterShape("MutableHashTable")
-@ops.RegisterShape("MutableHashTableOfTensors")
-def _HashTableShape(_):
-  """Shape function for data_flow_ops._hash_table."""
-  return [tensor_shape.scalar()]
+  def __init__(self,
+               file_pattern,
+               batch_size=1,
+               buffer_size=1,
+               parallelism=1,
+               shift_ratio=0,
+               seed=0,
+               name=None):
+    """Constructs a RecordInput Op.
 
+    Args:
+      file_pattern: File path to the dataset, possibly containing wildcards.
+        All matching files will be iterated over each epoch.
+      batch_size: How many records to return at a time.
+      buffer_size: The maximum number of records the buffer will contain.  This
+        _must_ be smaller than the total number of records in an epoch or
+        deadlock can occur.
+      parallelism: How many reader threads to use for reading from files.
+      shift_ratio: What percentage of the total number files to move the start
+        file forward by each epoch.
+      seed: Specify the random number seed used by generator that randomizes
+        records.
+      name: Optional name for the operation.
 
-@ops.RegisterShape("InitializeTable")
-def _InitializeLookupTableShape(op):
-  """Shape function for data_flow_ops._initialize_table."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  op.inputs[2].get_shape().merge_with(keys_shape)
-  return []
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
 
+    self._batch_size = batch_size
+    self._file_pattern = file_pattern
+    self._buffer_size = buffer_size
+    self._parallelism = parallelism
+    self._shift_ratio = shift_ratio
+    self._seed = seed
+    self._name = name
 
-@ops.RegisterShape("InitializeTableFromTextFile")
-def _InitializeTableFromTextFileShape(op):
-  """Shape function for lookup_ops._initialize_table_from_text_file."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
-  ))
-  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return []
+  def get_yield_op(self):
+    """Add a node that yields a minibatch every time it is executed."""
+    return gen_data_flow_ops.record_input(
+        file_pattern=self._file_pattern,
+        file_buffer_size=self._buffer_size,
+        file_parallelism=self._parallelism,
+        file_shuffle_shift_ratio=self._shift_ratio,
+        batch_size=self._batch_size,
+        file_random_seed=self._seed,
+        name=self._name)

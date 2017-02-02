@@ -28,14 +28,14 @@ static PyObject* DoQuantizeTrainingOnGraphDefHelper(
       tensorflow::DoQuantizeTrainingOnSerializedGraphDef(input_graph, num_bits, &result);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
-    return Py_None;
+    Py_RETURN_NONE;
   }
   PyObject* py_str = PyBytes_FromStringAndSize(result.data(), result.size());
   if (!py_str) {
     Set_TF_Status_from_Status(out_status,
         tensorflow::Status(tensorflow::error::INTERNAL,
             "Failed to generate serialized string of the rewritten graph."));
-    return Py_None;
+    Py_RETURN_NONE;
   }
 
   return py_str;

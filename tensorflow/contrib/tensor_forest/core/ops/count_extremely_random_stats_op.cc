@@ -21,8 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/contrib/tensor_forest/core/ops/data_spec.h"
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
-
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -44,10 +44,10 @@ using tensorforest::LEAF_NODE;
 using tensorforest::FREE_NODE;
 
 using tensorforest::CheckTensorBounds;
-using tensorforest::DataColumnTypes;
+using tensorforest::DecideNode;
+using tensorforest::TensorForestDataSpec;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
-using tensorforest::FeatureSpec;
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
@@ -69,9 +69,10 @@ struct InputDataResult {
 
 
 struct EvaluateParams {
-  std::function<bool(int, int, float,
-                    tensorforest::DataColumnTypes)> decide_function;
-  Tensor input_spec;
+  TensorForestDataSpec input_spec;
+  Tensor dense_input;
+  Tensor sparse_indices;
+  Tensor sparse_values;
   Tensor input_labels;
   Tensor tree_tensor;
   Tensor tree_thresholds;
@@ -103,11 +104,11 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
     while (true) {
       params.results[i].node_indices.push_back(node_index);
       CHECK_LT(node_index, num_nodes);
-      int32 left_child = internal::SubtleMustCopy(
-          tree(node_index, CHILDREN_INDEX));
+      int32 left_child =
+          internal::SubtleMustCopy(tree(node_index, CHILDREN_INDEX));
       if (left_child == LEAF_NODE) {
-        const int32 accumulator = internal::SubtleMustCopy(
-            node_map(node_index));
+        const int32 accumulator =
+            internal::SubtleMustCopy(node_map(node_index));
         params.results[i].leaf_accumulator = accumulator;
         // If the leaf is not fertile or is not yet initialized, we don't
         // count it in the candidate/total split per-class-weights because
@@ -119,10 +120,10 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
           params.results[i].splits_initialized = true;
           for (int split = 0; split < num_splits; split++) {
             const int32 feature = split_features(accumulator, split);
-
-            if (!params.decide_function(
-                    i, feature, split_thresholds(accumulator, split),
-                    FeatureSpec(feature, params.input_spec))) {
+            if (!DecideNode(params.dense_input, params.sparse_indices,
+                            params.sparse_values, i, feature,
+                            split_thresholds(accumulator, split),
+                            params.input_spec)) {
               params.results[i].split_adds.push_back(split);
             }
           }
@@ -135,161 +136,12 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       }
       const int32 feature = tree(node_index, FEATURE_INDEX);
       node_index =
-          left_child +
-          params.decide_function(i, feature, thresholds(node_index),
-                                 FeatureSpec(feature, params.input_spec));
+          left_child + DecideNode(params.dense_input, params.sparse_indices,
+                                  params.sparse_values, i, feature,
+                                  thresholds(node_index), params.input_spec);
     }
   }
 }
-
-REGISTER_OP("CountExtremelyRandomStats")
-    .Attr("num_classes: int")
-    .Attr("regression: bool = false")
-    .Input("input_data: float")
-    .Input("sparse_input_indices: int64")
-    .Input("sparse_input_values: float")
-    .Input("sparse_input_shape: int64")
-    .Input("input_spec: int32")
-    .Input("input_labels: float")
-    .Input("input_weights: float")
-    .Input("tree: int32")
-    .Input("tree_thresholds: float")
-    .Input("node_to_accumulator: int32")
-    .Input("candidate_split_features: int32")
-    .Input("candidate_split_thresholds: float")
-    .Input("birth_epochs: int32")
-    .Input("current_epoch: int32")
-    .Output("pcw_node_sums_delta: float")
-    .Output("pcw_node_squares_delta: float")
-    .Output("pcw_splits_indices: int32")
-    .Output("pcw_candidate_splits_sums_delta: float")
-    .Output("pcw_candidate_splits_squares_delta: float")
-    .Output("pcw_totals_indices: int32")
-    .Output("pcw_totals_sums_delta: float")
-    .Output("pcw_totals_squares_delta: float")
-    .Output("leaves: int32")
-    .SetShapeFn([](InferenceContext* c) {
-      int64 num_classes;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_classes", &num_classes));
-      bool regression;
-      TF_RETURN_IF_ERROR(c->GetAttr("regression", &regression));
-
-      DimensionHandle num_points = c->Dim(c->input(0), 0);
-      if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
-        num_points = c->UnknownDim();
-      }
-      DimensionHandle num_nodes = c->Dim(c->input(7), 0);
-
-      // Node sums
-      c->set_output(0, c->Matrix(num_nodes, num_classes));
-      // Node squares
-      c->set_output(1, c->Matrix(num_nodes, num_classes));
-
-      c->set_output(2, c->Matrix(c->UnknownDim(), regression ? 2 : 3));
-
-      c->set_output(3, regression ? c->Matrix(c->UnknownDim(), num_classes)
-                                  : c->Vector(c->UnknownDim()));
-      c->set_output(4, regression ? c->Matrix(c->UnknownDim(), num_classes)
-                                  : c->Vector(0LL));
-      c->set_output(5, c->Matrix(c->UnknownDim(), regression ? 1 : 2));
-      c->set_output(6, regression ? c->Matrix(c->UnknownDim(), num_classes)
-                                  : c->Vector(c->UnknownDim()));
-      c->set_output(7, regression ? c->Matrix(c->UnknownDim(), num_classes)
-                                  : c->Vector(0LL));
-      c->set_output(8, c->Vector(num_points));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Calculates incremental statistics for a batch of training data.
-
-Each training example in `input_data` is sent through the decision tree
-represented by `tree` and `tree_thresholds`.
-The shape and contents of the outputs differ depending on whether
-`regression` is true or not.
-
-For `regression` = false (classification), `pcw_node_sums_delta[i]` is
-incremented for every node i that it passes through, and the leaf it ends up
-in is recorded in `leaves[i]`.  Then, if the leaf is fertile and
-initialized, the statistics for its corresponding accumulator slot
-are updated in `pcw_candidate_sums_delta` and `pcw_totals_sums_delta`.
-
-For `regression` = true, outputs contain the sum of the input_labels
-for the appropriate nodes.  In adddition, the *_squares outputs are filled
-in with the sums of the squares of the input_labels. Since outputs are
-all updated at once, the *_indicies outputs don't specify the output
-dimension to update, rather the *_delta output contains updates for all the
-outputs.  For example, `pcw_totals_indices` specifies the accumulators to
-update, and `pcw_total_splits_sums_delta` contains the complete output
-updates for each of those accumulators.
-
-The attr `num_classes` is needed to appropriately size the outputs.
-
-input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
-  gives the j-th feature of the i-th input.
-sparse_input_indices: The indices tensor from the SparseTensor input.
-sparse_input_values: The values tensor from the SparseTensor input.
-sparse_input_shape: The shape tensor from the SparseTensor input.
-input_spec: A 1-D tensor containing the type of each column in input_data,
-  (e.g. continuous float, categorical).  Index 0 should contain the default
-  type, individual feature types start at index 1.
-input_labels: The training batch's labels; `input_labels[i]` is the class
-  of the i-th input.
-input_weights:= A 1-D float tensor.  If non-empty, `input_weights[i]` gives
-  the weight of the i-th input.
-tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
-  of the i-th node, `tree[i][0] + 1` gives the index of the right child of
-  the i-th node, and `tree[i][1]` gives the index of the feature used to
-  split the i-th node.
-tree_thresholds: `tree_thresholds[i]` is the value used to split the i-th
-  node.
-node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
-  is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
-candidate_split_features: `candidate_split_features[a][s]` is the
-  index of the feature being considered by split s of accumulator slot a.
-candidate_split_thresholds: `candidate_split_thresholds[a][s]` is the
-  threshold value being considered by split s of accumulator slot a.
-birth_epochs: `birth_epoch[i]` is the epoch node i was born in.  Only
-  nodes satisfying `current_epoch - birth_epoch <= 1` accumulate statistics.
-current_epoch:= A 1-d int32 tensor with shape (1).  current_epoch[0] contains
-  the current epoch.
-pcw_node_sums_delta: `pcw_node_sums_delta[i][c]` is the number of training
-  examples in this training batch with class c that passed through node i for
-  classification.  For regression, it is the sum of the input_labels that
-  have passed through node i.
-pcw_node_squares_delta: `pcw_node_squares_delta[i][c]` is the sum of the
-  squares of the input labels that have passed through node i for
-  regression.  Not set for classification.
-pcw_splits_indices:= A 2-d tensor of shape (?, 3) for classification and
-  (?, 2) for regression.
-  `pcw_splits_indices[i]` gives the coordinates of an entry in
-  candidate_split_pcw_sums and candidate_split_pcw_squares that need to be
-  updated.  This is meant to be passed with `pcw_candidate_splits_*_delta` to
-  a scatter_add for candidate_split_pcw_*:
-    training_ops.scatter_add_ndim(candidate_split_pcw_sums
-        pcw_splits_indices, pcw_candidate_splits_sums_delta)
-pcw_candidate_splits_sums_delta: For classification,
-  `pcw_candidate_splits_sums_delta[i]` is the
-  number of training examples in this training batch that correspond to
-  the i-th entry in `pcw_splits_indices` which took the *left* branch of
-  candidate split. For regression, it is the same but a 2-D tensor that has
-  the sum of the input_labels for each i-th entry in the indices.
-pcw_candidate_splits_squares_delta: For regression, same as
-  `pcw_candidate_splits_sums_delta` but the sum of the squares. Not set
-  for classification.
-pcw_totals_indices: For classification, 'pcw_totals_indices` contains the
-  indices (accumulator, class) into total_pcw_sums to update with
-  pcw_totals_sums_delta.  For regression, it only contains the accumulator
-  (not the class), because pcw_totals_*_delta will contain all the outputs.
-pcw_totals_sums_delta: For classification, `pcw_totals_sums_delta[i]` is the
-  number of training examples in this batch that ended up in the fertile
-  node with accumulator and class indicated by `pcw_totals_indices[i]`.
-  For regression, it is the sum of the input_labels corresponding to the
-  entries in `pcw_totals_indices[i]`.
-pcw_totals_squares_delta: For regression, same as
-  `pcw_totals_sums_delta` but the sum of the squares. Not set
-  for classification.
-leaves: `leaves[i]` is the leaf that input i ended up in.
-)doc");
 
 class CountExtremelyRandomStats : public OpKernel {
  public:
@@ -299,6 +151,9 @@ class CountExtremelyRandomStats : public OpKernel {
         "num_classes", &num_classes_));
     OP_REQUIRES_OK(context, context->GetAttr(
         "regression", &regression_));
+    string serialized_proto;
+    OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
+    input_spec_.ParseFromString(serialized_proto);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -306,22 +161,29 @@ class CountExtremelyRandomStats : public OpKernel {
     const Tensor& sparse_input_indices = context->input(1);
     const Tensor& sparse_input_values = context->input(2);
     const Tensor& sparse_input_shape = context->input(3);
-    const Tensor& input_spec = context->input(4);
-    const Tensor& input_labels = context->input(5);
-    const Tensor& input_weights = context->input(6);
-    const Tensor& tree_tensor = context->input(7);
-    const Tensor& tree_thresholds = context->input(8);
-    const Tensor& node_to_accumulator = context->input(9);
-    const Tensor& candidate_split_features = context->input(10);
-    const Tensor& candidate_split_thresholds = context->input(11);
-    const Tensor& birth_epochs = context->input(12);
-    const Tensor& current_epoch = context->input(13);
+    const Tensor& input_labels = context->input(4);
+    const Tensor& input_weights = context->input(5);
+    const Tensor& tree_tensor = context->input(6);
+    const Tensor& tree_thresholds = context->input(7);
+    const Tensor& node_to_accumulator = context->input(8);
+    const Tensor& candidate_split_features = context->input(9);
+    const Tensor& candidate_split_thresholds = context->input(10);
+    const Tensor& birth_epochs = context->input(11);
+    const Tensor& current_epoch = context->input(12);
 
     bool sparse_input = (sparse_input_indices.shape().dims() == 2);
     bool have_weights = (input_weights.shape().dim_size(0) > 0);
+    int32 num_data = -1;
 
     // Check inputs.
     if (sparse_input) {
+      const auto sparse_shape = sparse_input_shape.unaligned_flat<int64>();
+      // TODO(gilberth): This is because we can't figure out the shape
+      // of a sparse tensor at graph-build time, even if the dimension is
+      // actually known.
+      input_spec_.mutable_sparse(0)->set_size(sparse_shape(1));
+      num_data = sparse_shape(0);
+
       OP_REQUIRES(context, sparse_input_shape.shape().dims() == 1,
                   errors::InvalidArgument(
                       "sparse_input_shape should be one-dimensional"));
@@ -341,7 +203,17 @@ class CountExtremelyRandomStats : public OpKernel {
                   errors::InvalidArgument(
                       "sparse_input_indices and sparse_input_values should "
                       "agree on the number of non-zero values"));
-    } else {
+    }
+
+    if (input_data.shape().dim_size(0) > 0) {
+      const int32 dense_num_data =
+          static_cast<int32>(input_data.shape().dim_size(0));
+      if (num_data > 0) {
+        CHECK_EQ(num_data, dense_num_data)
+            << "number of examples must match for sparse + dense input.";
+      }
+      num_data = dense_num_data;
+
       OP_REQUIRES(context, input_data.shape().dims() == 2,
                   errors::InvalidArgument(
                       "input_data should be two-dimensional"));
@@ -427,33 +299,15 @@ class CountExtremelyRandomStats : public OpKernel {
 
     // Evaluate input data in parallel.
     const int32 epoch = current_epoch.unaligned_flat<int32>()(0);
-    int32 num_data;
-    std::function<bool(int, int, float,
-                      tensorforest::DataColumnTypes)> decide_function;
-    if (sparse_input) {
-      num_data = sparse_input_shape.unaligned_flat<int64>()(0);
-      decide_function = [&sparse_input_indices, &sparse_input_values](
-          int32 i, int32 feature, float bias, DataColumnTypes type) {
-        const auto sparse_indices = sparse_input_indices.matrix<int64>();
-        const auto sparse_values = sparse_input_values.vec<float>();
-        return tensorforest::DecideSparseNode(
-            sparse_indices, sparse_values, i, feature, bias, type);
-      };
-    } else {
-      num_data = static_cast<int32>(input_data.shape().dim_size(0));
-      decide_function = [&input_data](
-          int32 i, int32 feature, float bias, DataColumnTypes type) {
-        const auto input_matrix = input_data.matrix<float>();
-        return tensorforest::DecideDenseNode(
-            input_matrix, i, feature, bias, type);
-      };
-    }
+
     std::unique_ptr<InputDataResult[]> results(new InputDataResult[num_data]);
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     EvaluateParams params;
-    params.decide_function = decide_function;
-    params.input_spec = input_spec;
+    params.dense_input = input_data;
+    params.sparse_indices = sparse_input_indices;
+    params.sparse_values = sparse_input_values;
+    params.input_spec = input_spec_;
     params.input_labels = input_labels;
     params.tree_tensor = tree_tensor;
     params.tree_thresholds = tree_thresholds;
@@ -837,6 +691,7 @@ class CountExtremelyRandomStats : public OpKernel {
 
   int32 num_classes_;
   bool regression_;
+  tensorforest::TensorForestDataSpec input_spec_;
 };
 
 

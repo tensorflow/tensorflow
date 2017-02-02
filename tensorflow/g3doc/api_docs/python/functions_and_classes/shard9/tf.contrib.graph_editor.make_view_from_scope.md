@@ -6,7 +6,7 @@ Make a subgraph from a name scope.
 
 
 *  <b>`scope`</b>: the name of the scope.
-*  <b>`graph`</b>: the tf.Graph.
+*  <b>`graph`</b>: the `tf.Graph`.
 
 ##### Returns:
 

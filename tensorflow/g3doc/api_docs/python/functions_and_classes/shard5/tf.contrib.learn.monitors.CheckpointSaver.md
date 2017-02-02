@@ -1,4 +1,4 @@
-Saves checkpoints every N steps.
+Saves checkpoints every N steps or N seconds.
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaver.__init__}
@@ -89,6 +89,8 @@ End epoch.
 #### `tf.contrib.learn.monitors.CheckpointSaver.set_estimator(estimator)` {#CheckpointSaver.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 

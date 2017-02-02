@@ -222,7 +222,7 @@ OpKernelContext::~OpKernelContext() {
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator =
-      params_->device->GetStepAllocator(attr, step_resource_manager());
+      params_->device->GetStepAllocator(attr, resource_manager());
   if (params_->track_allocations) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
@@ -264,6 +264,24 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
   }
   *tensor = (*params_->inputs)[start].tensor;
   record_tensor_reference(**tensor);
+  return Status::OK();
+}
+
+Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
+  int start, stop;
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
+  if (stop != start + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  const TensorValue& value((*params_->inputs)[start]);
+  if (value.is_ref()) {
+    *dtype = MakeRefType(value->dtype());
+  } else {
+    *dtype = value->dtype();
+  }
   return Status::OK();
 }
 
@@ -948,6 +966,13 @@ template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
+
+#ifdef TENSORFLOW_USE_SYCL
+template <>
+const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
+  return eigen_sycl_device();
+}
+#endif
 
 void OpKernelConstruction::CtxFailure(Status s) {
   VLOG(1) << s;

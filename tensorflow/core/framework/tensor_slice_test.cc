@@ -273,8 +273,8 @@ TEST(TensorSliceTest, Deserialization) {
   TensorSlice ts3(proto3);
 
   // Both serializations should be interpreted the same.
-  EXPECT_EQ("0,5:0,10:14,1:-:-", ts2.DebugString());
-  EXPECT_EQ("0,5:0,10:14,1:-:-", ts3.DebugString());
+  EXPECT_EQ("0,5:0,10:14,1:1,-1:-", ts2.DebugString());
+  EXPECT_EQ("0,5:0,10:14,1:1,-1:-", ts3.DebugString());
 }
 
 TEST(TensorSliceTest, UpdateToCover) {
@@ -297,6 +297,27 @@ TEST(TensorSliceTest, IsFull) {
 
   TensorSlice slice3({{0, -1}, {0, -1}, {14, 1}});
   EXPECT_TRUE(!slice3.IsFull());
+}
+
+TEST(TensorSliceTest, Equality) {
+  {  // Dims are different.
+    TensorSlice slice1(3);
+    TensorSlice slice2(2);
+    EXPECT_TRUE(slice1 != slice2);
+    EXPECT_TRUE(slice2 != slice1);
+  }
+  {  // Both are 3-dim full slices.
+    TensorSlice slice1(3);
+    TensorSlice slice2({{0, -1}, {0, -1}, {0, -1}});
+    EXPECT_TRUE(slice1 == slice2);
+    EXPECT_TRUE(slice2 == slice1);
+  }
+  {  // Differs in one dimension.
+    TensorSlice slice1(3);
+    TensorSlice slice2({{0, -1}, {0, 1}, {0, -1}});
+    EXPECT_TRUE(slice1 != slice2);
+    EXPECT_TRUE(slice2 != slice1);
+  }
 }
 
 }  // namespace

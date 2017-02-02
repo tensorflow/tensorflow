@@ -35,7 +35,7 @@ template <typename T>
 class SparseConcatOp : public OpKernel {
  public:
   explicit SparseConcatOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("concat_dim", &concat_dim_));
+    OP_REQUIRES_OK(context, context->GetAttr("concat_dim", &concat_dim_attr_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -74,19 +74,23 @@ class SparseConcatOp : public OpKernel {
     }
 
     const TensorShape input_shape(shapes[0].vec<int64>());
-    OP_REQUIRES(
-        context, concat_dim_ >= 0 && concat_dim_ < input_shape.dims(),
-        errors::InvalidArgument("Concat dimension must be between 0 and rank (",
-                                input_shape.dims(), "), got ", concat_dim_));
+    const int input_rank = input_shape.dims();
+    const int concat_dim = (concat_dim_attr_ < 0)
+                               ? input_rank + concat_dim_attr_
+                               : concat_dim_attr_;
+    OP_REQUIRES(context, concat_dim >= 0 && concat_dim < input_rank,
+                errors::InvalidArgument("Concat dimension must be in range [",
+                                        -input_rank, ", ", input_rank,
+                                        "), got ", concat_dim_attr_));
     for (int i = 1; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64>());
-      OP_REQUIRES(context, current_shape.dims() == input_shape.dims(),
-                  errors::InvalidArgument(
-                      "Ranks of all input tensors must match: expected ",
-                      input_shape.dims(), " but got ", current_shape.dims(),
-                      " at position ", i));
-      for (int j = 0; j < input_shape.dims(); ++j) {
-        if (j != concat_dim_) {
+      OP_REQUIRES(
+          context, current_shape.dims() == input_rank,
+          errors::InvalidArgument(
+              "Ranks of all input tensors must match: expected ", input_rank,
+              " but got ", current_shape.dims(), " at position ", i));
+      for (int j = 0; j < input_rank; ++j) {
+        if (j != concat_dim) {
           OP_REQUIRES(
               context, input_shape.dim_size(j) == current_shape.dim_size(j),
               errors::InvalidArgument(
@@ -105,14 +109,14 @@ class SparseConcatOp : public OpKernel {
     // reorder doesn't create race conditions for other ops that may be
     // concurrently reading the indices and values tensors.
 
-    gtl::InlinedVector<int64, 8> std_order(input_shape.dims());
+    gtl::InlinedVector<int64, 8> std_order(input_rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<int64> concat_order;
-    concat_order.reserve(input_shape.dims());
-    concat_order.push_back(concat_dim_);
-    for (int j = 0; j < input_shape.dims(); ++j) {
-      if (j != concat_dim_) {
+    concat_order.reserve(input_rank);
+    concat_order.push_back(concat_dim);
+    for (int j = 0; j < input_rank; ++j) {
+      if (j != concat_dim) {
         concat_order.push_back(j);
       }
     }
@@ -143,7 +147,7 @@ class SparseConcatOp : public OpKernel {
   }
 
  private:
-  int concat_dim_;
+  int concat_dim_attr_;
 };
 
 #define REGISTER_KERNELS(type)                                           \

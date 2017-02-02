@@ -12,18 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.tf.Cholesky."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
-class CholeskyOpTest(tf.test.TestCase):
+class CholeskyOpTest(test.TestCase):
 
   def _verifyCholeskyBase(self, sess, x, chol, verification):
     chol_np, verification_np = sess.run([chol, verification])
@@ -41,16 +49,9 @@ class CholeskyOpTest(tf.test.TestCase):
   def _verifyCholesky(self, x):
     # Verify that LL^T == x.
     with self.test_session() as sess:
-      # Check the batch version, which works for ndim >= 2.
-      chol = tf.batch_cholesky(x)
-      verification = tf.batch_matmul(chol, chol, adj_x=False, adj_y=True)
+      chol = linalg_ops.cholesky(x)
+      verification = math_ops.matmul(chol, chol, adjoint_b=True)
       self._verifyCholeskyBase(sess, x, chol, verification)
-
-      if x.ndim == 2:  # Check the simple form of cholesky
-        chol = tf.cholesky(x)
-        verification = tf.matmul(
-            chol, chol, transpose_a=False, transpose_b=True)
-        self._verifyCholeskyBase(sess, x, chol, verification)
 
   def testBasic(self):
     self._verifyCholesky(np.array([[4., -1., 2.], [-1., 6., 0], [2., 0., 5.]]))
@@ -70,17 +71,18 @@ class CholeskyOpTest(tf.test.TestCase):
 
   def testNonSquareMatrix(self):
     with self.assertRaises(ValueError):
-      tf.cholesky(np.array([[1., 2., 3.], [3., 4., 5.]]))
+      linalg_ops.cholesky(np.array([[1., 2., 3.], [3., 4., 5.]]))
     with self.assertRaises(ValueError):
-      tf.batch_cholesky(np.array([[[1., 2., 3.], [3., 4., 5.]],
-                                  [[1., 2., 3.], [3., 4., 5.]]]))
+      linalg_ops.cholesky(
+          np.array([[[1., 2., 3.], [3., 4., 5.]], [[1., 2., 3.], [3., 4., 5.]]
+                   ]))
 
   def testWrongDimensions(self):
-    tensor3 = tf.constant([1., 2.])
+    tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
-      tf.cholesky(tensor3)
+      linalg_ops.cholesky(tensor3)
     with self.assertRaises(ValueError):
-      tf.batch_cholesky(tensor3)
+      linalg_ops.cholesky(tensor3)
 
   def testNotInvertible(self):
     # The input should be invertible.
@@ -88,15 +90,15 @@ class CholeskyOpTest(tf.test.TestCase):
       with self.assertRaisesOpError("LLT decomposition was not successful. The"
                                     " input might not be valid."):
         # All rows of the matrix below add to zero
-        self._verifyCholesky(np.array([[1., -1., 0.], [-1., 1., -1.], [0., -1.,
-                                                                       1.]]))
+        self._verifyCholesky(
+            np.array([[1., -1., 0.], [-1., 1., -1.], [0., -1., 1.]]))
 
   def testEmpty(self):
     self._verifyCholesky(np.empty([0, 2, 2]))
     self._verifyCholesky(np.empty([2, 0, 0]))
 
 
-class CholeskyGradTest(tf.test.TestCase):
+class CholeskyGradTest(test.TestCase):
   _backprop_block_size = 32
 
   def getShapes(self, shapeList):
@@ -110,53 +112,60 @@ class CholeskyGradTest(tf.test.TestCase):
   def testOneBlockMatrices(self):
     np.random.seed(0)
     shapes = self.getShapes([self._backprop_block_size + 1])
-    self.runFiniteDifferences(shapes, dtypes=(tf.float32, tf.float64),
-                              scalarTest=True)
+    self.runFiniteDifferences(
+        shapes,
+        dtypes=(dtypes_lib.float32, dtypes_lib.float64),
+        scalarTest=True)
 
   def testTwoBlockMatrixFloat(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])
-    self.runFiniteDifferences(shapes, dtypes=(tf.float32,), scalarTest=True)
+    self.runFiniteDifferences(
+        shapes, dtypes=(dtypes_lib.float32,), scalarTest=True)
 
   def testTwoBlockMatrixDouble(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])
-    self.runFiniteDifferences(shapes, dtypes=(tf.float64,), scalarTest=True)
+    self.runFiniteDifferences(
+        shapes, dtypes=(dtypes_lib.float64,), scalarTest=True)
 
-  def runFiniteDifferences(self, shapes, dtypes=(tf.float32, tf.float64),
+  def runFiniteDifferences(self,
+                           shapes,
+                           dtypes=(dtypes_lib.float32, dtypes_lib.float64),
                            scalarTest=False):
     with self.test_session(use_gpu=False):
       for shape in shapes:
         for batch in False, True:
           for dtype in dtypes:
             if not scalarTest:
-              x = tf.constant(np.random.randn(shape[0], shape[1]), dtype)
-              tensor = tf.matmul(x, tf.transpose(x)) / shape[0]
+              x = constant_op.constant(
+                  np.random.randn(shape[0], shape[1]), dtype)
+              tensor = math_ops.matmul(x, array_ops.transpose(x)) / shape[0]
             else:
               # This is designed to be a faster test for larger matrices.
-              x = tf.constant(np.random.randn(), dtype)
-              R = tf.constant(np.random.randn(shape[0], shape[1]), dtype)
-              e = tf.mul(R, x)
-              tensor = tf.matmul(e, tf.transpose(e)) / shape[0]
+              x = constant_op.constant(np.random.randn(), dtype)
+              R = constant_op.constant(
+                  np.random.randn(shape[0], shape[1]), dtype)
+              e = math_ops.multiply(R, x)
+              tensor = math_ops.matmul(e, array_ops.transpose(e)) / shape[0]
 
             # Inner-most matrices in tensor are positive definite.
             if batch:
-              tensor = tf.tile(tf.expand_dims(tensor, 0), [4, 1, 1])
-              op = tf.batch_cholesky
-            else:
-              op = tf.cholesky
-
-            if not (scalarTest):
-              y = op(tensor)
-            else:
-              y = tf.reduce_mean(op(tensor))
-            error = tf.test.compute_gradient_error(x, x._shape_as_list(), y,
-                                                   y._shape_as_list())
-            tf.logging.info("error = %f", error)
-            if dtype == tf.float64:
+              tensor = array_ops.tile(
+                  array_ops.expand_dims(tensor, 0), [4, 1, 1])
+            y = linalg_ops.cholesky(tensor)
+            if scalarTest:
+              y = math_ops.reduce_mean(y)
+            error = gradient_checker.compute_gradient_error(x,
+                                                            x._shape_as_list(),
+                                                            y,
+                                                            y._shape_as_list())
+            tf_logging.info("error = %f", error)
+            if dtype == dtypes_lib.float64:
               self.assertLess(error, 1e-5)
             else:
               self.assertLess(error, 3e-3)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

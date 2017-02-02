@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
@@ -107,7 +108,7 @@ void SaveTensors(
     break;
 
     switch (input.dtype()) {
-      TF_CALL_ALL_TYPES(WRITER_ADD)
+      TF_CALL_POD_STRING_TYPES(WRITER_ADD)
       TF_CALL_QUANTIZED_TYPES(WRITER_ADD)
       default:
         context->SetStatus(errors::Unimplemented("Saving data type ",
@@ -212,19 +213,79 @@ void RestoreTensor(OpKernelContext* context,
   Tensor* t = nullptr;
   OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &t));
 
+  if (output_shape.num_elements() == 0) return;
+
 #define READER_COPY(T)                                                      \
   case DataTypeToEnum<T>::value:                                            \
     reader->CopySliceData(tensor_name, slice_to_load, t->flat<T>().data()); \
     break;
 
   switch (type) {
-    TF_CALL_ALL_TYPES(READER_COPY)
+    TF_CALL_POD_STRING_TYPES(READER_COPY)
     TF_CALL_QUANTIZED_TYPES(READER_COPY)
     default:
       context->SetStatus(errors::Unimplemented(
           "Restoring data type ", DataTypeString(type), " not yet supported"));
   }
 #undef READER_COPY
+}
+
+Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
+                        const Tensor& tensor_names,
+                        const Tensor& shape_and_slices,
+                        gtl::ArraySlice<DataType> dtypes) {
+  const string& prefix_string = prefix.scalar<string>()();
+  const auto& tensor_names_flat = tensor_names.flat<string>();
+  const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
+
+  BundleReader reader(Env::Default(), prefix_string);
+  TF_RETURN_IF_ERROR(reader.status());
+
+  // TODO(zongheng): potential optimization: one Seek() in first lookup.
+  // TODO(zongheng): consider measuring speed and issuing concurrent lookups
+  // within a fixed memory budget.
+  TensorShape restored_full_shape;
+  Tensor* restored_tensor = nullptr;
+  for (size_t i = 0; i < tensor_names_flat.size(); ++i) {
+    const string& tensor_name = tensor_names_flat(i);
+    const string& shape_and_slice = shape_and_slices_flat(i);
+    TF_RETURN_IF_ERROR(
+        reader.LookupTensorShape(tensor_name, &restored_full_shape));
+
+    if (shape_and_slice.empty()) {
+      // Lookup the full tensor.
+      TF_RETURN_IF_ERROR(
+          context->allocate_output(i, restored_full_shape, &restored_tensor));
+      TF_RETURN_IF_ERROR(reader.Lookup(tensor_name, restored_tensor));
+    } else {
+      // Lookup the slice.
+      TensorShape parsed_full_shape;
+      TensorSlice parsed_slice;
+      TensorShape parsed_slice_shape;
+
+      TF_RETURN_IF_ERROR(
+          checkpoint::ParseShapeAndSlice(shape_and_slice, &parsed_full_shape,
+                                         &parsed_slice, &parsed_slice_shape));
+      if (!restored_full_shape.IsSameSize(parsed_full_shape)) {
+        return errors::InvalidArgument(
+            "Shape in shape_and_slice spec ", parsed_full_shape.DebugString(),
+            " does not match the shape stored in checkpoint: ",
+            restored_full_shape.DebugString());
+      }
+
+      TF_RETURN_IF_ERROR(
+          context->allocate_output(i, parsed_slice_shape, &restored_tensor));
+      TF_RETURN_IF_ERROR(
+          reader.LookupSlice(tensor_name, parsed_slice, restored_tensor));
+    }
+    if (dtypes[i] != restored_tensor->dtype()) {
+      return errors::InvalidArgument("Expected dtype ",
+                                     DataTypeString(dtypes[i]),
+                                     " does not equal restored dtype ",
+                                     DataTypeString(restored_tensor->dtype()));
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

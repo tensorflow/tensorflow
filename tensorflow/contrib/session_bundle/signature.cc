@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
@@ -53,19 +54,10 @@ Status GetSignatures(const tensorflow::MetaGraphDef& meta_graph_def,
   if (it == collection_def.end() || it->second.any_list().value_size() != 1) {
     return errors::FailedPrecondition(
         strings::StrCat("Expected exactly one signatures proto in : ",
-                        meta_graph_def.DebugString()));
+                        DebugStringIfAvailable(meta_graph_def)));
   }
   const auto& any = it->second.any_list().value(0);
-  if (!any.Is<Signatures>()) {
-    return errors::FailedPrecondition(
-        "Expected signature Any type_url for: ",
-        signatures->descriptor()->full_name(), ". Got: ",
-        string(any.type_url().data(), any.type_url().size()), ".");
-  }
-  if (!any.UnpackTo(signatures)) {
-    return errors::FailedPrecondition("Failed to unpack: ", any.DebugString());
-  }
-  return Status::OK();
+  return ParseAny(any, signatures, "tensorflow.serving.Signatures");
 }
 
 Status SetSignatures(const Signatures& signatures,
@@ -73,7 +65,12 @@ Status SetSignatures(const Signatures& signatures,
   auto& collection_def = *(meta_graph_def->mutable_collection_def());
   auto* any_list = collection_def[kSignaturesKey].mutable_any_list();
   any_list->mutable_value()->Clear();
+#ifdef TENSORFLOW_LITE_PROTOS
+  signatures.SerializeToString(
+      any_list->mutable_value()->Add()->mutable_value());
+#else
   any_list->mutable_value()->Add()->PackFrom(signatures);
+#endif
   return Status::OK();
 }
 
@@ -83,13 +80,14 @@ Status GetClassificationSignature(
   Signatures signatures;
   TF_RETURN_IF_ERROR(GetSignatures(meta_graph_def, &signatures));
   if (!signatures.has_default_signature()) {
-    return errors::FailedPrecondition(strings::StrCat(
-        "Expected a default signature in: ", signatures.DebugString()));
+    return errors::FailedPrecondition(
+        strings::StrCat("Expected a default signature in: ",
+                        DebugStringIfAvailable(signatures)));
   }
   if (!signatures.default_signature().has_classification_signature()) {
-    return errors::FailedPrecondition(
-        strings::StrCat("Expected a classification signature in: ",
-                        signatures.default_signature().DebugString()));
+    return errors::FailedPrecondition(strings::StrCat(
+        "Expected a classification signature in: ",
+        DebugStringIfAvailable(signatures.default_signature())));
   }
   *signature = signatures.default_signature().classification_signature();
   return Status::OK();
@@ -102,14 +100,14 @@ Status GetNamedClassificationSignature(
   TF_RETURN_IF_ERROR(GetSignatures(meta_graph_def, &signatures));
   const auto& it = signatures.named_signatures().find(name);
   if (it == signatures.named_signatures().end()) {
-    return errors::NotFound(strings::StrCat("Missing signature named \"", name,
-                                            "\" in: ",
-                                            signatures.DebugString()));
+    return errors::NotFound(
+        strings::StrCat("Missing signature named \"", name, "\" in: ",
+                        DebugStringIfAvailable(signatures)));
   }
   if (!it->second.has_classification_signature()) {
     return errors::FailedPrecondition(
         strings::StrCat("Expected a classification signature for name \"", name,
-                        "\" in: ", it->second.DebugString()));
+                        "\" in: ", DebugStringIfAvailable(it->second)));
   }
   *signature = it->second.classification_signature();
   return Status::OK();
@@ -157,13 +155,14 @@ Status GetRegressionSignature(const tensorflow::MetaGraphDef& meta_graph_def,
   Signatures signatures;
   TF_RETURN_IF_ERROR(GetSignatures(meta_graph_def, &signatures));
   if (!signatures.has_default_signature()) {
-    return errors::FailedPrecondition(strings::StrCat(
-        "Expected a default signature in: ", signatures.DebugString()));
+    return errors::FailedPrecondition(
+        strings::StrCat("Expected a default signature in: ",
+                        DebugStringIfAvailable(signatures)));
   }
   if (!signatures.default_signature().has_regression_signature()) {
-    return errors::FailedPrecondition(
-        strings::StrCat("Expected a regression signature in: ",
-                        signatures.default_signature().DebugString()));
+    return errors::FailedPrecondition(strings::StrCat(
+        "Expected a regression signature in: ",
+        DebugStringIfAvailable(signatures.default_signature())));
   }
   *signature = signatures.default_signature().regression_signature();
   return Status::OK();
@@ -208,11 +207,11 @@ Status GetGenericSignature(const string& name,
   if (it == signatures.named_signatures().end()) {
     return errors::InvalidArgument(
         strings::StrCat("Missing generic signature named \"", name, "\" in ",
-                        signatures.DebugString()));
+                        DebugStringIfAvailable(signatures)));
   }
   if (!it->second.has_generic_signature()) {
     return errors::InvalidArgument(strings::StrCat(
-        "Expected a generic signature: ", it->second.DebugString()));
+        "Expected a generic signature: ", DebugStringIfAvailable(it->second)));
   }
   *signature = it->second.generic_signature();
   return Status::OK();
@@ -233,9 +232,9 @@ Status GetNamedSignature(const string& name,
   TF_RETURN_IF_ERROR(GetSignatures(meta_graph_def, &signatures));
   const auto& it = signatures.named_signatures().find(name);
   if (it == signatures.named_signatures().end()) {
-    return errors::NotFound(strings::StrCat("Missing signature named \"", name,
-                                            "\" in: ",
-                                            signatures.DebugString()));
+    return errors::NotFound(
+        strings::StrCat("Missing signature named \"", name, "\" in: ",
+                        DebugStringIfAvailable(signatures)));
   }
   *signature = it->second;
   return Status::OK();

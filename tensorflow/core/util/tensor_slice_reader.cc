@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/iterator.h"
-#include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
@@ -107,9 +107,9 @@ TensorSliceReader::TensorSliceReader(const string& filepattern,
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function,
                                      int preferred_shard)
-    : filepattern_(filepattern), open_function_(open_function) {
+    : filepattern_(filepattern), open_function_(std::move(open_function)) {
   VLOG(1) << "TensorSliceReader for " << filepattern;
-  Status s = io::GetMatchingFiles(Env::Default(), filepattern, &fnames_);
+  Status s = Env::Default()->GetMatchingPaths(filepattern, &fnames_);
   if (!s.ok()) {
     status_ = errors::InvalidArgument(
         "Unsuccessful TensorSliceReader constructor: "
@@ -259,6 +259,7 @@ Status TensorSliceReader::GetTensor(
     READER_COPY(DT_INT16);
     READER_COPY(DT_INT8);
     READER_COPY(DT_INT64);
+    READER_COPY(DT_STRING);
     default:
       return errors::Unimplemented("Data type not supported");
   }
@@ -289,7 +290,13 @@ const string TensorSliceReader::DebugString() const {
     for (auto e : Tensors()) {
       strings::StrAppend(&shape_str, e.first, " (",
                          EnumName_DataType(e.second->type()), ") ",
-                         e.second->shape().DebugString(), "\n");
+                         e.second->shape().DebugString());
+      // Indicates if a tensor has more than 1 slice (i.e., it's partitioned).
+      const int num_slices = e.second->Slices().size();
+      if (num_slices > 1) {
+        strings::StrAppend(&shape_str, ", ", num_slices, " slices");
+      }
+      strings::StrAppend(&shape_str, "\n");
     }
   }
   return shape_str;

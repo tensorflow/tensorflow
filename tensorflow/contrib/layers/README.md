@@ -28,7 +28,7 @@ these arguments.
 `x` is the input tensor.
 
 Weights, biases, and activations (i.e., outputs) are, by default, added to the specified collections. Weights and biases are also added to
-`tf.GraphKeys.VARIABLES` and `tf.GraphKeys.TRAINABLE_VARIABLES`.
+`tf.GraphKeys.GLOBAL_VARIABLES` and `tf.GraphKeys.TRAINABLE_VARIABLES`.
 
 ## optimizers.py
 

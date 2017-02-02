@@ -22,16 +22,14 @@ Train and evaluate TensorFlow models.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
 @@ModeKeys
 @@DNNClassifier
 @@DNNRegressor
-@@TensorFlowDNNClassifier
-@@TensorFlowDNNRegressor
-@@TensorFlowEstimator
 @@LinearClassifier
 @@LinearRegressor
-@@TensorFlowRNNClassifier
-@@TensorFlowRNNRegressor
+@@LogisticRegressor
 
 ## Graph actions
 
@@ -54,6 +52,8 @@ Queue and read batched input data.
 @@extract_pandas_data
 @@extract_pandas_labels
 @@extract_pandas_matrix
+@@infer_real_valued_columns_from_input
+@@infer_real_valued_columns_from_input_fn
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features
@@ -66,6 +66,7 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
+# pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import make_all
 
 __all__ = make_all(__name__)

@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
 
 struct OutputHash {
@@ -48,13 +46,15 @@ struct OutputEq {
 class SymbolicGradientBuilder {
  public:
   SymbolicGradientBuilder(const Scope& scope,
-                          const GradOpRegistry* registry,
+                          const ops::GradOpRegistry* registry,
                           const std::vector<Output>& outputs,
                           const std::vector<Output>& inputs,
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs);
 
   Status AddGradients();
+
+  static Output NoGradient() { return Output(nullptr, -1); }
 
  private:
   Status Initialize();
@@ -64,7 +64,6 @@ class SymbolicGradientBuilder {
   // to `dst` in the graph. This will add `dst_grad` to the list of pending
   // gradients for the node associated with `src`.
   Status BackpropAlongEdge(const Output& dst_grad, const Output& src);
-  Status BackpropZerosAlongEdge(const Output& src);
 
   // Adds a node to the graph (returned in`grad`) that sums the in-bound
   // gradients to `src` (if there are more than one).
@@ -80,7 +79,7 @@ class SymbolicGradientBuilder {
                           std::vector<Output>* grad_outputs);
 
   const Scope& scope_;
-  const GradOpRegistry* registry_;
+  const ops::GradOpRegistry* registry_;
   const std::vector<Output>& outputs_;
   const std::vector<Output>& inputs_;
   const std::vector<Output>& grad_inputs_;
@@ -111,26 +110,22 @@ class SymbolicGradientBuilder {
   std::unordered_set<int> output_nodes_;
 
   // The set of node ids in `inputs_`. Used to identify nodes at backprop
-  // frontier.
-  std::unordered_set<int> input_nodes_;
+  // frontier. Maps from Output -> index into `grad_outputs_`.
+  std::unordered_map<Output, int, OutputHash, OutputEq> input_nodes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
 };
 
 SymbolicGradientBuilder::SymbolicGradientBuilder(
-    const Scope& scope,
-    const GradOpRegistry* registry,
-    const std::vector<Output>& outputs,
-    const std::vector<Output>& inputs,
-    const std::vector<Output>& grad_inputs,
-    std::vector<Output>* grad_outputs)
+    const Scope& scope, const ops::GradOpRegistry* registry,
+    const std::vector<Output>& outputs, const std::vector<Output>& inputs,
+    const std::vector<Output>& grad_inputs, std::vector<Output>* grad_outputs)
     : scope_(scope),
       registry_(registry),
       outputs_(outputs),
       inputs_(inputs),
       grad_inputs_(grad_inputs),
-      grad_outputs_(grad_outputs) {
-}
+      grad_outputs_(grad_outputs) {}
 
 Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
                                                   const Output& src) {
@@ -141,19 +136,6 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
   if (iter != backprops_.end()) {
     auto* grads = &iter->second;
     grads->push_back(dst_grad);
-    if (--pending_[src.node()->id()] == 0) {
-      ready_.push_back(src.node());
-    }
-  }
-  return Status::OK();
-}
-
-Status SymbolicGradientBuilder::BackpropZerosAlongEdge(const Output& src) {
-  if (src.node() == nullptr) {
-    return errors::Internal("Attempted to backprop along an invalid edge.");
-  }
-  auto iter = backprops_.find(src);
-  if (iter != backprops_.end()) {
     if (--pending_[src.node()->id()] == 0) {
       ready_.push_back(src.node());
     }
@@ -173,10 +155,10 @@ Status SymbolicGradientBuilder::Initialize() {
   for (int i = 0; i < outputs_.size(); ++i) {
     output_nodes_.insert(outputs_[i].node()->id());
   }
-  // Populate `input_nodes_` from node ids in `inputs_`.
+  // Populate `input_nodes_` from Outputs in `inputs_`.
   input_nodes_.reserve(inputs_.size());
   for (int i = 0; i < inputs_.size(); ++i) {
-    input_nodes_.insert(inputs_[i].node()->id());
+    input_nodes_.insert({inputs_[i], i});
   }
 
   // TODO(andydavis) Consider a more efficient data structure for `pending_` to
@@ -187,8 +169,10 @@ Status SymbolicGradientBuilder::Initialize() {
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
     for (const Output& nout : inputs_) {
-      queue.push_back(nout.node());
-      visited.insert(nout.node());
+      if (visited.find(nout.node()) == visited.end()) {
+        queue.push_back(nout.node());
+        visited.insert(nout.node());
+      }
     }
 
     // Going forward to figure out which endpoints need backprop-ed.
@@ -241,25 +225,32 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
         "Unable to find backprop list for node.id ", src.node()->name());
   }
   const auto& grads = iter->second;
-  if (grads.empty()) {
-    // Nothing propagated back. The best we can come up is zeros.
-    // TODO(andydavis) Optimize graph (where possible) by removing useless
-    // computation with zero gradients. Considering running constant propagation
-    // pass after the gradients graph is constructed.
-    *grad = ZerosLike(scope_, src);
-  } else if (grads.size() == 1) {
+  // Filter any backproped 'NoGradient' Outputs from 'grads' (if needed).
+  // Return any valid backproped gradients that remain after filtering,
+  // or 'NoGradient' otherwise.
+  std::vector<Output> grads_to_keep;
+  for (const Output& o : grads) {
+    if (o == NoGradient()) continue;
+    grads_to_keep.push_back(o);
+  }
+
+  if (grads_to_keep.empty()) {
+    // Nothing propagated back. Return 'NoGradient'.
+    *grad = NoGradient();
+  } else if (grads_to_keep.size() == 1) {
     // Just one backprop edge.
-    *grad = grads[0];
+    *grad = grads_to_keep[0];
   } else {
     // Otherwise, adds backprop-ed gradients.
     // TODO(andydavis) Use a better accumulator here.
-    *grad = AddN(scope_, grads);
+    *grad = ops::AddN(scope_, grads_to_keep);
   }
+
   return Status::OK();
 }
 
 bool SymbolicGradientBuilder::IsPrimitiveOpWithNoGrad(const string& opname) {
-  GradFunc grad_fn;
+  ops::GradFunc grad_fn;
   Status s = registry_->Lookup(opname, &grad_fn);
   return s.ok() && (grad_fn == nullptr);
 }
@@ -268,7 +259,7 @@ Status SymbolicGradientBuilder::CallGradFunction(
     const Operation& op,
     const std::vector<Output>& grad_inputs,
     std::vector<Output>* grad_outputs) {
-  GradFunc grad_fn;
+  ops::GradFunc grad_fn;
   TF_RETURN_IF_ERROR(registry_->Lookup(op.node()->type_string(), &grad_fn));
   TF_RETURN_IF_ERROR(grad_fn(scope_, op, grad_inputs, grad_outputs));
   TF_RETURN_IF_ERROR(scope_.status());
@@ -286,28 +277,58 @@ Status SymbolicGradientBuilder::AddGradients() {
     Node* n = ready_.front();
     ready_.pop_front();
 
-    // Check if `n` is a member of `input_nodes_` where we terminate backprop.
-    auto iter = input_nodes_.find(n->id());
-    if (iter != input_nodes_.end()) {
-      // Stop backprop.
-      continue;
-    }
-
     // dy[i] is the sum of i-th output's backpropped gradients.
     const int num_y = n->num_outputs();
     dy.clear();
     dy.resize(num_y, {nullptr, 0});
+    std::vector<int> no_grad_dy_indices;
     for (int i = 0; i < num_y; ++i) {
       TF_RETURN_IF_ERROR(SumGradients({n, i}, &dy[i]));
+      if (dy[i] == NoGradient()) {
+        no_grad_dy_indices.push_back(i);
+      }
+      auto iter = input_nodes_.find({n, i});
+      if (iter != input_nodes_.end()) {
+        // Return gradients for Output in 'grad_outputs_'.
+        (*grad_outputs_)[iter->second] = dy[i];
+      }
     }
 
-    if (IsPrimitiveOpWithNoGrad(n->type_string())) {
-      // No grad defined for this op: Backprop zeros along the in edges.
+    // Stop backprop if none of the inputs to `n` are in `backprops_'.
+    bool stop_node = true;
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) continue;
+      if (backprops_.find({e->src(), e->src_output()}) != backprops_.end()) {
+        stop_node = false;
+        break;
+      }
+    }
+
+    if (stop_node) {
+      continue;
+    }
+
+    const int num_no_grad = no_grad_dy_indices.size();
+    if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
+      // No grad defined for this op, or all outputs returned 'NoGradient':
+      // Backprop 'NoGradient' along the in edges.
       for (const Edge* e : n->in_edges()) {
         if (e->IsControlEdge()) continue;
-        TF_RETURN_IF_ERROR(BackpropZerosAlongEdge({e->src(), e->src_output()}));
+        TF_RETURN_IF_ERROR(
+            BackpropAlongEdge(NoGradient(), {e->src(), e->src_output()}));
       }
       continue;
+    }
+
+    if (num_no_grad > 0 && num_no_grad < num_y) {
+      // The outputs of 'n' returned a mixture of valid gradients and
+      // 'NoGradient'. Therefore, we need to add 'ZerosLike' nodes for each
+      // 'NoGradient' output before we call the gradient function for 'n'.
+      // TODO(andydavis) If static shapes are known, replace 'ZerosLike' with
+      // zero-filled Constant node of appropriate shape.
+      for (const int dy_index : no_grad_dy_indices) {
+        dy[dy_index] = ops::ZerosLike(scope_, Output(n, dy_index));
+      }
     }
 
     // TODO(andydavis) Add option to encapsulate grad function in
@@ -331,12 +352,6 @@ Status SymbolicGradientBuilder::AddGradients() {
           BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
     }
   }
-
-  // Return gradients for `inputs_` in `grad_outputs_`.
-  for (int i = 0; i < inputs_.size(); ++i) {
-    TF_RETURN_IF_ERROR(SumGradients(inputs_[i], &(*grad_outputs_)[i]));
-  }
-
   return Status::OK();
 }
 
@@ -347,9 +362,11 @@ Status AddSymbolicGradients(const Scope& scope,
                             const std::vector<Output>& inputs,
                             const std::vector<Output>& grad_inputs,
                             std::vector<Output>* grad_outputs) {
-  SymbolicGradientBuilder builder(scope, GradOpRegistry::Global(), outputs,
+  SymbolicGradientBuilder builder(scope, ops::GradOpRegistry::Global(), outputs,
                                   inputs, grad_inputs, grad_outputs);
   return builder.AddGradients();
 }
+
+Output NoGradient() { return SymbolicGradientBuilder::NoGradient(); }
 
 }  // end namespace tensorflow

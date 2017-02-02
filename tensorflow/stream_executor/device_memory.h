@@ -145,23 +145,6 @@ class DeviceMemory final : public DeviceMemoryBase {
   }
 
   // ------------------------------------------------------------
-  // DO NOT USE - FASTR TEAM-INTERNAL FUNCTIONS
-  // Used internally by gcudacc.
-#ifdef __GCUDACC__
-  // Implicit conversion operators needed to support mixed mode. Since buffer
-  // sizes aren't used in the CUDA launching process, and since the constructed
-  // objects are all temporary, this is safe.
-  // Linter warning disabled as we require an implicit conversion.
-  DeviceMemory(const ElemT *opaque) :  // NOLINT
-        DeviceMemoryBase(reinterpret_cast<void *>(const_cast<ElemT *>(opaque)),
-                         0) {}
-
-  operator ElemT *() { return reinterpret_cast<ElemT *>(opaque()); }
-  operator const ElemT *() {
-    return const_cast<const ElemT *>(reinterpret_cast<ElemT *>(opaque()));
-  }
-#endif
-  // ------------------------------------------------------------
 
  protected:
   // This constructor is solely used from derived classes; it is made protected
@@ -199,6 +182,11 @@ class SharedDeviceMemory final : public DeviceMemoryBase {
 template <typename ElemT>
 class ScopedDeviceMemory {
  public:
+  // Default construction initializes the internal state to nullptr.  This
+  // mirrors the std::unique_ptr<> functionality, where default construction
+  // produces a nullptr unique_ptr, which can be assigned later.
+  ScopedDeviceMemory();
+
   // Parameters:
   //  parent: Executor used to deallocate memory when this instance goes
   //          out of scope.

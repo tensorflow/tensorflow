@@ -30,10 +30,10 @@ log_loss penalty be twice as severe as the sum_of_squares_loss, we would
 implement this as:
 
   # Explicitely set the weight.
-  tf.contrib.losses.log(predictions, targets, weight=2.0)
+  tf.contrib.losses.log(predictions, labels, weight=2.0)
 
   # Uses default weight of 1.0
-  tf.contrib.losses.sum_of_squares(predictions, targets)
+  tf.contrib.losses.sum_of_squares(predictions, labels)
 
   # All the losses are collected into the `GraphKeys.LOSSES` collection.
   losses = tf.get_collection(tf.GraphKeys.LOSSES)
@@ -53,7 +53,7 @@ for a specific class:
 
   # Ensures that the loss for examples whose ground truth class is `3` is 5x
   # higher than the loss for all other examples.
-  weight = tf.mul(4, tf.cast(tf.equal(labels, 3), tf.float32)) + 1
+  weight = tf.multiply(4, tf.cast(tf.equal(labels, 3), tf.float32)) + 1
 
   onehot_labels = tf.one_hot(labels, num_classes=5)
   tf.contrib.losses.softmax_cross_entropy(logits, onehot_labels, weight=weight)
@@ -62,7 +62,7 @@ Finally, in certain cases, we may want to specify a different loss for every
 single measurable value. For example, if we are performing per-pixel depth
 prediction, or per-pixel denoising, a single batch sample has P values where P
 is the number of pixels in the image. For many losses, the number of measurable
-values matches the number of elements in the predictions and targets tensors.
+values matches the number of elements in the predictions and labels tensors.
 For others, such as softmax_cross_entropy and cosine_distance, the
 loss functions reduces the dimensions of the inputs to produces a tensor of
 losses for each measurable value. For example, softmax_cross_entropy takes as
@@ -107,13 +107,20 @@ weighted average over the individual prediction errors:
 @@absolute_difference
 @@add_loss
 @@hinge_loss
+@@compute_weighted_loss
 @@cosine_distance
 @@get_losses
 @@get_regularization_losses
 @@get_total_loss
 @@log_loss
+@@mean_pairwise_squared_error
+@@mean_squared_error
 @@sigmoid_cross_entropy
 @@softmax_cross_entropy
+@@sparse_softmax_cross_entropy
+
+The following are deprecated in favor of `mean_pairwise_squared_error` and
+`mean_squared_error`.
 @@sum_of_pairwise_squares
 @@sum_of_squares
 """
@@ -126,5 +133,6 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.losses.python.losses.loss_ops import *
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

@@ -21,21 +21,28 @@ limitations under the License.
 
 namespace tensorflow {
 
-// NOTE: This API is a work in progress and will likely be changing frequently.
-//
-// Given initial gradients 'grad_inputs' (which represent the symbolic partial
-// derivatives of some loss function 'L' w.r.t 'outputs'), adds gradient nodes
-// to the graph associated with 'scope', which compute (and return in
-// 'grad_outputs') the symbolic partial derivatives of 'L' w.r.t 'inputs'.
-//
+/// NOTE: This API is a work in progress and will likely be changing frequently.
+///
+/// Given initial gradients 'grad_inputs' (which represent the symbolic partial
+/// derivatives of some loss function 'L' w.r.t 'outputs'), adds gradient nodes
+/// to the graph associated with 'scope', which compute (and return in
+/// 'grad_outputs') the symbolic partial derivatives of 'L' w.r.t 'inputs'.
+///
 
 // TODO(andydavis) Add overload of this function with no 'grad_inputs' arg.
 // Implementation will fill in 'OnesLike' for all shapes in 'outputs'.
 Status AddSymbolicGradients(const Scope& scope,
-                            const std::vector<ops::Output>& outputs,
-                            const std::vector<ops::Output>& inputs,
-                            const std::vector<ops::Output>& grad_inputs,
-                            std::vector<ops::Output>* grad_outputs);
+                            const std::vector<Output>& outputs,
+                            const std::vector<Output>& inputs,
+                            const std::vector<Output>& grad_inputs,
+                            std::vector<Output>* grad_outputs);
+
+/// Returns a sentinel Output that represents 'no gradient' (i.e. no gradient
+/// flows along some graph edge during backpropagation).
+/// Can be returned in 'grad_outputs' by an invocation of 'AddSymbolicGradients'
+/// (note that gradient flow through an Output can be stopped through the use of
+/// the StopGradient node).
+Output NoGradient();
 
 }  // namespace tensorflow
 

@@ -4,6 +4,13 @@ When using a parameter server it will assign them in a round-robin fashion.
 When not using a parameter server it allows GPU or CPU placement.
 - - -
 
+#### `tf.contrib.framework.VariableDeviceChooser.__call__(op)` {#VariableDeviceChooser.__call__}
+
+
+
+
+- - -
+
 #### `tf.contrib.framework.VariableDeviceChooser.__init__(num_tasks=0, job_name='ps', device_type='CPU', device_index=0)` {#VariableDeviceChooser.__init__}
 
 Initialize VariableDeviceChooser.

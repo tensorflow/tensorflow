@@ -22,4 +22,4 @@ import sys
 from tensorflow.tensorboard.tensorboard import main
 
 if __name__ == '__main__':
-    sys.exit(main())
+  sys.exit(main())

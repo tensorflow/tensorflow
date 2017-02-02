@@ -26,8 +26,10 @@ namespace tensorflow {
 /// A wrapper to add retry logic to another file system.
 class RetryingFileSystem : public FileSystem {
  public:
-  RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system)
-      : base_file_system_(std::move(base_file_system)) {}
+  RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system,
+                     int64 delay_microseconds = 1000000)
+      : base_file_system_(std::move(base_file_system)),
+        initial_delay_microseconds_(delay_microseconds) {}
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -43,9 +45,12 @@ class RetryingFileSystem : public FileSystem {
       const string& filename,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
+
+  Status GetMatchingPaths(const string& dir,
+                          std::vector<string>* result) override;
 
   Status Stat(const string& fname, FileStatistics* stat) override;
 
@@ -59,8 +64,14 @@ class RetryingFileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override;
 
+  Status IsDirectory(const string& dir) override;
+
+  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+                           int64* undeleted_dirs) override;
+
  private:
   std::unique_ptr<FileSystem> base_file_system_;
+  const int64 initial_delay_microseconds_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RetryingFileSystem);
 };

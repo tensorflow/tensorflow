@@ -17,6 +17,8 @@
 TensorFlow provides allows you to wrap python/numpy functions as
 TensorFlow operators.
 
+@@py_func
+
 """
 
 # pylint: disable=g-bad-name
@@ -24,10 +26,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
 
@@ -40,7 +43,8 @@ class FuncRegistry(object):
   """
 
   def __init__(self):
-    self._unique_id = 0
+    self._lock = threading.Lock()
+    self._unique_id = 0  # GUARDED_BY(self._lock)
     self._funcs = {}
 
   def insert(self, func):
@@ -92,8 +96,9 @@ class FuncRegistry(object):
 
   def _next_unique_token(self):
     """Returns a unique token."""
-    uid = self._unique_id
-    self._unique_id += 1
+    with self._lock:
+      uid = self._unique_id
+      self._unique_id += 1
     return "pyfunc_%d" % uid
 
 # Global registry for py functions.
@@ -113,36 +118,51 @@ class CleanupFunc(object):
 
 
 def py_func(func, inp, Tout, stateful=True, name=None):
-  """Wraps a python function and uses it as a tensorflow op.
+  """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func`, which takes numpy arrays as its
-  inputs and returns numpy arrays as its outputs. E.g.,
+  inputs and returns numpy arrays as its outputs, wrap this function as an
+  operation in a TensorFlow graph. The following snippet constructs a simple
+  TensorFlow graph that invokes the `np.sinh()` NumPy function as a operation
+  in the graph:
 
   ```python
   def my_func(x):
     # x will be a numpy array with the contents of the placeholder below
     return np.sinh(x)
-  inp = tf.placeholder(tf.float32, [...])
-  y = py_func(my_func, [inp], [tf.float32])
+  inp = tf.placeholder(tf.float32)
+  y = tf.py_func(my_func, [inp], tf.float32)
   ```
 
-  The above snippet constructs a tf graph which invokes a numpy
-  sinh(x) as an op in the graph.
+  **N.B.** The `tf.py_func()` operation has the following known limitations:
+
+  * The body of the function (i.e. `func`) will not be serialized in a
+    `GraphDef`. Therefore, you should not use this function if you need to
+    serialize your model and restore it in a different environment.
+
+  * The operation must run in the same address space as the Python program
+    that calls `tf.py_func()`. If you are using distributed TensorFlow, you
+    must run a `tf.train.Server` in the same process as the program that calls
+    `tf.py_func()` and you must pin the created operation to a device in that
+    server (e.g. using `with tf.device():`).
 
   Args:
-    func: A python function.
-    inp: A list of `Tensor`.
-    Tout: A list of tensorflow data types indicating what `func`
-          returns.
-    stateful: A boolean indicating whether the function should be considered
-              stateful or stateless. I.e. whether it, given the same input, will
-              return the same output and at the same time does not change state
-              in an observable way. Optimizations such as common subexpression
-              elimination are only possible when operations are stateless.
+    func: A Python function, which accepts a list of NumPy `ndarray` objects
+      having element types that match the corresponding `tf.Tensor` objects
+      in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
+      having element types that match the corresponding values in `Tout`.
+    inp: A list of `Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns.
+    stateful: (Boolean.) If True, the function should be considered stateful.
+      If a function is stateless, when given the same input it will return the
+      same output and have no observable side effects. Optimizations such as
+      common subexpression elimination are only performed on stateless
+      operations.
     name: A name for the operation (optional).
 
   Returns:
-    A list of `Tensor` which `func` computes.
+    A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   token = _py_funcs.insert(func)
   # We tie the registered function's life-time with the current
@@ -162,18 +182,21 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   # the funcs registry.
   g._cleanup_py_funcs_used_in_graph.append(cleanup)
 
+  if isinstance(Tout, (list, tuple)):
+    is_list_or_tuple = True
+  else:
+    Tout = [Tout]
+    is_list_or_tuple = False
   if stateful:
-    return gen_script_ops._py_func(input=inp, token=token, Tout=Tout, name=name)
+    result = gen_script_ops._py_func(
+        input=inp, token=token, Tout=Tout, name=name)
     # pylint: enable=protected-access
   else:
-    return gen_script_ops._py_func_stateless(
-        input=inp, token=token, Tout=Tout,
-        name=name)
+    result = gen_script_ops._py_func_stateless(
+        input=inp, token=token, Tout=Tout, name=name)
     # pylint: enable=protected-access
+  return result if is_list_or_tuple else result[0]
 
 
-ops.RegisterShape("PyFunc")(common_shapes.unknown_shape)
-ops.RegisterShape("PyFuncStateless")(common_shapes.unknown_shape)
-
-ops.NoGradient("PyFunc")
-ops.NoGradient("PyFuncStateless")
+ops.NotDifferentiable("PyFunc")
+ops.NotDifferentiable("PyFuncStateless")

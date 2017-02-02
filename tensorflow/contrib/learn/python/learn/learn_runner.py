@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import tf_logging as logging
 
@@ -83,43 +84,58 @@ def run(experiment_fn, output_dir, schedule=None):
   # Get the schedule
   config = experiment.estimator.config
   schedule = schedule or _get_default_schedule(config)
-  if not schedule:
-    raise ValueError('Must specify a schedule')
 
   # Execute the schedule
   if not hasattr(experiment, schedule):
     logging.error('Schedule references non-existent task %s', schedule)
-    valid_tasks = [x for x in experiment.__dict__
-                   if callable(getattr(experiment, x))]
+    valid_tasks = [x for x in dir(experiment)
+                   if not x.startswith('_')
+                   and callable(getattr(experiment, x))]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise ValueError('Schedule references non-existent task %s', schedule)
+    raise ValueError('Schedule references non-existent task %s' % schedule)
 
   task = getattr(experiment, schedule)
   if not callable(task):
     logging.error('Schedule references non-callable member %s', schedule)
-    valid_tasks = [
-        x for x in experiment.__dict__
-        if callable(getattr(experiment, x)) and not x.startswith('_')
-    ]
+    valid_tasks = [x for x in dir(experiment)
+                   if not x.startswith('_')
+                   and callable(getattr(experiment, x))]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise TypeError('Schedule references non-callable member %s', schedule)
+    raise TypeError('Schedule references non-callable member %s' % schedule)
 
   return task()
 
 
+def _is_distributed(config):
+  """Returns true if this is a distributed job."""
+  if not config.cluster_spec:
+    return False
+
+  # This is considered a distributed job if there is more than one task
+  # in the cluster spec.
+  task_count = 0
+  for job in config.cluster_spec.jobs:
+    for _ in config.cluster_spec.job_tasks(job):
+      task_count += 1
+
+  return task_count > 1
+
+
 def _get_default_schedule(config):
   """Returns the default schedule for the provided RunConfig."""
-  if not config or not config.job_name:
-    return None
+  if not config or not _is_distributed(config):
+    return 'train_and_evaluate'
 
-  if not config.job_name or config.job_name == 'master':
-    # TODO(rhaertel): handle the case there are more
-    # than one masters or explicitly disallow.
-    return 'local_run'
-  elif config.job_name == 'ps':
-    return 'serve'
-  elif config.job_name == 'worker':
+  if not config.task_type:
+    raise ValueError('Must specify a schedule')
+
+  if config.task_type == run_config.TaskType.MASTER:
+    # TODO(rhaertel): handle the case where there is more than one master
+    # or explicitly disallow such a case.
+    return 'train_and_evaluate'
+  elif config.task_type == run_config.TaskType.PS:
+    return 'run_std_server'
+  elif config.task_type == run_config.TaskType.WORKER:
     return 'train'
 
-  return ValueError('No default schedule for task type: %s' %
-                    (config.job_name,))
+  raise ValueError('No default schedule for task type: %s' % (config.task_type))

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/py_func.h"
 
+#include <array>
+
 #include <Python.h>
 #include "numpy/arrayobject.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -154,8 +156,77 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   return Status::OK();
 }
 
-// Given an numpy ndarray object 'obj', creates a corresponding tf
-// Tensor in '*ret'.
+bool IsSingleNone(PyObject* obj) {
+  if (!PyArray_Check(obj)) {
+    return false;
+  }
+  PyArrayObject* array_obj = reinterpret_cast<PyArrayObject*>(obj);
+  if (PyArray_NDIM(array_obj) != 0 || PyArray_SIZE(array_obj) != 1) {
+    return false;
+  }
+  std::array<npy_intp, 0> indices;
+  char* item_ptr = static_cast<char*>(PyArray_GetPtr(array_obj, indices.data()));
+  PyObject* item = PyArray_GETITEM(array_obj, item_ptr);
+  CHECK(item);
+  return item == Py_None;
+}
+
+// Calls the registered py function through the trampoline.
+Status DoCallPyFunc(PyCall* call) {
+  PyObject* trampoline = GetPyTrampoline();
+  if (trampoline == nullptr) {
+    return errors::InvalidArgument(
+        "Missing py trampoline. Most likely, it is a link error.");
+  }
+  // Prepare the argument.
+  PyObject* args = nullptr;
+  TF_RETURN_IF_ERROR(MakeArgTuple(call, &args));
+  CHECK(args);
+
+  // Invokes the trampoline.
+  PyObject* result = PyEval_CallObject(trampoline, args);
+  Py_DECREF(args);
+  if (result == nullptr) {
+    if (PyErr_Occurred()) {
+      // TODO(zhifengc): Consider pretty-print error using LOG(STDERR).
+      PyErr_Print();
+    }
+    return errors::Internal("Failed to run py callback ", call->token,
+                            ": see error log.");
+  }
+
+  // Process the return values and converts them to tf Tensors.
+  Status s;
+  if (PyList_Check(result)) {
+    // 'result' is a list.
+    call->out.clear();
+    for (int i = 0; i < PyList_Size(result); ++i) {
+      Tensor t;
+      s = ConvertNdarrayToTensor(PyList_GetItem(result, i), &t);
+      if (!s.ok()) {
+        break;
+      }
+      call->out.push_back(t);
+    }
+  } else if (PyArray_Check(result)) {
+    // 'result' is a single ndarray.
+    if (!IsSingleNone(result)) {
+      Tensor t;
+      s = ConvertNdarrayToTensor(result, &t);
+      if (s.ok()) {
+        call->out.push_back(t);
+      }
+    }
+  } else {
+    s = errors::Internal("Unexpected pyobject is returned: ",
+                         Py_TYPE(result)->tp_name);
+  }
+  Py_DECREF(result);
+  return s;
+}
+
+}  // end namespace
+
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
   DataType dtype;
@@ -205,60 +276,6 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   }
   return Status::OK();
 }
-
-// Calls the registered py function through the trampoline.
-Status DoCallPyFunc(PyCall* call) {
-  PyObject* trampoline = GetPyTrampoline();
-  if (trampoline == nullptr) {
-    return errors::InvalidArgument(
-        "Missing py trampoline. Most likely, it is a link error.");
-  }
-  // Prepare the argument.
-  PyObject* args = nullptr;
-  TF_RETURN_IF_ERROR(MakeArgTuple(call, &args));
-  CHECK(args);
-
-  // Invokes the trampoline.
-  PyObject* result = PyEval_CallObject(trampoline, args);
-  Py_DECREF(args);
-  if (result == nullptr) {
-    if (PyErr_Occurred()) {
-      // TODO(zhifengc): Consider pretty-print error using LOG(STDERR).
-      PyErr_Print();
-    }
-    return errors::Internal("Failed to run py callback ", call->token,
-                            ": see error log.");
-  }
-
-  // Process the return values and converts them to tf Tensors.
-  Status s;
-  if (PyList_Check(result)) {
-    // 'result' is a list.
-    call->out.clear();
-    for (int i = 0; i < PyList_Size(result); ++i) {
-      Tensor t;
-      s = ConvertNdarrayToTensor(PyList_GetItem(result, i), &t);
-      if (!s.ok()) {
-        break;
-      }
-      call->out.push_back(t);
-    }
-  } else if (PyArray_Check(result)) {
-    // 'result' is a single ndarray.
-    Tensor t;
-    s = ConvertNdarrayToTensor(result, &t);
-    if (s.ok()) {
-      call->out.push_back(t);
-    }
-  } else {
-    s = errors::Internal("Unexpected pyobject is returned: ",
-                         Py_TYPE(result)->tp_name);
-  }
-  Py_DECREF(result);
-  return s;
-}
-
-}  // end namespace
 
 // Creates a numpy array in 'ret' and copies the content of tensor 't'
 // into 'ret'.

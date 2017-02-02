@@ -21,6 +21,7 @@ The following `DType` objects are defined:
 * `tf.qint16`: Quantized 16-bit signed integer.
 * `tf.quint16`: Quantized 16-bit unsigned integer.
 * `tf.qint32`: Quantized 32-bit signed integer.
+* `tf.resource`: Handle to a mutable resource.
 
 In addition, variants of these types with the `_ref` suffix are
 defined for reference-typed tensors.
@@ -36,7 +37,7 @@ Returns True if the `other` DType will be converted to this DType.
 
 The conversion rules are as follows:
 
-```
+```python
 DType(T)       .is_compatible_with(DType(T))        == True
 DType(T)       .is_compatible_with(DType(T).as_ref) == True
 DType(T).as_ref.is_compatible_with(DType(T))        == False
@@ -77,23 +78,16 @@ Returns the dtype correspond to this dtype's real part.
 
 - - -
 
-#### `tf.DType.is_ref_dtype` {#DType.is_ref_dtype}
+#### `tf.DType.is_bool` {#DType.is_bool}
 
-Returns `True` if this `DType` represents a reference type.
-
-
-- - -
-
-#### `tf.DType.as_ref` {#DType.as_ref}
-
-Returns a reference `DType` based on this `DType`.
+Returns whether this is a boolean data type
 
 
 - - -
 
 #### `tf.DType.is_floating` {#DType.is_floating}
 
-Returns whether this is a (real) floating point type.
+Returns whether this is a (non-quantized, real) floating point type.
 
 
 - - -
@@ -147,7 +141,38 @@ Returns a `types_pb2.DataType` enum value based on this `DType`.
 
 
 
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
+
+
+
 #### Other Methods
+- - -
+
+#### `tf.DType.__eq__(other)` {#DType.__eq__}
+
+Returns True iff this DType refers to the same type as `other`.
+
+
+- - -
+
+#### `tf.DType.__hash__()` {#DType.__hash__}
+
+
+
+
 - - -
 
 #### `tf.DType.__init__(type_enum)` {#DType.__init__}
@@ -167,6 +192,34 @@ construct a `DataType` object directly. Instead, use the
 
 
 *  <b>`TypeError`</b>: If `type_enum` is not a value `types_pb2.DataType`.
+
+
+- - -
+
+#### `tf.DType.__ne__(other)` {#DType.__ne__}
+
+Returns True iff self != other.
+
+
+- - -
+
+#### `tf.DType.__repr__()` {#DType.__repr__}
+
+
+
+
+- - -
+
+#### `tf.DType.__str__()` {#DType.__str__}
+
+
+
+
+- - -
+
+#### `tf.DType.is_numpy_compatible` {#DType.is_numpy_compatible}
+
+
 
 
 - - -

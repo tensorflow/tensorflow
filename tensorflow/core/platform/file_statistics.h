@@ -25,11 +25,12 @@ struct FileStatistics {
   int64 length = -1;
   // The last modified time in nanoseconds.
   int64 mtime_nsec = 0;
-  // This is the mode_t from stat.h containing file type and permission
-  // information.
-  mode_t mode = 0;
+  // True if the file is a directory, otherwise false.
+  bool is_directory = false;
 
   FileStatistics() {}
+  FileStatistics(int64 length, int64 mtime_nsec, bool is_directory)
+      : length(length), mtime_nsec(mtime_nsec), is_directory(is_directory) {}
   ~FileStatistics() {}
 };
 

@@ -33,6 +33,7 @@ string tensor.
 ## Splitting
 
 @@string_split
+@@substr
 
 ## Conversion
 
@@ -46,20 +47,19 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import six
 
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
-
-# pylint: disable=unused-import
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
-# pylint: enable=unused-import
+from tensorflow.python.ops import math_ops
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
+from tensorflow.python.util import deprecation
 # pylint: enable=wildcard-import
 
 
@@ -71,7 +71,9 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   containing the splitted tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
-  into individual 1 character strings.
+  into individual strings, each containing one byte. (This includes splitting
+  multibyte sequences of UTF-8.) If delimiter contains multiple bytes, it is
+  treated as a set of delimiters with each considered a potential split point.
 
   For example:
   N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
@@ -90,16 +92,14 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
 
+  Raises:
+    ValueError: If delimiter is not a string.
+
   Returns:
     A `SparseTensor` of rank `2`, the strings split according to the delimiter.
     The first column of the indices corresponds to the row in `source` and the
     second column corresponds to the index of the split component in this row.
-
-  Raises:
-    ValueError: If delimiter is not a character.
   """
-  if isinstance(delimiter, six.string_types) and len(delimiter) > 1:
-    raise ValueError("delimiter must be a character, got %s" % delimiter)
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -110,71 +110,52 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
-  return ops.SparseTensor(indices, values, shape)
+  return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-ops.NoGradient("StringToHashBucket")
-ops.NoGradient("StringToHashBucketFast")
-ops.NoGradient("StringToHashBucketStrong")
-ops.NoGradient("ReduceJoin")
-ops.NoGradient("StringJoin")
-ops.NoGradient("StringSplit")
-ops.NoGradient("AsString")
-ops.NoGradient("EncodeBase64")
-ops.NoGradient("DecodeBase64")
+def _reduce_join_reduction_dims(x, axis, reduction_indices):
+  """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
+  # TODO(aselle): Remove this after deprecation
+  if reduction_indices is not None:
+    if axis is not None:
+      raise ValueError("Can't specify both 'axis' and 'reduction_indices'.")
+    axis = reduction_indices
+  if axis is not None:
+    return axis
+  else:
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+      return constant_op.constant(
+          np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
 
-ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToHashBucketStrong")(common_shapes.unchanged_shape)
-ops.RegisterShape("AsString")(common_shapes.unchanged_shape)
-ops.RegisterShape("EncodeBase64")(common_shapes.unchanged_shape)
-ops.RegisterShape("DecodeBase64")(common_shapes.unchanged_shape)
-
-
-@ops.RegisterShape("ReduceJoin")
-def _ReduceJoinShape(op):
-  """Shape function for the ReduceJoin op."""
-  reduction_indices = tensor_util.constant_value(op.inputs[1])
-  if reduction_indices is None:
-    return [tensor_shape.unknown_shape()]
-
-  input_shape = op.inputs[0].get_shape()
-  keep_dims = op.get_attr("keep_dims")
-
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-
-  if input_shape.ndims == 0:
-    raise ValueError("Input string tensor cannot be a scalar.")
-
-  true_indices = set()
-  for reduction_index in np.ravel(reduction_indices):
-    if (reduction_index < -input_shape.ndims or
-        reduction_index >= input_shape.ndims):
-      raise ValueError("Invalid reduction dimension %d for input with %d "
-                       "dimensions" % (reduction_index, input_shape.ndims))
-
-    true_index = reduction_index % input_shape.ndims
-    if true_index in true_indices:
-      raise ValueError("Duplicate reduction index %d." % reduction_index)
-
-    if input_shape.dims[true_index] == 0:
-      raise ValueError("Cannot reduce dimension %d with size 0." %
-                       reduction_index)
-
-    true_indices.add(true_index)
-
-  returned_dims = []
-  reduce_all = reduction_indices.size == 0
-  for i, dim in enumerate(input_shape.dims):
-    if reduce_all or i in true_indices:
-      if keep_dims:
-        returned_dims.append(1)
-    else:
-      returned_dims.append(dim)
-
-  return [tensor_shape.TensorShape(returned_dims)]
+    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+    return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringSplit")(common_shapes.call_cpp_shape_fn)
+def reduce_join(inputs, axis=None,
+                keep_dims=False,
+                separator="",
+                name=None,
+                reduction_indices=None):
+  reduction_indices = _reduce_join_reduction_dims(
+      inputs, axis, reduction_indices)
+  return gen_string_ops.reduce_join(
+      inputs=inputs,
+      reduction_indices=reduction_indices,
+      keep_dims=keep_dims,
+      separator=separator,
+      name=name)
+
+
+reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
+    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
+
+ops.NotDifferentiable("StringToHashBucket")
+ops.NotDifferentiable("StringToHashBucketFast")
+ops.NotDifferentiable("StringToHashBucketStrong")
+ops.NotDifferentiable("ReduceJoin")
+ops.NotDifferentiable("StringJoin")
+ops.NotDifferentiable("StringSplit")
+ops.NotDifferentiable("AsString")
+ops.NotDifferentiable("EncodeBase64")
+ops.NotDifferentiable("DecodeBase64")

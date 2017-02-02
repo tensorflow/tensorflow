@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import uuid
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -45,6 +46,7 @@ class FileIO(object):
     self.__name = name
     self.__mode = mode
     self._read_buf = None
+    self._writable_file = None
     if mode not in ("r", "w", "a", "r+", "w+", "a+"):
       raise errors.InvalidArgumentError(
           None, None, "mode is not 'r' or 'w' or 'a' or 'r+' or 'w+' or 'a+'")
@@ -61,47 +63,69 @@ class FileIO(object):
     """Returns the mode in which the file was opened."""
     return self.__mode
 
-  def _prereadline_check(self):
+  def _preread_check(self):
     if not self._read_buf:
       if not self._read_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
-      self._read_buf = pywrap_tensorflow.CreateBufferedInputStream(
-          compat.as_bytes(self.__name), 1024 * 512)
-      if not self._read_buf:
-        raise errors.InternalError(None, None,
-                                   "Could not open file for streaming")
+      with errors.raise_exception_on_not_ok_status() as status:
+        self._read_buf = pywrap_tensorflow.CreateBufferedInputStream(
+            compat.as_bytes(self.__name), 1024 * 512, status)
+
+  def _prewrite_check(self):
+    if not self._writable_file:
+      if not self._write_check_passed:
+        raise errors.PermissionDeniedError(None, None,
+                                           "File isn't open for writing")
+      with errors.raise_exception_on_not_ok_status() as status:
+        self._writable_file = pywrap_tensorflow.CreateWritableFile(
+            compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
 
   def size(self):
     """Returns the size of the file."""
     return stat(self.__name).length
 
   def write(self, file_content):
-    """Writes file_content to the file."""
-    if not self._write_check_passed:
-      raise errors.PermissionDeniedError(None, None,
-                                         "File isn't open for writing")
+    """Writes file_content to the file. Appends to the end of the file."""
+    self._prewrite_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.WriteStringToFile(
-          compat.as_bytes(self.__name), compat.as_bytes(file_content), status)
+      pywrap_tensorflow.AppendToFile(
+          compat.as_bytes(file_content), self._writable_file, status)
 
-  def read(self):
-    """Returns the contents of a file as a string."""
-    if not self._read_check_passed:
-      raise errors.PermissionDeniedError(None, None,
-                                         "File isn't open for reading")
+  def read(self, n=-1):
+    """Returns the contents of a file as a string.
+
+    Starts reading from current position in file.
+
+    Args:
+      n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
+
+    Returns:
+      'n' bytes of the file (or whole file) requested as a string.
+    """
+    self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      return pywrap_tensorflow.ReadFileToString(
-          compat.as_bytes(self.__name), status)
+      if n == -1:
+        length = self.size() - self.tell()
+      else:
+        length = n
+      return pywrap_tensorflow.ReadFromStream(self._read_buf, length, status)
+
+  def seek(self, position):
+    """Seeks to the position in the file."""
+    self._preread_check()
+    with errors.raise_exception_on_not_ok_status() as status:
+      ret_status = self._read_buf.Seek(position)
+      pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
-    self._prereadline_check()
-    return self._read_buf.ReadLineAsString()
+    self._preread_check()
+    return compat.as_str_any(self._read_buf.ReadLineAsString())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
-    self._prereadline_check()
+    self._preread_check()
     lines = []
     while True:
       s = self.readline()
@@ -110,13 +134,20 @@ class FileIO(object):
       lines.append(s)
     return lines
 
+  def tell(self):
+    """Returns the current position in the file."""
+    if not self._read_check_passed:
+      raise errors.PermissionDeniedError(None, None,
+                                         "File isn't open for reading")
+    return self._read_buf.Tell()
+
   def __enter__(self):
     """Make usable with "with" statement."""
     return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     """Make usable with "with" statement."""
-    self._read_buf = None
+    self.close()
 
   def __iter__(self):
     return self
@@ -130,6 +161,27 @@ class FileIO(object):
   def __next__(self):
     return self.next()
 
+  def flush(self):
+    """Flushes the Writable file.
+
+    This only ensures that the data has made its way out of the process without
+    any guarantees on whether it's written to disk. This means that the
+    data would survive an application crash but not necessarily an OS crash.
+    """
+    if self._writable_file:
+      with errors.raise_exception_on_not_ok_status() as status:
+        ret_status = self._writable_file.Flush()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
+
+  def close(self):
+    """Closes FileIO. Should be called for the WritableFile to be flushed."""
+    self._read_buf = None
+    if self._writable_file:
+      with errors.raise_exception_on_not_ok_status() as status:
+        ret_status = self._writable_file.Close()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
+    self._writable_file = None
+
 
 def file_exists(filename):
   """Determines whether a path exists or not.
@@ -139,8 +191,17 @@ def file_exists(filename):
 
   Returns:
     True if the path exists, whether its a file or a directory.
+    False if the path does not exist and there are no filesystem errors.
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.
   """
-  return pywrap_tensorflow.FileExists(compat.as_bytes(filename))
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.FileExists(compat.as_bytes(filename), status)
+  except errors.NotFoundError:
+    return False
+  return True
 
 
 def delete_file(filename):
@@ -184,8 +245,8 @@ def write_string_to_file(filename, file_content):
   Raises:
     errors.OpError: If there are errors during the operation.
   """
-  f = FileIO(filename, mode="w")
-  f.write(file_content)
+  with FileIO(filename, mode="w") as f:
+    f.write(file_content)
 
 
 def get_matching_files(filename):
@@ -203,7 +264,7 @@ def get_matching_files(filename):
   with errors.raise_exception_on_not_ok_status() as status:
     # Convert each element to string, since the return values of the
     # vector of string should be interpreted as strings, not bytes.
-    return [compat.as_str(matching_filename)
+    return [compat.as_str_any(matching_filename)
             for matching_filename in pywrap_tensorflow.GetMatchingFiles(
                 compat.as_bytes(filename), status)]
 
@@ -226,7 +287,9 @@ def create_dir(dirname):
 
 
 def recursive_create_dir(dirname):
-  """Create a directory and all parent/intermediate directories.
+  """Creates a directory and all parent/intermediate directories.
+
+  It succeeds if dirname already exists and is writable.
 
   Args:
     dirname: string, name of the directory to be created
@@ -235,11 +298,7 @@ def recursive_create_dir(dirname):
     errors.OpError: If the operation fails.
   """
   with errors.raise_exception_on_not_ok_status() as status:
-    dirs = dirname.split("/")
-    for i in range(len(dirs)):
-      partial_dir = "/".join(dirs[0:i + 1])
-      if partial_dir and not file_exists(partial_dir):
-        pywrap_tensorflow.CreateDir(compat.as_bytes(partial_dir), status)
+    pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(dirname), status)
 
 
 def copy(oldpath, newpath, overwrite=False):
@@ -276,6 +335,24 @@ def rename(oldname, newname, overwrite=False):
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
 
 
+def atomic_write_string_to_file(filename, contents):
+  """Writes to `filename` atomically.
+
+  This means that when `filename` appears in the filesystem, it will contain
+  all of `contents`. With write_string_to_file, it is possible for the file
+  to appear in the filesystem with `contents` only partially written.
+
+  Accomplished by writing to a temp file and then renaming it.
+
+  Args:
+    filename: string, pathname for a file
+    contents: string, contents that need to be written to the file
+  """
+  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+  write_string_to_file(temp_pathname, contents)
+  rename(temp_pathname, filename, overwrite=True)
+
+
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.
 
@@ -297,12 +374,12 @@ def is_directory(dirname):
 
   Returns:
     True, if the path is a directory; False otherwise
-
-  Raises:
-    errors.OpError: If the path doesn't exist or other errors
   """
-  with errors.raise_exception_on_not_ok_status() as status:
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
     return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 def list_directory(dirname):
@@ -315,16 +392,21 @@ def list_directory(dirname):
     dirname: string, path to a directory
 
   Returns:
-    [filename1, filename2, ... filenameN]
+    [filename1, filename2, ... filenameN] as strings
 
   Raises:
     errors.NotFoundError if directory doesn't exist
   """
   if not is_directory(dirname):
     raise errors.NotFoundError(None, None, "Could not find directory")
-  file_list = get_matching_files(os.path.join(compat.as_str_any(dirname), "*"))
-  return [compat.as_bytes(pywrap_tensorflow.Basename(compat.as_bytes(filename)))
-          for filename in file_list]
+  with errors.raise_exception_on_not_ok_status() as status:
+    # Convert each element to string, since the return values of the
+    # vector of string should be interpreted as strings, not bytes.
+    return [
+        compat.as_str_any(filename)
+        for filename in pywrap_tensorflow.GetChildren(
+            compat.as_bytes(dirname), status)
+    ]
 
 
 def walk(top, in_order=True):
@@ -337,11 +419,12 @@ def walk(top, in_order=True):
   Errors that happen while listing directories are ignored.
 
   Yields:
-    # Each yield is a 3-tuple:  the pathname of a directory, followed
-    # by lists of all its subdirectories and leaf files.
+    Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
+    all its subdirectories and leaf files.
     (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
+    as strings
   """
-  top = compat.as_bytes(top)
+  top = compat.as_str_any(top)
   try:
     listing = list_directory(top)
   except errors.NotFoundError:

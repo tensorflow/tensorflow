@@ -92,7 +92,7 @@ until there is an element to dequeue.
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue is empty, and there are no pending
-enqueue operations that can fulfil this request,
+enqueue operations that can fulfill this request,
 `tf.errors.OutOfRangeError` will be raised. If the session is
 [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -123,7 +123,7 @@ If the queue is closed and there are less than `n` elements left, then an
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue contains fewer than `n` elements, and
-there are no pending enqueue operations that can fulfil this
+there are no pending enqueue operations that can fulfill this
 request, `tf.errors.OutOfRangeError` will be raised. If the
 session is [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.

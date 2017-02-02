@@ -1,20 +1,8 @@
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
-load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
-load("@local_config_cuda//cuda:platform.bzl", "cuda_static_library_path")
-load("@local_config_cuda//cuda:platform.bzl", "cudnn_library_path")
-load("@local_config_cuda//cuda:platform.bzl", "cupti_library_path")
 load("@local_config_cuda//cuda:platform.bzl", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
-
-config_setting(
-    name = "using_gcudacc",
-    values = {
-        "define": "using_cuda_gcudacc=true",
-    },
-    visibility = ["//visibility:public"],
-)
 
 config_setting(
     name = "using_nvcc",
@@ -59,28 +47,20 @@ cc_library(
 
 cc_library(
     name = "cudart_static",
-    srcs = [
-        cuda_static_library_path("cudart"),
-    ],
+    srcs = ["lib/%{cudart_static_lib}"],
     includes = ["include/"],
     linkopts = [
         "-ldl",
         "-lpthread",
-    ] + select({
-        "@//tensorflow:darwin": [],
-        "//conditions:default": ["-lrt"],
-    }),
+        %{cudart_static_linkopt}
+    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudart",
-    srcs = [
-        cuda_library_path("cudart"),
-    ],
-    data = [
-        cuda_library_path("cudart"),
-    ],
+    srcs = ["lib/%{cudart_lib}"],
+    data = ["lib/%{cudart_lib}"],
     includes = ["include/"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -88,12 +68,8 @@ cc_library(
 
 cc_library(
     name = "cublas",
-    srcs = [
-        cuda_library_path("cublas"),
-    ],
-    data = [
-        cuda_library_path("cublas"),
-    ],
+    srcs = ["lib/%{cublas_lib}"],
+    data = ["lib/%{cublas_lib}"],
     includes = ["include/"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -101,12 +77,8 @@ cc_library(
 
 cc_library(
     name = "cudnn",
-    srcs = [
-        cudnn_library_path(),
-    ],
-    data = [
-        cudnn_library_path(),
-    ],
+    srcs = ["lib/%{cudnn_lib}"],
+    data = ["lib/%{cudnn_lib}"],
     includes = ["include/"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -114,12 +86,8 @@ cc_library(
 
 cc_library(
     name = "cufft",
-    srcs = [
-        cuda_library_path("cufft"),
-    ],
-    data = [
-        cuda_library_path("cufft"),
-    ],
+    srcs = ["lib/%{cufft_lib}"],
+    data = ["lib/%{cufft_lib}"],
     includes = ["include/"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -127,12 +95,8 @@ cc_library(
 
 cc_library(
     name = "curand",
-    srcs = [
-        cuda_library_path("curand"),
-    ],
-    data = [
-        cuda_library_path("curand"),
-    ],
+    srcs = ["lib/%{curand_lib}"],
+    data = ["lib/%{curand_lib}"],
     includes = ["include/"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -165,8 +129,12 @@ cc_library(
 
 cc_library(
     name = "cupti_dsos",
-    data = [
-        cupti_library_path(),
-    ],
+    data = ["lib/%{cupti_lib}"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "libdevice_root",
+    data = glob(["nvvm/libdevice/*.bc"]),
     visibility = ["//visibility:public"],
 )
