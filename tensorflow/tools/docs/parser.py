@@ -23,6 +23,7 @@ import inspect
 import os
 import re
 
+import six
 
 # A regular expression capturing a python indentifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
@@ -616,7 +617,7 @@ def generate_global_index(library_name, root_name, index, duplicate_of):
     A string containing an index page as Markdown.
   """
   symbol_links = []
-  for full_name, py_object in index.iteritems():
+  for full_name, py_object in six.iteritems(index):
     index_name = full_name or root_name
     if (inspect.ismodule(py_object) or inspect.isfunction(py_object) or
         inspect.isclass(py_object)):
