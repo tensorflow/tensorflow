@@ -86,6 +86,7 @@ dtype: the dtype of the value.
 
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
+    .Attr("ignore_lookup_error: bool = true")
     .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"(
@@ -93,6 +94,10 @@ Deletes the resource specified by the handle.
 
 All subsequent operations using the resource will result in a NotFound
 error status.
+
+resource: handle to the resource to delete.
+ignore_lookup_error: whether to ignore the error when the resource
+  doesn't exist.
 )");
 
 Status CreateAssignShapeFn(InferenceContext* c) {
