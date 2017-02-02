@@ -3,79 +3,83 @@ op { name: "BroadcastArgs" rename_to: "BroadcastDynamicShape" }
 op { name: "ConcatOffset" skip: true }  # Maybe should just be hidden?
 op { name: "Concat" skip: true }
 op { name: "ConcatV2" rename_to: "Concat" }
-op { name: "ExpandDims" input_rename: { from: "dim" to: "axis" } }
-op { name: "ListDiff" rename_to: "SetDiff1D" }
+#op { name: "ExpandDims" input_rename: { from: "dim" to: "axis" } }
+#op { name: "ListDiff" rename_to: "SetDiff1D" }
 op { name: "MirrorPadGrad" hide: true }
 op { name: "Reverse" skip: true }
 op { name: "ReverseV2" rename_to: "Reverse" }
-op { name: "Split" input_rename: { from: "split_dim" to: "axis" } }
-op { name: "SplitV" input_rename: { from: "split_dim" to: "axis" } }
-op { name: "Squeeze" input_rename: { from: "squeeze_dims" to: "axis" } }
-op { name: "Pack" rename_to: "Stack" }
-op { name: "Unpack" rename_to: "Unstack" }
-op { name: "Select" rename_to: "Where3" input_rename: { from: "t" to: "x" }
-input_rename: { from: "e" to: "y" } }
-op { name: "Where" input_rename: { from: "input" to: "condition" } }
+#op { name: "Split" input_rename: { from: "split_dim" to: "axis" } }
+#op { name: "SplitV" input_rename: { from: "split_dim" to: "axis" } }
+#op { name: "Squeeze" input_rename: { from: "squeeze_dims" to: "axis" } }
+#op { name: "Pack" rename_to: "Stack" }
+#op { name: "Unpack" rename_to: "Unstack" }
+#op { name: "Select" rename_to: "Where3" input_rename: { from: "t" to: "x" }
+#input_rename: { from: "e" to: "y" } }
+#op { name: "Where" input_rename: { from: "input" to: "condition" } }
 
 
 # candidate_sampling_ops
 # control_flow_ops
-op { name: "Switch" hide: true }
-op { name: "Merge" hide: true }
-op { name: "RefMerge" hide: true }
-op { name: "Exit" hide: true }
-op { name: "RefExit" hide: true }
-op { name: "Enter" hide: true }
-op { name: "RefEnter" hide: true }
-op { name: "RefIdentity" hide: true }
+#op { name: "Switch" hide: true }
+#op { name: "Merge" hide: true }
+#op { name: "RefMerge" hide: true }
+#op { name: "Exit" hide: true }
+#op { name: "RefExit" hide: true }
+#op { name: "Enter" hide: true }
+#op { name: "RefEnter" hide: true }
+#op { name: "RefIdentity" hide: true }
 
 # ctc_ops
 # data_flow_ops
 op { name: "FakeQueue" skip: true }
-op { name: "FIFOQueue" skip: true}
-op { name: "FIFOQueueV2" rename_to: "FIFOQueue" }
-op { name: "PaddingFIFOQueue" skip: true }
-op { name: "PaddingFIFOQueueV2" rename_to: "PaddingFIFOQueue" }
-op { name: "PriorityQueue" skip: true }
-op { name: "PriorityQueueV2" rename_to: "PriorityQueue" }
-op { name: "QueueClose" skip: true }
-op { name: "QueueCloseV2" rename_to: "QueueClose" }
-op { name: "QueueDequeue" skip: true }
-op { name: "QueueDequeueV2" rename_to: "QueueDequeue" }
-op { name: "QueueDequeueMany" skip: true }
-op { name: "QueueDequeueManyV2" rename_to: "QueueDequeueMany" }
-op { name: "QueueDequeueUpTo" skip: true }
-op { name: "QueueDequeueUpToV2" rename_to: "QueueDequeueUpTo" }
-op { name: "QueueEnqueue" skip: true }
-op { name: "QueueEnqueueV2" rename_to: "QueueEnqueue" }
-op { name: "QueueEnqueueMany" skip: true }
-op { name: "QueueEnqueueManyV2" rename_to: "QueueEnqueueMany" }
-op { name: "QueueSize" skip: true }
-op { name: "QueueSizeV2" rename_to: "QueueSize" }
-op { name: "RandomShuffleQueue" skip: true }
-op { name: "RandomShuffleQueueV2" rename_to: "RandomShuffleQueue" }
+#op { name: "FIFOQueue" skip: true}
+#op { name: "FIFOQueueV2" rename_to: "FIFOQueue" }
+#op { name: "PaddingFIFOQueue" skip: true }
+#op { name: "PaddingFIFOQueueV2" rename_to: "PaddingFIFOQueue" }
+#op { name: "PriorityQueue" skip: true }
+#op { name: "PriorityQueueV2" rename_to: "PriorityQueue" }
+#op { name: "QueueClose" skip: true }
+#op { name: "QueueCloseV2" rename_to: "QueueClose" }
+#op { name: "QueueDequeue" skip: true }
+#op { name: "QueueDequeueV2" rename_to: "QueueDequeue" }
+#op { name: "QueueDequeueMany" skip: true }
+#op { name: "QueueDequeueManyV2" rename_to: "QueueDequeueMany" }
+#op { name: "QueueDequeueUpTo" skip: true }
+#op { name: "QueueDequeueUpToV2" rename_to: "QueueDequeueUpTo" }
+#op { name: "QueueEnqueue" skip: true }
+#op { name: "QueueEnqueueV2" rename_to: "QueueEnqueue" }
+#op { name: "QueueEnqueueMany" skip: true }
+#op { name: "QueueEnqueueManyV2" rename_to: "QueueEnqueueMany" }
+#op { name: "QueueSize" skip: true }
+#op { name: "QueueSizeV2" rename_to: "QueueSize" }
+#op { name: "RandomShuffleQueue" skip: true }
+#op { name: "RandomShuffleQueueV2" rename_to: "RandomShuffleQueue" }
 
 # Skip hash table ops until we have better support in C++ (ops are currently
 # only used in contrib)
-op { name: "HashTable" skip: true }
-op { name: "InitializeTable" skip: true }
-op { name: "InitializeTableFromTextFile" skip: true }
-op { name: "LookupTableFind" skip: true }
-op { name: "LookupTableImport" skip: true }
-op { name: "LookupTableInsert" skip: true }
-op { name: "LookupTableSize" skip: true }
-op { name: "MutableDenseHashTable" skip: true }
-op { name: "MutableHashTable" skip: true }
-op { name: "MutableHashTableOfTensors" skip: true }
+#op { name: "HashTable" skip: true }
+#op { name: "InitializeTable" skip: true }
+#op { name: "InitializeTableFromTextFile" skip: true }
+#op { name: "LookupTableFind" skip: true }
+#op { name: "LookupTableImport" skip: true }
+#op { name: "LookupTableInsert" skip: true }
+#op { name: "LookupTableSize" skip: true }
+#op { name: "MutableDenseHashTable" skip: true }
+#op { name: "MutableHashTable" skip: true }
+#op { name: "MutableHashTableOfTensors" skip: true }
 
 # Stack ops are internal to control flow gradients (not yet implemented in C++)
-op { name: "Stack" skip: true }
-op { name: "StackClose" skip: true }
-op { name: "StackPop" skip: true }
-op { name: "StackPush" skip: true }
+#op { name: "Stack" skip: true }
+#op { name: "StackClose" skip: true }
+#op { name: "StackPop" skip: true }
+#op { name: "StackPush" skip: true }
 
 # functional_ops
 # image_ops
+#op { name: "AdjustContrastv2" rename_to: "AdjustContrast" }
+#op { name: "ResizeBilinearGrad" hide: true }
+#op { name: "ResizeNearestNeighborGrad" hide: true }
+
 # io_ops
 # linalg_ops
 # logging_ops
@@ -85,18 +89,34 @@ op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to
 op { name: "Max" alias: "ReduceMax" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Mean" alias: "ReduceMean" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Min" alias: "ReduceMin" input_rename: { from: "reduction_indices" to: "axis" } }
-op { name: "Mul" rename_to: "Multiply" alias: "Mul" }
-op { name: "Neg" rename_to: "Negate" alias: "Neg" }
+#op { name: "Mul" rename_to: "Multiply" alias: "Mul" }
+#op { name: "Neg" rename_to: "Negate" alias: "Neg" }
 op { name: "Prod" alias: "ReduceProd" input_rename: { from: "reduction_indices" to: "axis" } }
-op { name: "Sub" rename_to: "Subtract" alias: "Sub" }
+#op { name: "Sub" rename_to: "Subtract" alias: "Sub" }
 op { name: "Sum" alias: "ReduceSum" input_rename: { from: "reduction_indices" to: "axis" } }
 
 # nn_ops
+#op { name: "AvgPoolGrad" hide: true }
+#op { name: "LRNGrad" hide: true }
+#op { name: "MaxPoolGrad" hide: true }
+#op { name: "MaxPoolGradWithArgmax" hide: true }
+#op { name: "ReluGrad" hide: true }
+#op { name: "Relu6Grad" hide: true }
+#op { name: "EluGrad" hide: true }
+#op { name: "SoftplusGrad" hide: true }
+#op { name: "SoftsignGrad" hide: true }
+#op { name: "FractionalAvgPoolGrad" hide: true }
+#op { name: "FractionalMaxPoolGrad" hide: true }
 op { name: "TopKV2" rename_to: "TopK" alias: "TopKV2" }  # TODO(josh11b): delete "TopKV2" alias once users updated
+#op { name: "BiasAddV1" skip: true }  # Use BiasAdd instead
 
 # parsing_ops
 # random_ops
+
 # script_ops
+#op { name: "PyFunc" skip: true } # Calling Python functions from a C++ program doesn't make sense?
+#op { name: "PyFuncStateless" skip: true} # Calling Python functions from a C++ program doesn't make sense?
+
 # sdca_ops
 # state_ops
 # sparse_ops
