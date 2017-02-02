@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -1108,10 +1109,10 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
   output_diff.flat<float>().setRandom();
 
   CHECK_EQ(kernel_rows, kernel_cols);
-  ops::MaxPoolGrad(root, input_data, output_data, output_diff,
-                   {1, kernel_rows, kernel_cols, 1} /* ksize */,
-                   {1, stride, stride, 1} /* stride */,
-                   padding == VALID ? "VALID" : "SAME");
+  ops::internal::MaxPoolGrad(root, input_data, output_data, output_diff,
+                             {1, kernel_rows, kernel_cols, 1} /* ksize */,
+                             {1, stride, stride, 1} /* stride */,
+                             padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));

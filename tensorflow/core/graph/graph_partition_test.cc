@@ -338,7 +338,7 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = ::tensorflow::ops::Enter(in_.WithOpName("A2"), a1, "foo");
+  auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("A2"), a1, "foo");
   auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
                                      {a2, Input("A5", 0, DT_BOOL)})
                 .output;
@@ -352,7 +352,7 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = ::tensorflow::ops::Enter(in_.WithOpName("B2"), a1, "foo");
+  auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("B2"), a1, "foo");
   auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
                                      {a2, Input("B5", 0, DT_BOOL)})
                 .output;
