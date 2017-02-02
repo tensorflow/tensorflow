@@ -73,6 +73,14 @@ op { name: "ReaderRestoreState" skip: true }
 op { name: "ReaderRestoreStateV2" rename_to: "ReaderRestoreState" }
 op { name: "ReaderSerializeState" skip: true }
 op { name: "ReaderSerializeStateV2" rename_to: "ReaderSerializeState" }
+op { name: "FixedLengthRecordReader" skip: true }
+op { name: "FixedLengthRecordReaderV2" rename_to: "FixedLengthRecordReader" }
+op { name: "IdentityReader" skip: true }
+op { name: "IdentityReaderV2" rename_to: "IdentityReader" }
+op { name: "TFRecordReader" skip: true }
+op { name: "TFRecordReaderV2" rename_to: "TFRecordReader" }
+op { name: "TextLineReader" skip: true }
+op { name: "TextLineReaderV2" rename_to: "TextLineReader" }
 
 # Skip hash table ops until we have better support in C++ (ops are currently
 # only used in contrib)
@@ -93,6 +101,30 @@ op { name: "StackClose" skip: true }
 op { name: "StackPop" skip: true }
 op { name: "StackPush" skip: true }
 
+op { name: "TensorArrayCloseV2" skip: true }
+op { name: "TensorArrayCloseV3" rename_to: "TensorArrayClose" }
+op { name: "TensorArrayConcatV2" skip: true }
+op { name: "TensorArrayConcatV3" rename_to: "TensorArrayConcat" }
+op { name: "TensorArrayGatherV2" skip: true }
+op { name: "TensorArrayGatherV3" rename_to: "TensorArrayGather" }
+op { name: "TensorArrayGradV2" skip: true }
+op { name: "TensorArrayGradV3" rename_to: "TensorArrayGrad" }
+op { name: "TensorArrayReadV2" skip: true }
+op { name: "TensorArrayReadV3" rename_to: "TensorArrayRead" }
+op { name: "TensorArrayScatterV2" skip: true }
+op { name: "TensorArrayScatterV3" rename_to: "TensorArrayScatter" }
+op { name: "TensorArraySizeV2" skip: true }
+op { name: "TensorArraySizeV3" rename_to: "TensorArraySize" }
+op { name: "TensorArraySplitV2" skip: true }
+op { name: "TensorArraySplitV3" rename_to: "TensorArraySplit" }
+op { name: "TensorArrayV2" skip: true }
+op { name: "TensorArrayV3" rename_to: "TensorArray" }
+op { name: "TensorArrayWriteV2" skip: true }
+op { name: "TensorArrayWriteV3" rename_to: "TensorArrayWrite" }
+
+op { name: "WholeFileReader" skip: true }
+op { name: "WholeFileReaderV2" rename_to: "WholeFileReader" }
+
 # functional_ops
 
 # image_ops
@@ -106,7 +138,7 @@ op { name: "ResizeNearestNeighborGrad" hide: true }
 op { name: "SelfAdjointEigV2" rename_to: "SelfAdjointEig" }
 
 # logging_ops
-
+op { name: "AudioSummaryV2" rename_to: "AudioSummary" }
 # math_ops
 op { name: "All" alias: "ReduceAll" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Any" alias: "ReduceAny" input_rename: { from: "reduction_indices" to: "axis" } }
@@ -146,6 +178,7 @@ op { name: "BiasAddV1" skip: true }  # Use BiasAdd instead
 
 # random_ops
 
+op { name: "RandomStandardNormal" rename_to: "RandomNormal" }
 # script_ops
 # Calling Python functions from a C++ program isn't supported
 op { name: "PyFunc" skip: true }
@@ -154,6 +187,9 @@ op { name: "PyFuncStateless" skip: true}
 # sdca_ops
 
 # state_ops
+
+op { name: "Variable" skip: true }
+op { name: "VariableV2" rename_to: "Variable" }
 
 # sparse_ops
 
