@@ -37,13 +37,6 @@ namespace tensorflow {
 
 namespace {
 
-bool HasRetval(const Graph& graph) {
-  for (const Node* n : graph.nodes()) {
-    if (n->type_string() == "_Retval") return true;
-  }
-  return false;
-}
-
 Status CheckSignature(const DataTypeVector& tf_types,
                       const xla::Shape& xla_shape) {
   if (xla::ShapeUtil::IsTuple(xla_shape)) {
@@ -86,6 +79,7 @@ XlaCompiler::XlaCompiler(const XlaCompiler::Options& options)
       allow_cpu_custom_calls_(options.allow_cpu_custom_calls),
       local_executable_has_hybrid_result_(
           options.local_executable_has_hybrid_result),
+      resolve_compile_time_constants_(options.resolve_compile_time_constants),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options.device_type)),
       device_mgr_({device_}) {}
@@ -176,19 +170,12 @@ Status XlaCompiler::CompileFunctionBody(
         strings::StrCat("xla_jit_raw_input_", function_id), *graph);
   }
 
-  if (!HasRetval(*graph)) {
-    VLOG(1) << "Graph has no retvals. Skipping compilation.";
-    return Status::OK();
-  }
-
-  // Optimize the graph to before running throught the translator.
-  // TODO(pbar) The constant folder currently does not simplify int32 operations
-  // for devices other than CPU.
+  // Optimize the graph before running the compiler.
+  // TODO(pbar): The constant folder currently does not simplify int32
+  // operations for devices other than CPU.
   OptimizerOptions opts;
   GraphOptimizer optimizer(opts);
-  Graph* g = graph.release();
-  OptimizeGraph(flr, &g);
-  graph.reset(g);
+  OptimizeGraph(flr, &graph);
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile(
@@ -318,7 +305,8 @@ Status XlaCompiler::CompileGraph(string const& name,
   }
 
   XlaContext* xla_context =
-      new XlaContext(this, client(), name, allow_cpu_custom_calls_);
+      new XlaContext(this, client(), name, allow_cpu_custom_calls_,
+                     resolve_compile_time_constants_);
   core::ScopedUnref xla_context_unref(xla_context);
 
   TF_RETURN_IF_ERROR(xla_context->BuildArguments(args, use_tuple_arg));
@@ -332,6 +320,8 @@ Status XlaCompiler::CompileGraph(string const& name,
       &result->computation, &result->requires_runtime_context,
       &compile_time_constants, &num_nonconst_outputs));
 
+  VLOG(2) << "Outputs: constant: " << compile_time_constants.size()
+          << " nonconstant: " << num_nonconst_outputs;
   result->outputs.resize(compile_time_constants.size() + num_nonconst_outputs);
   for (const auto& c : compile_time_constants) {
     if (!c.status.ok()) {
@@ -410,6 +400,7 @@ Status XlaCompiler::GetChannelHandle(const string& key,
     TF_ASSIGN_OR_RETURN(result.first->second, client_->CreateChannelHandle());
   }
   *channel = result.first->second;
+  VLOG(1) << "Channel: " << key << " " << channel->DebugString();
   return Status::OK();
 }
 

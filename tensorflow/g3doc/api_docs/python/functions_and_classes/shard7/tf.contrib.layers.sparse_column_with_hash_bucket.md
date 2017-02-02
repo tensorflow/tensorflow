@@ -1,4 +1,4 @@
-### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner=None, dtype=tf.string)` {#sparse_column_with_hash_bucket}
+### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner='sum', dtype=tf.string)` {#sparse_column_with_hash_bucket}
 
 Creates a _SparseColumn with hashed bucket configuration.
 
@@ -12,8 +12,9 @@ output_id = Hash(input_feature_string) % bucket_size
 *  <b>`column_name`</b>: A string defining sparse column name.
 *  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column

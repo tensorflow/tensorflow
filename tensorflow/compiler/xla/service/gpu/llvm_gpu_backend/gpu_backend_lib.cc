@@ -124,7 +124,8 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
 
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, tensorflow::StringPiece cpu_name) {
+    llvm::Triple triple, tensorflow::StringPiece cpu_name,
+    const HloModuleConfig& hlo_module_config) {
   std::string error;
   const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
   if (target == nullptr) {
@@ -134,15 +135,16 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
+  // Set options from hlo_module_config (specifically, fast-math flags).
+  llvm_ir::SetTargetOptions(hlo_module_config.compilation_options(),
+                            &target_options);
+
   // Enable FMA synthesis if desired.
   legacy_flags::GpuBackendLibFlags* flags =
       legacy_flags::GetGpuBackendLibFlags();
   if (flags->fma) {
     target_options.AllowFPOpFusion = FPOpFusion::Fast;
   }
-
-  // Set options from LlvmBackendFlags (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(&target_options);
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = flags->verbose_ptx_asm;
@@ -193,11 +195,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
 
   // NVPTX's early-as-possible passes include NVVM reflect.
-  builder.addExtension(
-      llvm::PassManagerBuilder::EP_EarlyAsPossible,
-      [&](const PassManagerBuilder&, legacy::PassManagerBase& pass_manager) {
-        target_machine->addEarlyAsPossiblePasses(pass_manager);
-      });
+  target_machine->adjustPassManager(builder);
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);
@@ -258,7 +256,6 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
   llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
 }
 
-namespace {
 // Returns whether the module could use any libdevice functions. This function
 // may have false positives -- the module might not use libdevice even if this
 // function returns true.
@@ -301,9 +298,8 @@ tensorflow::Status LinkLibdeviceIfNecessary(const string& libdevice_dir_path,
   return tensorflow::Status::OK();
 }
 
-}  // namespace
-
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,
+                                    const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
@@ -360,7 +356,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   string cpu_name = gpu_info_map[flags->gpu_architecture].sm_name;
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
-      GetTargetMachine(target_triple, cpu_name);
+      GetTargetMachine(target_triple, cpu_name, hlo_module_config);
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
@@ -471,6 +467,7 @@ void GPUBackendInit() {
 }  // namespace
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
+                              const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, GPUBackendInit);
@@ -480,7 +477,8 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
     ScopedLoggingTimer compilation_timer(
         "Compile module " + llvm_ir::AsString(module->getName()),
         /*vlog_level=*/2);
-    TF_ASSIGN_OR_RETURN(ptx, CompileModuleToPtx(module, libdevice_dir_path));
+    TF_ASSIGN_OR_RETURN(
+        ptx, CompileModuleToPtx(module, hlo_module_config, libdevice_dir_path));
   }
   return ptx;
 }

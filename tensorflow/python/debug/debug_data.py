@@ -47,7 +47,9 @@ def load_tensor_from_event_file(event_file_path):
 
   Returns:
     The tensor value loaded from the event file, as a `numpy.ndarray`. For
-    uninitialized tensors, returns None.
+    uninitialized Tensors, returns `None`. For Tensors of data types that
+    cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
+    `None`.
   """
 
   event = event_pb2.Event()
@@ -57,9 +59,12 @@ def load_tensor_from_event_file(event_file_path):
     if (event.summary.value[0].tensor.tensor_content or
         event.summary.value[0].tensor.string_val):
       # Initialized tensor.
-      tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+      try:
+        tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+      except KeyError:
+        tensor_value = None
     else:
-      # Uninitialized tensor.
+      # Uninitialized tensor or tensor of unconvertible data type.
       tensor_value = None
 
   return tensor_value

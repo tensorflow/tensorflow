@@ -23,7 +23,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_plugin_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 py_library(
@@ -45,6 +45,7 @@ py_library(
         ":check_ops",
         ":client",
         ":client_testlib",
+        ":cloud_ops",
         ":confusion_matrix",
         ":control_flow_ops",
         ":errors",
@@ -75,6 +76,7 @@ py_library(
         ":ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
+        ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
@@ -118,6 +120,38 @@ py_library(
     srcs = ["platform/googletest.py"],
     srcs_version = "PY2AND3",
     deps = [":platform_benchmark"],
+)
+
+py_library(
+    name = "cloud_ops",
+    srcs = [
+        "ops/cloud/__init__.py",
+        "ops/cloud/bigquery_reader_ops.py",
+        "ops/cloud/cloud.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cloud_ops_gen",
+        ":framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "bigquery_reader_ops_test",
+    size = "small",
+    srcs = ["ops/cloud/bigquery_reader_ops_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":cloud_ops",
+        ":data_flow_ops",
+        ":io_ops",
+        ":parsing_ops",
+        ":util",
+        "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+        "//tensorflow/core:cloud_ops_op_lib",
+    ],
+    tags = ["manual"],
 )
 
 tf_py_test(
@@ -281,6 +315,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_cc",
     ],
     alwayslink = 1,
@@ -789,6 +824,11 @@ tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "cloud_ops_gen",
+    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1516,6 +1556,21 @@ py_library(
 )
 
 py_library(
+    name = "weights_broadcast_ops",
+    srcs = [
+        "ops/weights_broadcast_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":math_ops",
+        ":sets",
+    ],
+)
+
+py_library(
     name = "metrics",
     srcs = [
         "ops/metrics.py",
@@ -1537,6 +1592,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        ":weights_broadcast_ops",
     ],
 )
 
@@ -1683,6 +1739,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":init_ops",
         ":platform",
+        ":resource_variable_ops",
         ":variables",
         "@six_archive//:six",
     ],
@@ -1790,8 +1847,10 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
+        "//tensorflow/contrib/compiler:compiler_py",
         "//third_party/py/numpy",
     ],
+    xla_enabled = True,
 )
 
 cuda_py_test(
@@ -2237,6 +2296,7 @@ tf_py_wrap_cc(
         "util/port.i",
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
+        "util/transform_graph.i",
     ],
     deps = [
         ":cpp_shape_inference",
@@ -2255,6 +2315,7 @@ tf_py_wrap_cc(
         "//tensorflow/core:lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + tf_additional_lib_deps() + tf_additional_plugin_deps(),
@@ -2295,6 +2356,111 @@ py_test(
     name = "server_lib_test",
     size = "small",
     srcs = ["training/server_lib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_multiple_containers_test",
+    size = "small",
+    srcs = ["training/server_lib_multiple_containers_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_clear_container_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_clear_container_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_clear_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_clear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_same_variables_no_clear_test",
+    size = "small",
+    srcs = ["training/server_lib_same_variables_no_clear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":data_flow_ops",
+        ":errors",
+        ":extra_py_tests_deps",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "server_lib_sparse_job_test",
+    size = "small",
+    srcs = ["training/server_lib_sparse_job_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
@@ -2918,6 +3084,7 @@ cuda_py_test(
         ":gradients",
         ":math_ops",
         ":nn",
+        ":nn_grad",
         ":nn_ops_gen",
         ":platform",
         ":random_ops",

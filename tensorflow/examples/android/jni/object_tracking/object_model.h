@@ -55,9 +55,10 @@ class ObjectModelBase {
   virtual ~ObjectModelBase() {}
 
   // Called when the next step in an ongoing track occurs.
-  virtual void TrackStep(
-      const BoundingBox& position, const Image<uint8>& image,
-      const IntegralImage& integral_image, const bool authoritative) {}
+  virtual void TrackStep(const BoundingBox& position,
+                         const Image<uint8_t>& image,
+                         const IntegralImage& integral_image,
+                         const bool authoritative) {}
 
   // Called when an object track is lost.
   virtual void TrackLost() {}

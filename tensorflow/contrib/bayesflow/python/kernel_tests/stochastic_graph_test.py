@@ -37,8 +37,8 @@ distributions = distributions_lib
 class NormalNotParam(distributions.Normal):
 
   @property
-  def is_reparameterized(self):
-    return False
+  def reparameterization_type(self):
+    return distributions.NOT_REPARAMETERIZED
 
 
 class TestSurrogateLosses(test.TestCase):
@@ -48,12 +48,16 @@ class TestSurrogateLosses(test.TestCase):
       mu = [0.0, 0.1, 0.2]
       sigma = constant_op.constant([1.1, 1.2, 1.3])
       with st.value_type(st.SampleValue()):
-        prior = st.StochasticTensor(distributions.Normal(mu=mu, sigma=sigma))
+        prior = st.StochasticTensor(distributions.Normal(loc=mu, scale=sigma))
         likelihood = st.StochasticTensor(
             distributions.Normal(
-                mu=prior, sigma=sigma))
-        self.assertTrue(prior.distribution.is_reparameterized)
-        self.assertTrue(likelihood.distribution.is_reparameterized)
+                loc=prior, scale=sigma))
+        self.assertEqual(
+            prior.distribution.reparameterization_type,
+            distributions.FULLY_REPARAMETERIZED)
+        self.assertEqual(
+            likelihood.distribution.reparameterization_type,
+            distributions.FULLY_REPARAMETERIZED)
 
       loss = math_ops.square(array_ops.identity(likelihood) - [0.0, 0.1, 0.2])
       sum_loss = math_ops.reduce_sum(loss)
@@ -87,9 +91,9 @@ class TestSurrogateLosses(test.TestCase):
       mu = constant_op.constant([0.0, 0.1, 0.2])
       sigma = constant_op.constant([1.1, 1.2, 1.3])
       with st.value_type(st.SampleValue()):
-        prior = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
-        likelihood = st.StochasticTensor(NormalNotParam(mu=prior, sigma=sigma))
-        prior_2 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
+        prior = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
+        likelihood = st.StochasticTensor(NormalNotParam(loc=prior, scale=sigma))
+        prior_2 = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
 
       loss = math_ops.square(array_ops.identity(likelihood) - mu)
       part_loss = math_ops.square(array_ops.identity(prior) - mu)
@@ -106,8 +110,9 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[loss],
           expected_addl_terms=[
-              likelihood.distribution.log_pdf(likelihood.value()) * loss_nograd,
-              prior.distribution.log_pdf(prior.value()) * loss_nograd
+              likelihood.distribution.log_prob(
+                  likelihood.value()) * loss_nograd,
+              prior.distribution.log_prob(prior.value()) * loss_nograd
           ],
           xs=[mu, sigma])
 
@@ -115,8 +120,9 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[loss, part_loss],
           expected_addl_terms=[
-              likelihood.distribution.log_pdf(likelihood.value()) * loss_nograd,
-              (prior.distribution.log_pdf(prior.value()) *
+              likelihood.distribution.log_prob(
+                  likelihood.value()) * loss_nograd,
+              (prior.distribution.log_prob(prior.value()) *
                array_ops.stop_gradient(part_loss + loss))
           ],
           xs=[mu, sigma])
@@ -125,8 +131,8 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[sum_loss * array_ops.ones_like(loss)],
           expected_addl_terms=[(
-              likelihood.distribution.log_pdf(likelihood.value()) *
-              sum_loss_nograd), prior.distribution.log_pdf(prior.value()) *
+              likelihood.distribution.log_prob(likelihood.value()) *
+              sum_loss_nograd), prior.distribution.log_prob(prior.value()) *
                                sum_loss_nograd],
           xs=[mu, sigma])
 
@@ -134,9 +140,9 @@ class TestSurrogateLosses(test.TestCase):
           session=sess,
           losses=[loss, sum_loss * array_ops.ones_like(loss)],
           expected_addl_terms=[(
-              likelihood.distribution.log_pdf(likelihood.value()) *
+              likelihood.distribution.log_prob(likelihood.value()) *
               array_ops.stop_gradient(loss + sum_loss)),
-                               (prior.distribution.log_pdf(prior.value()) *
+                               (prior.distribution.log_prob(prior.value()) *
                                 array_ops.stop_gradient(loss + sum_loss))],
           xs=[mu, sigma])
 
@@ -144,7 +150,7 @@ class TestSurrogateLosses(test.TestCase):
       self._testSurrogateLoss(
           session=sess,
           losses=[loss_nodeps],
-          expected_addl_terms=[(prior_2.distribution.log_pdf(prior_2.value()) *
+          expected_addl_terms=[(prior_2.distribution.log_prob(prior_2.value()) *
                                 loss_nodeps_nograd)],
           xs=[mu, sigma])
 
@@ -154,10 +160,10 @@ class TestSurrogateLosses(test.TestCase):
           losses=[loss, loss_nodeps],
           # We can't guarantee ordering of output losses in this case.
           expected_addl_terms=[(
-              likelihood.distribution.log_pdf(likelihood.value()) *
-              loss_nograd), prior.distribution.log_pdf(prior.value()) *
+              likelihood.distribution.log_prob(likelihood.value()) *
+              loss_nograd), prior.distribution.log_prob(prior.value()) *
                                loss_nograd,
-                               (prior_2.distribution.log_pdf(prior_2.value()) *
+                               (prior_2.distribution.log_prob(prior_2.value()) *
                                 loss_nodeps_nograd)],
           xs=[mu, sigma])
 
@@ -168,7 +174,7 @@ class TestSurrogateLosses(test.TestCase):
       with st.value_type(st.SampleValue()):
         dt = st.StochasticTensor(
             NormalNotParam(
-                mu=mu, sigma=sigma), loss_fn=None)
+                loc=mu, scale=sigma), loss_fn=None)
         self.assertEqual(None, dt.loss(constant_op.constant([2.0])))
 
   def testExplicitStochasticTensors(self):
@@ -176,16 +182,16 @@ class TestSurrogateLosses(test.TestCase):
       mu = constant_op.constant([0.0, 0.1, 0.2])
       sigma = constant_op.constant([1.1, 1.2, 1.3])
       with st.value_type(st.SampleValue()):
-        dt1 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
-        dt2 = st.StochasticTensor(NormalNotParam(mu=mu, sigma=sigma))
+        dt1 = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
+        dt2 = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
         loss = math_ops.square(array_ops.identity(dt1)) + 10. + dt2
 
         sl_all = sg.surrogate_loss([loss])
         sl_dt1 = sg.surrogate_loss([loss], stochastic_tensors=[dt1])
         sl_dt2 = sg.surrogate_loss([loss], stochastic_tensors=[dt2])
 
-        dt1_term = dt1.distribution.log_pdf(dt1) * loss
-        dt2_term = dt2.distribution.log_pdf(dt2) * loss
+        dt1_term = dt1.distribution.log_prob(dt1) * loss
+        dt2_term = dt2.distribution.log_prob(dt2) * loss
 
         self.assertAllClose(*sess.run(
             [sl_all, sum([loss, dt1_term, dt2_term])]))
@@ -196,8 +202,8 @@ class TestSurrogateLosses(test.TestCase):
 class StochasticDependenciesMapTest(test.TestCase):
 
   def testBuildsMapOfUpstreamNodes(self):
-    dt1 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
-    dt2 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
+    dt1 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    dt2 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
     out1 = dt1.value() + 1.
     out2 = dt2.value() + 2.
     x = out1 + out2
@@ -207,11 +213,11 @@ class StochasticDependenciesMapTest(test.TestCase):
     self.assertEqual(dep_map[dt2], set([x, y]))
 
   def testHandlesStackedStochasticNodes(self):
-    dt1 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
+    dt1 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
     out1 = dt1.value() + 1.
-    dt2 = st.StochasticTensor(distributions.Normal(mu=out1, sigma=1.))
+    dt2 = st.StochasticTensor(distributions.Normal(loc=out1, scale=1.))
     x = dt2.value() + 2.
-    dt3 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
+    dt3 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
     y = dt3.value() * 3.
     dep_map = sg._stochastic_dependencies_map([x, y])
     self.assertEqual(dep_map[dt1], set([x]))
@@ -219,10 +225,10 @@ class StochasticDependenciesMapTest(test.TestCase):
     self.assertEqual(dep_map[dt3], set([y]))
 
   def testTraversesControlInputs(self):
-    dt1 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
+    dt1 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
     logits = dt1.value() * 3.
     dt2 = st.StochasticTensor(distributions.Bernoulli(logits=logits))
-    dt3 = st.StochasticTensor(distributions.Normal(mu=0., sigma=1.))
+    dt3 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
     x = dt3.value()
     y = array_ops.ones((2, 2)) * 4.
     z = array_ops.ones((2, 2)) * 3.

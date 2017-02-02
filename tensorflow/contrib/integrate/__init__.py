@@ -59,6 +59,7 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.integrate.python.ops.odes import *
-from tensorflow.python.util.all_util import make_all
+from tensorflow.python.util.all_util import remove_undocumented
 
-__all__ = make_all(__name__)
+
+remove_undocumented(__name__)

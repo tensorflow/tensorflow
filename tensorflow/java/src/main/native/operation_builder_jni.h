@@ -153,6 +153,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensor(
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensorList(
     JNIEnv *, jclass, jlong, jstring, jlongArray);
 
+/*
+ * Class:     org_tensorflow_OperationBuilder
+ * Method:    setAttrShape
+ * Signature: (JLjava/lang/String;[JI)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
+    JNIEnv *, jclass, jlong, jstring, jlongArray, jint);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

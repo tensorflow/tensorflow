@@ -87,7 +87,7 @@ class FileSystem {
   //   '\\' c: matches character c
   //   lo '-' hi: matches character c for lo <= c <= hi
   //
-  // Typical return codes
+  // Typical return codes:
   //  * OK - no errors
   //  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   //                    implemented
@@ -100,10 +100,16 @@ class FileSystem {
 
   virtual Status DeleteFile(const string& fname) = 0;
 
+  // \brief Creates the specified directory.
+  // Typical return codes:
+  //  * OK - successfully created the directory.
+  //  * ALREADY_EXISTS - directory with name dirname already exists.
+  //  * PERMISSION_DENIED - dirname is not writable.
   virtual Status CreateDir(const string& dirname) = 0;
 
   // \brief Creates the specified directory and all the necessary
-  // subdirectories. Typical return codes.
+  // subdirectories.
+  // Typical return codes:
   //  * OK - successfully created the directory and sub directories, even if
   //         they were already created.
   //  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
@@ -116,7 +122,7 @@ class FileSystem {
   // files and directories that weren't deleted (unspecified if the return
   // status is not OK).
   // REQUIRES: undeleted_files, undeleted_dirs to be not null.
-  // Typical return codes
+  // Typical return codes:
   //  * OK - dirname exists and we were able to delete everything underneath.
   //  * NOT_FOUND - dirname doesn't exist
   //  * PERMISSION_DENIED - dirname or some descendant is not writable

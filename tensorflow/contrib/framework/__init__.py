@@ -16,6 +16,7 @@
 """Framework utilities.
 
 @@assert_same_float_dtype
+@@assert_scalar
 @@assert_scalar_int
 @@convert_to_tensor_or_sparse_tensor
 @@get_graph_from_inputs
@@ -24,6 +25,7 @@
 @@is_strictly_increasing
 @@is_tensor
 @@reduce_sum_n
+@@remove_squeezable_dimensions
 @@with_shape
 @@with_same_shape
 
@@ -47,6 +49,7 @@
 @@assign_from_values
 @@assign_from_values_fn
 @@create_global_step
+@@filter_variables
 @@get_global_step
 @@get_or_create_global_step
 @@get_local_variables
@@ -74,12 +77,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.framework.python.framework import *
 from tensorflow.contrib.framework.python.ops import *
-from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,wildcard-import
 
-__all__ = make_all(__name__)
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+remove_undocumented(__name__)

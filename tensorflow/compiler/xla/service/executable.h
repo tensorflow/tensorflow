@@ -115,6 +115,9 @@ class Executable {
 
   const HloModuleConfig& module_config() const { return *module_config_; }
 
+  // Returns whether this executable has an associated HloModuleConfig.
+  bool has_module_config() const { return module_config_ != nullptr; }
+
   // Returns the versioned computation handle of the computation computed by
   // this executable.
   const VersionedComputationHandle& entry_computation_handle() const {

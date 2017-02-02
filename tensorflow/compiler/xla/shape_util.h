@@ -95,13 +95,9 @@ class ShapeUtil {
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size);
-
-  // Returns the number of bytes required for an allocation of shape.
-  // The calculation for tuple shapes assumes that we are utilizing host
-  // pointers.
-  // Precondition: !ShapeUtil::IsOpaque(shape)
-  static int64 ByteSizeOf(const Shape& shape);
+  // Precondition: (!ShapeUtil::IsTuple(shape) || pointer_size > 0) &&
+  //               !ShapeUtil::IsOpaque(shape)
+  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //
@@ -388,12 +384,6 @@ class ShapeUtil {
                                 Shape shape);
 
  private:
-  // Recursive helper for comparing the equality of two shapes. Returns true if
-  // the shapes are the same. If compare_layouts is true, then layouts must also
-  // match.
-  static bool CompareShapes(const Shape& lhs, const Shape& rhs,
-                            bool compare_layouts);
-
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);

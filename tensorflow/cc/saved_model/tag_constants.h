@@ -18,10 +18,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Tag for the `serving` graph.
+/// Tag for the `serving` graph.
 constexpr char kSavedModelTagServe[] = "serve";
 
-// Tag for the `training` graph.`
+/// Tag for the `training` graph.`
 constexpr char kSavedModelTagTrain[] = "train";
 
 }  // namespace tensorflow

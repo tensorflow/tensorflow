@@ -151,6 +151,10 @@ class Node {
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
   Status input_edge(int idx, const Edge** e) const;
 
+  // Returns into '*edges' the input data edges of this Node, indexed by input
+  // number. Does not return control edges.
+  Status input_edges(std::vector<const Edge*>* edges) const;
+
   // Returns into '*n' the node that has an output connected to the
   // 'idx' input of this Node.
   Status input_node(int idx, const Node** n) const;

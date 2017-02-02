@@ -361,7 +361,9 @@ class StochasticTensor(BaseStochasticTensor):
 
     if isinstance(self._value_type, MeanValue):
       return value_tensor  # Using pathwise-derivative for this one.
-    if self._dist.is_continuous and self._dist.is_reparameterized:
+    if self._dist.is_continuous and (
+        self._dist.reparameterization_type
+        is distribution.FULLY_REPARAMETERIZED):
       return value_tensor  # Using pathwise-derivative for this one.
     else:
       # Will have to perform some variant of score function
@@ -397,8 +399,9 @@ class StochasticTensor(BaseStochasticTensor):
     if self._loss_fn is None:
       return None
 
-    if (self._dist.is_continuous and self._dist.is_reparameterized and
-        not self._value_type.stop_gradient):
+    if (self._dist.is_continuous and
+        self._dist.reparameterization_type is distribution.FULLY_REPARAMETERIZED
+        and not self._value_type.stop_gradient):
       # Can perform pathwise-derivative on this one; no additional loss needed.
       return None
 
@@ -440,8 +443,8 @@ class ObservedStochasticTensor(StochasticTensor):
     with ops.name_scope(name, "ObservedStochasticTensor", [value]) as scope:
       self._name = scope
       self._dist = dist
-      dist_shape = self._dist.get_batch_shape().concatenate(
-          self._dist.get_event_shape())
+      dist_shape = self._dist.batch_shape.concatenate(
+          self._dist.event_shape)
       value = ops.convert_to_tensor(value)
       value_shape = value.get_shape()
 

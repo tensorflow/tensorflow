@@ -259,6 +259,9 @@ class InferenceContext {
   string DebugString(ShapeHandle s);
   string DebugString(DimensionHandle d);
 
+  // Describes the whole context, for debugging purposes.
+  string DebugString() const;
+
   // If <shape> has rank <rank>, or its rank is unknown, return OK and return
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
@@ -523,7 +526,7 @@ inline Dimension::Dimension() : value_(InferenceContext::kUnknownDim) {}
 inline Dimension::Dimension(int64 value) : value_(value) {
   DCHECK(value >= 0 || value == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got"
+         "InferenceContext::kUnknownDim but got "
       << value;
 }
 
@@ -539,7 +542,7 @@ inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
 inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
   DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got"
+         "InferenceContext::kUnknownDim but got "
       << val;
 }
 

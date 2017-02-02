@@ -88,8 +88,10 @@ See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
 for how to use threads and queues.  For documentation on the Queue API,
 see [Queues](../../api_docs/python/io_ops.md#queues).
 
+
 @@Coordinator
 @@QueueRunner
+@@LooperThread
 @@add_queue_runner
 @@start_queue_runners
 
@@ -119,14 +121,15 @@ overview of summaries, event files, and visualization in TensorBoard.
 
 @@summary_iterator
 
-## Training Utilities
+## Training Hooks
 
-@@global_step
-@@basic_train_loop
-@@get_global_step
-@@assert_global_step
-@@write_graph
+Hooks are tools that run in the process of training/evaluation of the model.
+
 @@SessionRunHook
+@@SessionRunArgs
+@@SessionRunContext
+@@SessionRunValues
+
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
@@ -136,10 +139,16 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@NanTensorHook
 @@SummarySaverHook
 @@GlobalStepWaiterHook
-@@SessionRunArgs
-@@SessionRunContext
-@@SessionRunValues
-@@LooperThread
+@@FinalOpsHook
+@@FeedFnHook
+
+## Training Utilities
+
+@@global_step
+@@basic_train_loop
+@@get_global_step
+@@assert_global_step
+@@write_graph
 """
 # pylint: enable=line-too-long
 
@@ -190,6 +199,8 @@ from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrai
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
 from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_session_run_hooks import GlobalStepWaiterHook
+from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
+from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
 from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.device_setter import replica_device_setter
 from tensorflow.python.training.monitored_session import Scaffold

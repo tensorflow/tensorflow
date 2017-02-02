@@ -63,7 +63,7 @@ class DistributionTest(test.TestCase):
     with self.test_session():
       # Note: we cannot easily test all distributions since each requires
       # different initialization arguments. We therefore spot test a few.
-      normal = ds.Normal(mu=1., sigma=2., validate_args=True)
+      normal = ds.Normal(loc=1., scale=2., validate_args=True)
       self.assertEqual(normal.parameters, normal.copy().parameters)
       wishart = ds.WishartFull(df=2, scale=[[1., 2], [2, 5]],
                                validate_args=True)
@@ -71,8 +71,8 @@ class DistributionTest(test.TestCase):
 
   def testCopyOverride(self):
     with self.test_session():
-      normal = ds.Normal(mu=1., sigma=2., validate_args=True)
-      normal_copy = normal.copy(validate_args=False)
+      normal = ds.Normal(loc=1., scale=2., validate_args=True)
+      unused_normal_copy = normal.copy(validate_args=False)
       base_params = normal.parameters.copy()
       copy_params = normal.copy(validate_args=False).parameters.copy()
       self.assertNotEqual(
@@ -106,50 +106,55 @@ class DistributionTest(test.TestCase):
       # Test case 1, 2.
       x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
       # None would fire an exception were it actually executed.
-      self.assertTrue(normal._is_scalar_helper(x.get_shape, lambda: None))
+      self.assertTrue(normal._is_scalar_helper(x.get_shape(), lambda: None))
       self.assertTrue(
-          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+          normal._is_scalar_helper(tensor_shape.TensorShape(None),
                                    lambda: array_ops.shape(x)))
 
       x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       # None would fire an exception were it actually executed.
-      self.assertFalse(normal._is_scalar_helper(x.get_shape, lambda: None))
+      self.assertFalse(normal._is_scalar_helper(x.get_shape(), lambda: None))
       self.assertFalse(
-          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+          normal._is_scalar_helper(tensor_shape.TensorShape(None),
                                    lambda: array_ops.shape(x)))
 
       # Test case 3.
       x = array_ops.placeholder(dtype=dtypes.int32)
-      is_scalar = normal._is_scalar_helper(x.get_shape,
+      is_scalar = normal._is_scalar_helper(x.get_shape(),
                                            lambda: array_ops.shape(x))
       self.assertTrue(is_scalar.eval(feed_dict={x: 1}))
       self.assertFalse(is_scalar.eval(feed_dict={x: [1]}))
 
-  def testSampleShapeHints(self):
-    class _FakeDistribution(ds.Distribution):
+  def _GetFakeDistribution(self):
+    class FakeDistribution(ds.Distribution):
       """Fake Distribution for testing _set_sample_static_shape."""
 
       def __init__(self, batch_shape=None, event_shape=None):
         self._static_batch_shape = tensor_shape.TensorShape(batch_shape)
         self._static_event_shape = tensor_shape.TensorShape(event_shape)
-        super(_FakeDistribution, self).__init__(
+        super(FakeDistribution, self).__init__(
             dtype=dtypes.float32,
             is_continuous=False,
-            is_reparameterized=False,
+            reparameterization_type=distributions.NOT_REPARAMETERIZED,
             validate_args=True,
             allow_nan_stats=True,
             name="DummyDistribution")
 
-      def _get_batch_shape(self):
+      def _batch_shape(self):
         return self._static_batch_shape
 
-      def _get_event_shape(self):
+      def _event_shape(self):
         return self._static_event_shape
+
+    return FakeDistribution
+
+  def testSampleShapeHints(self):
+    fake_distribution = self._GetFakeDistribution()
 
     with self.test_session():
       # Make a new session since we're playing with static shapes. [And below.]
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[2, 3], event_shape=[5])
+      dist = fake_distribution(batch_shape=[2, 3], event_shape=[5])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       # We use as_list since TensorShape comparison does not work correctly for
@@ -158,28 +163,28 @@ class DistributionTest(test.TestCase):
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[None, 3], event_shape=[5])
+      dist = fake_distribution(batch_shape=[None, 3], event_shape=[5])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertAllEqual([6, 7, None, 3, 5], y.get_shape().as_list())
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[None, 3], event_shape=[None])
+      dist = fake_distribution(batch_shape=[None, 3], event_shape=[None])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertAllEqual([6, 7, None, 3, None], y.get_shape().as_list())
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=None, event_shape=None)
+      dist = fake_distribution(batch_shape=None, event_shape=None)
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[None, 3], event_shape=None)
+      dist = fake_distribution(batch_shape=[None, 3], event_shape=None)
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)

@@ -118,91 +118,83 @@ def same_dynamic_shape(a, b):
   a = ops.convert_to_tensor(a, name="a")
   b = ops.convert_to_tensor(b, name="b")
 
+  # Here we can't just do math_ops.equal(a.shape, b.shape), since
+  # static shape inference may break the equality comparison between
+  # shape(a) and shape(b) in math_ops.equal.
+  def all_shapes_equal():
+    return math_ops.reduce_all(math_ops.equal(
+        array_ops.concat([array_ops.shape(a), array_ops.shape(b)], 0),
+        array_ops.concat([array_ops.shape(b), array_ops.shape(a)], 0)))
+
   # One of the shapes isn't fully defined, so we need to use the dynamic
   # shape.
   return control_flow_ops.cond(
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
-      # Here we can't just do math_ops.equal(a.shape, b.shape), since
-      # static shape inference may break the equality comparison between
-      # shape(a) and shape(b) in math_ops.equal.
-      lambda: math_ops.reduce_all(math_ops.equal(
-          array_ops.concat((
-              array_ops.shape(a),
-              array_ops.shape(b)), 0),
-          array_ops.concat((
-              array_ops.shape(b),
-              array_ops.shape(a)), 0))),
+      all_shapes_equal,
       lambda: constant_op.constant(False))
 
 
-def get_logits_and_prob(
-    logits=None, p=None,
-    multidimensional=False, validate_args=False, name="GetLogitsAndProb"):
-  """Converts logits to probabilities and vice-versa, and returns both.
+def get_logits_and_probs(logits=None,
+                         probs=None,
+                         multidimensional=False,
+                         validate_args=False,
+                         name="get_logits_and_probs"):
+  """Converts logit to probabilities (or vice-versa), and returns both.
 
   Args:
     logits: Numeric `Tensor` representing log-odds.
-    p: Numeric `Tensor` representing probabilities.
+    probs: Numeric `Tensor` representing probabilities.
     multidimensional: `Boolean`, default `False`.
-      If `True`, represents whether the last dimension of `logits` or `p`,
-      a [N1, N2, ... k] dimensional tensor, represent the
-      logits / probability between k classes. For `p`, this will
-      additionally assert that the values in the last dimension sum to one.
-
-      If `False`, this will instead assert that each value of `p` is in
-      `[0, 1]`, and will do nothing to `logits`.
-    validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
-      if multidimensional is `False`, otherwise that the last dimension of `p`
-      sums to one.
+      If `True`, represents whether the last dimension of `logits` or `probs`,
+      a `[N1, N2, ... k]` dimensional tensor, representing the
+      logit or probability of `shape[-1]` classes.
+    validate_args: `Boolean`, default `False`.  When `True`, either assert `0 <=
+      probs <= 1` (if not `multidimensional`) or that the last dimension of
+      `probs` sums to one.
     name: A name for this operation (optional).
 
   Returns:
-    Tuple with `logits` and `p`. If `p` has an entry that is `0` or `1`, then
-    the corresponding entry in the returned logits will be `-Inf` and `Inf`
-    respectively.
+    logits, probs: Tuple of `Tensor`s. If `probs` has an entry that is `0` or
+      `1`, then the corresponding entry in the returned logit will be `-Inf` and
+      `Inf` respectively.
 
   Raises:
-    ValueError: if neither `p` nor `logits` were passed in, or both were.
+    ValueError: if neither `probs` nor `logits` were passed in, or both were.
   """
-  with ops.name_scope(name, values=[p, logits]):
-    if p is None and logits is None:
-      raise ValueError("Must pass p or logits.")
-    elif p is not None and logits is not None:
-      raise ValueError("Must pass either p or logits, not both.")
-    elif p is None:
-      logits = array_ops.identity(logits, name="logits")
-      with ops.name_scope("p"):
+  with ops.name_scope(name, values=[probs, logits]):
+    if (probs is None) == (logits is None):
+      raise ValueError("Must pass probs or logits, but not both.")
+
+    if probs is None:
+      logits = ops.convert_to_tensor(logits, name="logits")
+      if multidimensional:
+        return logits, nn.softmax(logits, name="probs")
+      return logits, math_ops.sigmoid(logits, name="probs")
+
+    probs = ops.convert_to_tensor(probs, name="probs")
+    if validate_args:
+      with ops.name_scope("validate_probs"):
+        one = constant_op.constant(1., probs.dtype)
+        dependencies = [check_ops.assert_non_negative(probs)]
         if multidimensional:
-          p = nn.softmax(logits)
+          dependencies += [assert_close(math_ops.reduce_sum(probs, -1), one,
+                                        message="probs does not sum to 1.")]
         else:
-          p = math_ops.sigmoid(logits)
-    elif logits is None:
-      with ops.name_scope("p"):
-        p = array_ops.identity(p)
-        if validate_args:
-          one = constant_op.constant(1., p.dtype)
-          dependencies = [check_ops.assert_non_negative(p)]
-          if multidimensional:
-            dependencies += [assert_close(
-                math_ops.reduce_sum(p, reduction_indices=[-1]),
-                one, message="p does not sum to 1.")]
-          else:
-            dependencies += [check_ops.assert_less_equal(
-                p, one, message="p has components greater than 1.")]
-          p = control_flow_ops.with_dependencies(dependencies, p)
-      with ops.name_scope("logits"):
-        if multidimensional:
-          # Here we don't compute the multidimensional case, in a manner
-          # consistent with respect to the unidimensional case. We do so
-          # following the TF convention. Typically, you might expect to see
-          # logits = log(p) - log(gather(p, pivot)). A side-effect of being
-          # consistent with the TF approach is that the unidimensional case
-          # implicitly handles the second dimension but the multidimensional
-          # case explicitly keeps the pivot dimension.
-          logits = math_ops.log(p)
-        else:
-          logits = math_ops.log(p) - math_ops.log(1. - p)
-    return (logits, p)
+          dependencies += [check_ops.assert_less_equal(
+              probs, one, message="probs has components greater than 1.")]
+        probs = control_flow_ops.with_dependencies(dependencies, probs)
+
+    with ops.name_scope("logits"):
+      if multidimensional:
+        # Here we don't compute the multidimensional case, in a manner
+        # consistent with respect to the unidimensional case. We do so
+        # following the TF convention. Typically, you might expect to see
+        # logits = log(probs) - log(gather(probs, pivot)). A side-effect of
+        # being consistent with the TF approach is that the unidimensional case
+        # implicitly handles the second dimension but the multidimensional case
+        # explicitly keeps the pivot dimension.
+        return math_ops.log(probs), probs
+      return math_ops.log(probs) - math_ops.log1p(-1. * probs), probs
 
 
 def log_combinations(n, counts, name="log_combinations"):
@@ -274,7 +266,7 @@ def matrix_diag_transform(matrix, transform=None, name=None):
 
   # Standard log loss.  Minimizing this will "train" mu and chol, and then dist
   # will be a distribution predicting labels as multivariate Gaussians.
-  loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+  loss = -1 * tf.reduce_mean(dist.log_prob(labels))
   ```
 
   Args:
@@ -564,6 +556,63 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     return y
 
 
+# TODO(jvdillon): Merge this test back into:
+# tensorflow/python/ops/softplus_op_test.py
+# once TF core is accepting new ops.
+def softplus_inverse(x, name=None):
+  """Computes the inverse softplus, i.e., x = softplus_inverse(softplus(x)).
+
+  Mathematically this op is equivalent to:
+
+  ```none
+  softplus_inverse = log(exp(x) - 1.)
+  ```
+
+  Args:
+    x: `Tensor`. Non-negative (not enforced), floating-point.
+    name: A name for the operation (optional).
+
+  Returns:
+    `Tensor`. Has the same type/shape as input `x`.
+  """
+  with ops.name_scope(name, "softplus_inverse", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    # We begin by deriving a more numerically stable softplus_inverse:
+    # x = softplus(y) = Log[1 + exp{y}], (which means x > 0).
+    # ==> exp{x} = 1 + exp{y}                                (1)
+    # ==> y = Log[exp{x} - 1]                                (2)
+    #       = Log[(exp{x} - 1) / exp{x}] + Log[exp{x}]
+    #       = Log[(1 - exp{-x}) / 1] + Log[exp{x}]
+    #       = Log[1 - exp{-x}] + x                           (3)
+    # (2) is the "obvious" inverse, but (3) is more stable than (2) for large x.
+    # For small x (e.g. x = 1e-10), (3) will become -inf since 1 - exp{-x} will
+    # be zero.  To fix this, we use 1 - exp{-x} approx x for small x > 0.
+    #
+    # In addition to the numerically stable derivation above, we clamp
+    # small/large values to be congruent with the logic in:
+    # tensorflow/core/kernels/softplus_op.h
+    #
+    # Finally, we set the input to one whenever the input is too large or too
+    # small. This ensures that no unchosen codepath is +/- inf. This is
+    # necessary to ensure the gradient doesn't get NaNs. Recall that the
+    # gradient of `where` behaves like `pred*pred_true + (1-pred)*pred_false`
+    # thus an `inf` in an unselected path results in `0*inf=nan`. We are careful
+    # to overwrite `x` with ones only when we will never actually use this
+    # value.  Note that we use ones and not zeros since `log(expm1(0.)) = -inf`.
+    threshold = np.log(np.finfo(x.dtype.as_numpy_dtype).eps) + 2.
+    is_too_small = math_ops.less(x, np.exp(threshold))
+    is_too_large = math_ops.greater(x, -threshold)
+    too_small_value = math_ops.log(x)
+    too_large_value = x
+    # This `where` will ultimately be a NOP because we won't select this
+    # codepath whenever we used the surrogate `ones_like`.
+    x = array_ops.where(math_ops.logical_or(is_too_small, is_too_large),
+                        array_ops.ones_like(x), x)
+    y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
+    return array_ops.where(is_too_small, too_small_value,
+                           array_ops.where(is_too_large, too_large_value, y))
+
+
 class AppendDocstring(object):
   """Helper class to promote private subclass docstring to public counterpart.
 
@@ -573,36 +622,36 @@ class AppendDocstring(object):
   class TransformedDistribution(Distribution):
     @distribution_util.AppendDocstring(
       additional_note="A special note!",
-      condition_kwargs_dict={"foo": "An extra arg."})
+      kwargs_dict={"foo": "An extra arg."})
     def _prob(self, y, foo=None):
       pass
   ```
 
   In this case, the `AppendDocstring` decorator appends the `additional_note` to
-  the docstring of `prob` (not `_prob`) and adds a new `condition_kwargs`
+  the docstring of `prob` (not `_prob`) and adds a new `kwargs`
   section with each dictionary item as a bullet-point.
 
   For a more detailed example, see `TransformedDistribution`.
   """
 
-  def __init__(self, additional_note="", condition_kwargs_dict=None):
+  def __init__(self, additional_note="", kwargs_dict=None):
     """Initializes the AppendDocstring object.
 
     Args:
       additional_note: Python string added as additional docstring to public
         version of function.
-      condition_kwargs_dict: Python string/string dictionary representing
-        specific kwargs expanded from the **condition_kwargs input.
+      kwargs_dict: Python string/string dictionary representing
+        specific kwargs expanded from the **kwargs input.
 
     Raises:
-      ValueError: if condition_kwargs_dict.key contains whitespace.
-      ValueError: if condition_kwargs_dict.value contains newlines.
+      ValueError: if kwargs_dict.key contains whitespace.
+      ValueError: if kwargs_dict.value contains newlines.
     """
     self._additional_note = additional_note
-    if condition_kwargs_dict:
+    if kwargs_dict:
       bullets = []
-      for key in sorted(condition_kwargs_dict.keys()):
-        value = condition_kwargs_dict[key]
+      for key in sorted(kwargs_dict.keys()):
+        value = kwargs_dict[key]
         if any(x.isspace() for x in key):
           raise ValueError(
               "Parameter name \"%s\" contains whitespace." % key)
@@ -611,7 +660,7 @@ class AppendDocstring(object):
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
         bullets.append("*  `%s`: %s" % (key, value))
-      self._additional_note += ("\n\n##### `condition_kwargs`:\n\n" +
+      self._additional_note += ("\n\n##### `kwargs`:\n\n" +
                                 "\n".join(bullets))
 
   def __call__(self, fn):

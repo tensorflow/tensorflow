@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/python/lib/core/py_func.h"
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 %}
 
@@ -42,12 +41,11 @@ limitations under the License.
 %unignore tensorflow::StatSummarizer::GetOutputString;
 
 
+// TODO(ashankar): Remove the unused argument from the API.
 %{
 tensorflow::StatSummarizer* NewStatSummarizer(
-      const string& graph_def_str) {
-  tensorflow::GraphDef graph_def;
-  graph_def.ParseFromString(graph_def_str);
-  return new tensorflow::StatSummarizer(graph_def);
+      const string& unused) {
+  return new tensorflow::StatSummarizer(tensorflow::StatSummarizerOptions());
 }
 %}
 
@@ -58,7 +56,7 @@ void DeleteStatSummarizer(tensorflow::StatSummarizer* ss) {
 }
 %}
 
-tensorflow::StatSummarizer* NewStatSummarizer(const string& graph_def_str);
+tensorflow::StatSummarizer* NewStatSummarizer(const string& unused);
 void DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
 
 %extend tensorflow::StatSummarizer {
@@ -70,10 +68,9 @@ void DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
 }
 
 %extend tensorflow::StatSummarizer {
-  StatSummarizer(const string& graph_def_str) {
-    tensorflow::GraphDef graph_def;
-    graph_def.ParseFromString(graph_def_str);
-    tensorflow::StatSummarizer* ss = new tensorflow::StatSummarizer(graph_def);
+  StatSummarizer() {
+    tensorflow::StatSummarizer* ss = new tensorflow::StatSummarizer(
+      tensorflow::StatSummarizerOptions());
     return ss;
 }
 }

@@ -7,17 +7,14 @@ Concat
 ConcatV2
 Const
 EditDistance
-Empty
 ExpandDims
-InplaceUpdate
-InplaceAdd
-InplaceSubtract
 ListDiff
 MirrorPad
 MirrorPadGrad
 OneHot
 Pack
 Pad
+ParallelConcat
 Placeholder
 RefIdentity
 Reverse
@@ -236,6 +233,7 @@ Max
 Mean
 Min
 Mul
+Neg
 Pow
 Prod
 Range

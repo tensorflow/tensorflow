@@ -22,7 +22,6 @@ import abc
 import contextlib
 import inspect
 import types
-import warnings
 
 import numpy as np
 import six
@@ -38,9 +37,10 @@ from tensorflow.python.ops import math_ops
 
 
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
-    "batch_shape", "get_batch_shape", "event_shape", "get_event_shape",
+    "batch_shape_tensor", "batch_shape", "event_shape_tensor", "event_shape",
     "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
-    "survival_function", "entropy", "mean", "variance", "std", "mode"]
+    "survival_function", "entropy", "mean", "variance", "stddev", "mode",
+    "covariance"]
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -83,6 +83,7 @@ def _copy_fn(fn):
 
 def _update_docstring(old_str, append_str):
   """Update old_str by inserting append_str just before the "Args:" section."""
+  old_str = old_str or ""
   old_str_lines = old_str.split("\n")
 
   # Step 0: Prepend spaces to all lines of append_str. This is
@@ -173,6 +174,56 @@ class _DistributionMeta(abc.ABCMeta):
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
 
 
+class ReparameterizationType(object):
+  """Instances of this class represent how sampling is reparameterized.
+
+  Two static instances exist in the distritributions library, signifying
+  one of two possible properties for samples from a distribution:
+
+  `FULLY_REPARAMETERIZED`: Samples from the distribution are fully
+    reparameterized, and straight-through gradients are supported.
+
+  `NOT_REPARAMETERIZED`: Samples from the distribution are not fully
+    reparameterized, and straight-through gradients are either partially
+    unsupported or are not supported at all.  In this case, for purposes of
+    e.g. RL or variational inference, it is generally safest to wrap the
+    sample results in a `stop_gradients` call and instead use policy
+    gradients / surrogate loss instead.
+  """
+
+  def __init__(self, rep_type):
+    self._rep_type = rep_type
+
+  def __repr__(self):
+    return "<Reparameteriation Type: %s>" % self._rep_type
+
+  def __eq__(self, other):
+    """Determine if this `ReparameterizationType` is equal to another.
+
+    Since RepaparameterizationType instances are constant static global
+    instances, equality checks if two instances' id() values are equal.
+
+    Args:
+      other: Object to compare against.
+
+    Returns:
+      `self is other`.
+    """
+    return self is other
+
+
+# Fully reparameterized distribution: samples from a fully
+# reparameterized distribution support straight-through gradients with
+# respect to all parameters.
+FULLY_REPARAMETERIZED = ReparameterizationType("FULLY_REPARAMETERIZED")
+
+
+# Not reparameterized distribution: samples from a non-
+# reparameterized distribution do not support straight-through gradients for
+# at least some of the parameters.
+NOT_REPARAMETERIZED = ReparameterizationType("NOT_REPARAMETERIZED")
+
+
 @six.add_metaclass(_DistributionMeta)
 class Distribution(_BaseDistribution):
   """A generic probability distribution base class.
@@ -231,9 +282,9 @@ class Distribution(_BaseDistribution):
   u = Uniform(minval, maxval)
 
   # `event_shape` is `TensorShape([])`.
-  event_shape = u.get_event_shape()
+  event_shape = u.event_shape
   # `event_shape_t` is a `Tensor` which will evaluate to [].
-  event_shape_t = u.event_shape
+  event_shape_t = u.event_shape_tensor()
 
   # Sampling returns a sample per distribution.  `samples` has shape
   # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
@@ -293,7 +344,7 @@ class Distribution(_BaseDistribution):
   def __init__(self,
                dtype,
                is_continuous,
-               is_reparameterized,
+               reparameterization_type,
                validate_args,
                allow_nan_stats,
                parameters=None,
@@ -307,10 +358,12 @@ class Distribution(_BaseDistribution):
       dtype: The type of the event samples. `None` implies no type-enforcement.
       is_continuous: Python boolean. If `True` this
         `Distribution` is continuous over its supported domain.
-      is_reparameterized: Python boolean. If `True` this
+      reparameterization_type: Instance of `ReparameterizationType`.
+        If `distributions.FULLY_REPARAMETERIZED`, this
         `Distribution` can be reparameterized in terms of some standard
         distribution with a function whose Jacobian is constant for the support
-        of the standard distribution.
+        of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+        then no such reparameterization is available.
       validate_args: Python boolean.  Whether to validate input with asserts.
         If `validate_args` is `False`, and the inputs are invalid,
         correct behavior is not guaranteed.
@@ -330,13 +383,12 @@ class Distribution(_BaseDistribution):
     for i, t in enumerate(graph_parents):
       if t is None or not contrib_framework.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
-    parameters = parameters or {}
     self._dtype = dtype
     self._is_continuous = is_continuous
-    self._is_reparameterized = is_reparameterized
+    self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    self._parameters = parameters
+    self._parameters = parameters or {}
     self._graph_parents = graph_parents
     self._name = name or type(self).__name__
 
@@ -344,7 +396,11 @@ class Distribution(_BaseDistribution):
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
     """Shapes of parameters given the desired shape of a call to `sample()`.
 
-    Subclasses should override static method `_param_shapes`.
+    This is a class method that describes what key/value arguments are required
+    to instantiate the given `Distribution` so that a particular shape is
+    returned for that instance's call to `sample()`.
+
+    Subclasses should override class method `_param_shapes`.
 
     Args:
       sample_shape: `Tensor` or python list/tuple. Desired shape of a call to
@@ -359,7 +415,15 @@ class Distribution(_BaseDistribution):
 
   @classmethod
   def param_static_shapes(cls, sample_shape):
-    """param_shapes with static (i.e. TensorShape) shapes.
+    """param_shapes with static (i.e. `TensorShape`) shapes.
+
+    This is a class method that describes what key/value arguments are required
+    to instantiate the given `Distribution` so that a particular shape is
+    returned for that instance's call to `sample()`.  Assumes that
+    the sample's shape is known statically.
+
+    Subclasses should override class method `_param_shapes` to return
+    constant-valued tensors when constant values are fed.
 
     Args:
       sample_shape: `TensorShape` or python list/tuple. Desired shape of a call
@@ -405,15 +469,27 @@ class Distribution(_BaseDistribution):
   @property
   def parameters(self):
     """Dictionary of parameters used to instantiate this `Distribution`."""
-    return self._parameters
+    # Remove "self", "__class__", or other special variables. These can appear
+    # if the subclass used `parameters = locals()`.
+    return dict((k, v) for k, v in self._parameters.items()
+                if not k.startswith("__") and k != "self")
 
   @property
   def is_continuous(self):
     return self._is_continuous
 
   @property
-  def is_reparameterized(self):
-    return self._is_reparameterized
+  def reparameterization_type(self):
+    """Describes how samples from the distribution are reparameterized.
+
+    Currently this is one of the static instances
+    `distributions.FULLY_REPARAMETERIZED`
+    or `distributions.NOT_REPARAMETERIZED`.
+
+    Returns:
+      An instance of `ReparameterizationType`.
+    """
+    return self._reparameterization_type
 
   @property
   def allow_nan_stats(self):
@@ -454,19 +530,16 @@ class Distribution(_BaseDistribution):
         `dict(self.parameters, **override_parameters_kwargs)`.
     """
     parameters = dict(self.parameters, **override_parameters_kwargs)
-    # Python3 leaks "__class__" into `locals()` so we remove if present.
-    # TODO(b/32376812): Remove this pop.
-    parameters.pop("__class__", None)
     return type(self)(**parameters)
 
-  def _batch_shape(self):
-    raise NotImplementedError("batch_shape is not implemented")
+  def _batch_shape_tensor(self):
+    raise NotImplementedError("batch_shape_tensor is not implemented")
 
-  def batch_shape(self, name="batch_shape"):
+  def batch_shape_tensor(self, name="batch_shape_tensor"):
     """Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
+    The batch dimensions are indexes into independent, non-identical
+    parameterizations of this distribution.
 
     Args:
       name: name to give to the op
@@ -475,29 +548,33 @@ class Distribution(_BaseDistribution):
       batch_shape: `Tensor`.
     """
     with self._name_scope(name):
-      if self.get_batch_shape().is_fully_defined():
-        return ops.convert_to_tensor(self.get_batch_shape().as_list(),
+      if self.batch_shape.is_fully_defined():
+        return ops.convert_to_tensor(self.batch_shape.as_list(),
                                      dtype=dtypes.int32,
                                      name="batch_shape")
-      return self._batch_shape()
+      return self._batch_shape_tensor()
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return tensor_shape.TensorShape(None)
 
-  def get_batch_shape(self):
+  @property
+  def batch_shape(self):
     """Shape of a single sample from a single event index as a `TensorShape`.
 
-    Same meaning as `batch_shape`. May be only partially defined.
+    May be partially defined or unknown.
+
+    The batch dimensions are indexes into independent, non-identical
+    parameterizations of this distribution.
 
     Returns:
       batch_shape: `TensorShape`, possibly unknown.
     """
-    return self._get_batch_shape()
+    return self._batch_shape()
 
-  def _event_shape(self):
-    raise NotImplementedError("event_shape is not implemented")
+  def _event_shape_tensor(self):
+    raise NotImplementedError("event_shape_tensor is not implemented")
 
-  def event_shape(self, name="event_shape"):
+  def event_shape_tensor(self, name="event_shape_tensor"):
     """Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
     Args:
@@ -507,24 +584,25 @@ class Distribution(_BaseDistribution):
       event_shape: `Tensor`.
     """
     with self._name_scope(name):
-      if self.get_event_shape().is_fully_defined():
-        return ops.convert_to_tensor(self.get_event_shape().as_list(),
+      if self.event_shape.is_fully_defined():
+        return ops.convert_to_tensor(self.event_shape.as_list(),
                                      dtype=dtypes.int32,
                                      name="event_shape")
-      return self._event_shape()
+      return self._event_shape_tensor()
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.TensorShape(None)
 
-  def get_event_shape(self):
+  @property
+  def event_shape(self):
     """Shape of a single sample from a single batch as a `TensorShape`.
 
-    Same meaning as `event_shape`. May be only partially defined.
+    May be partially defined or unknown.
 
     Returns:
       event_shape: `TensorShape`, possibly unknown.
     """
-    return self._get_event_shape()
+    return self._event_shape()
 
   def is_scalar_event(self, name="is_scalar_event"):
     """Indicates that `event_shape == []`.
@@ -537,7 +615,7 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return ops.convert_to_tensor(
-          self._is_scalar_helper(self.get_event_shape, self.event_shape),
+          self._is_scalar_helper(self.event_shape, self.event_shape_tensor),
           name="is_scalar_event")
 
   def is_scalar_batch(self, name="is_scalar_batch"):
@@ -551,14 +629,26 @@ class Distribution(_BaseDistribution):
     """
     with self._name_scope(name):
       return ops.convert_to_tensor(
-          self._is_scalar_helper(self.get_batch_shape, self.batch_shape),
+          self._is_scalar_helper(self.batch_shape, self.batch_shape_tensor),
           name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
     raise NotImplementedError("sample_n is not implemented")
 
-  def sample(self, sample_shape=(), seed=None, name="sample",
-             **condition_kwargs):
+  def _call_sample_n(self, sample_shape, seed, name, **kwargs):
+    with self._name_scope(name, values=[sample_shape]):
+      sample_shape = ops.convert_to_tensor(
+          sample_shape, dtype=dtypes.int32, name="sample_shape")
+      sample_shape, n = self._expand_sample_shape_to_vector(
+          sample_shape, "sample_shape")
+      samples = self._sample_n(n, seed, **kwargs)
+      batch_event_shape = array_ops.shape(samples)[1:]
+      final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
+      samples = array_ops.reshape(samples, final_shape)
+      samples = self._set_sample_static_shape(samples, sample_shape)
+      return samples
+
+  def sample(self, sample_shape=(), seed=None, name="sample"):
     """Generate samples of the specified shape.
 
     Note that a call to `sample()` without arguments will generate a single
@@ -568,74 +658,81 @@ class Distribution(_BaseDistribution):
       sample_shape: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
       seed: Python integer seed for RNG
       name: name to give to the op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       samples: a `Tensor` with prepended dimensions `sample_shape`.
     """
-    with self._name_scope(name, values=[sample_shape]):
-      sample_shape = ops.convert_to_tensor(
-          sample_shape, dtype=dtypes.int32, name="sample_shape")
-      sample_shape, n = self._expand_sample_shape_to_vector(
-          sample_shape, "sample_shape")
-      samples = self._sample_n(n, seed, **condition_kwargs)
-      batch_event_shape = array_ops.shape(samples)[1:]
-      final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
-      samples = array_ops.reshape(samples, final_shape)
-      samples = self._set_sample_static_shape(samples, sample_shape)
-      return samples
+    return self._call_sample_n(sample_shape, seed, name)
 
   def _log_prob(self, value):
     raise NotImplementedError("log_prob is not implemented")
 
-  def log_prob(self, value, name="log_prob", **condition_kwargs):
+  def _call_log_prob(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._log_prob(value, **kwargs)
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.log(self._prob(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
+
+  def log_prob(self, value, name="log_prob"):
     """Log probability density/mass function (depending on `is_continuous`).
 
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       log_prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
+    return self._call_log_prob(value, name)
+
+  def _prob(self, value):
+    raise NotImplementedError("prob is not implemented")
+
+  def _call_prob(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
       value = ops.convert_to_tensor(value, name="value")
       try:
-        return self._log_prob(value, **condition_kwargs)
+        return self._prob(value, **kwargs)
       except NotImplementedError as original_exception:
         try:
-          return math_ops.log(self._prob(value, **condition_kwargs))
+          return math_ops.exp(self._log_prob(value, **kwargs))
         except NotImplementedError:
           raise original_exception
 
-  def prob(self, value, name="prob", **condition_kwargs):
+  def prob(self, value, name="prob"):
     """Probability density/mass function (depending on `is_continuous`).
 
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
-    with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._prob(value, **condition_kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.exp(self._log_prob(value, **condition_kwargs))
-        except NotImplementedError:
-          raise original_exception
+    return self._call_prob(value, name)
 
   def _log_cdf(self, value):
     raise NotImplementedError("log_cdf is not implemented")
 
-  def log_cdf(self, value, name="log_cdf", **condition_kwargs):
+  def _call_log_cdf(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._log_cdf(value, **kwargs)
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.log(self._cdf(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
+
+  def log_cdf(self, value, name="log_cdf"):
     """Log cumulative distribution function.
 
     Given random variable `X`, the cumulative distribution function `cdf` is:
@@ -651,26 +748,28 @@ class Distribution(_BaseDistribution):
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       logcdf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
-    with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._log_cdf(value, **condition_kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log(self._cdf(value, **condition_kwargs))
-        except NotImplementedError:
-          raise original_exception
+    return self._call_log_cdf(value, name)
 
   def _cdf(self, value):
     raise NotImplementedError("cdf is not implemented")
 
-  def cdf(self, value, name="cdf", **condition_kwargs):
+  def _call_cdf(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._cdf(value, **kwargs)
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.exp(self._log_cdf(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
+
+  def cdf(self, value, name="cdf"):
     """Cumulative distribution function.
 
     Given random variable `X`, the cumulative distribution function `cdf` is:
@@ -682,27 +781,28 @@ class Distribution(_BaseDistribution):
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       cdf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
         values of type `self.dtype`.
     """
-    with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._cdf(value, **condition_kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.exp(self._log_cdf(value, **condition_kwargs))
-        except NotImplementedError:
-          raise original_exception
+    return self._call_cdf(value, name)
 
   def _log_survival_function(self, value):
     raise NotImplementedError("log_survival_function is not implemented")
 
-  def log_survival_function(self, value, name="log_survival_function",
-                            **condition_kwargs):
+  def _call_log_survival_function(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._log_survival_function(value, **kwargs)
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.log(1. - self.cdf(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
+
+  def log_survival_function(self, value, name="log_survival_function"):
     """Log survival function.
 
     Given random variable `X`, the survival function is defined:
@@ -719,27 +819,28 @@ class Distribution(_BaseDistribution):
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
       `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
         `self.dtype`.
     """
-    with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._log_survival_function(value, **condition_kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return math_ops.log(1. - self.cdf(value, **condition_kwargs))
-        except NotImplementedError:
-          raise original_exception
+    return self._call_log_survival_function(value, name)
 
   def _survival_function(self, value):
     raise NotImplementedError("survival_function is not implemented")
 
-  def survival_function(self, value, name="survival_function",
-                        **condition_kwargs):
+  def _call_survival_function(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._survival_function(value, **kwargs)
+      except NotImplementedError as original_exception:
+        try:
+          return 1. - self.cdf(value, **kwargs)
+        except NotImplementedError:
+          raise original_exception
+
+  def survival_function(self, value, name="survival_function"):
     """Survival function.
 
     Given random variable `X`, the survival function is defined:
@@ -753,21 +854,12 @@ class Distribution(_BaseDistribution):
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
 
     Returns:
-      Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+      `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
         `self.dtype`.
     """
-    with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
-      try:
-        return self._survival_function(value, **condition_kwargs)
-      except NotImplementedError as original_exception:
-        try:
-          return 1. - self.cdf(value, **condition_kwargs)
-        except NotImplementedError:
-          raise original_exception
+    return self._call_survival_function(value, name)
 
   def _entropy(self):
     raise NotImplementedError("entropy is not implemented")
@@ -789,17 +881,106 @@ class Distribution(_BaseDistribution):
     raise NotImplementedError("variance is not implemented")
 
   def variance(self, name="variance"):
-    """Variance."""
-    with self._name_scope(name):
-      return self._variance()
+    """Variance.
 
-  def _std(self):
-    raise NotImplementedError("std is not implemented")
+    Variance is defined as,
 
-  def std(self, name="std"):
-    """Standard deviation."""
+    ```none
+    Var = E[(X - E[X])**2]
+    ```
+
+    where `X` is the random variable associated with this distribution, `E`
+    denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      variance: Floating-point `Tensor` with shape identical to
+        `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+    """
     with self._name_scope(name):
-      return self._std()
+      try:
+        return self._variance()
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.square(self._stddev())
+        except NotImplementedError:
+          raise original_exception
+
+  def _stddev(self):
+    raise NotImplementedError("stddev is not implemented")
+
+  def stddev(self, name="stddev"):
+    """Standard deviation.
+
+    Standard deviation is defined as,
+
+    ```none
+    stddev = E[(X - E[X])**2]**0.5
+    ```
+
+    where `X` is the random variable associated with this distribution, `E`
+    denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      stddev: Floating-point `Tensor` with shape identical to
+        `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+    """
+
+    with self._name_scope(name):
+      try:
+        return self._stddev()
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.sqrt(self._variance())
+        except NotImplementedError:
+          raise original_exception
+
+  def _covariance(self):
+    raise NotImplementedError("covariance is not implemented")
+
+  def covariance(self, name="covariance"):
+    """Covariance.
+
+    Covariance is (possibly) defined only for non-scalar-event distributions.
+
+    For example, for a length-`k`, vector-valued distribution, it is calculated
+    as,
+
+    ```none
+    Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+    ```
+
+    where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+    denotes expectation.
+
+    Alternatively, for non-vector, multivariate distributions (e.g.,
+    matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+    under some vectorization of the events, i.e.,
+
+    ```none
+    Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+    ````
+
+    where `Cov` is a (batch of) `k' x k'` matrices,
+    `0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+    mapping indices of this distribution's event dimensions to indices of a
+    length-`k'` vector.
+
+    Args:
+      name: The name to give this op.
+
+    Returns:
+      covariance: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+        where the first `n` dimensions are batch coordinates and
+        `k' = reduce_prod(self.event_shape)`.
+    """
+    with self._name_scope(name):
+      return self._covariance()
 
   def _mode(self):
     raise NotImplementedError("mode is not implemented")
@@ -808,94 +989,6 @@ class Distribution(_BaseDistribution):
     """Mode."""
     with self._name_scope(name):
       return self._mode()
-
-  def log_pdf(self, value, name="log_pdf", **condition_kwargs):
-    """Log probability density function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
-
-    Returns:
-      log_prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if not `is_continuous`.
-    """
-    warnings.warn("Please use `log_prob` instead of `log_pdf`. `log_pdf` "
-                  "will be deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if not self.is_continuous:
-      raise TypeError("log_pdf is undefined for non-continuous distributions.")
-    return self.log_prob(value, name=name, **condition_kwargs)
-
-  def pdf(self, value, name="pdf", **condition_kwargs):
-    """Probability density function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
-
-    Returns:
-      prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if not `is_continuous`.
-    """
-    warnings.warn("Please use `prob` instead of `pdf`. `pdf` will be "
-                  "deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if not self.is_continuous:
-      raise TypeError("pdf is undefined for non-continuous distributions.")
-    return self.prob(value, name, **condition_kwargs)
-
-  def log_pmf(self, value, name="log_pmf", **condition_kwargs):
-    """Log probability mass function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
-
-    Returns:
-      log_pmf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if `is_continuous`.
-    """
-    warnings.warn("Please use `log_prob` instead of `log_pmf`. `log_pmf` will "
-                  "be deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if self.is_continuous:
-      raise TypeError("log_pmf is undefined for continuous distributions.")
-    return self.log_prob(value, name=name, **condition_kwargs)
-
-  def pmf(self, value, name="pmf", **condition_kwargs):
-    """Probability mass function.
-
-    Args:
-      value: `float` or `double` `Tensor`.
-      name: The name to give this op.
-      **condition_kwargs: Named arguments forwarded to subclass implementation.
-
-    Returns:
-      pmf: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-
-    Raises:
-      TypeError: if `is_continuous`.
-    """
-    warnings.warn("Please use `prob` instead of `pmf`. `pmf` will be "
-                  "deprecated in December 2016.",
-                  PendingDeprecationWarning)
-    if self.is_continuous:
-      raise TypeError("pmf is undefined for continuous distributions.")
-    return self.prob(value, name=name, **condition_kwargs)
 
   @contextlib.contextmanager
   def _name_scope(self, name=None, values=None):
@@ -943,8 +1036,8 @@ class Distribution(_BaseDistribution):
 
     ndims = x.get_shape().ndims
     sample_ndims = sample_shape.ndims
-    batch_ndims = self.get_batch_shape().ndims
-    event_ndims = self.get_event_shape().ndims
+    batch_ndims = self.batch_shape.ndims
+    event_ndims = self.event_shape.ndims
 
     # Infer rank(x).
     if (ndims is None and
@@ -962,7 +1055,7 @@ class Distribution(_BaseDistribution):
     # Infer event shape.
     if ndims is not None and event_ndims is not None:
       shape = tensor_shape.TensorShape(
-          [None]*(ndims - event_ndims)).concatenate(self.get_event_shape())
+          [None]*(ndims - event_ndims)).concatenate(self.event_shape)
       x.set_shape(x.get_shape().merge_with(shape))
 
     # Infer batch shape.
@@ -974,19 +1067,19 @@ class Distribution(_BaseDistribution):
           event_ndims = ndims - batch_ndims - sample_ndims
       if sample_ndims is not None and event_ndims is not None:
         shape = tensor_shape.TensorShape([None]*sample_ndims).concatenate(
-            self.get_batch_shape()).concatenate([None]*event_ndims)
+            self.batch_shape).concatenate([None]*event_ndims)
         x.set_shape(x.get_shape().merge_with(shape))
 
     return x
 
-  def _is_scalar_helper(self, static_shape_fn, dynamic_shape_fn):
+  def _is_scalar_helper(self, static_shape, dynamic_shape_fn):
     """Implementation for `is_scalar_batch` and `is_scalar_event`."""
-    if static_shape_fn().ndims is not None:
-      return static_shape_fn().ndims == 0
+    if static_shape.ndims is not None:
+      return static_shape.ndims == 0
     shape = dynamic_shape_fn()
     if (shape.get_shape().ndims is not None and
         shape.get_shape()[0].value is not None):
-      # If the static_shape_fn is correctly written then we should never execute
+      # If the static_shape is correctly written then we should never execute
       # this branch. We keep it just in case there's some unimagined corner
       # case.
       return shape.get_shape().as_list() == [0]

@@ -32,34 +32,16 @@ Constructor of DumpingDebugWrapperSession.
     `session_root`. The subdirectories' names has the following pattern:
       run_<epoch_time_stamp>_<uuid>
     E.g., run_1480734393835964_ad4c953a85444900ae79fc1b652fb324
-*  <b>`watch_fn`</b>: (`Callable`) A Callable of the following signature:
-    ```
-    def watch_fn(fetches, feeds):
-      # Args:
-      #   fetches: the fetches to the `Session.run()` call.
-      #   feeds: the feeds to the `Session.run()` call.
-      #
-      # Returns: (node_name_regex_whitelist, op_type_regex_whitelist)
-      #   debug_ops: (str or list of str) Debug op(s) to be used by the
-      #     debugger in this run() call.
-      #   node_name_regex_whitelist: Regular-expression whitelist for node
-      #     name. Same as the corresponding arg to `debug_util.watch_graph`.
-      #   op_type_regex_whiteslit: Regular-expression whitelist for op type.
-      #     Same as the corresponding arg to `debug_util.watch_graph`.
-      #
-      #   Both or either can be None. If both are set, the two whitelists
-      #   will operate in a logical AND relation. This is consistent with
-      #   `debug_utils.watch_graph()`.
-    ```
+*  <b>`watch_fn`</b>: (`Callable`) A Callable that can be used to define per-run
+    debug ops and watched tensors. See the doc of
+    `NonInteractiveDebugWrapperSession.__init__()` for details.
 *  <b>`log_usage`</b>: (`bool`) whether the usage of this class is to be logged.
 
 ##### Raises:
 
 
 *  <b>`ValueError`</b>: If `session_root` is an existing and non-empty directory or
-   if
-     `session_root` is a file.
-*  <b>`TypeError`</b>: If a non-None `watch_fn` is specified and it is not callable.
+   if `session_root` is a file.
 
 
 - - -

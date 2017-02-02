@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -54,15 +55,19 @@ string HloExecutionProfile::ToString(
   string result;
   const int64 total_cycles = total_cycles_executed();
   double clock_rate_ghz = device_description.clock_rate_ghz();
-  auto append_item = [&result, total_cycles, clock_rate_ghz](
-      int64 cycles, int64 flops, const string& name) {
+
+  const auto cycles_to_microseconds = [&](double cycles) {
+    return cycles / clock_rate_ghz / 1000.0;
+  };
+
+  auto append_item = [&](int64 cycles, int64 flops, const string& name) {
     double nsecs = cycles / clock_rate_ghz;
     tensorflow::strings::StrAppend(
         &result,
         tensorflow::strings::Printf(
             "%15lld cycles (%6.2f%%) :: %12.1f usec @ f_nom :: %18s :: %s",
             cycles, cycles / static_cast<double>(total_cycles) * 100,
-            nsecs / 1e3,
+            cycles_to_microseconds(cycles),
             flops <= 0 ? "<none>" : HumanReadableNumFlops(flops, nsecs).c_str(),
             name.c_str()));
   };
@@ -81,6 +86,21 @@ string HloExecutionProfile::ToString(
     string display = item.first == nullptr ? "<none>" : item.first->ToString();
     append_item(item.second, flops, display);
   }
+
+  MetricTableReport table;
+  table.SetMetricName("microseconds");
+  table.SetEntryName("ops");
+  table.SetShowCategoryTable();
+  for (const auto& item : items) {
+    MetricTableReport::Entry entry;
+    entry.text = item.first->ToString();
+    entry.short_text = item.first->ToString(/*compact_operands=*/true);
+    entry.category_text = item.first->ToCategory();
+    entry.metric = cycles_to_microseconds(item.second);
+    table.AddEntry(std::move(entry));
+  }
+  result += table.MakeReport(cycles_to_microseconds(total_cycles));
+
   return result;
 }
 

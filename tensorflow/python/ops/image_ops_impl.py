@@ -201,8 +201,9 @@ def random_flip_up_down(image, seed=None):
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
-  stride = array_ops.where(mirror_cond, -1, 1)
-  result = image[::stride, :, :]
+  result = control_flow_ops.cond(mirror_cond,
+                                 lambda: array_ops.reverse(image, [0]),
+                                 lambda: image)
   return fix_image_flip_shape(image, result)
 
 
@@ -228,8 +229,9 @@ def random_flip_left_right(image, seed=None):
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
-  stride = array_ops.where(mirror_cond, -1, 1)
-  result = image[:, ::stride, :]
+  result = control_flow_ops.cond(mirror_cond,
+                                 lambda: array_ops.reverse(image, [1]),
+                                 lambda: image)
   return fix_image_flip_shape(image, result)
 
 
@@ -252,7 +254,7 @@ def flip_left_right(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  return fix_image_flip_shape(image, image[:, ::-1, :])
+  return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
 
 
 def flip_up_down(image):
@@ -274,7 +276,7 @@ def flip_up_down(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  return fix_image_flip_shape(image, array_ops.reverse_v2(image, [0]))
+  return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
 
 
 def rot90(image, k=1, name=None):

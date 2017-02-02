@@ -28,6 +28,7 @@ from tensorflow.contrib.session_bundle import session_bundle
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import signature_constants
 
@@ -75,8 +76,9 @@ def _convert_default_signature_to_signature_def(signatures):
     object of type SignatureDef which contains a converted version of default
     signature from input signatures object
 
-  Raises:
-    RuntimeError: if default signature type is not classification or regression.
+    Returns None if signature is of generic type because it cannot be converted
+    to SignatureDef.
+
   """
   default_signature = signatures.default_signature
   signature_def = meta_graph_pb2.SignatureDef()
@@ -102,9 +104,10 @@ def _convert_default_signature_to_signature_def(signatures):
                                  signature_constants.CLASSIFY_OUTPUT_SCORES,
                                  signature_def)
   else:
-    raise RuntimeError("Only classification and regression default signatures "
-                       "are supported for up-conversion. %s is not "
-                       "supported" % default_signature.WhichOneof("type"))
+    logging.error("Only classification and regression default signatures "
+                  "are supported for up-conversion. %s is not "
+                  "supported" % default_signature.WhichOneof("type"))
+    return None
   return signature_def
 
 

@@ -442,12 +442,17 @@ module VZ {
       let kernelRadius = Math.floor(data.length * factor / 2);
 
       data.forEach((d, i) => {
-        let actualKernelRadius = Math.min(kernelRadius, i, data.length - i - 1);
+        let actualKernelRadius = Math.min(kernelRadius, i);
         let start = i - actualKernelRadius;
         let end = i + actualKernelRadius + 1;
-
-        // Only smooth finite numbers.
-        if (!_.isFinite(d.scalar)) {
+        if (end >= data.length) {
+          // In the beginning, it's OK for the smoothing window to be small,
+          // but this is not desirable towards the end. Rather than shrinking
+          // the window, or extrapolating data to fill the gap, we're simply
+          // not going to display the smoothed line towards the end.
+          d.smoothed = Infinity;
+        } else if (!_.isFinite(d.scalar)) {
+          // Only smooth finite numbers.
           d.smoothed = d.scalar;
         } else {
           d.smoothed = d3.mean(

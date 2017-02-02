@@ -937,7 +937,7 @@ sized sequences for efficient training via `dynamic_rnn`.
 
 - - -
 
-### `tf.contrib.training.bucket(tensors, which_bucket, batch_size, num_buckets, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=None, shared_name=None, name=None)` {#bucket}
+### `tf.contrib.training.bucket(tensors, which_bucket, batch_size, num_buckets, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=True, shared_name=None, name=None)` {#bucket}
 
 Lazy bucketing of input tensors according to `which_bucket`.
 
@@ -986,8 +986,10 @@ operations that depend on fixed batch_size would fail.
 *  <b>`tensors`</b>: The list or dictionary of tensors, representing a single element,
     to bucket.  Nested lists are not supported.
 *  <b>`which_bucket`</b>: An `int32` scalar Tensor taking a value in `[0, num_buckets)`.
-*  <b>`batch_size`</b>: The new batch size pulled from the queue
-    (python int or int32 scalar).
+*  <b>`batch_size`</b>: The new batch size pulled from the queue (all queues will have
+    the same size).  If a list is passed in then each bucket will have a
+    different batch_size.
+    (python int, int32 scalar or iterable of integers of length num_buckets).
 *  <b>`num_buckets`</b>: A python integer, the number of buckets.
 *  <b>`num_threads`</b>: An integer.  The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of minibatches in the top queue,
@@ -999,11 +1001,10 @@ operations that depend on fixed batch_size would fail.
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
     batches to be smaller if there are insufficient items left in the queues.
-*  <b>`keep_input`</b>: (Optional).  A `bool` scalar Tensor.  If provided, this tensor
-    controls whether the input is added to the queue or not.  If it evaluates
-    `True`, then `tensors` are added to the bucket; otherwise they are
-    dropped.  This tensor essentially acts as a filtering mechanism.
-    The default behavior is to assume `keep_input=True`.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
+    whether the input is added to the queue or not.  If it evaluates `True`,
+    then `tensors` are added to the bucket; otherwise they are dropped.  This
+    tensor essentially acts as a filtering mechanism.
 *  <b>`shared_name`</b>: (Optional). If set, the queues will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
@@ -1019,12 +1020,13 @@ operations that depend on fixed batch_size would fail.
 
 
 *  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
-    inferred from the elements of `tensors`.
+    inferred from the elements of `tensors` or if batch_size is a sequence
+    but it's length != num_buckets.
 
 
 - - -
 
-### `tf.contrib.training.bucket_by_sequence_length(input_length, tensors, batch_size, bucket_boundaries, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=None, shared_name=None, name=None)` {#bucket_by_sequence_length}
+### `tf.contrib.training.bucket_by_sequence_length(input_length, tensors, batch_size, bucket_boundaries, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=True, shared_name=None, name=None)` {#bucket_by_sequence_length}
 
 Lazy bucketing of inputs according to their length.
 
@@ -1039,8 +1041,10 @@ bucket the given `input_length` belongs to.  See the documentation for
 *  <b>`input_length`</b>: `int32` scalar `Tensor`, the sequence length of tensors.
 *  <b>`tensors`</b>: The list or dictionary of tensors, representing a single element,
     to bucket.  Nested lists are not supported.
-*  <b>`batch_size`</b>: The new batch size pulled from the queue
-    (python int or int32 scalar).
+*  <b>`batch_size`</b>: The new batch size pulled from the queue (all queues will have
+    the same size).  If a list is passed in then each bucket will have a
+    different batch_size.
+    (python int, int32 scalar or iterable of integers of length num_buckets).
 *  <b>`bucket_boundaries`</b>: int list, increasing non-negative numbers.
     The edges of the buckets to use when bucketing tensors.  Two extra buckets
     are created, one for `input_length < bucket_boundaries[0]` and
@@ -1055,11 +1059,10 @@ bucket the given `input_length` belongs to.  See the documentation for
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
     batches to be smaller if there are insufficient items left in the queues.
-*  <b>`keep_input`</b>: (Optional).  A `bool` scalar Tensor.  If provided, this tensor
-    controls whether the input is added to the queue or not.  If it evaluates
-    `True`, then `tensors` are added to the bucket; otherwise they are
-    dropped.  This tensor essentially acts as a filtering mechanism.
-    The default behavior is to assume `keep_input=True`.
+*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
+    whether the input is added to the queue or not.  If it evaluates `True`,
+    then `tensors` are added to the bucket; otherwise they are dropped.  This
+    tensor essentially acts as a filtering mechanism.
 *  <b>`shared_name`</b>: (Optional). If set, the queues will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
@@ -1075,6 +1078,7 @@ bucket the given `input_length` belongs to.  See the documentation for
 
 *  <b>`TypeError`</b>: if `bucket_boundaries` is not a list of python integers.
 *  <b>`ValueError`</b>: if `bucket_boundaries` is empty or contains non-increasing
-    values.
+    values or if batch_size is a list and it's length doesn't equal the number
+    of buckets.
 
 

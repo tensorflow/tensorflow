@@ -37,6 +37,13 @@ be `dtypes.float32` or `dtypes.float64`. If neither `tensors` nor
 
 - - -
 
+### `tf.contrib.framework.assert_scalar(tensor, name=None)` {#assert_scalar}
+
+
+
+
+- - -
+
 ### `tf.contrib.framework.assert_scalar_int(tensor, name=None)` {#assert_scalar_int}
 
 Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
@@ -223,6 +230,27 @@ adds them via `tf.add_n`.
 
 
 *  <b>`ValueError`</b>: if `losses` is missing or empty.
+
+
+- - -
+
+### `tf.contrib.framework.remove_squeezable_dimensions(predictions, labels, name=None)` {#remove_squeezable_dimensions}
+
+Squeeze last dim if ranks of `predictions` and `labels` differ by 1.
+
+This will use static shape if available. Otherwise, it will add graph
+operations, which could result in a performance hit.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: Predicted values, a `Tensor` of arbitrary dimensions.
+*  <b>`labels`</b>: Label values, a `Tensor` whose dimensions match `predictions`.
+*  <b>`name`</b>: Name of the op.
+
+##### Returns:
+
+  Tuple of `predictions` and `labels`, possibly with last dim squeezed.
 
 
 - - -
@@ -648,6 +676,46 @@ Create global step tensor in graph.
 
 
 *  <b>`ValueError`</b>: if global step key is already defined.
+
+
+- - -
+
+### `tf.contrib.framework.filter_variables(var_list, include_patterns=None, exclude_patterns=None, reg_search=True)` {#filter_variables}
+
+Filter a list of variables using regular expressions.
+
+First includes variables according to the list of include_patterns.
+Afterwards, eliminates variables according to the list of exclude_patterns.
+
+For example, one can obtain a list of variables with the weights of all
+convolutional layers (depending on the network definition) by:
+
+```python
+variables = tf.contrib.framework.get_model_variables()
+conv_weight_variables = tf.contrib.framework.filter_variables(
+    variables,
+    include_patterns=['Conv'],
+    exclude_patterns=['biases', 'Logits'])
+```
+
+##### Args:
+
+
+*  <b>`var_list`</b>: list of variables.
+*  <b>`include_patterns`</b>: list of regular expressions to include. Defaults to None,
+      which means all variables are selected according to the include rules.
+      A variable is included if it matches any of the include_patterns.
+*  <b>`exclude_patterns`</b>: list of regular expressions to exclude. Defaults to None,
+      which means all variables are selected according to the exclude rules.
+      A variable is excluded if it matches any of the exclude_patterns.
+*  <b>`reg_search`</b>: boolean. If True (default), performs re.search to find matches
+      (i.e. pattern can match any substring of the variable name). If False,
+      performs re.match (i.e. regexp should match from the beginning of the
+      variable name).
+
+##### Returns:
+
+  filtered list of variables.
 
 
 - - -
