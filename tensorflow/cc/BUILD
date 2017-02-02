@@ -285,6 +285,7 @@ cc_library(
     srcs = ["gradients/nn_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":ops",
         ":scope",
