@@ -220,6 +220,7 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 namespace functor {
 
 // UnsortedSegmentSumFunctor implementation for CPUDevice.
+// todo: Remove duplicate code in UnsortedSegmentSumFunctor and UnsortedSegmentMaxFunctor.
 template <typename T, typename Index>
 struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
     : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
