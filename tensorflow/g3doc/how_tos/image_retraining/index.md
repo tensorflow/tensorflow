@@ -42,10 +42,10 @@ bazel build tensorflow/examples/image_retraining:retrain
 
 If you have a machine which supports [the AVX instruction set](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions)
 (common in x86 CPUs produced in the last few years) you can improve the running
-speed of the retraining by building for that architecture, like this:
+speed of the retraining by building for that architecture, like this (after choosing appropriate options in `configure`):
 
 ```sh
-bazel build -c opt --copt=-mavx tensorflow/examples/image_retraining:retrain
+bazel build --config opt tensorflow/examples/image_retraining:retrain
 ```
 
 The retrainer can then be run like this:
