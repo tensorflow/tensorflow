@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/core/framework/op.h"
@@ -337,8 +338,10 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = Enter(in_.WithOpName("A2"), a1, "foo");
-  auto a3 = Merge(in_.WithOpName("A3"), {a2, Input("A5", 0, DT_BOOL)}).output;
+  auto a2 = ::tensorflow::ops::Enter(in_.WithOpName("A2"), a1, "foo");
+  auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
+                                     {a2, Input("A5", 0, DT_BOOL)})
+                .output;
   LoopCond(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("A5"), b1);
@@ -349,8 +352,10 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = Enter(in_.WithOpName("B2"), a1, "foo");
-  auto a3 = Merge(in_.WithOpName("A3"), {a2, Input("B5", 0, DT_BOOL)}).output;
+  auto a2 = ::tensorflow::ops::Enter(in_.WithOpName("B2"), a1, "foo");
+  auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
+                                     {a2, Input("B5", 0, DT_BOOL)})
+                .output;
   LoopCond(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("B5"), b1);

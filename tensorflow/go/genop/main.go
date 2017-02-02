@@ -18,9 +18,13 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"go/format"
+	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/tensorflow/tensorflow/tensorflow/go/genop/internal"
 )
@@ -29,14 +33,19 @@ func main() {
 	filename := flag.String("outfile", "", "File to write generated source code to.")
 	flag.Parse()
 	if *filename == "" {
-		log.Fatal("--outfile must be set")
+		log.Fatal("-outfile must be set")
 	}
-	file, err := os.OpenFile(*filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open %q for writing: %v", *filename, err)
-	}
-	defer file.Close()
-	if err = internal.GenerateFunctionsForRegisteredOps(file); err != nil {
+	os.MkdirAll(filepath.Dir(*filename), 0755)
+
+	var buf bytes.Buffer
+	if err := internal.GenerateFunctionsForRegisteredOps(&buf); err != nil {
 		log.Fatal(err)
+	}
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		log.Fatalf("Failed to generate valid source? 'go fmt' failed: %v", err)
+	}
+	if err := ioutil.WriteFile(*filename, formatted, 0644); err != nil {
+		log.Fatalf("Failed to write to %q: %v", *filename, err)
 	}
 }

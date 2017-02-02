@@ -34,4 +34,4 @@ export TF_NEED_OPENCL=0
 export COMPUTECPP_PATH="/usr/local"
 
 export PATH="/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-build_libtensorflow_tarball "-darwin-gpu-$(uname -m)"
+build_libtensorflow_tarball "-gpu-darwin-$(uname -m)"

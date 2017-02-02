@@ -1301,7 +1301,7 @@ Exclude the OrderedDict from pickling
 
 - - -
 
-#### `tf.contrib.learn.ModelFnOps.__new__(cls, mode, predictions=None, loss=None, train_op=None, eval_metric_ops=None, output_alternatives=None, training_chief_hooks=None, training_hooks=None, training_scaffold=None)` {#ModelFnOps.__new__}
+#### `tf.contrib.learn.ModelFnOps.__new__(cls, mode, predictions=None, loss=None, train_op=None, eval_metric_ops=None, output_alternatives=None, training_chief_hooks=None, training_hooks=None, scaffold=None)` {#ModelFnOps.__new__}
 
 Creates a validated `ModelFnOps` instance.
 
@@ -1343,7 +1343,7 @@ type.
     run on the chief worker during training.
 *  <b>`training_hooks`</b>: A list of `SessionRunHook` objects that will be run on
     all workers during training.
-*  <b>`training_scaffold`</b>: A `tf.train.Scaffold` object that can be used to set
+*  <b>`scaffold`</b>: A `tf.train.Scaffold` object that can be used to set
     initialization, saver, and more to be used in training.
 
 ##### Returns:
@@ -1393,6 +1393,13 @@ Alias for field number 0
 
 - - -
 
+#### `tf.contrib.learn.ModelFnOps.scaffold` {#ModelFnOps.scaffold}
+
+Alias for field number 7
+
+
+- - -
+
 #### `tf.contrib.learn.ModelFnOps.train_op` {#ModelFnOps.train_op}
 
 Alias for field number 2
@@ -1410,13 +1417,6 @@ Alias for field number 5
 #### `tf.contrib.learn.ModelFnOps.training_hooks` {#ModelFnOps.training_hooks}
 
 Alias for field number 6
-
-
-- - -
-
-#### `tf.contrib.learn.ModelFnOps.training_scaffold` {#ModelFnOps.training_scaffold}
-
-Alias for field number 7
 
 
 
