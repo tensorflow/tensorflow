@@ -629,7 +629,7 @@ def generate_global_index(library_name, root_name, index, duplicate_of):
           parent_name = ''
         else:
           parent_name = full_name[:full_name.rfind('.')]
-        if inspect.isclass(index[parent_name]):
+        if parent_name in index and inspect.isclass(index[parent_name]):
           # Skip methods (=functions with class parents).
           continue
       
