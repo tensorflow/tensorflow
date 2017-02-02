@@ -198,9 +198,15 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_expensive = false;  // True iff kernel->IsExpensive()
-  bool kernel_is_async = false;      // True iff kernel->AsAsync() != nullptr
-  bool is_merge = false;             // True iff IsMerge(node)
+  bool kernel_is_expensive : 1;  // True iff kernel->IsExpensive()
+  bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
+  bool is_merge : 1;             // True iff IsMerge(node)
+  bool is_enter : 1;             // True iff IsEnter(node)
+  bool is_exit : 1;              // True iff IsExit(node)
+  bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
+  bool is_sink : 1;              // True iff IsSink(node)
+  // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
+  bool is_enter_exit_or_next_iter : 1;
 
   // Cached values of node->num_inputs() and node->num_outputs(), to
   // avoid levels of indirection.
@@ -553,6 +559,12 @@ Status ExecutorImpl::Initialize() {
     item->kernel_is_expensive = item->kernel->IsExpensive();
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
+    item->is_enter = IsEnter(n);
+    item->is_exit = IsExit(n);
+    item->is_control_trigger = IsControlTrigger(n);
+    item->is_sink = IsSink(n);
+    item->is_enter_exit_or_next_iter =
+        (IsEnter(n) || IsExit(n) || IsNextIteration(n));
 
     // Initialize static information about the frames in the graph.
     frame_local_ids_[id] = frame_count[frame_name]++;
@@ -1778,7 +1790,15 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   FrameState* output_frame = input_frame;
   int64 output_iter = input_iter;
 
-  if (IsEnter(node)) {
+  if (!item->is_enter_exit_or_next_iter) {
+    // Fast path for nodes types that don't need special handling
+    DCHECK_EQ(input_frame, output_frame);
+    // Normal path for most nodes
+    mutex_lock l(input_frame->mu);
+    output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
+    is_frame_done = input_frame->DecrementOutstandingOpsLocked(
+        &impl_->gview_, input_iter, ready);
+  } else if (item->is_enter) {
     bool is_constant;
     Status s = GetNodeAttr(node->def(), "is_constant", &is_constant);
     DCHECK(s.ok()) << s;
@@ -1797,7 +1817,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     }
     is_frame_done =
         input_frame->DecrementOutstandingOps(&impl_->gview_, input_iter, ready);
-  } else if (IsExit(node)) {
+  } else if (item->is_exit) {
     if (is_dead) {
       mutex_lock l(input_frame->mu);
       // Stop and remember this node if it is a dead exit.
@@ -1816,7 +1836,8 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
       is_frame_done = input_frame->DecrementOutstandingOps(&impl_->gview_,
                                                            input_iter, ready);
     }
-  } else if (IsNextIteration(node)) {
+  } else {
+    DCHECK(IsNextIteration(node));
     mutex_lock l(input_frame->mu);
     if (is_dead) {
       // Stop the deadness propagation.
@@ -1841,12 +1862,6 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
       DCHECK(input_frame == output_frame);
       output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
     }
-    is_frame_done = input_frame->DecrementOutstandingOpsLocked(
-        &impl_->gview_, input_iter, ready);
-  } else {
-    // Normal path for most nodes
-    mutex_lock l(input_frame->mu);
-    output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
     is_frame_done = input_frame->DecrementOutstandingOpsLocked(
         &impl_->gview_, input_iter, ready);
   }
@@ -2252,13 +2267,13 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
   for (int out_index = 0; out_index < num_output_edges; out_index++) {
     const EdgeInfo& e = edges[out_index];
     const int dst_id = e.dst_id;
-    const Node* dst_node = gview.node(dst_id)->node;
+    const NodeItem* dst_item = gview.node(dst_id);
     const int dst_pending_id = pending_ids[dst_id];
     const int src_slot = e.output_slot;
 
     // TODO(yuanbyu): We don't need this if we require the subgraph
     // given to an executor not to contain a sink node.
-    if (dst_node->IsSink()) continue;
+    if (dst_item->is_sink) continue;
 
     bool dst_dead = false;
     bool dst_ready = false;
@@ -2267,7 +2282,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     // analysis happy.
     const bool is_control_edge = (src_slot == Graph::kControlSlot);
     bool dst_need_input = !is_control_edge;
-    if (IsMerge(dst_node)) {
+    if (dst_item->is_merge) {
       // A merge node is ready if all control inputs have arrived and either
       // a) a live data input becomes available or b) all data inputs are dead.
       // For Merge, pending's LSB is set iff a live data input has arrived.
@@ -2275,7 +2290,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
         iter_state->decrement_pending(dst_pending_id, 2);
         int count = iter_state->pending(dst_pending_id);
         int dead_cnt = iter_state->dead_count(dst_pending_id);
-        dst_dead = (dead_cnt == dst_node->num_inputs());
+        dst_dead = (dead_cnt == dst_item->num_inputs);
         dst_ready = (count == 0) || ((count == 1) && dst_dead);
       } else {
         if (outputs[src_slot].has_value) {
@@ -2294,11 +2309,11 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
           // This is a dead data input. Note that dst_node is dead if node is
           // a dead enter. We need this to handle properly a while loop on
           // the untaken branch of a conditional.
-          // TODO(yuanbyu): This is a bit hacky, but a good solution for now.
+          // TODO(yuanbyu): This is a bit hacky, but a good solution for
+          // now.
           iter_state->increment_dead_count(dst_pending_id);
           const int dead_cnt = iter_state->dead_count(dst_pending_id);
-          dst_dead =
-              (dead_cnt == dst_node->num_inputs()) || IsEnter(item->node);
+          dst_dead = (dead_cnt == dst_item->num_inputs) || item->is_enter;
           dst_ready = (iter_state->pending(dst_pending_id) == 1) && dst_dead;
           dst_need_input = false;
         }
@@ -2315,17 +2330,16 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     }
 
     if (dst_need_input) {
-      const NodeItem& dst_item = *gview.node(dst_id);
       const int dst_slot = e.input_slot;
       Entry* input_tensors = iter_state->input_tensors;
-      int dst_loc = dst_item.input_start + dst_slot;
+      int dst_loc = dst_item->input_start + dst_slot;
       input_tensors[dst_loc] = outputs[src_slot];
     }
 
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
-      if (IsControlTrigger(dst_node)) dst_dead = false;
-      ready->push_back(TaggedNode(dst_node, this, iter, dst_dead));
+      if (dst_item->is_control_trigger) dst_dead = false;
+      ready->push_back(TaggedNode(dst_item->node, this, iter, dst_dead));
       iter_state->outstanding_ops++;
     }
   }
