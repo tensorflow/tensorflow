@@ -1,18 +1,18 @@
-Bijector which computes Y = g(X) = X.
+Compute Y = g(X) = X.
 
 Example Use:
 
 ```python
 # Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
 # ndim and 1 event ndim (i.e., vector of vectors).
-identity = Identity(batch_ndims=1, event_ndims=1)
+identity = Identity(event_ndims=1)
 x = [[1., 2],
      [3, 4]]
 x == identity.forward(x) == identity.inverse(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.__init__(validate_args=False, name='identity')` {#Identity.__init__}
+#### `tf.contrib.distributions.bijector.Identity.__init__(validate_args=False, event_ndims=0, name='identity')` {#Identity.__init__}
 
 
 
@@ -22,6 +22,13 @@ x == identity.forward(x) == identity.inverse(x)
 #### `tf.contrib.distributions.bijector.Identity.dtype` {#Identity.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Identity.event_ndims` {#Identity.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -264,13 +271,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Identity.name` {#Identity.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Identity.shaper` {#Identity.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
