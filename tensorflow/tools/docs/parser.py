@@ -623,6 +623,16 @@ def generate_global_index(library_name, root_name, index, duplicate_of):
     index_name = full_name or root_name
     if (inspect.ismodule(py_object) or inspect.isfunction(py_object) or
         inspect.isclass(py_object)):
+      # In Python 3, unbound methods are functions, so eliminate those.
+      if inspect.isfunction(py_object):
+        if full_name.count('.') == 0:
+          parent_name = ''
+        else:
+          parent_name = full_name[:full_name.rfind('.')]
+        if inspect.isclass(index[parent_name]):
+          # Skip methods (=functions with class parents).
+          continue
+      
       symbol_links.append((index_name,
                            _markdown_link(index_name, full_name,
                                           '.', duplicate_of)))
