@@ -42,6 +42,10 @@ class Arena {
     return reinterpret_cast<char*>(GetMemory(size, 1));
   }
 
+  char* AllocAligned(const size_t size, const size_t alignment) {
+    return reinterpret_cast<char*>(GetMemory(size, alignment));
+  }
+
   void Reset();
 
 // This should be the worst-case alignment for any type.  This is
