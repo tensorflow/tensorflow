@@ -191,6 +191,9 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   if not dnn_feature_columns:
     dnn_logits = None
   else:
+    if not dnn_hidden_units:
+      raise ValueError(
+          "dnn_hidden_units must be defined when dnn_feature_columns is specified.")
     dnn_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas))
