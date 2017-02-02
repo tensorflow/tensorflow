@@ -19,6 +19,8 @@ op { name: "ReverseV2" rename_to: "Reverse" }
 
 
 # candidate_sampling_ops
+op { name: "ThreadUnsafeUnigramCandidateSampler", skip: true }
+
 # control_flow_ops
 #op { name: "Switch" hide: true }
 #op { name: "Merge" hide: true }
