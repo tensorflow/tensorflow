@@ -129,6 +129,12 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.h"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc")
+if (NOT tensorflow_ENABLE_GPU)
+  file(GLOB tf_core_platform_gpu_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
+      "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+endif()
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)

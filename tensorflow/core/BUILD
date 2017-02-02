@@ -781,6 +781,7 @@ filegroup(
             "lib/gif/**/*",
             "util/events_writer.*",
             "util/reporter.*",
+            "platform/**/cuda_libdevice_path.*",
             "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
