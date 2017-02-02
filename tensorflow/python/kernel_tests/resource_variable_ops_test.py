@@ -158,6 +158,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       sess.run(resource_variable_ops.destroy_resource_op(v.handle))
       with self.assertRaises(errors.NotFoundError):
         v.value().eval()
+      # Handle to a resource not actually created.
+      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+      # Should raise no exception
+      sess.run(resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=True))
 
 
 if __name__ == "__main__":
