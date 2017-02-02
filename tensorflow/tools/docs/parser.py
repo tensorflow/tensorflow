@@ -314,7 +314,9 @@ def _generate_signature(func):
       len(argspec.args or []) - len(argspec.defaults or []))
 
   # Python documentation skips `self` when printing method signatures.
-  first_arg = 1 if inspect.ismethod(func) and 'self' in argspec.args[:1] else 0
+  # Note we cannot test for ismethod here since unbound methods do not register
+  # as methods (in Python 3).
+  first_arg = 1 if 'self' in argspec.args[:1] else 0
 
   # Add all args without defaults.
   for arg in argspec.args[first_arg:first_arg_with_default]:
