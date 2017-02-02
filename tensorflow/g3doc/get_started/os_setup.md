@@ -861,7 +861,7 @@ $ bazel build --config opt //tensorflow/tools/pip_package:build_pip_package
 # To build with support for CUDA:
 $ bazel build --config opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
 
-# Alternatively, to build with support for OpenCL(Experimental):
+# Alternatively, to build with support for OpenCL (Experimental):
 $ bazel build --config opt --config=sycl //tensorflow/tools/pip_package:build_pip_package
 
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
@@ -873,11 +873,11 @@ $ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.12.1-py2-none-any.whl
 ## Optimizing CPU performance
 
 To be compatible with as wide a range of machines as possible, TensorFlow
-defaults to only using SSE4 SIMD instructions on x86 machines. Most modern PCs
-and Macs support more advanced instructions, so if you're building a binary
-that you'll only be running on your own machine, you can enable these by using
-`-march=native` for optimization options when running `configure`. Then you can
- build your optimized binaries with the following command:
+defaults to only using SSE4 SIMD instructions. Most modern computers support
+more advanced instructions. So if you're building a binary that you'll only
+be running on your own machine, you can enable these by using `-march=native`
+for optimization options when running `configure`. Then you can build your
+optimized binaries with the following command:
 
 ``` bash
 $ bazel build --config opt //tensorflow/tools/pip_package:build_pip_package
