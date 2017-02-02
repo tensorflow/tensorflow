@@ -58,7 +58,7 @@ COPY notebooks /notebooks
 # We just add a little wrapper script.
 COPY run_jupyter.sh /
 
-# We depend on libcupti.so
+# For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 # TensorBoard
