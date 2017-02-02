@@ -113,6 +113,19 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertEqual(new_text, new_text)
     self.assertEqual(errors, ["test.py:1: tf.reverse requires manual check."])
 
+  def testListComprehension(self):
+    def _test(input, output):
+      _, unused_report, errors, new_text = self._upgrade(input)
+      self.assertEqual(new_text, output)
+    _test("tf.concat(0,  \t[x for x in y])\n",
+          "tf.concat(axis=0,  \tvalues=[x for x in y])\n")
+    _test("tf.concat(0,[x for x in y])\n",
+          "tf.concat(axis=0,values=[x for x in y])\n")
+    _test("tf.concat(0,[\nx for x in y])\n",
+          "tf.concat(axis=0,values=[\nx for x in y])\n")
+    _test("tf.concat(0,[\n \tx for x in y])\n",
+          "tf.concat(axis=0,values=[\n \tx for x in y])\n")
+
   # TODO(aselle): Explicitly not testing command line interface and process_tree
   # for now, since this is a one off utility.
 
