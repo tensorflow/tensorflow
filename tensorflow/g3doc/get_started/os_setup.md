@@ -856,13 +856,13 @@ default and if you want to limit RAM usage you can add `--local_resources
 2048,.5,1.0` while invoking bazel.
 
 ```bash
-$ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+$ bazel build --config opt //tensorflow/tools/pip_package:build_pip_package
 
 # To build with support for CUDA:
-$ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+$ bazel build --config opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
 
-# Alternatively, to build with support for OpenCL:
-$ bazel build -c opt --config=sycl //tensorflow/tools/pip_package:build_pip_package
+# Alternatively, to build with support for OpenCL(Experimental):
+$ bazel build --config opt --config=sycl //tensorflow/tools/pip_package:build_pip_package
 
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
@@ -873,20 +873,21 @@ $ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.12.1-py2-none-any.whl
 ## Optimizing CPU performance
 
 To be compatible with as wide a range of machines as possible, TensorFlow
-defaults to only using SSE4.1 SIMD instructions on x86 machines. Most modern PCs
+defaults to only using SSE4 SIMD instructions on x86 machines. Most modern PCs
 and Macs support more advanced instructions, so if you're building a binary
 that you'll only be running on your own machine, you can enable these by using
-`--copt=-march=native` in your bazel build command. For example:
+`-march=native` for optimization options when running `configure`. Then you can
+ build your optimized binaries with the following command:
 
 ``` bash
-$ bazel build --copt=-march=native -c opt //tensorflow/tools/pip_package:build_pip_package
+$ bazel build --config opt //tensorflow/tools/pip_package:build_pip_package
 ```
 
 If you are distributing a binary but know the capabilities of the machines
 you'll be running on, you can manually choose the right instructions with
-something like `--copt=-march=avx`. You may also want to enable multiple
+something like `-march=avx`. You may also want to enable multiple
 features using several arguments, for example
-`--copt=-mavx2 --copt=-mfma`.
+`-mavx2,-mfma`.
 
 If you run a binary built using SIMD instructions on a machine that doesn't
 support them, you'll see an illegal instruction error when that code is
@@ -902,10 +903,10 @@ system directories, run the following commands inside the TensorFlow root
 directory:
 
 ```bash
-bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+bazel build --config opt //tensorflow/tools/pip_package:build_pip_package
 
 # To build with GPU support:
-bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+bazel build --config opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
 
 mkdir _python_build
 cd _python_build

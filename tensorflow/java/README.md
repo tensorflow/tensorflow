@@ -40,7 +40,7 @@ Configure and build the Java Archive (JAR) and native library:
 ./configure
 
 # Build the JAR and native library
-bazel build -c opt \
+bazel build --config opt \
   //tensorflow/java:tensorflow \
   //tensorflow/java:libtensorflow_jni
 ```
