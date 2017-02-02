@@ -23,7 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import tensor_util
+from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.metrics.python.ops import set_ops
 from tensorflow.python.framework import dtypes

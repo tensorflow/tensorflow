@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework import tensor_util as contrib_tensor_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.contrib.linalg.python.ops import linear_operator_diag
 from tensorflow.contrib.linalg.python.ops import linear_operator_identity

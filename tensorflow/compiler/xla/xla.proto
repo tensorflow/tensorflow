@@ -20,6 +20,21 @@ import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
 
+// These settings control how XLA compiles code.  Not all settings will have an
+// effect on every platform.
+//
+// When adding new fields, keep in mind that boolean fields default to false.
+message CompilationOptions {
+  // When false, "unsafe" mathematical optimizations are enabled.  These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool disable_fast_math = 1;
+}
+
 message SnapshotComputationRequest {
   ComputationHandle computation = 1;
 }
@@ -155,6 +170,9 @@ message ExecuteRequest {
   // This optional field specifies a particular device to run the computation.
   // If not provided, the default device will be chosen.
   DeviceHandle device_handle = 5;
+
+  // Options that affect the generated code XLA uses to service this request.
+  CompilationOptions compilation_options = 6;
 }
 
 message ExecuteParallelRequest {
@@ -185,6 +203,9 @@ message ExecuteAsyncRequest {
   // additional entropy to the device.
   // TODO(b/32083678): This forces a recompilation.
   uint64 seed = 4;
+
+  // Options that affect the generated code XLA uses to service this request.
+  CompilationOptions compilation_options = 6;
 }
 
 message ExecuteAsyncResponse {

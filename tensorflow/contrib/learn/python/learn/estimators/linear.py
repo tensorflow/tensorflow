@@ -35,6 +35,8 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -67,14 +69,34 @@ def _as_iterable(preds, output):
 
 
 def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
-                     labels, columns_to_variables):
+                     columns_to_variables):
+  """Adds a fake bias feature column filled with all 1s."""
   # TODO(b/31008490): Move definition to a common constants place.
   bias_column_name = "tf_virtual_bias_column"
   if any(col.name is bias_column_name for col in feature_columns):
     raise ValueError("%s is a reserved column name." % bias_column_name)
+  if not feature_columns:
+    raise ValueError("feature_columns can't be empty.")
+
+  # Loop through input tensors until we can figure out batch_size.
+  batch_size = None
+  for column in columns_to_tensors.values():
+    if isinstance(column, tuple):
+      column = column[0]
+    if isinstance(column, sparse_tensor.SparseTensor):
+      shape = tensor_util.constant_value(column.dense_shape)
+      if shape is not None:
+        batch_size = shape[0]
+        break
+    else:
+      batch_size = array_ops.shape(column)[0]
+      break
+  if batch_size is None:
+    raise ValueError("Could not infer batch size from input features.")
+
   bias_column = layers.real_valued_column(bias_column_name)
-  columns_to_tensors[bias_column] = array_ops.ones_like(labels,
-                                                        dtype=dtypes.float32)
+  columns_to_tensors[bias_column] = array_ops.ones([batch_size, 1],
+                                                   dtype=dtypes.float32)
   columns_to_variables[bias_column] = [bias_variable]
 
 
@@ -125,7 +147,9 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       min_slice_size=64 << 20)
 
   with variable_scope.variable_scope(
-      parent_scope, values=features.values(), partitioner=partitioner) as scope:
+      parent_scope,
+      values=tuple(six.itervalues(features)),
+      partitioner=partitioner) as scope:
     if joint_weights:
       logits, _, _ = (
           layers.joint_weighted_sum_from_feature_columns(
@@ -143,16 +167,21 @@ def _linear_model_fn(features, labels, mode, params, config=None):
               weight_collections=[parent_scope],
               scope=scope))
 
-  def _train_op_fn(loss):
-    global_step = contrib_variables.get_global_step()
-    my_vars = ops.get_collection("linear")
-    grads = gradients.gradients(loss, my_vars)
-    if gradient_clip_norm:
-      grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
-    return (_get_optimizer(optimizer).apply_gradients(
-        zip(grads, my_vars), global_step=global_step))
+    def _train_op_fn(loss):
+      global_step = contrib_variables.get_global_step()
+      my_vars = ops.get_collection(parent_scope)
+      grads = gradients.gradients(loss, my_vars)
+      if gradient_clip_norm:
+        grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
+      return (_get_optimizer(optimizer).apply_gradients(
+          zip(grads, my_vars), global_step=global_step))
 
-  return head.create_model_fn_ops(features, labels, mode, _train_op_fn, logits)
+    return head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
 
 
 def sdca_model_fn(features, labels, mode, params):
@@ -217,8 +246,7 @@ def sdca_model_fn(features, labels, mode, params):
             num_outputs=1,
             scope=scope))
 
-    _add_bias_column(feature_columns, features, bias, labels,
-                     columns_to_variables)
+    _add_bias_column(feature_columns, features, bias, columns_to_variables)
 
   def _train_op_fn(unused_loss):
     global_step = contrib_variables.get_global_step()
@@ -231,7 +259,11 @@ def sdca_model_fn(features, labels, mode, params):
     return train_op
 
   model_fn_ops = head.create_model_fn_ops(
-      features, labels, mode, _train_op_fn, logits)
+      features=features,
+      labels=labels,
+      mode=mode,
+      train_op_fn=_train_op_fn,
+      logits=logits)
   if update_weights_hook is not None:
     return model_fn_ops._replace(
         training_chief_hooks=(model_fn_ops.training_chief_hooks +
@@ -431,12 +463,45 @@ class LinearClassifier(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Runs inference to determine the predicted class (i.e. class index)."""
-    return self.predict_classes(
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_classes, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted classes. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_classes` method.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns classes.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
+
+    Returns:
+      Numpy array of predicted classes with shape [batch_size] (or an iterable
+      of predicted classes if as_iterable is True). Each predicted class is
+      represented by its class index (i.e. integer from 0 to n_classes-1).
+      If `outputs` is set, returns a dict of predictions.
+    """
+    if not outputs:
+      return self.predict_classes(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(LinearClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -444,7 +509,22 @@ class LinearClassifier(estimator.Estimator):
       as_iterable=False)
   def predict_classes(self, x=None, input_fn=None, batch_size=None,
                       as_iterable=True):
-    """Runs inference to determine the predicted class (i.e. class index)."""
+    """Returns predicted classes for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
+
+    Returns:
+      Numpy array of predicted classes with shape [batch_size] (or an iterable
+      of predicted classes if as_iterable is True). Each predicted class is
+      represented by its class index (i.e. integer from 0 to n_classes-1).
+    """
     key = prediction_key.PredictionKey.CLASSES
     preds = super(LinearClassifier, self).predict(
         x=x,
@@ -459,9 +539,23 @@ class LinearClassifier(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
+  def predict_proba(self, x=None, input_fn=None, batch_size=None,
                     as_iterable=True):
-    """Runs inference to determine the class probability predictions."""
+    """Returns predicted probabilities for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x and y must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
+
+    Returns:
+      Numpy array of predicted probabilities with shape [batch_size, n_classes]
+      (or an iterable of predicted probabilities if as_iterable is True).
+    """
     key = prediction_key.PredictionKey.PROBABILITIES
     preds = super(LinearClassifier, self).predict(
         x=x,
@@ -667,12 +761,45 @@ class LinearRegressor(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Runs inference to determine the predicted scores."""
-    return self.predict_scores(
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_scores, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted scores. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_scores` method.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns scores.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
+
+    Returns:
+      Numpy array of predicted scores (or an iterable of predicted scores if
+      as_iterable is True). If `label_dimension == 1`, the shape of the output
+      is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+      If `outputs` is set, returns a dict of predictions.
+    """
+    if not outputs:
+      return self.predict_scores(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(LinearRegressor, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -680,7 +807,22 @@ class LinearRegressor(estimator.Estimator):
       as_iterable=False)
   def predict_scores(self, x=None, input_fn=None, batch_size=None,
                      as_iterable=True):
-    """Runs inference to determine the predicted scores."""
+    """Returns predicted scores for given features.
+
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
+
+    Returns:
+      Numpy array of predicted scores (or an iterable of predicted scores if
+      as_iterable is True). If `label_dimension == 1`, the shape of the output
+      is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+    """
     key = prediction_key.PredictionKey.SCORES
     preds = super(LinearRegressor, self).predict(
         x=x,

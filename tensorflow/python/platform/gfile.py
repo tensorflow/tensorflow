@@ -40,7 +40,6 @@ class GFile(_FileIO):
   """File I/O wrappers without thread locking."""
 
   def __init__(self, name, mode='r'):
-    mode = mode.replace('b', '')
     super(GFile, self).__init__(name=name, mode=mode)
 
 
@@ -48,7 +47,6 @@ class FastGFile(_FileIO):
   """File I/O wrappers without thread locking."""
 
   def __init__(self, name, mode='r'):
-    mode = mode.replace('b', '')
     super(FastGFile, self).__init__(name=name, mode=mode)
 
 

@@ -58,7 +58,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // --input_node_names="Mul" \
   // --output_node_names="final_result" \
   // --input_binary=true
-  private static final int NUM_CLASSES = 1001;
+  //
+  // Note: the actual number of classes for Inception is 1001, but the output layer size is 1008.
+  private static final int NUM_CLASSES = 1008;
   private static final int INPUT_SIZE = 224;
   private static final int IMAGE_MEAN = 117;
   private static final float IMAGE_STD = 1;

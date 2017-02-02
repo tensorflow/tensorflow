@@ -96,6 +96,9 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   Status HandleInfeed(HloInstruction* infeed) override {
     return DefaultAction(infeed);
   }
+  Status HandleOutfeed(HloInstruction* outfeed) override {
+    return DefaultAction(outfeed);
+  }
   Status HandleReverse(HloInstruction* reverse,
                        HloInstruction* /*operand*/) override {
     return DefaultAction(reverse);

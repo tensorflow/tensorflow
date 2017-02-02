@@ -56,15 +56,16 @@ def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
 
   Args:
-    pattern: A file pattern (glob).
+    pattern: A file pattern (glob), or 1D tensor of file patterns.
     name: A name for the operations (optional).
 
   Returns:
-    A variable that is initialized to the list of files matching pattern.
+    A variable that is initialized to the list of files matching the pattern(s).
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
     return variables.Variable(io_ops.matching_files(pattern), trainable=False,
-                              name=name, validate_shape=False)
+                              name=name, validate_shape=False,
+                              collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
 
 def limit_epochs(tensor, num_epochs=None, name=None):
@@ -651,22 +652,13 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
     enqueue_fn = queue.enqueue_many
   else:
     enqueue_fn = queue.enqueue
-  # TODO(joelshor): `_smart_cond` doesn't work here because of a quirky
-  # interaction between `control_flow_ops.no_op` and `queue_runner_impl.py`.
-  # Either generalize `_smart_cond` or fix `queue_runner_impl.py`.
-  keep_input_static = tensor_util.constant_value(keep_input)
   if keep_input.get_shape().ndims == 1:
     enqueue_ops = [enqueue_fn(_select_which_to_enqueue(x, keep_input))
                    for x in tensor_list_list]
-  elif keep_input_static is not None:
-    if keep_input_static:
-      enqueue_ops = [enqueue_fn(tl) for tl in tensor_list_list]
-    else:
-      enqueue_ops = [control_flow_ops.no_op for tl in tensor_list_list]
   else:
-    enqueue_ops = [control_flow_ops.cond(
+    enqueue_ops = [_smart_cond(
         keep_input,
-        lambda: enqueue_fn(tl),
+        lambda: enqueue_fn(tl),  # pylint:disable=cell-var-from-loop
         control_flow_ops.no_op) for tl in tensor_list_list]
   queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, enqueue_ops))
 

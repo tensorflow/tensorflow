@@ -1,11 +1,29 @@
-The Chi2 distribution with degrees of freedom df.
+Chi2 distribution.
 
-The PDF of this distribution is:
+The Chi2 distribution is defined over positive real numbers using a degrees of
+freedom ("df") parameter.
 
-```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
+#### Mathematical Details
 
-Note that the Chi2 distribution is a special case of the Gamma distribution,
-with Chi2(df) = Gamma(df/2, 1/2).
+The probability density function (pdf) is,
+
+```none
+pdf(x; df, x > 0) = x**(0.5 df - 1) exp(-0.5 x) / Z
+Z = 2**(0.5 df) Gamma(0.5 df)
+```
+
+where:
+
+* `df` denotes the degrees of freedom,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The Chi2 distribution is a special case of the Gamma distribution, i.e.,
+
+```python
+Chi2(df) = Gamma(concentration=0.5 * df, rate=0.5)
+```
 - - -
 
 #### `tf.contrib.distributions.Chi2.__init__(df, validate_args=False, allow_nan_stats=True, name='Chi2')` {#Chi2.__init__}
@@ -17,15 +35,15 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
-    `df > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
-    If `validate_args` is `False` and the inputs are invalid, correct
-    behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -51,19 +69,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.alpha` {#Chi2.alpha}
+#### `tf.contrib.distributions.Chi2.batch_shape` {#Chi2.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.batch_shape(name='batch_shape')` {#Chi2.batch_shape}
+#### `tf.contrib.distributions.Chi2.batch_shape_tensor(name='batch_shape_tensor')` {#Chi2.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -78,14 +106,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.beta` {#Chi2.beta}
-
-Inverse scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.cdf(value, name='cdf', **condition_kwargs)` {#Chi2.cdf}
+#### `tf.contrib.distributions.Chi2.cdf(value, name='cdf')` {#Chi2.cdf}
 
 Cumulative distribution function.
 
@@ -100,13 +121,19 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.concentration` {#Chi2.concentration}
+
+Concentration parameter.
 
 
 - - -
@@ -134,6 +161,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.covariance(name='covariance')` {#Chi2.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.df` {#Chi2.df}
 
 
@@ -152,21 +223,24 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shannon entropy in nats.
 
-Additional documentation from `Gamma`:
 
-This is defined to be
+- - -
 
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
+#### `tf.contrib.distributions.Chi2.event_shape` {#Chi2.event_shape}
 
-where digamma(alpha) is the digamma function.
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.event_shape(name='event_shape')` {#Chi2.event_shape}
+#### `tf.contrib.distributions.Chi2.event_shape_tensor(name='event_shape_tensor')` {#Chi2.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -179,34 +253,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.get_batch_shape()` {#Chi2.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.get_event_shape()` {#Chi2.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -252,7 +298,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Chi2.log_cdf}
+#### `tf.contrib.distributions.Chi2.log_cdf(value, name='log_cdf')` {#Chi2.log_cdf}
 
 Log cumulative distribution function.
 
@@ -271,7 +317,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -282,57 +327,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Chi2.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Chi2.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.log_prob(value, name='log_prob', **condition_kwargs)` {#Chi2.log_prob}
+#### `tf.contrib.distributions.Chi2.log_prob(value, name='log_prob')` {#Chi2.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -341,7 +336,6 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -352,7 +346,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Chi2.log_survival_function}
+#### `tf.contrib.distributions.Chi2.log_survival_function(value, name='log_survival_function')` {#Chi2.log_survival_function}
 
 Log survival function.
 
@@ -372,7 +366,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -395,8 +388,8 @@ Mode.
 
 Additional documentation from `Gamma`:
 
-The mode of a gamma distribution is `(alpha - 1) / beta` when
-`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -470,57 +463,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.pdf(value, name='pdf', **condition_kwargs)` {#Chi2.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.pmf(value, name='pmf', **condition_kwargs)` {#Chi2.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.prob(value, name='prob', **condition_kwargs)` {#Chi2.prob}
+#### `tf.contrib.distributions.Chi2.prob(value, name='prob')` {#Chi2.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -529,13 +472,19 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.rate` {#Chi2.rate}
+
+Rate parameter.
 
 
 - - -
@@ -555,7 +504,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Chi2.sample}
+#### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample')` {#Chi2.sample}
 
 Generate samples of the specified shape.
 
@@ -568,7 +517,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -582,10 +530,30 @@ sample.
 
 Standard deviation.
 
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.survival_function(value, name='survival_function', **condition_kwargs)` {#Chi2.survival_function}
+#### `tf.contrib.distributions.Chi2.survival_function(value, name='survival_function')` {#Chi2.survival_function}
 
 Survival function.
 
@@ -602,7 +570,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -622,5 +589,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Chi2.variance(name='variance')` {#Chi2.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

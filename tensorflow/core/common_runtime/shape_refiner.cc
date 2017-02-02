@@ -397,18 +397,22 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
       }
     }
     *result = target_context->MakeShape(dims);
-  } else if (src_op == "Concat") {
+  } else if (src_op == "Concat" || src_op == "ConcatV2") {
     *result = target_context->Scalar();
+    // For Concat, input 0 is concat dim; for V2 it is the last input.
+    const int concat_dim =
+        src_op == "Concat" ? 0 : src_context->num_inputs() - 1;
     // Concat is concatenating its input shape vectors.
-    // input 0 is ignored as it is the concat dim and will always be 0.
-    for (int i = 1; i < src_context->num_inputs(); ++i) {
+    for (int i = 0; i < src_context->num_inputs(); ++i) {
+      // Concat dim is ignored (and will always be a scalar).
+      if (i == concat_dim) continue;
       ShapeHandle sub_result;
       TF_RETURN_IF_ERROR(ConstantPartialShape(target_context, input_edge->src(),
                                               i, &sub_result));
       if (!target_context->RankKnown(sub_result)) {
         // Failed to evaluate. Treat the output as completely unknown.
-        // TODO(cwhipkey): we could rely on all inputs being the same size, so
-        // figure that size out and append the right number of unknown dims.
+        // TODO(cwhipkey): we could rely on all inputs being the same rank, so
+        // figure that rank out and append the right number of unknown dims.
         *result = target_context->UnknownShape();
         return Status::OK();
       }

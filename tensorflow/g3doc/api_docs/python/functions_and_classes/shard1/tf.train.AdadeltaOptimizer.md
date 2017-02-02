@@ -1,4 +1,4 @@
-Optimizer that implements the Adadelta algorithm. 
+Optimizer that implements the Adadelta algorithm.
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
 ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))

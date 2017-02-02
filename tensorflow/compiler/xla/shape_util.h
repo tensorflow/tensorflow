@@ -95,13 +95,9 @@ class ShapeUtil {
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size);
-
-  // Returns the number of bytes required for an allocation of shape.
-  // The calculation for tuple shapes assumes that we are utilizing host
-  // pointers.
-  // Precondition: !ShapeUtil::IsOpaque(shape)
-  static int64 ByteSizeOf(const Shape& shape);
+  // Precondition: (!ShapeUtil::IsTuple(shape) || pointer_size > 0) &&
+  //               !ShapeUtil::IsOpaque(shape)
+  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //

@@ -223,6 +223,16 @@ public final class OperationBuilder {
     return this;
   }
 
+  public OperationBuilder setAttr(String name, Shape value) {
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrShape(unsafeNativeHandle, name, value.asArray(), value.numDimensions());
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
   private long unsafeNativeHandle;
   private Graph graph;
 
@@ -242,7 +252,7 @@ public final class OperationBuilder {
   // TODO(ashankar):
   // - setAttrStringList: Which would take in an array of byte[] (java Strings will need to be UTF-8
   //   encoded?)
-  // - setAttrShape and setAttrShapeList: Which would take in a long[] or long[][]?
+  // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
 
@@ -265,4 +275,6 @@ public final class OperationBuilder {
   private static native void setAttrTensor(long handle, String name, long tensorHandle);
 
   private static native void setAttrTensorList(long handle, String name, long[] tensorHandle);
+
+  private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
 }

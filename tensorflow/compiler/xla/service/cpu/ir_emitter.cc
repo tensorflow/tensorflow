@@ -73,9 +73,8 @@ IrEmitter::IrEmitter(
       hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module_config) {
-  llvm::FastMathFlags fast_math_flags;
-  llvm_ir::SetFastMathFlags(&fast_math_flags);
-  ir_builder_.setFastMathFlags(fast_math_flags);
+  ir_builder_.setFastMathFlags(
+      llvm_ir::GetFastMathFlags(hlo_module_config.compilation_options()));
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -406,9 +405,14 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // TODO(b/34359662): Implement outfeed on CPU.
+  return Unimplemented("Outfeed is not supported on CPU (b/34359662).");
+}
+
 Status IrEmitter::HandleSort(HloInstruction* sort, HloInstruction* operand) {
   // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("sort");
+  return Unimplemented("Sort is not supported on GPU (b/26783907).");
 }
 
 Status IrEmitter::HandleTuple(

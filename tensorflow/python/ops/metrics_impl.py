@@ -51,8 +51,8 @@ def _local_variable(initial_value, validate_shape=True, name=None):
       validate_shape=validate_shape, name=name)
 
 
-def _remove_squeezable_dimensions(labels, predictions, weights):
-  """Internal version of _remove_squeezable_dimensions which handles weights.
+def _remove_squeezable_dimensions(predictions, labels, weights):
+  """Internal version of `remove_squeezable_dimensions` which handles weights.
 
   Squeezes `predictions` and `labels` if their rank differs by 1.
   Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
@@ -61,8 +61,8 @@ def _remove_squeezable_dimensions(labels, predictions, weights):
   operations, which could result in a performance hit.
 
   Args:
-    labels: Label values, a `Tensor` whose dimensions match `predictions`.
     predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    labels: Optional label `Tensor` whose dimensions match `predictions`.
     weights: Optional weight `Tensor`. It will be squeezed if its rank is 1
       more than the new rank of `predictions`
 
@@ -70,9 +70,11 @@ def _remove_squeezable_dimensions(labels, predictions, weights):
     Tuple of `predictions`, `labels` and `weights`, possibly with the last
     dimension squeezed.
   """
-  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
-      labels, predictions)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions = ops.convert_to_tensor(predictions)
+  if labels is not None:
+    labels, predictions = confusion_matrix.remove_squeezable_dimensions(
+        labels, predictions)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   if weights is not None:
     weights = ops.convert_to_tensor(weights)
@@ -81,19 +83,22 @@ def _remove_squeezable_dimensions(labels, predictions, weights):
     weights_shape = weights.get_shape()
     weights_rank = weights_shape.ndims
 
+    # TODO(ptucker): Add logic to handle weights rank 1 less than predictions &
+    # labels.
     if (predictions_rank is not None) and (weights_rank is not None):
       # Use static rank.
       if weights_rank - predictions_rank == 1:
         weights = array_ops.squeeze(weights, [-1])
-    elif (weights_rank is None) or (
-        weights_shape.dims[-1].is_compatible_with(1)):
+    elif ((weights_rank is None) or
+          ((weights_rank > 0) and
+           weights_shape.dims[-1].is_compatible_with(1))):
       # Use dynamic rank.
       weights = control_flow_ops.cond(
           math_ops.equal(array_ops.rank(weights),
                          math_ops.add(array_ops.rank(predictions), 1)),
           lambda: array_ops.squeeze(weights, [-1]),
           lambda: weights)
-  return labels, predictions, weights
+  return predictions, labels, weights
 
 
 def _maybe_expand_labels(labels, predictions):
@@ -258,6 +263,8 @@ def mean(values, weights=None, metrics_collections=None,
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
     else:
+      values, _, weights = _remove_squeezable_dimensions(
+          predictions=values, labels=None, weights=weights)
       weights = weights_broadcast_ops.broadcast_weights(
           math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
@@ -323,8 +330,8 @@ def accuracy(labels, predictions, weights=None, metrics_collections=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights=weights)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   if labels.dtype != predictions.dtype:
     predictions = math_ops.cast(predictions, labels.dtype)
@@ -385,11 +392,10 @@ def _confusion_matrix_at_thresholds(
       if include not in all_includes:
         raise ValueError('Invaild key: %s.' % include)
 
-  labels = math_ops.cast(labels, dtype=dtypes.bool)
-  predictions = math_ops.to_float(predictions)
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=math_ops.to_float(predictions),
+      labels=math_ops.cast(labels, dtype=dtypes.bool),
+      weights=weights)
 
   num_thresholds = len(thresholds)
 
@@ -628,8 +634,7 @@ def mean_absolute_error(labels, predictions, weights=None,
       tuple.
   """
   predictions, labels, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+      predictions=predictions, labels=labels, weights=weights)
   absolute_errors = math_ops.abs(predictions - labels)
   return mean(absolute_errors, weights, metrics_collections,
               updates_collections, name or 'mean_absolute_error')
@@ -679,9 +684,8 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
@@ -856,9 +860,8 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
 
   predictions, normalizer = confusion_matrix.remove_squeezable_dimensions(
       predictions, normalizer)
@@ -917,9 +920,8 @@ def mean_squared_error(labels, predictions, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   squared_error = math_ops.square(labels - predictions)
   return mean(squared_error, weights, metrics_collections,
               updates_collections, name or 'mean_squared_error')
@@ -974,6 +976,8 @@ def mean_tensor(values, weights=None, metrics_collections=None,
 
     num_values = array_ops.ones_like(values)
     if weights is not None:
+      values, _, weights = _remove_squeezable_dimensions(
+          predictions=values, labels=None, weights=weights)
       weights = weights_broadcast_ops.broadcast_weights(
           math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
@@ -1132,9 +1136,10 @@ def true_positives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'true_positives', (predictions, labels, weights)):
 
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
     is_true_positive = math_ops.logical_and(math_ops.equal(labels, True),
                                             math_ops.equal(predictions, True))
     return _count_condition(is_true_positive, weights, metrics_collections,
@@ -1176,9 +1181,10 @@ def false_positives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_positives', (predictions, labels, weights)):
 
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
     is_false_positive = math_ops.logical_and(math_ops.equal(labels, False),
                                              math_ops.equal(predictions, True))
     return _count_condition(is_false_positive, weights, metrics_collections,
@@ -1233,11 +1239,10 @@ def precision(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'precision', (predictions, labels, weights)):
 
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    labels, predictions, weights = _remove_squeezable_dimensions(
-        labels, predictions, weights)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
     true_p, true_positives_update_op = true_positives(
         labels, predictions, weights, metrics_collections=None,
@@ -1424,11 +1429,10 @@ def recall(labels, predictions, weights=None,
   """
   with variable_scope.variable_scope(
       name, 'recall', (predictions, labels, weights)):
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    labels, predictions, weights = _remove_squeezable_dimensions(
-        labels, predictions, weights)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
     true_p, true_positives_update_op = true_positives(
         labels, predictions, weights, metrics_collections=None,
@@ -1923,9 +1927,8 @@ def root_mean_squared_error(labels, predictions, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   mse, update_mse_op = mean_squared_error(
       labels, predictions, weights, None, None,
       name or 'root_mean_squared_error')

@@ -806,7 +806,8 @@ class RandomTreeGraphs(object):
           regression=self.params.regression)
 
     # Grow tree.
-    with ops.control_dependencies([update_features_op, update_thresholds_op]):
+    with ops.control_dependencies([update_features_op, update_thresholds_op,
+                                   non_fertile_leaves.op]):
       (tree_update_indices, tree_children_updates, tree_threshold_updates,
        new_eot) = (tensor_forest_ops.grow_tree(
            self.variables.end_of_tree, self.variables.node_to_accumulator_map,
@@ -840,9 +841,8 @@ class RandomTreeGraphs(object):
 
     # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has
     # used it to calculate new leaves.
-    gated_new_eot, = control_flow_ops.tuple(
-        [new_eot], control_inputs=[n2a_map_updates])
-    eot_update_op = state_ops.assign(self.variables.end_of_tree, gated_new_eot)
+    with ops.control_dependencies([n2a_map_updates.op]):
+      eot_update_op = state_ops.assign(self.variables.end_of_tree, new_eot)
 
     updates = []
     updates.append(eot_update_op)

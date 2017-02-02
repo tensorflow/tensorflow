@@ -206,7 +206,6 @@ sh_test(
         ":random_forest_mnist",
         ":resnet",
         ":text_classification",
-        ":text_classification_builtin_rnn_model",
         ":text_classification_character_cnn",
         ":text_classification_character_rnn",
         ":text_classification_cnn",

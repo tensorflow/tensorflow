@@ -22,7 +22,7 @@ import abc
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import tensor_util as contrib_tensor_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed

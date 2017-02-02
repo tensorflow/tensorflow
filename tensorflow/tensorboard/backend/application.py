@@ -40,10 +40,17 @@ from werkzeug import wrappers
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
-from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.lib.python import http_util
 
+
+DEFAULT_SIZE_GUIDANCE = {
+    event_accumulator.COMPRESSED_HISTOGRAMS: 500,
+    event_accumulator.IMAGES: 10,
+    event_accumulator.AUDIO: 10,
+    event_accumulator.SCALARS: 1000,
+    event_accumulator.HISTOGRAMS: 50,
+}
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
@@ -67,15 +74,6 @@ _IMGHDR_TO_MIMETYPE = {
     'png': 'image/png'
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
-
-
-TENSORBOARD_SIZE_GUIDANCE = {
-    event_accumulator.COMPRESSED_HISTOGRAMS: 500,
-    event_accumulator.IMAGES: 4,
-    event_accumulator.AUDIO: 4,
-    event_accumulator.SCALARS: 1000,
-    event_accumulator.HISTOGRAMS: 50,
-}
 
 
 def _content_type_for_image(encoded_image_string):
@@ -103,12 +101,7 @@ class TensorBoardWSGIApp(object):
   #                      responses using send_header.
   protocol_version = 'HTTP/1.1'
 
-  def __init__(self,
-               logdir,
-               plugins,
-               size_guidance=None,
-               purge_orphaned_data=True,
-               reload_interval=60):
+  def __init__(self, logdir, plugins, multiplexer, reload_interval=60):
     """Constructs the TensorBoard application.
 
     Args:
@@ -116,33 +109,25 @@ class TensorBoardWSGIApp(object):
         may be a directory, or comma,separated list of directories, or colons
         can be used to provide named directories
       plugins: Map from plugin name to plugin application.
-      size_guidance: Controls how much data of every kind is loaded into memory.
-      purge_orphaned_data: "orphaned" data may be left behind due to a
-        TF restart or out-of-order execution. If true, purge it when detected.
+      multiplexer: Organizes events data from runs.
       reload_interval: How often (in seconds) to reload the Multiplexer
 
     Returns:
       A WSGI application that implements the TensorBoard backend.
     """
-    if size_guidance is None:
-      size_guidance = TENSORBOARD_SIZE_GUIDANCE
-    self._registered_plugins = plugins
+    self._plugins = plugins
     self._logdir = logdir
-    self._size = size_guidance
-    self._purge = purge_orphaned_data
+    self._multiplexer = multiplexer
     self._reload = reload_interval
     self.initialize()
 
   def initialize(self):
     """Setup the TensorBoard application."""
     path_to_run = parse_event_files_spec(self._logdir)
-    multiplexer = event_multiplexer.EventMultiplexer(
-        size_guidance=self._size, purge_orphaned_data=self._purge)
     if self._reload:
-      start_reloading_multiplexer(multiplexer, path_to_run, self._reload)
+      start_reloading_multiplexer(self._multiplexer, path_to_run, self._reload)
     else:
-      reload_multiplexer(multiplexer, path_to_run)
-    self._multiplexer = multiplexer
+      reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
         DATA_PREFIX + LOGDIR_ROUTE:
@@ -174,9 +159,9 @@ class TensorBoardWSGIApp(object):
     # Serve the routes from the registered plugins using their name as the route
     # prefix. For example if plugin z has two routes /a and /b, they will be
     # served as /data/plugin/z/a and /data/plugin/z/b.
-    for name in self._registered_plugins:
+    for name in self._plugins:
       try:
-        plugin = self._registered_plugins[name]
+        plugin = self._plugins[name]
         plugin_apps = plugin.get_plugin_apps(self._multiplexer.RunPaths(),
                                              self._logdir)
       except Exception as e:  # pylint: disable=broad-except

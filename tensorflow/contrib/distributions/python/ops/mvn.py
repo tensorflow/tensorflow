@@ -137,7 +137,6 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
       TypeError: If `mu` and `cov` are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name) as ns:
       with ops.name_scope("init", values=[mu] + cov.inputs):
         self._mu = array_ops.identity(mu, name="mu")
@@ -215,16 +214,16 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
       with ops.name_scope(name, values=self._cov.inputs):
         return math_ops.exp(self._cov.log_det())
 
-  def _batch_shape(self):
+  def _batch_shape_tensor(self):
     return self._cov.batch_shape()
 
-  def _get_batch_shape(self):
+  def _batch_shape(self):
     return self._cov.get_batch_shape()
 
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return array_ops.stack([self._cov.vector_space_dimension()])
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return self._cov.get_shape()[-1:]
 
   def _sample_n(self, n, seed=None):
@@ -300,8 +299,11 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
   def _mean(self):
     return array_ops.identity(self._mu)
 
-  def _variance(self):
+  def _covariance(self):
     return self.sigma
+
+  def _variance(self):
+    return array_ops.matrix_diag_part(self.sigma)
 
   def _mode(self):
     return array_ops.identity(self._mu)
@@ -388,7 +390,6 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
       TypeError: If `mu` and `diag_stddev` are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[diag_stddev]) as ns:
       cov = operator_pd_diag.OperatorPDSqrtDiag(diag_stddev,
                                                 verify_pd=validate_args)
@@ -410,7 +411,6 @@ class MultivariateNormalDiagWithSoftplusStDev(MultivariateNormalDiag):
                allow_nan_stats=True,
                name="MultivariateNormalDiagWithSoftplusStdDev"):
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[diag_stddev]) as ns:
       super(MultivariateNormalDiagWithSoftplusStDev, self).__init__(
           mu=mu,
@@ -532,7 +532,6 @@ class MultivariateNormalDiagPlusVDVT(_MultivariateNormalOperatorPD):
       name: The name to give Ops created by the initializer.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[diag_large, v, diag_small]) as ns:
       cov = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
           operator_pd_diag.OperatorPDDiag(
@@ -629,7 +628,6 @@ class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
       TypeError: If `mu` and `chol` are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[chol]) as ns:
       cov = operator_pd_cholesky.OperatorPDCholesky(chol,
                                                     verify_pd=validate_args)
@@ -712,7 +710,6 @@ class MultivariateNormalFull(_MultivariateNormalOperatorPD):
       TypeError: If `mu` and `sigma` are different dtypes.
     """
     parameters = locals()
-    parameters.pop("self")
     with ops.name_scope(name, values=[sigma]) as ns:
       cov = operator_pd_full.OperatorPDFull(sigma, verify_pd=validate_args)
     super(MultivariateNormalFull, self).__init__(

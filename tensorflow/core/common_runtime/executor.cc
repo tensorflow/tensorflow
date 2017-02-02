@@ -1699,22 +1699,23 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     }
   }
 
-  Rendezvous* captured_rendezvous = nullptr;  // Will be set on error.
+  bool abort_run = false;
   if (!s.ok()) {
     // Some error happened. This thread of computation is done.
     mutex_lock l(mu_);
     if (status_.ok()) {
-      captured_rendezvous = rendezvous_;
-      if (captured_rendezvous) captured_rendezvous->Ref();
+      abort_run = true;
       status_ = s;
     }
   }
-  if (captured_rendezvous) {
-    // If we captured the rendezvous_ pointer, we are in an error condition.
-    // Use captured_rendezvous, in case "this" is deleted by another thread.
+  if (abort_run) {
     TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
-    captured_rendezvous->StartAbort(s);
-    captured_rendezvous->Unref();
+    if (rendezvous_) {
+      rendezvous_->StartAbort(s);
+    }
+    if (cancellation_manager_) {
+      cancellation_manager_->StartCancel();
+    }
   }
 
   bool completed = false;

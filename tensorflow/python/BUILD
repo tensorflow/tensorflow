@@ -23,7 +23,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_plugin_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 py_library(
@@ -315,6 +315,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_cc",
     ],
     alwayslink = 1,
@@ -1738,6 +1739,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":init_ops",
         ":platform",
+        ":resource_variable_ops",
         ":variables",
         "@six_archive//:six",
     ],
@@ -1845,8 +1847,10 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
+        "//tensorflow/contrib/compiler:compiler_py",
         "//third_party/py/numpy",
     ],
+    xla_enabled = True,
 )
 
 cuda_py_test(
@@ -3080,6 +3084,7 @@ cuda_py_test(
         ":gradients",
         ":math_ops",
         ":nn",
+        ":nn_grad",
         ":nn_ops_gen",
         ":platform",
         ":random_ops",
