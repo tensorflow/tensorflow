@@ -184,6 +184,27 @@ class SwitchTestCase(TensorFlowTestCase):
         for _ in range(10):
           sess.run([train_op])
 
+  def testResourceReadInLoop(self):
+    with ops.Graph().as_default():
+      embedding_matrix = variable_scope.get_variable(
+          "embedding_matrix",
+          initializer=[[2.0], [3.0]],
+          use_resource=True)
+
+      def Cond(it, _):
+        return it < 5
+
+      def Body(it, cost):
+        embedding = embedding_ops.embedding_lookup(embedding_matrix, [0])
+        cost += math_ops.reduce_sum(embedding)
+        return it + 1, cost
+
+      _, cost = control_flow_ops.while_loop(
+          Cond, Body, [constant_op.constant(0), constant_op.constant(0.0)])
+      with self.test_session() as sess:
+        sess.run(variables.global_variables_initializer())
+        self.assertAllEqual(10.0, cost.eval())
+
   def testIndexedSlicesGradientInCondInWhileLoop(self):
     with ops.Graph().as_default():
       embedding_matrix = variable_scope.get_variable(

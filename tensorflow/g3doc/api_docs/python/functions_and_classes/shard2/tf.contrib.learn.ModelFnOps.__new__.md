@@ -1,4 +1,4 @@
-#### `tf.contrib.learn.ModelFnOps.__new__(cls, mode, predictions=None, loss=None, train_op=None, eval_metric_ops=None, output_alternatives=None, training_chief_hooks=None, training_hooks=None, training_scaffold=None)` {#ModelFnOps.__new__}
+#### `tf.contrib.learn.ModelFnOps.__new__(cls, mode, predictions=None, loss=None, train_op=None, eval_metric_ops=None, output_alternatives=None, training_chief_hooks=None, training_hooks=None, scaffold=None)` {#ModelFnOps.__new__}
 
 Creates a validated `ModelFnOps` instance.
 
@@ -40,7 +40,7 @@ type.
     run on the chief worker during training.
 *  <b>`training_hooks`</b>: A list of `SessionRunHook` objects that will be run on
     all workers during training.
-*  <b>`training_scaffold`</b>: A `tf.train.Scaffold` object that can be used to set
+*  <b>`scaffold`</b>: A `tf.train.Scaffold` object that can be used to set
     initialization, saver, and more to be used in training.
 
 ##### Returns:

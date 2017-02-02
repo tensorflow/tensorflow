@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"

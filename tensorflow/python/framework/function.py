@@ -298,6 +298,7 @@ class _FuncGraph(ops.Graph):
              initializer=None,
              trainable=True,
              collections=None,
+             use_resource=None,
              **kwargs):
     """A custom variable getter."""
     # Here, we switch the default graph to the outer graph and ask the
@@ -316,7 +317,8 @@ class _FuncGraph(ops.Graph):
           dtype=dtype,
           initializer=initializer,
           trainable=trainable,
-          collections=collections)
+          collections=collections,
+          use_resource=use_resource)
       self.extra_vars.append(var)
       return var
 
