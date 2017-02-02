@@ -59,6 +59,9 @@ Visualize the summaries with this command:
 
 tensorboard --logdir /tmp/retrain_logs
 
+Pillow package is required for training images of (gif, png, bmp) formats.
+Use 'sudo pip install Pillow' to install it.
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -74,6 +77,8 @@ import struct
 import sys
 import tarfile
 
+from PIL import Image
+from io import BytesIO
 import numpy as np
 from six.moves import urllib
 import tensorflow as tf
@@ -129,7 +134,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     if is_root_dir:
       is_root_dir = False
       continue
-    extensions = ['jpg', 'jpeg', 'JPG', 'JPEG']
+    extensions = ['jpg', 'jpeg', 'JPG', 'JPEG', 'gif', 'GIF', 'png', 'PNG', 'bmp', 'BMP']
     file_list = []
     dir_name = os.path.basename(sub_dir)
     if dir_name == image_dir:
@@ -384,7 +389,7 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                                 category)
     if not gfile.Exists(image_path):
       tf.logging.fatal('File does not exist %s', image_path)
-    image_data = gfile.FastGFile(image_path, 'rb').read()
+    image_data = read_image2RGBbytes(image_path)
     bottleneck_values = run_bottleneck_on_image(sess, image_data,
                                                 jpeg_data_tensor,
                                                 bottleneck_tensor)
@@ -396,6 +401,29 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
     bottleneck_string = bottleneck_file.read()
   bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
   return bottleneck_values
+
+
+def read_image2RGBbytes(image_path):
+  """Reads the image into a byte stream.
+
+  For jpg/jpeg, gfile.FastGFile is enough.
+  For others like gif, png, use PIL to open them and convert them into RGB arrays. Then save them into bytes stream.
+
+  Args:
+    image_path: relative or absolute path of the image.
+
+  Returns:
+    A byte stream for RGB arrays of the image which can be fed directly into image_data_tensor in tensorflow.session.
+  """
+  jpgext = ['.jpg', '.jpeg', '.JPG', '.JPEG']
+  if (os.path.splitext(image_path)[1] in jpgext):
+    image_data = gfile.FastGFile(image_path, 'rb').read()
+  else:
+    with BytesIO() as output:
+      with Image.open(image_path) as img:
+        img.convert('RGB').save(output, 'JPEG')
+        image_data = output.getvalue()
+  return image_data
 
 
 def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
