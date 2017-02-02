@@ -368,7 +368,7 @@ class EstimatorTest(test.TestCase):
           predictions=constant_op.constant(0.),
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
-          training_scaffold=monitored_session.Scaffold(init_fn=_init_fn))
+          scaffold=monitored_session.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.fit(input_fn=boston_input_fn, steps=1)

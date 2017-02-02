@@ -22,6 +22,7 @@ import argparse
 import inspect
 import os
 
+import six
 import tensorflow as tf
 
 from tensorflow.tools.common import public_api
@@ -65,7 +66,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
     raise
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
-  for full_name, py_object in index.iteritems():
+  for full_name, py_object in six.iteritems(index):
 
     if full_name in duplicate_of:
       print('Not writing docs for %s, duplicate of %s.' % (

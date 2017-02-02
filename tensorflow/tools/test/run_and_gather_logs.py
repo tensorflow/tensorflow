@@ -21,7 +21,9 @@ from __future__ import print_function
 import argparse
 import os
 import shlex
+from string import maketrans
 import sys
+import time
 
 from google.protobuf import json_format
 from google.protobuf import text_format
@@ -74,17 +76,22 @@ def main(unused_args):
 
   serialized_test_results = text_format.MessageToString(test_results)
 
-  if not FLAGS.test_log_output:
+  if not FLAGS.test_log_output_dir:
     print(serialized_test_results)
     return
 
+  if FLAGS.test_log_output_filename:
+    file_name = FLAGS.test_log_output_filename
+  else:
+    file_name = (name.strip("/").translate(maketrans("/:", "__")) +
+                 time.strftime("%Y%m%d%H%M%S", time.gmtime()))
   if FLAGS.test_log_output_use_tmpdir:
     tmpdir = test.get_temp_dir()
-    output_path = os.path.join(tmpdir, FLAGS.test_log_output)
+    output_path = os.path.join(tmpdir, FLAGS.test_log_output_dir, file_name)
   else:
-    output_path = os.path.abspath(FLAGS.test_log_output)
+    output_path = os.path.join(
+        os.path.abspath(FLAGS.test_log_output_dir), file_name)
   gfile.GFile(output_path, "w").write(serialized_test_results)
-  # Also write test results in JSON, used by the datastore uploader.
   json_test_results = json_format.MessageToJson(test_results)
   gfile.GFile(output_path + ".json", "w").write(json_test_results)
   tf_logging.info("Test results written to: %s" % output_path)
@@ -104,8 +111,6 @@ if __name__ == "__main__":
       default="",
       help="Test arguments, space separated.")
   parser.add_argument(
-      "--test_log_output", type=str, default="", help="Filename to write logs.")
-  parser.add_argument(
       "--test_log_output_use_tmpdir",
       type="bool",
       nargs="?",
@@ -122,5 +127,17 @@ if __name__ == "__main__":
       type=str,
       default="",
       help="CC flags used during this build.")
+  parser.add_argument(
+      "--test_log_output_dir",
+      type=str,
+      default="",
+      help="Directory to write benchmark results to.")
+  parser.add_argument(
+      "--test_log_output_filename",
+      type=str,
+      default="",
+      help="Filename to output benchmark results to. If the filename is not "
+           "specified, it will be automatically created based on --name "
+           "and current time.")
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

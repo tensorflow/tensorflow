@@ -245,7 +245,7 @@ message ConfigProto {
   RPCOptions rpc_options = 13;
 };
 
-// EXPERIMENTAL. Options for a single Run() call.
+// Options for a single Run() call.
 message RunOptions {
   // TODO(pbar) Turn this into a TraceOptions proto which allows
   // tracing to be controlled in a more orthogonal manner?
@@ -273,7 +273,7 @@ message RunOptions {
   reserved 4;
 }
 
-// EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
+// Metadata output (i.e., non-Tensor) for a single Run() call.
 message RunMetadata {
   // Statistics traced for this step. Populated if tracing is turned on via the
   // "RunOptions" proto.
