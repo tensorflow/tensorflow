@@ -32,6 +32,47 @@ op { name: "RefIdentity" hide: true }
 # ctc_ops
 # data_flow_ops
 op { name: "FakeQueue" skip: true }
+op { name: "FIFOQueue" skip: true}
+op { name: "FIFOQueueV2" rename_to: "FIFOQueue" }
+op { name: "PaddingFIFOQueue" skip: true }
+op { name: "PaddingFIFOQueueV2" rename_to: "PaddingFIFOQueue" }
+op { name: "PriorityQueue" skip: true }
+op { name: "PriorityQueueV2" rename_to: "PriorityQueue" }
+op { name: "QueueClose" skip: true }
+op { name: "QueueCloseV2" rename_to: "QueueClose" }
+op { name: "QueueDequeue" skip: true }
+op { name: "QueueDequeueV2" rename_to: "QueueDequeue" }
+op { name: "QueueDequeueMany" skip: true }
+op { name: "QueueDequeueManyV2" rename_to: "QueueDequeueMany" }
+op { name: "QueueDequeueUpTo" skip: true }
+op { name: "QueueDequeueUpToV2" rename_to: "QueueDequeueUpTo" }
+op { name: "QueueEnqueue" skip: true }
+op { name: "QueueEnqueueV2" rename_to: "QueueEnqueue" }
+op { name: "QueueEnqueueMany" skip: true }
+op { name: "QueueEnqueueManyV2" rename_to: "QueueEnqueueMany" }
+op { name: "QueueSize" skip: true }
+op { name: "QueueSizeV2" rename_to: "QueueSize" }
+op { name: "RandomShuffleQueue" skip: true }
+op { name: "RandomShuffleQueueV2" rename_to: "RandomShuffleQueue" }
+
+# Skip hash table ops until we have better support in C++ (ops are currently
+# only used in contrib)
+op { name: "HashTable" skip: true }
+op { name: "InitializeTable" skip: true }
+op { name: "InitializeTableFromTextFile" skip: true }
+op { name: "LookupTableFind" skip: true }
+op { name: "LookupTableImport" skip: true }
+op { name: "LookupTableInsert" skip: true }
+op { name: "LookupTableSize" skip: true }
+op { name: "MutableDenseHashTable" skip: true }
+op { name: "MutableHashTable" skip: true }
+op { name: "MutableHashTableOfTensors" skip: true }
+
+# Stack ops are internal to control flow gradients (not yet implemented in C++)
+op { name: "Stack" skip: true }
+op { name: "StackClose" skip: true }
+op { name: "StackPop" skip: true }
+op { name: "StackPush" skip: true }
 
 # functional_ops
 # image_ops
