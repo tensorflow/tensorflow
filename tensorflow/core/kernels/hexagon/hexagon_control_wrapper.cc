@@ -122,10 +122,10 @@ bool HexagonControlWrapper::SetupGraph(
   }
 
   // 2. Setup op nodes
-  for (const GraphTransferer::NodeTransferParams& params :
-       graph_transferer.GetOpNodeParams()) {
-    const int node_id = params.node_id;
-    const int op_id = params.soc_op_id;
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transferer.GetGraphTransferInfo().node_info()) {
+    const int node_id = params.node_id();
+    const int op_id = params.soc_op_id();
     CHECK(inputs_map.count(node_id) == 1);
     CHECK(outputs_map.count(node_id) <= 1);
     // Only output node doesn't have output
@@ -142,16 +142,16 @@ bool HexagonControlWrapper::SetupGraph(
       CHECK(output_count > 0);
     }
     int padding_id = -1;
-    if (params.padding == 0) {
+    if (params.padding_id() == 0) {
       padding_id = 0;
-    } else if (params.padding == Padding::SAME) {
+    } else if (params.padding_id() == Padding::SAME) {
       padding_id = 1;
-    } else if (params.padding == Padding::VALID) {
+    } else if (params.padding_id() == Padding::VALID) {
       padding_id = 2;
     } else {
       CHECK(false);
     }
-    soc_interface_AppendNode(params.name.c_str(), node_id + NODE_ID_OFFSET,
+    soc_interface_AppendNode(params.name().c_str(), node_id + NODE_ID_OFFSET,
                              op_id, padding_id, input_ptr, input_count,
                              output_ptr, output_count);
   }

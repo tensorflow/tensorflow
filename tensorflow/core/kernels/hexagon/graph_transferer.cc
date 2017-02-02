@@ -279,17 +279,18 @@ void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
   // Setup dependency map placeholder
   std::vector<int> output_node_ids;
   std::unordered_map<int, std::unordered_set<int>> dependency_map;
-  for (const NodeTransferParams& params : node_transfer_params_list_) {
-    const int node_id = params.node_id;
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transfer_info_.node_info()) {
+    const int node_id = params.node_id();
     for (const string& output_node_name : output_node_names) {
-      if (params.name == output_node_name) {
+      if (params.name() == output_node_name) {
         output_node_ids.emplace_back(node_id);
       }
     }
 
     dependency_map.emplace(std::piecewise_construct, std::make_tuple(node_id),
                            std::make_tuple());
-    if (params.inputs_size == 0) {
+    if (params.input_count() == 0) {
       continue;
     }
     CHECK(input_map.count(node_id) == 1);
@@ -305,8 +306,8 @@ void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
     FillDependencyRec(output_node_id, dependency_map, completed);
   }
 
-  std::sort(node_transfer_params_list_.begin(),
-            node_transfer_params_list_.end(),
+  std::sort(graph_transfer_info_.mutable_node_info()->begin(),
+            graph_transfer_info_.mutable_node_info()->end(),
             TransferParamsComparator(dependency_map));
 }
 
@@ -319,11 +320,6 @@ GraphTransferer::GetConstNodeParams() const {
   return const_node_transfer_params_list_;
 }
 
-const std::vector<GraphTransferer::NodeTransferParams>&
-GraphTransferer::GetOpNodeParams() const {
-  return node_transfer_params_list_;
-}
-
 const std::vector<GraphTransferer::NodeInputParams>&
 GraphTransferer::GetNodeInputParams() const {
   return node_input_params_list_;
@@ -332,6 +328,10 @@ GraphTransferer::GetNodeInputParams() const {
 const std::vector<GraphTransferer::NodeOutputParams>&
 GraphTransferer::GetNodeOutputParams() const {
   return node_output_params_list_;
+}
+
+const GraphTransferInfo& GraphTransferer::GetGraphTransferInfo() const {
+  return graph_transfer_info_;
 }
 
 int GraphTransferer::CacheNode(const Node& node) {
@@ -643,10 +643,16 @@ void GraphTransferer::AppendNodeParams(const string& name, const int id,
                                        const std::vector<int>& extra_inputs,
                                        const int outputs_size) {
   VLOG(1) << "Append node params: " << name;
-  node_transfer_params_list_.emplace_back(
-      NodeTransferParams{name, id, type, type_id, padding,
-                         inputs_size + static_cast<int>(extra_inputs.size()),
-                         static_cast<int>(outputs_size)});
+  GraphTransferInfo::NodeInfo& node_info =
+      *graph_transfer_info_.add_node_info();
+  node_info.set_name(name);
+  node_info.set_node_id(id);
+  node_info.set_type_name(type);
+  node_info.set_soc_op_id(type_id);
+  node_info.set_padding_id(padding);
+  node_info.set_input_count(inputs_size +
+                            static_cast<int>(extra_inputs.size()));
+  node_info.set_output_count(static_cast<int>(outputs_size));
 }
 
 void GraphTransferer::AppendNodeInputParams(
@@ -833,10 +839,10 @@ GraphTransferer::TransferParamsComparator::TransferParamsComparator(
     : dependency_map_(dep_map) {}
 
 bool GraphTransferer::TransferParamsComparator::operator()(
-    const GraphTransferer::NodeTransferParams& obj0,
-    const GraphTransferer::NodeTransferParams& obj1) {
-  const int node_id0 = obj0.node_id;
-  const int node_id1 = obj1.node_id;
+    const GraphTransferInfo::NodeInfo& obj0,
+    const GraphTransferInfo::NodeInfo& obj1) {
+  const int node_id0 = obj0.node_id();
+  const int node_id1 = obj1.node_id();
   bool obj0_uses_obj1 = false;
   if (dependency_map_.count(node_id0)) {
     obj0_uses_obj1 = dependency_map_.at(node_id0).count(node_id1) > 0;
@@ -916,17 +922,18 @@ void GraphTransferer::DumpNodeTransferParams() const {
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Op Nodes ***";
-  for (const NodeTransferParams& params : node_transfer_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " \"" << params.name;
-    LOG(INFO) << "  type: " << params.type_name;
-    LOG(INFO) << "  padding: " << ToPaddingDebugString(params.padding);
-    LOG(INFO) << "  inputs: " << INPUTS_NODE_PREFIX + ToString(params.node_id)
-              << ", size = " << params.inputs_size;
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transfer_info_.node_info()) {
+    LOG(INFO) << "[ " << params.node_id() << " \"" << params.name();
+    LOG(INFO) << "  type: " << params.type_name();
+    LOG(INFO) << "  padding: " << ToPaddingDebugString(params.padding_id());
+    LOG(INFO) << "  inputs: " << INPUTS_NODE_PREFIX + ToString(params.node_id())
+              << ", size = " << params.input_count();
     LOG(INFO) << "  outputs: "
-              << (params.outputs_size <= 0
+              << (params.output_count() <= 0
                       ? NULL_OUTPUT_NAME
-                      : (OUTPUTS_NODE_PREFIX + ToString(params.node_id)))
-              << ", size = " << params.outputs_size << " ]";
+                      : (OUTPUTS_NODE_PREFIX + ToString(params.node_id())))
+              << ", size = " << params.output_count() << " ]";
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Node input params ***";
@@ -963,20 +970,21 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
     LOG(INFO) << sstream.str();
   }
   LOG(INFO) << "Const node count = " << const_node_transfer_params_list_.size();
-  for (const NodeTransferParams& params : node_transfer_params_list_) {
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transfer_info_.node_info()) {
     std::stringstream sstream;
-    sstream << "---(OP) [" << params.name.c_str() << "," << std::hex
-            << params.node_id << std::dec << "," << params.soc_op_id << ","
-            << ToPaddingDebugString(params.padding) << ","
-            << INPUTS_NODE_PREFIX + ToString(params.node_id) << ","
-            << params.inputs_size << ","
-            << (params.outputs_size <= 0
+    sstream << "---(OP) [" << params.name().c_str() << "," << std::hex
+            << params.node_id() << std::dec << "," << params.soc_op_id() << ","
+            << ToPaddingDebugString(params.padding_id()) << ","
+            << INPUTS_NODE_PREFIX + ToString(params.node_id()) << ","
+            << params.input_count() << ","
+            << (params.output_count() <= 0
                     ? NULL_OUTPUT_NAME
-                    : (OUTPUTS_NODE_PREFIX + ToString(params.node_id)))
-            << "," << params.outputs_size << "," << params.type_name << "]";
+                    : (OUTPUTS_NODE_PREFIX + ToString(params.node_id())))
+            << "," << params.output_count() << "," << params.type_name() << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Op node count = " << node_transfer_params_list_.size();
+  LOG(INFO) << "Op node count = " << graph_transfer_info_.node_info_size();
   for (const NodeInputParams& params : node_input_params_list_) {
     std::stringstream sstream;
     sstream << "---(INPUT) [" << std::hex << params.node_id << std::dec;

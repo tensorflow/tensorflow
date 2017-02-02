@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
@@ -39,7 +40,9 @@ namespace tensorflow {
 // to avoid unsupported ops in SoC.
 class GraphTransferer {
  public:
+  // TODO(satok): Remove. Use proto definition instead.
   static constexpr int MAX_SUPPORTED_RANK = 5;
+  // TODO(satok): Remove. Use proto definition instead.
   static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK - 1;
   using OutputTensorMap = std::unordered_map<string, Tensor*>;
 
@@ -48,18 +51,8 @@ class GraphTransferer {
     Tensor tensor;
   };
 
-  // Node parameters for transfer
-  struct NodeTransferParams {
-    string name;
-    int node_id;
-    string type_name;
-    int soc_op_id;
-    int padding;
-    int inputs_size;
-    int outputs_size;
-  };
-
   // Const node parameters for transfer
+  // TODO(satok): Remove. Use proto definition instead.
   struct ConstNodeTransferParams {
     string name;
     int node_id;
@@ -69,12 +62,14 @@ class GraphTransferer {
   };
 
   // Input parameters of a node for transfer
+  // TODO(satok): Remove. Use proto definition instead.
   struct NodeInputParams {
     int node_id;
     std::vector<std::tuple<int, int>> input_node_id_and_output_port_list;
   };
 
   // Output parameters of a node for transfer
+  // TODO(satok): Remove. Use proto definition instead.
   struct NodeOutputParams {
     int node_id;
     std::vector<int> max_sizes;
@@ -130,22 +125,22 @@ class GraphTransferer {
   // Return const node parameters for transfer
   const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
 
-  // Return op node parameters for transfer
-  const std::vector<NodeTransferParams>& GetOpNodeParams() const;
-
   // Return input params of nodes
   const std::vector<NodeInputParams>& GetNodeInputParams() const;
 
   // Return output params of nodes
   const std::vector<NodeOutputParams>& GetNodeOutputParams() const;
 
+  // Return parameters for transfer
+  const GraphTransferInfo& GetGraphTransferInfo() const;
+
  private:
   class TransferParamsComparator {
    public:
     TransferParamsComparator(
         const std::unordered_map<int, std::unordered_set<int>>& dep_map);
-    bool operator()(const GraphTransferer::NodeTransferParams& obj0,
-                    const GraphTransferer::NodeTransferParams& obj1);
+    bool operator()(const GraphTransferInfo::NodeInfo& obj0,
+                    const GraphTransferInfo::NodeInfo& obj1);
     const std::unordered_map<int, std::unordered_set<int>>& dependency_map_;
   };
 
@@ -258,7 +253,7 @@ class GraphTransferer {
   // Dump verification string of parameters to verify with offline tools
   void DumpVerificationStringOfNodeTransferParams() const;
 
-  std::vector<NodeTransferParams> node_transfer_params_list_;
+  GraphTransferInfo graph_transfer_info_;
   std::vector<ConstNodeTransferParams> const_node_transfer_params_list_;
   std::vector<NodeInputParams> node_input_params_list_;
   std::vector<NodeOutputParams> node_output_params_list_;

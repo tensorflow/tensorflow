@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
@@ -128,11 +129,11 @@ static const GraphTransferer::ConstNodeTransferParams* FindConstNodeParams(
   return nullptr;
 }
 
-static const GraphTransferer::NodeTransferParams* FindOpNodeParams(
+static const GraphTransferInfo::NodeInfo* FindNodeInfo(
     const GraphTransferer& gt, const string& name) {
-  for (const GraphTransferer::NodeTransferParams& params :
-       gt.GetOpNodeParams()) {
-    if (params.name == name) {
+  for (const GraphTransferInfo::NodeInfo& params :
+       gt.GetGraphTransferInfo().node_info()) {
+    if (params.name() == name) {
       return &params;
     }
   }
@@ -162,26 +163,26 @@ static const GraphTransferer::NodeOutputParams* FindNodeOutputParams(
 }
 
 static void SanityCheckNodes(const GraphTransferer& gt) {
-  for (const GraphTransferer::NodeTransferParams& params :
-       gt.GetOpNodeParams()) {
-    if (params.inputs_size > 0) {
+  for (const GraphTransferInfo::NodeInfo& params :
+       gt.GetGraphTransferInfo().node_info()) {
+    if (params.input_count() > 0) {
       const GraphTransferer::NodeInputParams* input_params =
-          FindNodeInputParams(gt, params.node_id);
+          FindNodeInputParams(gt, params.node_id());
       ASSERT_NE(nullptr, input_params);
-      EXPECT_EQ(params.inputs_size,
+      EXPECT_EQ(params.input_count(),
                 input_params->input_node_id_and_output_port_list.size());
-      EXPECT_EQ(params.node_id, input_params->node_id);
+      EXPECT_EQ(params.node_id(), input_params->node_id);
       for (const std::tuple<int, int>& pair :
            input_params->input_node_id_and_output_port_list) {
         EXPECT_GE(std::get<1>(pair), 0);
       }
     }
-    if (params.outputs_size > 0) {
+    if (params.output_count() > 0) {
       const GraphTransferer::NodeOutputParams* output_params =
-          FindNodeOutputParams(gt, params.node_id);
+          FindNodeOutputParams(gt, params.node_id());
       ASSERT_NE(nullptr, output_params);
-      EXPECT_EQ(params.outputs_size, output_params->max_sizes.size());
-      EXPECT_EQ(params.node_id, output_params->node_id);
+      EXPECT_EQ(params.output_count(), output_params->max_sizes.size());
+      EXPECT_EQ(params.node_id(), output_params->node_id);
       for (const int max_size : output_params->max_sizes) {
         EXPECT_GE(max_size, 0);
       }
@@ -344,17 +345,16 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   SanityCheckNodes(gt_);
   const int const_node_count = gt_.GetConstNodeParams().size();
   ASSERT_EQ(2, const_node_count);
-  const int op_node_count = gt_.GetOpNodeParams().size();
+  const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
   ASSERT_EQ(3, op_node_count);
-  const GraphTransferer::NodeTransferParams* params_conv =
-      FindOpNodeParams(gt_, "conv");
+  const GraphTransferInfo::NodeInfo* params_conv = FindNodeInfo(gt_, "conv");
   ASSERT_TRUE(params_conv != nullptr);
-  const int id = params_conv->node_id;
+  const int id = params_conv->node_id();
   EXPECT_GE(id, 0);
-  EXPECT_EQ("Conv2D", params_conv->type_name);
-  EXPECT_EQ(3, params_conv->inputs_size);
-  EXPECT_EQ(1, params_conv->outputs_size);
-  EXPECT_EQ(Padding::SAME, params_conv->padding);
+  EXPECT_EQ("Conv2D", params_conv->type_name());
+  EXPECT_EQ(3, params_conv->input_count());
+  EXPECT_EQ(1, params_conv->output_count());
+  EXPECT_EQ(Padding::SAME, params_conv->padding_id());
 }
 
 TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
@@ -370,17 +370,17 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   SanityCheckNodes(gt_);
   const int const_node_count = gt_.GetConstNodeParams().size();
   ASSERT_EQ(2, const_node_count);
-  const int op_node_count = gt_.GetOpNodeParams().size();
+  const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
   ASSERT_EQ(3, op_node_count);
-  const GraphTransferer::NodeTransferParams* params_max_pool =
-      FindOpNodeParams(gt_, "maxpool");
+  const GraphTransferInfo::NodeInfo* params_max_pool =
+      FindNodeInfo(gt_, "maxpool");
   ASSERT_TRUE(params_max_pool != nullptr);
-  const int id = params_max_pool->node_id;
+  const int id = params_max_pool->node_id();
   EXPECT_GE(id, 0);
-  EXPECT_EQ("MaxPool", params_max_pool->type_name);
-  EXPECT_EQ(3, params_max_pool->inputs_size);
-  EXPECT_EQ(1, params_max_pool->outputs_size);
-  EXPECT_EQ(Padding::SAME, params_max_pool->padding);
+  EXPECT_EQ("MaxPool", params_max_pool->type_name());
+  EXPECT_EQ(3, params_max_pool->input_count());
+  EXPECT_EQ(1, params_max_pool->output_count());
+  EXPECT_EQ(Padding::SAME, params_max_pool->padding_id());
 }
 
 TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
