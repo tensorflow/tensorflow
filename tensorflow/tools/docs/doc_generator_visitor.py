@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import inspect
 
+import six
+
 
 class DocGeneratorVisitor(object):
   """A visitor that generates docs for a python object when __call__ed."""
@@ -107,7 +109,7 @@ class DocGeneratorVisitor(object):
     # Make a preliminary duplicates map. For all sets of duplicate names, it
     # maps the first name found to a list of all duplicate names.
     raw_duplicates = {}
-    for full_name, py_object in self._index.iteritems():
+    for full_name, py_object in six.iteritems(self._index):
       # We cannot use the duplicate mechanism for constants, since e.g.,
       # id(c1) == id(c2) with c1=1, c2=1. This is unproblematic since constants
       # have no usable docstring and won't be documented automatically.
