@@ -18,5 +18,5 @@ Flattens the input while maintaining the batch_size.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If inputs.dense_shape is wrong.
+*  <b>`ValueError`</b>: If inputs rank is unknown or less than 2.
 
