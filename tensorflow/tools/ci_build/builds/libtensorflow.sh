@@ -53,7 +53,7 @@ function build_libtensorflow_tarball() {
   # have been resolved and the "manual" tags on the BUILD targets
   # in tensorflow/tools/lib_package/BUILD are removed.
   # Till then, must manually run the test.
-  bazel test ${BAZEL_OPTS} //tensorflow/tools/lib_package/...
+  bazel test ${BAZEL_OPTS} //tensorflow/tools/lib_package:libtensorflow_test
 
   bazel build ${BAZEL_OPTS} //tensorflow/tools/lib_package:libtensorflow.tar.gz
   DIR=lib_package

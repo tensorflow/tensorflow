@@ -914,14 +914,16 @@ class ModuleFunctionTest(test.TestCase):
 
 class VariableHoistingTest(test.TestCase):
 
-  def _testSimpleModel(self, use_forward_func):
+  def _testSimpleModel(self, use_forward_func, use_resource=False):
 
     def _Model(x):
       w = variable_scope.get_variable(
           "w", (64, 64),
-          initializer=init_ops.random_uniform_initializer(seed=312))
+          initializer=init_ops.random_uniform_initializer(seed=312),
+          use_resource=use_resource)
       b = variable_scope.get_variable(
-          "b", (64), initializer=init_ops.zeros_initializer()),
+          "b", (64), initializer=init_ops.zeros_initializer(),
+          use_resource=use_resource),
       return math_ops.sigmoid(math_ops.matmul(x, w) + b)
 
     @function.Defun()
@@ -975,6 +977,9 @@ class VariableHoistingTest(test.TestCase):
     self._testSimpleModel(True)
     self._testSimpleModel(False)
 
+  def testBasicResource(self):
+    self._testSimpleModel(True, use_resource=True)
+    self._testSimpleModel(False, use_resource=True)
 
 if __name__ == "__main__":
   test.main()

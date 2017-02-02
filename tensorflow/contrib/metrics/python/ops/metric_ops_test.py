@@ -2324,13 +2324,6 @@ class StreamingSparsePrecisionTest(test.TestCase):
         self.assertEqual(expected, update.eval())
         self.assertEqual(expected, metric.eval())
 
-  def _test_sparse_average_precision_at_k(self, predictions, labels, k,
-                                          expected):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      predictions = constant_op.constant(predictions, dtypes_lib.float32)
-      metric = metric_ops.sparse_average_precision_at_k(predictions, labels, k)
-      self.assertAllEqual(expected, metric.eval())
-
   def _test_streaming_sparse_average_precision_at_k(self,
                                                     predictions,
                                                     labels,
@@ -2393,8 +2386,6 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions, labels, k, expected=precision_ex1[i])
       self._test_streaming_sparse_precision_at_top_k(
           (predictions_top_k_ex1[:k],), labels, expected=precision_ex1[i])
-      self._test_sparse_average_precision_at_k(
-          predictions, labels, k, expected=[avg_precision_ex1[i]])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
 
@@ -2413,8 +2404,6 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions, labels, k, expected=precision_ex2[i])
       self._test_streaming_sparse_precision_at_top_k(
           (predictions_top_k_ex2[:k],), labels, expected=precision_ex2[i])
-      self._test_sparse_average_precision_at_k(
-          predictions, labels, k, expected=[avg_precision_ex2[i]])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex2[i])
 
@@ -2422,9 +2411,6 @@ class StreamingSparsePrecisionTest(test.TestCase):
     # average of the 2 examples.
     labels = np.array([labels_ex1, labels_ex2], dtype=np.int64)
     predictions = (predictions_ex1, predictions_ex2)
-    average_precision = [
-        (ex1, ex2) for ex1, ex2 in zip(avg_precision_ex1, avg_precision_ex2)
-    ]
     streaming_precision = [(ex1 + ex2) / 2
                            for ex1, ex2 in zip(precision_ex1, precision_ex2)]
     streaming_average_precision = [
@@ -2438,8 +2424,6 @@ class StreamingSparsePrecisionTest(test.TestCase):
       predictions_top_k = (predictions_top_k_ex1[:k], predictions_top_k_ex2[:k])
       self._test_streaming_sparse_precision_at_top_k(
           predictions_top_k, labels, expected=streaming_precision[i])
-      self._test_sparse_average_precision_at_k(
-          predictions, labels, k, expected=average_precision[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=streaming_average_precision[i])
 
@@ -2475,8 +2459,6 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions, labels, k, expected=precision_ex1[i])
       self._test_streaming_sparse_precision_at_top_k(
           (predictions_top_k_ex1[:k],), labels, expected=precision_ex1[i])
-      self._test_sparse_average_precision_at_k(
-          predictions, labels, k, expected=[avg_precision_ex1[i]])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
 
@@ -4727,268 +4709,6 @@ class AggregateMetricMapTest(test.TestCase):
       self.assertEqual(4, names_to_updates['m2'].eval())
       self.assertEqual(2, names_to_values['m1'].eval())
       self.assertEqual(4, names_to_values['m2'].eval())
-
-
-class NumRelevantTest(test.TestCase):
-
-  def testNumRelevantInvalidArgs(self):
-    labels = random_ops.random_uniform(
-        shape=(3, 3, 3), minval=0, maxval=100, dtype=dtypes_lib.int32)
-    with self.assertRaisesRegexp(ValueError, 'nvalid k'):
-      metric_ops.num_relevant(labels, k=0)
-    with self.assertRaisesRegexp(ValueError, 'nvalid k'):
-      metric_ops.num_relevant(labels, k=-1)
-
-  def testNumRelevantDense(self):
-    with self.test_session():
-      labels = random_ops.random_uniform(
-          shape=(3, 3, 3), minval=0, maxval=100, dtype=dtypes_lib.int32)
-      ones = np.ones(shape=(3, 3))
-      self.assertAllEqual(ones, metric_ops.num_relevant(labels, k=1).eval())
-      twos = ones * 2
-      self.assertAllEqual(twos, metric_ops.num_relevant(labels, k=2).eval())
-      threes = ones * 3
-      self.assertAllEqual(threes, metric_ops.num_relevant(labels, k=3).eval())
-      self.assertAllEqual(threes, metric_ops.num_relevant(labels, k=4).eval())
-      self.assertAllEqual(threes, metric_ops.num_relevant(labels, k=999).eval())
-
-  def testNumRelevantSparse(self):
-    with self.test_session():
-      labels = sparse_tensor.SparseTensorValue(
-          indices=(
-              (0, 0, 0),
-              (0, 0, 1),
-              (0, 1, 0),
-              (0, 1, 1),
-              (0, 1, 2),
-              # (0, 2) missing
-              (1, 0, 0),
-              (1, 0, 1),
-              (1, 0, 2),
-              (1, 1, 0),
-              (1, 2, 0),
-              # (2, 0) missing
-              (2, 1, 0),
-              (2, 1, 1),
-              (2, 2, 0)),
-          values=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
-          dense_shape=(3, 3, 3))
-      self.assertAllEqual(
-          ((1, 1, 0), (1, 1, 1), (0, 1, 1)),
-          metric_ops.num_relevant(
-              labels, k=1).eval())
-      self.assertAllEqual(
-          ((2, 2, 0), (2, 1, 1), (0, 2, 1)),
-          metric_ops.num_relevant(
-              labels, k=2).eval())
-      label_lengths = ((2, 3, 0), (3, 1, 1), (0, 2, 1))
-      self.assertAllEqual(
-          label_lengths, metric_ops.num_relevant(
-              labels, k=3).eval())
-      self.assertAllEqual(
-          label_lengths, metric_ops.num_relevant(
-              labels, k=999).eval())
-
-
-class ExpandAndTileTest(test.TestCase):
-
-  def testExpandAndTileInvalidArgs(self):
-    x = array_ops.ones(shape=(3, 3, 3))
-    with self.assertRaisesRegexp(ValueError, 'nvalid multiple'):
-      metric_ops.expand_and_tile(x, multiple=0)
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        metric_ops.expand_and_tile(x, multiple=1, dim=-4).eval()
-      with self.assertRaises(ValueError):
-        metric_ops.expand_and_tile(x, multiple=1, dim=4).eval()
-
-  def testSparseExpandAndTileInvalidArgs(self):
-    x = sparse_tensor.SparseTensorValue(
-        indices=[(i, j, k) for i in range(3) for j in range(3)
-                 for k in range(3)],
-        values=[1] * 27,
-        dense_shape=[3, 3, 3])
-    with self.assertRaisesRegexp(ValueError, 'nvalid multiple'):
-      metric_ops.expand_and_tile(x, multiple=0)
-
-  def _test_expand_and_tile(self,
-                            expected_shape,
-                            expected_value,
-                            tensor,
-                            multiple,
-                            dim=None):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      if dim is None:
-        op = metric_ops.expand_and_tile(tensor=tensor, multiple=multiple)
-      else:
-        op = metric_ops.expand_and_tile(
-            tensor=tensor, multiple=multiple, dim=dim)
-      self.assertAllEqual(expected_shape, array_ops.shape(op).eval())
-      self.assertAllEqual(expected_value, op.eval())
-
-  # TODO(ptucker): Use @parameterized when it's available in tf.
-  def testExpandAndTile1x(self):
-    # Shape (3,3,3).
-    x = (((1, 2, 3), (4, 5, 6), (7, 8, 9)), (
-        (10, 11, 12), (13, 14, 15), (16, 17, 18)), ((19, 20, 21), (22, 23, 24),
-                                                    (25, 26, 26)))
-    for dim in (None, -3, 0):
-      self._test_expand_and_tile(
-          expected_shape=(1, 3, 3, 3),
-          expected_value=[x],
-          tensor=x,
-          multiple=1,
-          dim=dim)
-
-    for dim in (-2, 1):
-      self._test_expand_and_tile(
-          expected_shape=(3, 1, 3, 3),
-          expected_value=[[x1] for x1 in x],
-          tensor=x,
-          multiple=1,
-          dim=dim)
-
-    for dim in (-1, 2):
-      self._test_expand_and_tile(
-          expected_shape=(3, 3, 1, 3),
-          expected_value=[[[x2] for x2 in x1] for x1 in x],
-          tensor=x,
-          multiple=1,
-          dim=dim)
-
-    self._test_expand_and_tile(
-        expected_shape=(3, 3, 3, 1),
-        expected_value=[[[[x3] for x3 in x2] for x2 in x1] for x1 in x],
-        tensor=x,
-        multiple=1,
-        dim=3)
-
-  # TODO(ptucker): Use @parameterized when it's available in tf.
-  def testExpandAndTile5x(self):
-    # Shape (3,3,3).
-    x = (((1, 2, 3), (4, 5, 6), (7, 8, 9)), (
-        (10, 11, 12), (13, 14, 15), (16, 17, 18)), ((19, 20, 21), (22, 23, 24),
-                                                    (25, 26, 26)))
-    with self.test_session():
-      for dim in (None, -3, 0):
-        self._test_expand_and_tile(
-            expected_shape=(5, 3, 3, 3),
-            expected_value=[x] * 5,
-            tensor=x,
-            multiple=5,
-            dim=dim)
-
-      for dim in (-2, 1):
-        self._test_expand_and_tile(
-            expected_shape=(3, 5, 3, 3),
-            expected_value=[[x1] * 5 for x1 in x],
-            tensor=x,
-            multiple=5,
-            dim=dim)
-
-      for dim in (-1, 2):
-        self._test_expand_and_tile(
-            expected_shape=(3, 3, 5, 3),
-            expected_value=[[[x2] * 5 for x2 in x1] for x1 in x],
-            tensor=x,
-            multiple=5,
-            dim=dim)
-
-    self._test_expand_and_tile(
-        expected_shape=(3, 3, 3, 5),
-        expected_value=[[[[x3] * 5 for x3 in x2] for x2 in x1] for x1 in x],
-        tensor=x,
-        multiple=5,
-        dim=3)
-
-  def _assert_sparse_tensors_equal(self, expected, actual):
-    self.assertAllEqual(expected.indices, actual.indices)
-    self.assertAllEqual(expected.values, actual.values)
-    self.assertAllEqual(expected.dense_shape, actual.dense_shape)
-
-  # TODO(ptucker): Use @parameterized when it's available in tf.
-  def testSparseExpandAndTile1x(self):
-    # Shape (3,3).
-    x = sparse_tensor.SparseTensorValue(
-        indices=[[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 0]],
-        values=[1, 2, 3, 4, 5, 6],
-        dense_shape=[3, 3])
-    with self.test_session():
-      expected_result_dim0 = sparse_tensor.SparseTensorValue(
-          indices=[[0, i[0], i[1]] for i in x.indices],
-          values=x.values,
-          dense_shape=[1, 3, 3])
-      self._assert_sparse_tensors_equal(
-          expected_result_dim0,
-          metric_ops.expand_and_tile(
-              x, multiple=1).eval())
-      for dim in (-2, 0):
-        self._assert_sparse_tensors_equal(
-            expected_result_dim0,
-            metric_ops.expand_and_tile(
-                x, multiple=1, dim=dim).eval())
-
-      expected_result_dim1 = sparse_tensor.SparseTensorValue(
-          indices=[[i[0], 0, i[1]] for i in x.indices],
-          values=x.values,
-          dense_shape=[3, 1, 3])
-      for dim in (-1, 1):
-        self._assert_sparse_tensors_equal(
-            expected_result_dim1,
-            metric_ops.expand_and_tile(
-                x, multiple=1, dim=dim).eval())
-
-      expected_result_dim2 = sparse_tensor.SparseTensorValue(
-          indices=[[i[0], i[1], 0] for i in x.indices],
-          values=x.values,
-          dense_shape=[3, 3, 1])
-      self._assert_sparse_tensors_equal(
-          expected_result_dim2,
-          metric_ops.expand_and_tile(
-              x, multiple=1, dim=2).eval())
-
-  # TODO(ptucker): Use @parameterized when it's available in tf.
-  def testSparseExpandAndTile5x(self):
-    # Shape (3,3).
-    x = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (0, 1), (1, 0), (1, 1), (1, 2), (2, 0)),
-        values=(1, 2, 3, 4, 5, 6),
-        dense_shape=(3, 3))
-    with self.test_session():
-      expected_result_dim0 = sparse_tensor.SparseTensorValue(
-          indices=[(d0, i[0], i[1]) for d0 in range(5) for i in x.indices],
-          values=[v for _ in range(5) for v in x.values],
-          dense_shape=(5, 3, 3))
-      self._assert_sparse_tensors_equal(
-          expected_result_dim0,
-          metric_ops.expand_and_tile(
-              x, multiple=5).eval())
-      for dim in (-2, 0):
-        self._assert_sparse_tensors_equal(
-            expected_result_dim0,
-            metric_ops.expand_and_tile(
-                x, multiple=5, dim=dim).eval())
-
-      expected_result_dim1 = sparse_tensor.SparseTensorValue(
-          indices=[(d0, d1, i[1])
-                   for d0 in range(3) for d1 in range(5) for i in x.indices
-                   if i[0] == d0],
-          values=x.values[0:2] * 5 + x.values[2:5] * 5 + x.values[5:] * 5,
-          dense_shape=(3, 5, 3))
-      for dim in (-1, 1):
-        self._assert_sparse_tensors_equal(
-            expected_result_dim1,
-            metric_ops.expand_and_tile(
-                x, multiple=5, dim=dim).eval())
-
-      expected_result_dim2 = sparse_tensor.SparseTensorValue(
-          indices=[(i[0], i[1], d2) for i in x.indices for d2 in range(5)],
-          values=[v for v in x.values for _ in range(5)],
-          dense_shape=(3, 3, 5))
-      self._assert_sparse_tensors_equal(
-          expected_result_dim2,
-          metric_ops.expand_and_tile(
-              x, multiple=5, dim=2).eval())
 
 
 if __name__ == '__main__':
