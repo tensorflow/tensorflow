@@ -840,6 +840,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
             features, [embedded_sparse, embedded_sparse_alternate])
 
   def testEmbeddingColumnWithWeightedSparseColumnSucceedsForDNN(self):
+    """Tests DNN input with embedded weighted sparse column."""
     ids = feature_column.sparse_column_with_keys("ids",
                                                  ["marlo", "omar", "stringer"])
     ids_tensor = sparse_tensor.SparseTensor(
@@ -849,6 +850,29 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     weighted_ids = feature_column.weighted_sparse_column(ids, "weights")
     weights_tensor = sparse_tensor.SparseTensor(
         values=[10.0, 20.0, 30.0],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    features = {"ids": ids_tensor, "weights": weights_tensor}
+    embeded_sparse = feature_column.embedding_column(weighted_ids, 10)
+    output = feature_column_ops.input_from_feature_columns(features,
+                                                           [embeded_sparse])
+    with self.test_session():
+      variables_lib.global_variables_initializer().run()
+      data_flow_ops.tables_initializer().run()
+      self.assertAllEqual(output.eval().shape, [2, 10])
+
+  def testEmbeddingColumnWithIntegerWeightedSparseColumnSucceedsForDNN(self):
+    """Same as the previous test, but with integer weights."""
+    ids = feature_column.sparse_column_with_keys("ids",
+                                                 ["marlo", "omar", "stringer"])
+    ids_tensor = sparse_tensor.SparseTensor(
+        values=["stringer", "stringer", "marlo"],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    weighted_ids = feature_column.weighted_sparse_column(
+        ids, "weights", dtype=dtypes.int32)
+    weights_tensor = sparse_tensor.SparseTensor(
+        values=constant_op.constant([10, 20, 30], dtype=dtypes.int32),
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     features = {"ids": ids_tensor, "weights": weights_tensor}

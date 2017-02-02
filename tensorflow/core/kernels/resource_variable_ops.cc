@@ -59,11 +59,22 @@ class ReadVariableOp : public OpKernel {
 
 class DestroyResourceOp : public OpKernel {
  public:
-  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES_OK(ctx, DeleteResource(ctx, HandleFromInput(ctx, 0)));
+    const ResourceHandle& p = HandleFromInput(ctx, 0);
+    Status status = DeleteResource(ctx, p);
+    if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+      return;
+    }
+    OP_REQUIRES_OK(ctx, status);
   }
+
+ private:
+  bool ignore_lookup_error_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
