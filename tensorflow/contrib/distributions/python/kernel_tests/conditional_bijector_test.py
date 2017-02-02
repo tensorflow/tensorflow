@@ -27,7 +27,6 @@ class _TestBijector(conditional_bijector.ConditionalBijector):
 
   def __init__(self):
     super(_TestBijector, self).__init__(
-        batch_ndims=0,
         event_ndims=0,
         graph_parents=[],
         is_constant_jacobian=True,
