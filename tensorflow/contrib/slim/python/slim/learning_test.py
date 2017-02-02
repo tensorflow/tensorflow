@@ -40,8 +40,8 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import saver as saver_lib
-
 
 class ClipGradientNormsTest(test.TestCase):
 
@@ -887,6 +887,30 @@ class TrainTest(test.TestCase):
     # The loss of the model trained with larger learning rate should
     # be smaller.
     self.assertGreater(losses[0], losses[1])
+
+  def testTrainWithEpochLimit(self):
+    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
+                          'tmp_logs')
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(0)
+      tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
+      tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
+      tf_inputs_limited = input_lib.limit_epochs(tf_inputs, num_epochs=300)
+      tf_labels_limited = input_lib.limit_epochs(tf_labels, num_epochs=300)
+
+      tf_predictions = LogisticClassifier(tf_inputs_limited)
+      loss_ops.log_loss(tf_predictions, tf_labels_limited)
+      total_loss = loss_ops.get_total_loss()
+
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = learning.create_train_op(total_loss, optimizer)
+
+      loss = learning.train(train_op, logdir, log_every_n_steps=10)
+    self.assertIsNotNone(loss)
+    self.assertLess(loss, .015)
+    self.assertTrue(os.path.isfile('{}/model.ckpt-300.index'.format(logdir)))
+    self.assertTrue(os.path.isfile('{}/model.ckpt-300.data-00000-of-00001'.format(logdir)))
 
 
 if __name__ == '__main__':

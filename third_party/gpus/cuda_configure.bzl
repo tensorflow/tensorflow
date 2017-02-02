@@ -249,7 +249,7 @@ _DEFINE_CUDNN_MINOR = "#define CUDNN_MINOR"
 _DEFINE_CUDNN_PATCHLEVEL = "#define CUDNN_PATCHLEVEL"
 
 
-def _find_cuda_define(repository_ctx, cudnn_install_basedir, define):
+def _find_cuda_define(repository_ctx, cudnn_header_dir, define):
   """Returns the value of a #define in cudnn.h
 
   Greps through cudnn.h and returns the value of the specified #define. If the
@@ -257,15 +257,14 @@ def _find_cuda_define(repository_ctx, cudnn_install_basedir, define):
 
   Args:
     repository_ctx: The repository context.
-    cudnn_install_basedir: The install directory for cuDNN on the system.
+    cudnn_header_dir: The directory containing the cuDNN header.
     define: The #define to search for.
 
   Returns:
     The value of the #define found in cudnn.h.
   """
-  # Find cudnn.h and grep for the line defining CUDNN_MAJOR.
-  cudnn_h_path = repository_ctx.path("%s/include/cudnn.h" %
-                                     cudnn_install_basedir)
+  # Confirm location of cudnn.h and grep for the line defining CUDNN_MAJOR.
+  cudnn_h_path = repository_ctx.path("%s/cudnn.h" % cudnn_header_dir)
   if not cudnn_h_path.exists:
     auto_configure_fail("Cannot find cudnn.h at %s" % str(cudnn_h_path))
   result = repository_ctx.execute(["grep", "-E", define, str(cudnn_h_path)])
@@ -292,11 +291,13 @@ def _cudnn_version(repository_ctx, cudnn_install_basedir, cpu_value):
   Returns:
     A string containing the version of cuDNN.
   """
-  major_version = _find_cuda_define(repository_ctx, cudnn_install_basedir,
+  cudnn_header_dir = _find_cudnn_header_dir(repository_ctx,
+                                            cudnn_install_basedir)
+  major_version = _find_cuda_define(repository_ctx, cudnn_header_dir,
                                     _DEFINE_CUDNN_MAJOR)
-  minor_version = _find_cuda_define(repository_ctx, cudnn_install_basedir,
+  minor_version = _find_cuda_define(repository_ctx, cudnn_header_dir,
                                     _DEFINE_CUDNN_MINOR)
-  patch_version = _find_cuda_define(repository_ctx, cudnn_install_basedir,
+  patch_version = _find_cuda_define(repository_ctx, cudnn_header_dir,
                                     _DEFINE_CUDNN_PATCHLEVEL)
   full_version = "%s.%s.%s" % (major_version, minor_version, patch_version)
 

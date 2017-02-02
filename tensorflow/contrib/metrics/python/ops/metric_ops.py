@@ -2029,7 +2029,7 @@ def streaming_concat(values,
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that appends the values of a tensor and returns the
-  `value` of the concatenated tensors.
+  length of the concatenated axis.
 
   This op allows for evaluating metrics that cannot be updated incrementally
   using the same framework as other streaming metrics.
