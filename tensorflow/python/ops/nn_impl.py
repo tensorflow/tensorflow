@@ -30,6 +30,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 
 
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
@@ -925,6 +926,8 @@ def _compute_sampled_logits(weights,
         `nn.softmax_cross_entropy_with_logits` (sampled softmax).
   """
 
+  if isinstance(weights, variables.PartitionedVariable):
+    weights = list(weights)
   if not isinstance(weights, list):
     weights = [weights]
 
