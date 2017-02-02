@@ -86,7 +86,7 @@ void LogMessage::GenerateLogMessage() {
 	   localtime(&now_seconds));
 
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%d: %c %s:%d] %s\n", time_buffer, micros_remainder,
+  fprintf(stderr, "%s.%06d: %c %s:%d] %s\n", time_buffer, micros_remainder,
 	  "IWEF"[severity_], fname_, line_, str().c_str());
 }
 #endif
