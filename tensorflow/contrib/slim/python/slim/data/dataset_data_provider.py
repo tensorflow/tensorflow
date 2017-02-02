@@ -53,6 +53,7 @@ class DatasetDataProvider(data_provider.DataProvider):
   def __init__(self,
                dataset,
                num_readers=1,
+               reader_kwargs=None,
                shuffle=True,
                num_epochs=None,
                common_queue_capacity=256,
@@ -63,6 +64,7 @@ class DatasetDataProvider(data_provider.DataProvider):
     Args:
       dataset: An instance of the Dataset class.
       num_readers: The number of parallel readers to use.
+      reader_kwargs: An optional dict of kwargs for the reader.
       shuffle: Whether to shuffle the data sources and common queue when
         reading.
       num_epochs: The number of times each data source is read. If left as None,
@@ -77,6 +79,7 @@ class DatasetDataProvider(data_provider.DataProvider):
         reader_class=dataset.reader,
         num_epochs=num_epochs,
         num_readers=num_readers,
+        reader_kwargs=reader_kwargs,
         shuffle=shuffle,
         capacity=common_queue_capacity,
         min_after_dequeue=common_queue_min,

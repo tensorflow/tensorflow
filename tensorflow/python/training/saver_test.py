@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import math
-import os.path
+import os
 import random
 import shutil
 import tempfile
@@ -554,8 +554,11 @@ class SaverTest(test.TestCase):
         save.save(sess, save_path)
 
   def testSaveToURI(self):
-    save_path = "file://" + os.path.join(
-        self.get_temp_dir(), "uri")
+    # ParseURI functions don't work on Windows yet.
+    # TODO(jhseu): Remove this check when it works.
+    if os.name == "nt":
+      self.skipTest("Local URI support doesn't work on Windows")
+    save_path = "file://" + os.path.join(self.get_temp_dir(), "uri")
 
     # Build a graph with 2 parameter nodes, and Save and
     # Restore nodes for them.
