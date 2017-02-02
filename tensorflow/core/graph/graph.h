@@ -415,6 +415,8 @@ class Graph {
 
 // Helper routines
 
+inline bool IsSource(const Node* node) { return node->IsSource(); }
+inline bool IsSink(const Node* node) { return node->IsSink(); }
 inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
 inline bool IsMerge(const Node* node) { return node->IsMerge(); }
 inline bool IsEnter(const Node* node) { return node->IsEnter(); }
