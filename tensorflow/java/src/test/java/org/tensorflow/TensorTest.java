@@ -20,11 +20,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-
-import java.nio.*;
 
 /** Unit tests for {@link org.tensorflow.Tensor}. */
 @RunWith(JUnit4.class)
@@ -42,7 +46,7 @@ public class TensorTest {
     byte[] strings = "test".getBytes();
     long[] strings_shape = {};
     byte[] strings_; // raw TF_STRING
-    try(Tensor t = Tensor.create(strings)) {
+    try (Tensor t = Tensor.create(strings)) {
       ByteBuffer to = ByteBuffer.allocate(t.numBytes());
       t.writeTo(to);
       strings_ = to.array();
@@ -50,13 +54,15 @@ public class TensorTest {
 
     // validate creating a tensor using a byte buffer
     {
-      try(Tensor t = Tensor.create(DataType.BOOL, bools_shape, ByteBuffer.wrap(bools_))) {
-        boolean[] actual = new boolean[bools_.length];
-        assertEquals(bools[0], t.copyTo(actual)[0]);
+      try (Tensor t = Tensor.create(DataType.BOOL, bools_shape, ByteBuffer.wrap(bools_))) {
+        boolean[] actual = t.copyTo(new boolean[bools_.length]);
+        for (int i = 0; i < bools.length; ++i) {
+          assertEquals("" + i, bools[i], actual[i]);
+        }
       }
 
       // note: the buffer is expected to contain raw TF_STRING (as per C API)
-      try(Tensor t = Tensor.create(DataType.STRING, strings_shape, ByteBuffer.wrap(strings_))) {
+      try (Tensor t = Tensor.create(DataType.STRING, strings_shape, ByteBuffer.wrap(strings_))) {
         assertArrayEquals(strings, t.bytesValue());
       }
     }
@@ -65,18 +71,36 @@ public class TensorTest {
     {
       ByteBuffer buf = ByteBuffer.allocateDirect(8 * doubles.length).order(ByteOrder.nativeOrder());
       buf.asDoubleBuffer().put(doubles);
-      try(Tensor t = Tensor.create(DataType.DOUBLE, doubles_shape, buf)) {
+      try (Tensor t = Tensor.create(DataType.DOUBLE, doubles_shape, buf)) {
         double[] actual = new double[doubles.length];
         assertArrayEquals(doubles, t.copyTo(actual), EPSILON);
       }
     }
 
     // validate shape checking
-    try(Tensor t = Tensor.create(DataType.BOOL, new long[bools_.length * 2], ByteBuffer.wrap(bools_))) {
+    try (Tensor t =
+        Tensor.create(DataType.BOOL, new long[bools_.length * 2], ByteBuffer.wrap(bools_))) {
       fail("should have failed on incompatible buffer");
-    }
-    catch(IllegalArgumentException e) {
+    } catch (IllegalArgumentException e) {
       // expected
+    }
+  }
+
+  @Test
+  public void createFromBufferWithNonNativeByteOrder() {
+    double[] doubles = {1d, 2d, 3d, 4d};
+    DoubleBuffer buf =
+        ByteBuffer.allocate(8 * doubles.length)
+            .order(
+                ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN
+                    ? ByteOrder.BIG_ENDIAN
+                    : ByteOrder.LITTLE_ENDIAN)
+            .asDoubleBuffer()
+            .put(doubles);
+    buf.flip();
+    try (Tensor t = Tensor.create(new long[] {doubles.length}, buf)) {
+      double[] actual = new double[doubles.length];
+      assertArrayEquals(doubles, t.copyTo(actual), EPSILON);
     }
   }
 
@@ -88,34 +112,21 @@ public class TensorTest {
     long[] longs = {1L, 2L, 3L, 4L};
     long[] shape = {4};
 
-    // validate byte order conversion
-    {
-      DoubleBuffer buf = ByteBuffer.allocate(8 * doubles.length)
-          .order(ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN)
-          .asDoubleBuffer()
-          .put(doubles);
-      buf.flip();
-      try(Tensor t = Tensor.create(shape, buf)) {
-        double[] actual = new double[doubles.length];
-        assertArrayEquals(doubles, t.copyTo(actual), EPSILON);
-      }
-    }
-
     // validate creating a tensor using a typed buffer
     {
-      try(Tensor t = Tensor.create(shape, DoubleBuffer.wrap(doubles))) {
+      try (Tensor t = Tensor.create(shape, DoubleBuffer.wrap(doubles))) {
         double[] actual = new double[doubles.length];
         assertArrayEquals(doubles, t.copyTo(actual), EPSILON);
       }
-      try(Tensor t = Tensor.create(shape, FloatBuffer.wrap(floats))) {
+      try (Tensor t = Tensor.create(shape, FloatBuffer.wrap(floats))) {
         float[] actual = new float[floats.length];
         assertArrayEquals(floats, t.copyTo(actual), EPSILON_F);
       }
-      try(Tensor t = Tensor.create(shape, IntBuffer.wrap(ints))) {
+      try (Tensor t = Tensor.create(shape, IntBuffer.wrap(ints))) {
         int[] actual = new int[ints.length];
         assertArrayEquals(ints, t.copyTo(actual));
       }
-      try(Tensor t = Tensor.create(shape, LongBuffer.wrap(longs))) {
+      try (Tensor t = Tensor.create(shape, LongBuffer.wrap(longs))) {
         long[] actual = new long[longs.length];
         assertArrayEquals(longs, t.copyTo(actual));
       }
@@ -123,28 +134,24 @@ public class TensorTest {
 
     // validate shape-checking
     {
-      try(Tensor t = Tensor.create(new long[doubles.length + 1], DoubleBuffer.wrap(doubles))) {
+      try (Tensor t = Tensor.create(new long[doubles.length + 1], DoubleBuffer.wrap(doubles))) {
         fail("should have failed on incompatible buffer");
-      }
-      catch(IllegalArgumentException e) {
+      } catch (IllegalArgumentException e) {
         // expected
       }
-      try(Tensor t = Tensor.create(new long[floats.length + 1], FloatBuffer.wrap(floats))) {
+      try (Tensor t = Tensor.create(new long[floats.length + 1], FloatBuffer.wrap(floats))) {
         fail("should have failed on incompatible buffer");
-      }
-      catch(IllegalArgumentException e) {
+      } catch (IllegalArgumentException e) {
         // expected
       }
-      try(Tensor t = Tensor.create(new long[ints.length + 1], IntBuffer.wrap(ints))) {
+      try (Tensor t = Tensor.create(new long[ints.length + 1], IntBuffer.wrap(ints))) {
         fail("should have failed on incompatible buffer");
-      }
-      catch(IllegalArgumentException e) {
+      } catch (IllegalArgumentException e) {
         // expected
       }
-      try(Tensor t = Tensor.create(new long[longs.length + 1], LongBuffer.wrap(longs))) {
+      try (Tensor t = Tensor.create(new long[longs.length + 1], LongBuffer.wrap(longs))) {
         fail("should have failed on incompatible buffer");
-      }
-      catch(IllegalArgumentException e) {
+      } catch (IllegalArgumentException e) {
         // expected
       }
     }
@@ -156,13 +163,13 @@ public class TensorTest {
     float[] floats = {1f, 2f, 3f};
     double[] doubles = {1d, 2d, 3d};
     long[] longs = {1L, 2L, 3L};
-    boolean[] bools = {true,false,true};
+    boolean[] bools = {true, false, true};
 
-    try(Tensor tints = Tensor.create(ints);
-      Tensor tfloats = Tensor.create(floats);
-      Tensor tdoubles = Tensor.create(doubles);
-      Tensor tlongs = Tensor.create(longs);
-      Tensor tbools = Tensor.create(bools)) {
+    try (Tensor tints = Tensor.create(ints);
+        Tensor tfloats = Tensor.create(floats);
+        Tensor tdoubles = Tensor.create(doubles);
+        Tensor tlongs = Tensor.create(longs);
+        Tensor tbools = Tensor.create(bools)) {
 
       // validate that any datatype is readable with ByteBuffer (content, position)
       {
@@ -197,8 +204,10 @@ public class TensorTest {
 
       // validate the use of direct buffers
       {
-        DoubleBuffer buf = ByteBuffer.allocateDirect(tdoubles.numBytes())
-            .order(ByteOrder.nativeOrder()).asDoubleBuffer();
+        DoubleBuffer buf =
+            ByteBuffer.allocateDirect(tdoubles.numBytes())
+                .order(ByteOrder.nativeOrder())
+                .asDoubleBuffer();
         tdoubles.writeTo(buf);
         assertTrue(buf.isDirect());
         assertEquals(tdoubles.numElements(), buf.position());
@@ -233,8 +242,12 @@ public class TensorTest {
 
       // validate byte order conversion
       {
-        DoubleBuffer foreignBuf = ByteBuffer.allocate(tdoubles.numBytes())
-                .order(ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN)
+        DoubleBuffer foreignBuf =
+            ByteBuffer.allocate(tdoubles.numBytes())
+                .order(
+                    ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN
+                        ? ByteOrder.BIG_ENDIAN
+                        : ByteOrder.LITTLE_ENDIAN)
                 .asDoubleBuffer();
         tdoubles.writeTo(foreignBuf);
         foreignBuf.flip();
@@ -314,7 +327,7 @@ public class TensorTest {
       assertTrue(t.booleanValue());
     }
 
-    final byte[] bytes = {1,2,3,4};
+    final byte[] bytes = {1, 2, 3, 4};
     try (Tensor t = Tensor.create(bytes)) {
       assertEquals(DataType.STRING, t.dataType());
       assertEquals(0, t.numDimensions());
