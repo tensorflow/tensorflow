@@ -37,12 +37,12 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha = constant_op.constant([3.0] * 5)
       beta = constant_op.constant(11.0)
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
 
-      self.assertEqual(gamma.batch_shape().eval(), (5,))
-      self.assertEqual(gamma.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(gamma.event_shape().eval(), [])
-      self.assertEqual(gamma.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(gamma.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(gamma.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(gamma.event_shape_tensor().eval(), [])
+      self.assertEqual(gamma.event_shape, tensor_shape.TensorShape([]))
 
   def testGammaLogPDF(self):
     with self.test_session():
@@ -52,13 +52,13 @@ class GammaTest(test.TestCase):
       alpha_v = 2.0
       beta_v = 3.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      log_pdf = gamma.log_pdf(x)
+      log_pdf = gamma.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = gamma.pdf(x)
+      pdf = gamma.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
@@ -70,14 +70,14 @@ class GammaTest(test.TestCase):
       alpha_v = np.array([2.0, 4.0])
       beta_v = np.array([3.0, 4.0])
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      log_pdf = gamma.log_pdf(x)
+      log_pdf = gamma.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = gamma.pdf(x)
+      pdf = gamma.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -90,14 +90,14 @@ class GammaTest(test.TestCase):
       alpha_v = np.array([2.0, 4.0])
       beta_v = 3.0
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      log_pdf = gamma.log_pdf(x)
+      log_pdf = gamma.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = gamma.pdf(x)
+      pdf = gamma.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -111,7 +111,7 @@ class GammaTest(test.TestCase):
       beta_v = 3.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
 
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       expected_cdf = stats.gamma.cdf(x, alpha_v, scale=1 / beta_v)
 
       cdf = gamma.cdf(x)
@@ -122,7 +122,7 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       expected_means = stats.gamma.mean(alpha_v, scale=1 / beta_v)
       self.assertEqual(gamma.mean().get_shape(), (3,))
       self.assertAllClose(gamma.mean().eval(), expected_means)
@@ -131,7 +131,7 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha_v = np.array([5.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       expected_modes = (alpha_v - 1) / beta_v
       self.assertEqual(gamma.mode().get_shape(), (3,))
       self.assertAllClose(gamma.mode().eval(), expected_modes)
@@ -141,7 +141,9 @@ class GammaTest(test.TestCase):
       # Mode will not be defined for the first entry.
       alpha_v = np.array([0.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v, allow_nan_stats=False)
+      gamma = gamma_lib.Gamma(concentration=alpha_v,
+                              rate=beta_v,
+                              allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         gamma.mode().eval()
 
@@ -150,7 +152,9 @@ class GammaTest(test.TestCase):
       # Mode will not be defined for the first entry.
       alpha_v = np.array([0.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v, allow_nan_stats=True)
+      gamma = gamma_lib.Gamma(concentration=alpha_v,
+                              rate=beta_v,
+                              allow_nan_stats=True)
       expected_modes = (alpha_v - 1) / beta_v
       expected_modes[0] = np.nan
       self.assertEqual(gamma.mode().get_shape(), (3,))
@@ -160,7 +164,7 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       expected_variances = stats.gamma.var(alpha_v, scale=1 / beta_v)
       self.assertEqual(gamma.variance().get_shape(), (3,))
       self.assertAllClose(gamma.variance().eval(), expected_variances)
@@ -169,7 +173,7 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       expected_stddev = stats.gamma.std(alpha_v, scale=1. / beta_v)
       self.assertEqual(gamma.stddev().get_shape(), (3,))
       self.assertAllClose(gamma.stddev().eval(), expected_stddev)
@@ -179,7 +183,7 @@ class GammaTest(test.TestCase):
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       expected_entropy = stats.gamma.entropy(alpha_v, scale=1 / beta_v)
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       self.assertEqual(gamma.entropy().get_shape(), (3,))
       self.assertAllClose(gamma.entropy().eval(), expected_entropy)
 
@@ -190,7 +194,7 @@ class GammaTest(test.TestCase):
       alpha = constant_op.constant(alpha_v)
       beta = constant_op.constant(beta_v)
       n = 100000
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       samples = gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
@@ -213,7 +217,7 @@ class GammaTest(test.TestCase):
       alpha = constant_op.constant(alpha_v)
       beta = constant_op.constant(beta_v)
       n = 100000
-      gamma = gamma_lib.Gamma(alpha=alpha, beta=beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       samples = gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
@@ -233,7 +237,7 @@ class GammaTest(test.TestCase):
     with session.Session():
       alpha_v = np.array([np.arange(1, 101, dtype=np.float32)])  # 1 x 100
       beta_v = np.array([np.arange(1, 11, dtype=np.float32)]).T  # 10 x 1
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       n = 10000
       samples = gamma.sample(n, seed=137)
       sample_values = samples.eval()
@@ -268,10 +272,10 @@ class GammaTest(test.TestCase):
 
   def testGammaPdfOfSampleMultiDims(self):
     with session.Session() as sess:
-      gamma = gamma_lib.Gamma(alpha=[7., 11.], beta=[[5.], [6.]])
+      gamma = gamma_lib.Gamma(concentration=[7., 11.], rate=[[5.], [6.]])
       num = 50000
       samples = gamma.sample(num, seed=137)
-      pdfs = gamma.pdf(samples)
+      pdfs = gamma.prob(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))
@@ -304,22 +308,29 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha_v = constant_op.constant(0.0, name="alpha")
       beta_v = constant_op.constant(1.0, name="beta")
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v, validate_args=True)
+      gamma = gamma_lib.Gamma(concentration=alpha_v,
+                              rate=beta_v,
+                              validate_args=True)
       with self.assertRaisesOpError("alpha"):
         gamma.mean().eval()
       alpha_v = constant_op.constant(1.0, name="alpha")
       beta_v = constant_op.constant(0.0, name="beta")
-      gamma = gamma_lib.Gamma(alpha=alpha_v, beta=beta_v, validate_args=True)
+      gamma = gamma_lib.Gamma(concentration=alpha_v,
+                              rate=beta_v,
+                              validate_args=True)
       with self.assertRaisesOpError("beta"):
         gamma.mean().eval()
 
-  def testGammaWithSoftplusAlphaBeta(self):
+  def testGammaWithSoftplusConcentrationRate(self):
     with self.test_session():
       alpha_v = constant_op.constant([0.0, -2.1], name="alpha")
       beta_v = constant_op.constant([1.0, -3.6], name="beta")
-      gamma = gamma_lib.GammaWithSoftplusAlphaBeta(alpha=alpha_v, beta=beta_v)
-      self.assertAllEqual(nn_ops.softplus(alpha_v).eval(), gamma.alpha.eval())
-      self.assertAllEqual(nn_ops.softplus(beta_v).eval(), gamma.beta.eval())
+      gamma = gamma_lib.GammaWithSoftplusConcentrationRate(
+          concentration=alpha_v, rate=beta_v)
+      self.assertAllEqual(nn_ops.softplus(alpha_v).eval(),
+                          gamma.concentration.eval())
+      self.assertAllEqual(nn_ops.softplus(beta_v).eval(),
+                          gamma.rate.eval())
 
   def testGammaGammaKL(self):
     alpha0 = np.array([3.])
@@ -330,8 +341,8 @@ class GammaTest(test.TestCase):
 
     # Build graph.
     with self.test_session() as sess:
-      g0 = gamma_lib.Gamma(alpha=alpha0, beta=beta0)
-      g1 = gamma_lib.Gamma(alpha=alpha1, beta=beta1)
+      g0 = gamma_lib.Gamma(concentration=alpha0, rate=beta0)
+      g1 = gamma_lib.Gamma(concentration=alpha1, rate=beta1)
       x = g0.sample(int(1e4), seed=0)
       kl_sample = math_ops.reduce_mean(g0.log_prob(x) - g1.log_prob(x), 0)
       kl_actual = kullback_leibler.kl(g0, g1)

@@ -61,7 +61,7 @@ class SplitVOpBase : public OpKernel {
         context,
         split_tensor.dims() == 1 && split_tensor.NumElements() == num_split,
         errors::InvalidArgument("size of the split_tensor must be 1-D and have "
-                                "the same elements as outputs got",
+                                "the same elements as outputs got ",
                                 split_tensor.dims(), " -D and ",
                                 split_tensor.NumElements(), " elements"));
 

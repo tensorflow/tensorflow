@@ -583,7 +583,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
           llvm::ReplaceInstWithInst(
               body_block->getTerminator(),
               llvm::BranchInst::Create(out_block, body_block,
-                                       ir_builder_->CreateICmpULE(random, r)));
+                                       ir_builder_->CreateICmpULT(random, r)));
           SetToFirstInsertPoint(out_block, ir_builder_);
           return ir_builder_->CreateAdd(
               p, ir_builder_->CreateSelect(

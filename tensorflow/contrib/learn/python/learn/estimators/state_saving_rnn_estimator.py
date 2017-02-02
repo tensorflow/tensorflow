@@ -24,6 +24,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics
 from tensorflow.contrib import rnn as rnn_cell
 from tensorflow.contrib.framework.python.framework import experimental
+from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -32,6 +33,7 @@ from tensorflow.contrib.rnn.python.ops import core_rnn
 from tensorflow.contrib.training.python.training import sequence_queueing_state_saver as sqss
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import momentum as momentum_opt
@@ -209,7 +211,7 @@ def _multi_value_predictions(
           flattened_activations, proba=True)
       flat_predictions = math_ops.argmax(flat_probabilities, 1)
       if target_column.num_label_columns == 1:
-        probability_shape = array_ops.concat_v2([activations_shape[:2], [2]], 0)
+        probability_shape = array_ops.concat([activations_shape[:2], [2]], 0)
       else:
         probability_shape = activations_shape
       probabilities = array_ops.reshape(
@@ -248,6 +250,23 @@ def _multi_value_loss(
     return target_column.loss(activations_masked, labels_masked, features)
 
 
+def _get_name_or_parent_names(column):
+  """Gets the name of a column or its parent columns' names.
+
+  Args:
+    column: A sequence feature column derived from `FeatureColumn`.
+
+  Returns:
+    A list of the name of `column` or the names of its parent columns,
+    if any exist.
+  """
+  # pylint: disable=protected-access
+  parent_columns = feature_column_ops._get_parent_columns(column)
+  if parent_columns:
+    return [x.name for x in parent_columns]
+  return [column.name]
+
+
 def _prepare_features_for_sqss(features, labels, mode, input_key_column_name,
                                sequence_feature_columns,
                                context_feature_columns):
@@ -259,8 +278,8 @@ def _prepare_features_for_sqss(features, labels, mode, input_key_column_name,
   - Adds the labels tensor to the sequence features dict.
 
   Args:
-    features: A dict of Python string to an iterable of `Tensor`, the
-      `features` argument of a TF.Learn model_fn.
+    features: A dict of Python string to an iterable of `Tensor` or
+      `SparseTensor` of rank 2, the `features` argument of a TF.Learn model_fn.
     labels: An iterable of `Tensor`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -282,9 +301,10 @@ def _prepare_features_for_sqss(features, labels, mode, input_key_column_name,
     context_features: A dict mapping feature names to context features.
 
   Raises:
-    ValueError: If features does not contain a value for input_key_column_name.
-    ValueError: If features does not contain a value for every key in
-      sequence_feature_columns or context_feature_columns.
+    ValueError: If `features` does not contain a value for
+      `input_key_column_name`.
+    ValueError: If `features` does not contain a value for every key in
+      `sequence_feature_columns` or `context_feature_columns`.
   """
   # Pop the input key from the features dict.
   input_key = features.pop(input_key_column_name, None)
@@ -293,13 +313,15 @@ def _prepare_features_for_sqss(features, labels, mode, input_key_column_name,
                      input_key_column_name)
 
   # Extract sequence features.
+
+  feature_column_ops._check_supported_sequence_columns(sequence_feature_columns)  # pylint: disable=protected-access
   sequence_features = {}
   for column in sequence_feature_columns:
-    name = column.name
-    feature = features.get(name, None)
-    if feature is None:
-      raise ValueError('No key in features for sequence feature: ' + name)
-    sequence_features[name] = features[name]
+    for name in _get_name_or_parent_names(column):
+      feature = features.get(name, None)
+      if feature is None:
+        raise ValueError('No key in features for sequence feature: ' + name)
+      sequence_features[name] = feature
 
   # Extract context features.
   context_features = {}
@@ -309,7 +331,7 @@ def _prepare_features_for_sqss(features, labels, mode, input_key_column_name,
       feature = features.get(name, None)
       if feature is None:
         raise ValueError('No key in features for context feature: ' + name)
-      context_features[name] = features[name]
+      context_features[name] = feature
 
   # Add labels to the resulting sequence features dict.
   if mode != model_fn.ModeKeys.INFER:
@@ -448,40 +470,57 @@ def state_tuple_to_dict(state):
   return state_dict
 
 
-def _prepare_inputs_for_rnn(sequence_features, context_features, num_unroll):
+def _prepare_inputs_for_rnn(sequence_features, context_features,
+                            sequence_feature_columns, num_unroll):
   """Prepares features batched by the SQSS for input to a state-saving RNN.
 
   Args:
-    sequence_features: A dict of sequence feature name to `Tensor`, with
-      tensors of shape `[batch_size, num_unroll, ...]` and type float32.
+    sequence_features: A dict of sequence feature name to `Tensor` or
+      `SparseTensor`, with `Tensor`s of shape `[batch_size, num_unroll, ...]`
+      or `SparseTensors` of dense shape `[batch_size, num_unroll, d]`.
     context_features: A dict of context feature name to `Tensor`, with
       tensors of shape `[batch_size, 1, ...]` and type float32.
+    sequence_feature_columns: An iterable containing all the feature columns
+      describing sequence features. All items in the set should be instances
+      of classes derived from `FeatureColumn`.
     num_unroll: Python integer, how many time steps to unroll at a time.
       The input sequences of length `k` are then split into `k / num_unroll`
       many segments.
 
   Returns:
     features_by_time: A list of length `num_unroll` with `Tensor` entries of
-      shape `[batch_size, len(sequence_features) + len(context_features)]` of
-      type float32. Features are stored in lexicographic order by their
-      corresponding feature dict keys, first in the `sequence_features` and
-      then in the `context_features` dicts. Context features are copied into
-      each time step.
+      shape `[batch_size, sum(sequence_features dimensions) +
+      sum(context_features dimensions)]` of type float32.
+      Context features are copied into each time step.
   """
 
   def _tile(feature):
     return array_ops.squeeze(
         array_ops.tile(array_ops.expand_dims(feature, 1), [1, num_unroll, 1]),
         axis=2)
+  for feature in sequence_features.values():
+    if isinstance(feature, sparse_tensor.SparseTensor):
+      # Explicitly set dense_shape's shape to 3 ([batch_size, num_unroll, d])
+      # since it can't be statically inferred.
+      feature.dense_shape.set_shape([3])
+  sequence_features = layers.sequence_input_from_feature_columns(
+      columns_to_tensors=sequence_features,
+      feature_columns=sequence_feature_columns,
+      weight_collections=None,
+      scope=None)
+  # Explicitly set shape along dimension 1 to num_unroll for the unstack op.
+  sequence_features.set_shape([None, num_unroll, None])
 
-  sequence_features = [sequence_features[k] for k in sorted(sequence_features)]
   if not context_features:
-    return array_ops.unstack(array_ops.stack(sequence_features, 2), axis=1)
+    return array_ops.unstack(sequence_features, axis=1)
+  # TODO(jtbates): Call layers.input_from_feature_columns for context features.
   context_features = [
       _tile(context_features[k]) for k in sorted(context_features)
   ]
   return array_ops.unstack(
-      array_ops.stack(sequence_features + context_features, 2), axis=1)
+      array_ops.concat(
+          [sequence_features, array_ops.stack(context_features, 2)], axis=2),
+      axis=1)
 
 
 def _get_rnn_model_fn(cell,
@@ -595,7 +634,7 @@ def _get_rnn_model_fn(cell,
       if mode != model_fn.ModeKeys.INFER:
         labels = sequence_features.pop(RNNKeys.LABELS_KEY)
       inputs = _prepare_inputs_for_rnn(sequence_features, context_features,
-                                       num_unroll)
+                                       sequence_feature_columns, num_unroll)
       state_name = _get_lstm_state_names(num_layers)
       rnn_activations, final_state = construct_state_saving_rnn(
           cell=cell_for_mode,

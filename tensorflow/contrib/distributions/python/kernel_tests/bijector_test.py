@@ -36,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 bijectors = bijector_lib
-distributions = distributions_lib
+ds = distributions_lib
 linalg = linalg_lib
 rng = np.random.RandomState(42)
 
@@ -77,7 +77,7 @@ def assert_scalar_congruency(bijector,
   3. the jacobian is the correct change of measure.
 
   This can only be used for a Bijector mapping open subsets of the real line
-  to themselves.  This is due to the fact that this test compares the pdf
+  to themselves.  This is due to the fact that this test compares the `prob`
   before/after transformation with the Lebesgue measure on the line.
 
   Args:
@@ -114,8 +114,8 @@ def assert_scalar_congruency(bijector,
     lower_y, upper_y = upper_y, lower_y
 
   # Uniform samples from the domain, range.
-  uniform_x_samps = distributions.Uniform(a=lower_x, b=upper_x).sample(n)
-  uniform_y_samps = distributions.Uniform(a=lower_y, b=upper_y).sample(n)
+  uniform_x_samps = ds.Uniform(low=lower_x, high=upper_x).sample(n, seed=0)
+  uniform_y_samps = ds.Uniform(low=lower_y, high=upper_y).sample(n, seed=1)
 
   # These compositions should be the identity.
   inverse_forward_x = bijector.inverse(bijector.forward(uniform_x_samps))
@@ -496,7 +496,8 @@ class InlineBijectorTest(test.TestCase):
           forward_fn=math_ops.exp,
           inverse_fn=math_ops.log,
           inverse_log_det_jacobian_fn=(
-              lambda y: -math_ops.reduce_sum(math_ops.log(y), reduction_indices=-1)),
+              lambda y: -math_ops.reduce_sum(  # pylint: disable=g-long-lambda
+                  math_ops.log(y), reduction_indices=-1)),
           forward_log_det_jacobian_fn=(
               lambda x: math_ops.reduce_sum(x, reduction_indices=-1)),
           name="exp")
@@ -518,19 +519,21 @@ class InlineBijectorTest(test.TestCase):
   def testShapeGetters(self):
     with self.test_session():
       bijector = bijectors.Inline(
-          forward_event_shape_fn=lambda x: array_ops.concat((x, [1]), 0),
-          get_forward_event_shape_fn=lambda x: x.as_list() + [1],
+          forward_event_shape_tensor_fn=lambda x: array_ops.concat((x, [1]), 0),
+          forward_event_shape_fn=lambda x: x.as_list() + [1],
+          inverse_event_shape_tensor_fn=lambda x: x[:-1],
           inverse_event_shape_fn=lambda x: x[:-1],
-          get_inverse_event_shape_fn=lambda x: x[:-1],
           name="shape_only")
       x = tensor_shape.TensorShape([1, 2, 3])
       y = tensor_shape.TensorShape([1, 2, 3, 1])
-      self.assertAllEqual(y, bijector.get_forward_event_shape(x))
-      self.assertAllEqual(y.as_list(),
-                          bijector.forward_event_shape(x.as_list()).eval())
-      self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
-      self.assertAllEqual(x.as_list(),
-                          bijector.inverse_event_shape(y.as_list()).eval())
+      self.assertAllEqual(y, bijector.forward_event_shape(x))
+      self.assertAllEqual(
+          y.as_list(),
+          bijector.forward_event_shape_tensor(x.as_list()).eval())
+      self.assertAllEqual(x, bijector.inverse_event_shape(y))
+      self.assertAllEqual(
+          x.as_list(),
+          bijector.inverse_event_shape_tensor(y.as_list()).eval())
 
 
 class AffineLinearOperatorTest(test.TestCase):
@@ -1313,8 +1316,8 @@ class AffineBijectorTest(test.TestCase):
       return itertools.chain.from_iterable(
           itertools.combinations(s, r) for r in range(len(s) + 1))
 
-    with self.test_session():
-      for args in _powerset(scale_params.items()):
+    for args in _powerset(scale_params.items()):
+      with self.test_session():
         args = dict(args)
 
         scale_args = dict({"x": x}, **args)
@@ -1548,12 +1551,12 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
                       (tensor_shape.TensorShape([4]),
                        tensor_shape.TensorShape([5]), bijectors.SoftmaxCentered(
                            event_ndims=1, validate_args=True))):
-        self.assertAllEqual(y, b.get_forward_event_shape(x))
+        self.assertAllEqual(y, b.forward_event_shape(x))
         self.assertAllEqual(y.as_list(),
-                            b.forward_event_shape(x.as_list()).eval())
-        self.assertAllEqual(x, b.get_inverse_event_shape(y))
+                            b.forward_event_shape_tensor(x.as_list()).eval())
+        self.assertAllEqual(x, b.inverse_event_shape(y))
         self.assertAllEqual(x.as_list(),
-                            b.inverse_event_shape(y.as_list()).eval())
+                            b.inverse_event_shape_tensor(y.as_list()).eval())
 
   def testBijectiveAndFinite(self):
     with self.test_session():
@@ -1700,12 +1703,14 @@ class ChainBijectorTest(test.TestCase):
               event_ndims=0, validate_args=True)))
       x = tensor_shape.TensorShape([])
       y = tensor_shape.TensorShape([2 + 1])
-      self.assertAllEqual(y, bijector.get_forward_event_shape(x))
-      self.assertAllEqual(y.as_list(),
-                          bijector.forward_event_shape(x.as_list()).eval())
-      self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
-      self.assertAllEqual(x.as_list(),
-                          bijector.inverse_event_shape(y.as_list()).eval())
+      self.assertAllEqual(y, bijector.forward_event_shape(x))
+      self.assertAllEqual(
+          y.as_list(),
+          bijector.forward_event_shape_tensor(x.as_list()).eval())
+      self.assertAllEqual(x, bijector.inverse_event_shape(y))
+      self.assertAllEqual(
+          x.as_list(),
+          bijector.inverse_event_shape_tensor(y.as_list()).eval())
 
 
 class InvertBijectorTest(test.TestCase):
@@ -1748,12 +1753,14 @@ class InvertBijectorTest(test.TestCase):
       bijector = bijectors.Invert(bijectors.SigmoidCentered(validate_args=True))
       x = tensor_shape.TensorShape([2])
       y = tensor_shape.TensorShape([])
-      self.assertAllEqual(y, bijector.get_forward_event_shape(x))
-      self.assertAllEqual(y.as_list(),
-                          bijector.forward_event_shape(x.as_list()).eval())
-      self.assertAllEqual(x, bijector.get_inverse_event_shape(y))
-      self.assertAllEqual(x.as_list(),
-                          bijector.inverse_event_shape(y.as_list()).eval())
+      self.assertAllEqual(y, bijector.forward_event_shape(x))
+      self.assertAllEqual(
+          y.as_list(),
+          bijector.forward_event_shape_tensor(x.as_list()).eval())
+      self.assertAllEqual(x, bijector.inverse_event_shape(y))
+      self.assertAllEqual(
+          x.as_list(),
+          bijector.inverse_event_shape_tensor(y.as_list()).eval())
 
 
 if __name__ == "__main__":

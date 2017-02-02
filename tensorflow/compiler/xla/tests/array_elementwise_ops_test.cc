@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_backend_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -362,6 +361,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogicalNotZeroElement) {
 }
 
 TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
+  SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({10.0f, 5.0f, 2.25f, 10.0f, NAN});
@@ -380,6 +380,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementF32s) {
 }
 
 TEST_F(ArrayElementwiseOpTest, CompareGeF32s) {
+  SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, NAN});
@@ -389,6 +390,7 @@ TEST_F(ArrayElementwiseOpTest, CompareGeF32s) {
 }
 
 TEST_F(ArrayElementwiseOpTest, CompareGtF32s) {
+  SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, NAN});
@@ -398,6 +400,7 @@ TEST_F(ArrayElementwiseOpTest, CompareGtF32s) {
 }
 
 TEST_F(ArrayElementwiseOpTest, CompareLeF32s) {
+  SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({-2.5f, 5.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, NAN});
@@ -407,6 +410,7 @@ TEST_F(ArrayElementwiseOpTest, CompareLeF32s) {
 }
 
 TEST_F(ArrayElementwiseOpTest, CompareLtF32s) {
+  SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, NAN});
@@ -569,6 +573,7 @@ TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 TEST_F(ArrayElementwiseOpTest, PowF32s) {
+  SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN});
@@ -679,6 +684,7 @@ TEST_F(ArrayElementwiseOpTest, MinF32s) {
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f});
 #else
+  SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f, 10.0f, NAN});
 #endif
@@ -709,6 +715,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinF64s) {
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0});
 #else
+  SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25, NAN, 6.0});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0, 10.0, NAN});
 #endif
@@ -731,6 +738,7 @@ TEST_F(ArrayElementwiseOpTest, MaxF32s) {
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f});
 #else
+  SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<float>({1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = builder.ConstantR1<float>({2.0f, -5.0f, 1.0f, 10.0f, NAN});
 #endif
@@ -761,6 +769,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxF64s) {
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0});
 #else
+  SetFastMathDisabled(true);
   auto lhs = builder.ConstantR1<double>({1.0, 1.0, 2.25, NAN, 6.0});
   auto rhs = builder.ConstantR1<double>({2.0, -5.0, 1.0, 10.0, NAN});
 #endif
@@ -1646,7 +1655,6 @@ INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::legacy_flags::AppendLlvmBackendFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

@@ -60,6 +60,10 @@ class SubgraphTest(test.TestCase):
     self.assertEqual(list(sgv.outputs), [self.c])
     self.assertEqual(list(sgv.inputs), [self.a, self.b])
 
+    sgv = ge.sgv(self.c.op).remap([self.a], [0, self.c])
+    self.assertEqual(list(sgv.outputs), [self.c, self.c])
+    self.assertEqual(list(sgv.inputs), [self.a])
+
     sgv = sgv.remap_outputs_to_consumers()
     self.assertEqual(list(sgv.outputs), [self.c, self.c, self.c])
     sgv = sgv.remap_outputs_make_unique()

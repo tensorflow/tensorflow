@@ -223,9 +223,9 @@ Here are some of the typical usage models:
     batch_size = tf.size(labels)
     labels = tf.expand_dims(labels, 1)
     indices = tf.expand_dims(tf.range(0, batch_size), 1)
-    concated = tf.concat(1, [indices, labels])
+    concated = tf.concat([indices, labels], 1)
     onehot_labels = tf.sparse_to_dense(
-        concated, tf.pack([batch_size, 10]), 1.0, 0.0)
+        concated, tf.stack([batch_size, 10]), 1.0, 0.0)
     logits = tf.get_collection("logits")[0]
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
         labels=onehot_labels, logits=logits, name="xentropy")

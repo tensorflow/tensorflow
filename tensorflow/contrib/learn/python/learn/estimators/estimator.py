@@ -52,6 +52,7 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -334,13 +335,7 @@ class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Concrete implementation of this class should provide the following functions:
-
-    * _get_train_ops
-    * _get_eval_ops
-    * _get_predict_ops
-
-  `Estimator` implemented below is a good example of how to use this class.
+  Users should not instantiate or subclass this class. Instead, use `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -598,7 +593,8 @@ class BaseEstimator(
              signature_fn=None,
              prediction_key=None,
              default_batch_size=1,
-             exports_to_keep=None):
+             exports_to_keep=None,
+             checkpoint_path=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -625,6 +621,9 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+      checkpoint_path: the checkpoint path of the model to be exported. If it is
+          `None` (which is default), will use the latest checkpoint in
+          export_dir.
 
     Returns:
       The string path to the exported directory. NB: this functionality was
@@ -642,7 +641,8 @@ class BaseEstimator(
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
+        exports_to_keep=exports_to_keep,
+        checkpoint_path=checkpoint_path)
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
@@ -798,18 +798,7 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      # The default return type of _get_eval_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_eval_ops returns an
-      # `eval_dict` dictionary of Tensors. The following else-statement code
-      # covers these cases, but will soon be deleted after the subclasses are
-      # updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
-      eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
-        eval_dict = eval_ops.eval_metric_ops
-      else:  # Legacy signature
-        eval_dict = eval_ops
+      eval_dict = self._get_eval_ops(features, labels, metrics).eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
@@ -832,7 +821,8 @@ class BaseEstimator(
           master=self._config.evaluation_master,
           eval_ops=update_op,
           final_ops=eval_dict,
-          hooks=hooks)
+          hooks=hooks,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -861,11 +851,12 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
-      infer_ops = self._call_legacy_get_predict_ops(features)
+      infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
-              checkpoint_filename_with_path=checkpoint_path))
+              checkpoint_filename_with_path=checkpoint_path,
+              config=config_pb2.ConfigProto(allow_soft_placement=True)))
       if not as_iterable:
         with mon_sess:
           if not mon_sess.should_stop():
@@ -930,7 +921,7 @@ class BaseEstimator(
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
-      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
+      model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
@@ -977,36 +968,13 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=None) as mon_sess:
+          config=config_pb2.ConfigProto(allow_soft_placement=True)
+      ) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
       summary_io.SummaryWriterCache.clear()
       return loss
-
-  def _call_legacy_get_predict_ops(self, features):
-    # The default return type of _get_predict_ops is ModelFnOps. But there are
-    # some subclasses of tf.contrib.learn.Estimator which override this
-    # method and use the legacy signature, namely _get_predict_ops returns a
-    # `predictions` Tensor or dict or Tensors. The following else-statement
-    # code covers these cases, but will soon be deleted after the subclasses
-    # are updated.
-    # TODO(b/32664904): Update subclasses and delete the else-statement.
-    infer_ops = self._get_predict_ops(features)
-    if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return infer_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.INFER, predictions=infer_ops)
-
-  def _call_legacy_get_train_ops(self, features, labels):
-    train_ops = self._get_train_ops(features, labels)
-    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return train_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.TRAIN,
-        predictions=None,
-        loss=train_ops[1],
-        train_op=train_ops[0])
 
 
 def _identity_feature_engineering_fn(features, labels):
@@ -1219,7 +1187,8 @@ class Estimator(BaseEstimator):
       self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
-      as_text=False):
+      as_text=False,
+      checkpoint_path=None):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1237,6 +1206,8 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
 
     Returns:
       The string path to the exported directory.
@@ -1267,9 +1238,9 @@ class Estimator(BaseEstimator):
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
 
-      # Locate the latest checkpoint
-      # TODO(soergel): does it help that we know we have one from this step?
-      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        # Locate the latest checkpoint
+        checkpoint_path = saver.latest_checkpoint(self._model_dir)
       if not checkpoint_path:
         raise NotFittedError("Couldn't find trained model at %s."
                              % self._model_dir)

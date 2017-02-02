@@ -5,8 +5,8 @@ Distribution representing the quantization `Y = ceiling(X)`.
 ```
 1. Draw X
 2. Set Y <-- ceiling(X)
-3. If Y < lower_cutoff, reset Y <-- lower_cutoff
-4. If Y > upper_cutoff, reset Y <-- upper_cutoff
+3. If Y < low, reset Y <-- low
+4. If Y > high, reset Y <-- high
 5. Return Y
 ```
 
@@ -16,9 +16,9 @@ Given scalar random variable `X`, we define a discrete random variable `Y`
 supported on the integers as follows:
 
 ```
-P[Y = j] := P[X <= lower_cutoff],  if j == lower_cutoff,
-         := P[X > upper_cutoff - 1],  j == upper_cutoff,
-         := 0, if j < lower_cutoff or j > upper_cutoff,
+P[Y = j] := P[X <= low],  if j == low,
+         := P[X > high - 1],  j == high,
+         := 0, if j < low or j > high,
          := P[j - 1 < X <= j],  all other j.
 ```
 
@@ -32,7 +32,7 @@ j = ...      -1      0     1     2     3     4  ...
 ```
 
 `P[Y = j]` is the mass of `X` within the `jth` interval.
-If `lower_cutoff = 0`, and `upper_cutoff = 2`, then the intervals are redrawn
+If `low = 0`, and `high = 2`, then the intervals are redrawn
 and `j` is re-assigned:
 
 ```
@@ -50,7 +50,7 @@ entropy are better done with samples or approximations, and are not
 implemented by this class.
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, lower_cutoff=None, upper_cutoff=None, validate_args=False, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
+#### `tf.contrib.distributions.QuantizedDistribution.__init__(distribution, low=None, high=None, validate_args=False, name='QuantizedDistribution')` {#QuantizedDistribution.__init__}
 
 Construct a Quantized Distribution representing `Y = ceiling(X)`.
 
@@ -63,19 +63,20 @@ the `distribution`.
 
 *  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
-*  <b>`lower_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
+*  <b>`low`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
-    If provided, base distribution's pdf/pmf should be defined at
-    `lower_cutoff`.
-*  <b>`upper_cutoff`</b>: `Tensor` with same `dtype` as this distribution and shape
+    If provided, base distribution's `prob` should be defined at
+    `low`.
+*  <b>`high`</b>: `Tensor` with same `dtype` as this distribution and shape
     able to be added to samples.  Should be a whole number.  Default `None`.
-    If provided, base distribution's pdf/pmf should be defined at
-    `upper_cutoff - 1`.
-    `upper_cutoff` must be strictly greater than `lower_cutoff`.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`name`</b>: The name for the distribution.
+    If provided, base distribution's `prob` should be defined at
+    `high - 1`.
+    `high` must be strictly greater than `low`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -108,12 +109,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.batch_shape(name='batch_shape')` {#QuantizedDistribution.batch_shape}
+#### `tf.contrib.distributions.QuantizedDistribution.batch_shape` {#QuantizedDistribution.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.batch_shape_tensor(name='batch_shape_tensor')` {#QuantizedDistribution.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -128,7 +146,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.cdf(value, name='cdf', **condition_kwargs)` {#QuantizedDistribution.cdf}
+#### `tf.contrib.distributions.QuantizedDistribution.cdf(value, name='cdf')` {#QuantizedDistribution.cdf}
 
 Cumulative distribution function.
 
@@ -145,8 +163,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -161,7 +179,6 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -195,6 +212,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.QuantizedDistribution.covariance(name='covariance')` {#QuantizedDistribution.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.QuantizedDistribution.distribution` {#QuantizedDistribution.distribution}
 
 Base distribution, p(x).
@@ -216,7 +277,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.event_shape(name='event_shape')` {#QuantizedDistribution.event_shape}
+#### `tf.contrib.distributions.QuantizedDistribution.event_shape` {#QuantizedDistribution.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.QuantizedDistribution.event_shape_tensor(name='event_shape_tensor')` {#QuantizedDistribution.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -229,34 +304,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.get_batch_shape()` {#QuantizedDistribution.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.get_event_shape()` {#QuantizedDistribution.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -302,7 +349,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.log_cdf(value, name='log_cdf', **condition_kwargs)` {#QuantizedDistribution.log_cdf}
+#### `tf.contrib.distributions.QuantizedDistribution.log_cdf(value, name='log_cdf')` {#QuantizedDistribution.log_cdf}
 
 Log cumulative distribution function.
 
@@ -323,8 +370,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -339,7 +386,6 @@ The base distribution's `log_cdf` method must be defined on `y - 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -350,57 +396,7 @@ The base distribution's `log_cdf` method must be defined on `y - 1`.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.log_pdf(value, name='log_pdf', **condition_kwargs)` {#QuantizedDistribution.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.log_pmf(value, name='log_pmf', **condition_kwargs)` {#QuantizedDistribution.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.log_prob(value, name='log_prob', **condition_kwargs)` {#QuantizedDistribution.log_prob}
+#### `tf.contrib.distributions.QuantizedDistribution.log_prob(value, name='log_prob')` {#QuantizedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -410,9 +406,9 @@ Additional documentation from `QuantizedDistribution`:
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
@@ -427,7 +423,6 @@ must also be defined on `y - 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -438,7 +433,7 @@ must also be defined on `y - 1`.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#QuantizedDistribution.log_survival_function}
+#### `tf.contrib.distributions.QuantizedDistribution.log_survival_function(value, name='log_survival_function')` {#QuantizedDistribution.log_survival_function}
 
 Log survival function.
 
@@ -460,8 +455,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
@@ -476,7 +471,6 @@ The base distribution's `log_cdf` method must be defined on `y - 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -568,57 +562,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.pdf(value, name='pdf', **condition_kwargs)` {#QuantizedDistribution.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.pmf(value, name='pmf', **condition_kwargs)` {#QuantizedDistribution.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.QuantizedDistribution.prob(value, name='prob', **condition_kwargs)` {#QuantizedDistribution.prob}
+#### `tf.contrib.distributions.QuantizedDistribution.prob(value, name='prob')` {#QuantizedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -628,9 +572,9 @@ Additional documentation from `QuantizedDistribution`:
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
@@ -645,7 +589,6 @@ also be defined on `y - 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -671,7 +614,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#QuantizedDistribution.sample}
+#### `tf.contrib.distributions.QuantizedDistribution.sample(sample_shape=(), seed=None, name='sample')` {#QuantizedDistribution.sample}
 
 Generate samples of the specified shape.
 
@@ -684,7 +627,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -698,10 +640,30 @@ sample.
 
 Standard deviation.
 
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
 
 - - -
 
-#### `tf.contrib.distributions.QuantizedDistribution.survival_function(value, name='survival_function', **condition_kwargs)` {#QuantizedDistribution.survival_function}
+#### `tf.contrib.distributions.QuantizedDistribution.survival_function(value, name='survival_function')` {#QuantizedDistribution.survival_function}
 
 Survival function.
 
@@ -720,8 +682,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
@@ -736,7 +698,6 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -756,5 +717,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.QuantizedDistribution.variance(name='variance')` {#QuantizedDistribution.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

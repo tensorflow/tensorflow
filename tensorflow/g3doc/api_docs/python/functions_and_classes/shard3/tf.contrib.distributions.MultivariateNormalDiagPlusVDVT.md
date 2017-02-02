@@ -125,12 +125,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.batch_shape(name='batch_shape')` {#MultivariateNormalDiagPlusVDVT.batch_shape}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.batch_shape` {#MultivariateNormalDiagPlusVDVT.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalDiagPlusVDVT.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -145,7 +162,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.cdf(value, name='cdf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.cdf(value, name='cdf')` {#MultivariateNormalDiagPlusVDVT.cdf}
 
 Cumulative distribution function.
 
@@ -160,7 +177,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -194,6 +210,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.covariance(name='covariance')` {#MultivariateNormalDiagPlusVDVT.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.dtype` {#MultivariateNormalDiagPlusVDVT.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -208,7 +268,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.event_shape(name='event_shape')` {#MultivariateNormalDiagPlusVDVT.event_shape}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.event_shape` {#MultivariateNormalDiagPlusVDVT.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalDiagPlusVDVT.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -221,34 +295,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.get_batch_shape()` {#MultivariateNormalDiagPlusVDVT.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.get_event_shape()` {#MultivariateNormalDiagPlusVDVT.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -294,7 +340,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_cdf(value, name='log_cdf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.log_cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiagPlusVDVT.log_cdf}
 
 Log cumulative distribution function.
 
@@ -313,7 +359,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -324,57 +369,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_pdf(value, name='log_pdf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_pmf(value, name='log_pmf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_prob(value, name='log_prob', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.log_prob}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_prob(value, name='log_prob')` {#MultivariateNormalDiagPlusVDVT.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -399,7 +394,6 @@ or
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -417,7 +411,7 @@ Log of determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.log_survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiagPlusVDVT.log_survival_function}
 
 Log survival function.
 
@@ -437,7 +431,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -536,57 +529,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.pdf(value, name='pdf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.pmf(value, name='pmf', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.prob(value, name='prob', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.prob}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.prob(value, name='prob')` {#MultivariateNormalDiagPlusVDVT.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -611,7 +554,6 @@ or
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -637,7 +579,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.sample}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiagPlusVDVT.sample}
 
 Generate samples of the specified shape.
 
@@ -650,7 +592,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -678,10 +619,30 @@ Determinant of covariance matrix.
 
 Standard deviation.
 
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.survival_function(value, name='survival_function', **condition_kwargs)` {#MultivariateNormalDiagPlusVDVT.survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.survival_function(value, name='survival_function')` {#MultivariateNormalDiagPlusVDVT.survival_function}
 
 Survival function.
 
@@ -698,7 +659,6 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -718,5 +678,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.variance(name='variance')` {#MultivariateNormalDiagPlusVDVT.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

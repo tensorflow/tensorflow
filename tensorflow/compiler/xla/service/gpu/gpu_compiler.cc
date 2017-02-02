@@ -48,7 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -279,7 +279,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     generated_ptxes_.emplace_back(MakeUnique<string>());
     ptx = generated_ptxes_.back().get();
   }
-  TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, libdevice_dir_));
+  TF_ASSIGN_OR_RETURN(
+      *ptx, CompileToPtx(&llvm_module, *module_config, libdevice_dir_));
 
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));

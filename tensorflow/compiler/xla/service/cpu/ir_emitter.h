@@ -102,6 +102,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                            HloInstruction* rhs, const Window& window) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* infeed) override;
   Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
