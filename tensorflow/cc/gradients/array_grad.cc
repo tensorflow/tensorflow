@@ -47,7 +47,7 @@ Status PackGrad(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
 
   grad_outputs->reserve(N);
-  auto grad_op = Unpack(scope, grad_inputs[0], N, Unpack::Axis(axis));
+  auto grad_op = Unstack(scope, grad_inputs[0], N, Unstack::Axis(axis));
   for (const Output& o : grad_op.output) {
     grad_outputs->emplace_back(o);
   }
@@ -60,7 +60,7 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
                   std::vector<Output>* grad_outputs) {
   int axis;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
-  grad_outputs->push_back(Pack(scope, grad_inputs, Pack::Axis(axis)));
+  grad_outputs->push_back(Stack(scope, grad_inputs, Stack::Axis(axis)));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Unpack", UnpackGrad);
@@ -239,7 +239,7 @@ Status PadGrad(const Scope& scope, const Operation& op,
   auto x = op.input(0);
   auto a = op.input(1);  // [Rank(x), 2]
   // Takes a slice of a. The 1st column. [Rank(x), 1].
-  auto size = Pack(scope, {Rank(scope, x), 1});
+  auto size = Stack(scope, {Rank(scope, x), 1});
   auto pad_before = Slice(scope, a, {0, 0}, size);
   // Make it a 1-D tensor.
   auto begin = Reshape(scope, pad_before, {-1});
