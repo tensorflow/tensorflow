@@ -33,6 +33,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -350,5 +353,37 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("output"),
                         ReverseV2Op<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                             \
+  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
+                              .Device(DEVICE_SYCL)           \
+                              .TypeConstraint<T>("T")        \
+                              .HostMemory("dims"),           \
+                          ReverseOp<SYCLDevice, T>)          \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_SYCL)           \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int32>("Tidx") \
+                              .HostMemory("axis"),           \
+                          ReverseV2Op<SYCLDevice, T>)
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+
+REGISTER_KERNEL_BUILDER(Name("Reverse")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("tensor")
+                            .HostMemory("dims")
+                            .HostMemory("output"),
+                        ReverseOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tidx")
+                            .HostMemory("tensor")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ReverseV2Op<CPUDevice, int32>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
