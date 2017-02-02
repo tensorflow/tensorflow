@@ -154,6 +154,7 @@ Status XlaDevice::FillContextMap(const Graph* graph,
     ctx->Ref();
     (*device_context_map)[n->id()] = ctx;
   }
+  ctx->Unref();
   return Status::OK();
 }
 
