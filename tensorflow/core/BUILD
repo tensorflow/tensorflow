@@ -128,6 +128,7 @@ CORE_PROTO_SRCS = [
     "framework/device_attributes.proto",
     "framework/function.proto",
     "framework/graph.proto",
+    "framework/graph_transfer_info.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",

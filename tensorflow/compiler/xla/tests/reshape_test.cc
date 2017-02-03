@@ -433,12 +433,12 @@ XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   });
 
   Computation computation = builder.Build().ConsumeValueOrDie();
-  const Shape shape_with_output_layout =
+  ExecutionOptions execution_options;
+  *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {2, 8}, {1, 0});
   std::unique_ptr<Literal> actual =
       client_
-          ->ExecuteAndTransfer(computation, {input.get()},
-                               &shape_with_output_layout)
+          ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> expected =
       LiteralUtil::CreateR2FromArray2D<float>(expected_array);
@@ -592,12 +592,13 @@ XLA_TEST_F(ReshapeTest, NoopReshape) {
                   /*new_sizes=*/{7, 2, 3, 5});
   Computation computation = builder.Build().ConsumeValueOrDie();
 
-  const Shape output_shape_with_layout =
+  ExecutionOptions execution_options;
+  *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {7, 2, 3, 5}, {2, 3, 0, 1});
   std::unique_ptr<Literal> output_literal =
       client_
           ->ExecuteAndTransfer(computation, {input_data.get()},
-                               &output_shape_with_layout)
+                               &execution_options)
           .ConsumeValueOrDie();
 
   // Since the reshape is a no-op, verify that it does not change the underlying

@@ -67,6 +67,13 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Chain.event_ndims` {#Chain.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Chain.forward(x, name='forward')` {#Chain.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
@@ -305,13 +312,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Chain.name` {#Chain.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Chain.shaper` {#Chain.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

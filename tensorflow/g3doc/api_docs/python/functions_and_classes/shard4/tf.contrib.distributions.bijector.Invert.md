@@ -50,6 +50,13 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.Invert.event_ndims` {#Invert.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.Invert.forward(x, name='forward')` {#Invert.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
@@ -288,13 +295,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Invert.name` {#Invert.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Invert.shaper` {#Invert.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

@@ -94,4 +94,16 @@ class UniqueOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 REGISTER_UNIQUE(string)
 #undef REGISTER_UNIQUE
+
+// A fake int32 GPU kernel so that the use of Unique in optimizers (to
+// de-duplicate sparse gradient indices) does not conflict with gradients being
+// located on a GPU.
+REGISTER_KERNEL_BUILDER(Name("Unique")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("out_idx")
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("idx"),
+                        UniqueOp<int32>);
 }  // namespace tensorflow

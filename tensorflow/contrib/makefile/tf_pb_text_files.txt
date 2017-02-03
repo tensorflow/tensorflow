@@ -18,6 +18,7 @@ tensorflow/core/framework/op_def.pb_text.cc
 tensorflow/core/framework/node_def.pb_text.cc
 tensorflow/core/framework/log_memory.pb_text.cc
 tensorflow/core/framework/kernel_def.pb_text.cc
+tensorflow/core/framework/graph_transfer_info.pb_text.cc
 tensorflow/core/framework/graph.pb_text.cc
 tensorflow/core/framework/function.pb_text.cc
 tensorflow/core/framework/device_attributes.pb_text.cc

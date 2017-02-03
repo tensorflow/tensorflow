@@ -80,7 +80,7 @@ Example transformations:
     ```
       class Exp(Bijector):
         def __init__(self, event_ndims=0, validate_args=False, name="exp"):
-          super(Exp, self).__init__(batch_ndims=0, event_ndims=event_ndims,
+          super(Exp, self).__init__(event_ndims=event_ndims,
                                     validate_args=validate_args, name=name)
         def _forward(self, x):
           return math_ops.exp(x)
@@ -88,9 +88,9 @@ Example transformations:
           x = math_ops.log(y)
           return x, -self._forward_log_det_jacobian(x)
         def _forward_log_det_jacobian(self, x):
-          if self.shaper is None:
+          if self.event_ndims is None:
             raise ValueError("Jacobian requires known event_ndims.")
-          _, _, event_dims = self.shaper.get_dims(x)
+          event_dims = array_ops.shape(x)[-self.event_ndims:]
           return math_ops.reduce_sum(x, reduction_indices=event_dims)
       ```
 
@@ -210,7 +210,7 @@ https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
   the `_inverse` implementation.
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
+#### `tf.contrib.distributions.bijector.Bijector.__init__(event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
 
 Constructs Bijector.
 
@@ -219,11 +219,11 @@ A `Bijector` transforms random variables into new random variables.
 Examples:
 
 ```python
-# Create the Y = g(X) = X transform which operates on 4-Tensors of vectors.
-identity = Identity(batch_ndims=4, event_ndims=1)
+# Create the Y = g(X) = X transform which operates on vector events.
+identity = Identity(event_ndims=1)
 
 # Create the Y = g(X) = exp(X) transform which operates on matrices.
-exp = Exp(batch_ndims=0, event_ndims=2)
+exp = Exp(event_ndims=2)
 ```
 
 See `Bijector` subclass docstring for more details and specific examples.
@@ -231,7 +231,6 @@ See `Bijector` subclass docstring for more details and specific examples.
 ##### Args:
 
 
-*  <b>`batch_ndims`</b>: number of dimensions associated with batch coordinates.
 *  <b>`event_ndims`</b>: number of dimensions associated with event coordinates.
 *  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Bijector`.
 *  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is not a
@@ -249,6 +248,13 @@ See `Bijector` subclass docstring for more details and specific examples.
 #### `tf.contrib.distributions.bijector.Bijector.dtype` {#Bijector.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Bijector.event_ndims` {#Bijector.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -491,13 +497,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Bijector.name` {#Bijector.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Bijector.shaper` {#Bijector.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

@@ -194,6 +194,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",

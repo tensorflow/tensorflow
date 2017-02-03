@@ -1,4 +1,4 @@
-Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
+Compute `g(X) = X @ X.T`; X is lower-triangular, positive-diagonal matrix.
 
 `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -40,6 +40,13 @@ Instantiates the `CholeskyOuterProduct` bijector.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.dtype` {#CholeskyOuterProduct.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.event_ndims` {#CholeskyOuterProduct.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -282,13 +289,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.shaper` {#CholeskyOuterProduct.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
