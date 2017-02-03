@@ -99,6 +99,9 @@ REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_CPU), StageOp);
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_GPU), StageOp);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_SYCL), StageOp);
+#endif // TENSORFLOW_USE_SYCL
 
 class UnstageOp : public OpKernel {
  public:
@@ -126,5 +129,8 @@ REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_CPU), UnstageOp);
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
