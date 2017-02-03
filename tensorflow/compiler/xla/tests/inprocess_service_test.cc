@@ -50,14 +50,15 @@ class InProcessServiceTest : public ClientLibraryTestBase {
     builder.ConstantR2<float>(values);
     auto computation = builder.Build().ConsumeValueOrDie();
     CHECK_EQ(2, minor_to_major.size());
-    Shape shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        F32,
-        /*dimensions=*/{static_cast<int64>(values.size()),
-                        static_cast<int64>(values.begin()->size())},
-        minor_to_major);
-    return client_
-        ->Execute(computation, {}, &shape_with_layout,
-                  /*execution_profile=*/nullptr)
+
+    ExecutionOptions execution_options;
+    *execution_options.mutable_shape_with_output_layout() =
+        ShapeUtil::MakeShapeWithLayout(
+            F32,
+            /*dimensions=*/{static_cast<int64>(values.size()),
+                            static_cast<int64>(values.begin()->size())},
+            minor_to_major);
+    return client_->Execute(computation, {}, &execution_options)
         .ConsumeValueOrDie();
   }
 
