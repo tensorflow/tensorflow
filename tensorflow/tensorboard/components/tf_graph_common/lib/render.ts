@@ -619,6 +619,7 @@ export class RenderGraphInfo {
             include: InclusionType.UNSPECIFIED,
             // BridgeNode properties.
             inbound: inbound,
+            nodeAttributes: {},
           };
           bridgeContainerInfo =
             new RenderNodeInfo(bridgeContainerNode);
@@ -638,6 +639,7 @@ export class RenderGraphInfo {
           include: InclusionType.UNSPECIFIED,
           // BridgeNode properties.
           inbound: inbound,
+          nodeAttributes: {},
         };
         bridgeNodeRenderInfo = new RenderNodeInfo(bridgeNode);
         this.index[bridgeNodeName] = bridgeNodeRenderInfo;
@@ -758,6 +760,7 @@ export class RenderGraphInfo {
             include: InclusionType.UNSPECIFIED,
             // BridgeNode properties.
             inbound: inbound,
+            nodeAttributes: {},
           };
           structuralRenderInfo = new RenderNodeInfo(bridgeNode);
           structuralRenderInfo.structural = true;

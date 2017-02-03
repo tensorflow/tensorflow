@@ -59,7 +59,7 @@ def _transpose_batch_time(x):
         (x, x_static_shape))
   x_rank = array_ops.rank(x)
   x_t = array_ops.transpose(
-      x, array_ops.concat_v2(
+      x, array_ops.concat(
           ([1, 0], math_ops.range(2, x_rank)), axis=0))
   x_t.set_shape(
       tensor_shape.TensorShape([
