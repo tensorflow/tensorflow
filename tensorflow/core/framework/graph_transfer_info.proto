@@ -27,8 +27,7 @@ message GraphTransferInfo {
     string name = 1;
     int32 node_id = 2;
     repeated int64 shape = 3;
-    int32 data_size = 4;
-    bytes data = 5;
+    bytes data = 4;
   };
   message NodeInputInfo {
     int32 node_id = 1;

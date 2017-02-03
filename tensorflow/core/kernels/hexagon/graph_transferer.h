@@ -41,38 +41,14 @@ namespace tensorflow {
 class GraphTransferer {
  public:
   // TODO(satok): Remove. Use proto definition instead.
-  static constexpr int MAX_SUPPORTED_RANK = 5;
+  static constexpr int MAX_SUPPORTED_RANK = 4;
   // TODO(satok): Remove. Use proto definition instead.
-  static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK - 1;
+  static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK;
   using OutputTensorMap = std::unordered_map<string, Tensor*>;
 
   struct InputNodeInfo {
     string name;
     Tensor tensor;
-  };
-
-  // Const node parameters for transfer
-  // TODO(satok): Remove. Use proto definition instead.
-  struct ConstNodeTransferParams {
-    string name;
-    int node_id;
-    std::array<int64, MAX_SUPPORTED_RANK> shape;
-    int data_size;
-    std::vector<uint8> data;
-  };
-
-  // Input parameters of a node for transfer
-  // TODO(satok): Remove. Use proto definition instead.
-  struct NodeInputParams {
-    int node_id;
-    std::vector<std::tuple<int, int>> input_node_id_and_output_port_list;
-  };
-
-  // Output parameters of a node for transfer
-  // TODO(satok): Remove. Use proto definition instead.
-  struct NodeOutputParams {
-    int node_id;
-    std::vector<int> max_sizes;
   };
 
   struct OutputTensorInfo {
@@ -121,15 +97,6 @@ class GraphTransferer {
   void SortParams(const std::vector<string>& output_node_names);
 
   void EnableStrictCheckMode(bool enable);
-
-  // Return const node parameters for transfer
-  const std::vector<ConstNodeTransferParams>& GetConstNodeParams() const;
-
-  // Return input params of nodes
-  const std::vector<NodeInputParams>& GetNodeInputParams() const;
-
-  // Return output params of nodes
-  const std::vector<NodeOutputParams>& GetNodeOutputParams() const;
 
   // Return parameters for transfer
   const GraphTransferInfo& GetGraphTransferInfo() const;
@@ -254,9 +221,6 @@ class GraphTransferer {
   void DumpVerificationStringOfNodeTransferParams() const;
 
   GraphTransferInfo graph_transfer_info_;
-  std::vector<ConstNodeTransferParams> const_node_transfer_params_list_;
-  std::vector<NodeInputParams> node_input_params_list_;
-  std::vector<NodeOutputParams> node_output_params_list_;
 
   std::vector<const Node*> node_name_cache_list_;
   std::unordered_map<string, int> node_name_to_id_cache_map_;

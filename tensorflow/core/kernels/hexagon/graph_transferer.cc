@@ -271,9 +271,10 @@ Status GraphTransferer::LoadGraphFromProtoFile(
 
 void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
   // TODO(satok): optimize complexity
-  std::unordered_map<int, NodeInputParams*> input_map;
-  for (NodeInputParams& input : node_input_params_list_) {
-    input_map.emplace(input.node_id, &input);
+  std::unordered_map<int, GraphTransferInfo::NodeInputInfo*> input_map;
+  for (GraphTransferInfo::NodeInputInfo& input :
+       *graph_transfer_info_.mutable_node_input_info()) {
+    input_map.emplace(input.node_id(), &input);
   }
 
   // Setup dependency map placeholder
@@ -294,9 +295,9 @@ void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
       continue;
     }
     CHECK(input_map.count(node_id) == 1);
-    for (std::tuple<int, int>& id_and_port :
-         input_map.at(node_id)->input_node_id_and_output_port_list) {
-      dependency_map.at(node_id).emplace(std::get<0>(id_and_port));
+    for (const GraphTransferInfo::NodeInput& node_input :
+         input_map.at(node_id)->node_input()) {
+      dependency_map.at(node_id).emplace(node_input.node_id());
     }
   }
 
@@ -313,21 +314,6 @@ void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
 
 void GraphTransferer::EnableStrictCheckMode(const bool enable) {
   strict_check_mode_ = enable;
-}
-
-const std::vector<GraphTransferer::ConstNodeTransferParams>&
-GraphTransferer::GetConstNodeParams() const {
-  return const_node_transfer_params_list_;
-}
-
-const std::vector<GraphTransferer::NodeInputParams>&
-GraphTransferer::GetNodeInputParams() const {
-  return node_input_params_list_;
-}
-
-const std::vector<GraphTransferer::NodeOutputParams>&
-GraphTransferer::GetNodeOutputParams() const {
-  return node_output_params_list_;
 }
 
 const GraphTransferInfo& GraphTransferer::GetGraphTransferInfo() const {
@@ -440,20 +426,28 @@ void GraphTransferer::RegisterConstantNode(
     data_size = max_bytes_per_data * tensor_shape.num_elements();
   }
   CHECK(context->ValueKnown(num_elements_dim));
-  const_node_transfer_params_list_.emplace_back(
-      ConstNodeTransferParams{node.name(),
-                              id,
-                              {{shape[0], shape[1], shape[2], shape[3]}},
-                              data_size});
+  GraphTransferInfo::ConstNodeInfo& const_node_info =
+      *graph_transfer_info_.add_const_node_info();
+  const_node_info.set_name(node.name());
+  const_node_info.set_node_id(id);
+  // TODO(satok): Make this generic. Never assume rank is 4.
+  const_node_info.add_shape(shape[0]);
+  const_node_info.add_shape(shape[1]);
+  const_node_info.add_shape(shape[2]);
+  const_node_info.add_shape(shape[3]);
   // TODO(satok): Remove. Determine constant value without dryrun
-  if (!output_tensor_map.empty() && data_size != 0) {
-    const Tensor* tensor = output_tensor_map.at(node.name());
-    CHECK(tensor != nullptr);
-    StringPiece sp = tensor->tensor_data();
-    CHECK(data_size == sp.size());
-    std::vector<uint8>& data = const_node_transfer_params_list_.back().data;
-    data.resize(sp.size());
-    std::memcpy(&data[0], &sp.data()[0], data_size);
+  if (data_size > 0) {
+    if (output_tensor_map.empty()) {
+      // setting dummy data if we don't generate node output
+      std::vector<uint8> dummy_data(data_size);
+      const_node_info.set_data(dummy_data.data(), data_size);
+    } else {
+      const Tensor* tensor = output_tensor_map.at(node.name());
+      CHECK(tensor != nullptr);
+      StringPiece sp = tensor->tensor_data();
+      CHECK(data_size == sp.size());
+      const_node_info.set_data(sp.data(), data_size);
+    }
   }
 }
 
@@ -468,8 +462,15 @@ int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
     node_name_cache_list_.emplace_back(nullptr);
     const int id = node_name_cache_list_.size() - 1;
     node_name_to_id_cache_map_.emplace(shape_name, id);
-    const_node_transfer_params_list_.emplace_back(ConstNodeTransferParams{
-        shape_name, id, {{shape[0], shape[1], shape[2], shape[3]}}, 0});
+    GraphTransferInfo::ConstNodeInfo& const_node_info =
+        *graph_transfer_info_.add_const_node_info();
+    const_node_info.set_name(shape_name);
+    const_node_info.set_node_id(id);
+    // TODO(satok): Make this generic. Never assume rank is 5.
+    const_node_info.add_shape(static_cast<int64>(shape[0]));
+    const_node_info.add_shape(static_cast<int64>(shape[1]));
+    const_node_info.add_shape(static_cast<int64>(shape[2]));
+    const_node_info.add_shape(static_cast<int64>(shape[3]));
   }
   return node_name_to_id_cache_map_[shape_name];
 }
@@ -659,8 +660,9 @@ void GraphTransferer::AppendNodeInputParams(
     const int id, const Node& node, const std::vector<int>& extra_inputs) {
   VLOG(1) << "Append input params: " << node.name() << ", " << node.num_inputs()
           << ", " << extra_inputs.size();
-  NodeInputParams input_params;
-  input_params.node_id = id;
+  GraphTransferInfo::NodeInputInfo& node_input_info =
+      *graph_transfer_info_.add_node_input_info();
+  node_input_info.set_node_id(id);
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Edge* edge = nullptr;
     TF_CHECK_OK(node.input_edge(i, &edge));
@@ -670,14 +672,17 @@ void GraphTransferer::AppendNodeInputParams(
     const std::string& op_name = input_node->name();
     CHECK(node_name_to_id_cache_map_.count(op_name) > 0) << op_name;
     const int src_id = node_name_to_id_cache_map_[op_name];
-    input_params.input_node_id_and_output_port_list.emplace_back(
-        std::make_tuple(src_id, port));
+    GraphTransferInfo::NodeInput& node_input =
+        *node_input_info.add_node_input();
+    node_input.set_node_id(src_id);
+    node_input.set_output_port(port);
   }
   for (const int extra_input : extra_inputs) {
-    input_params.input_node_id_and_output_port_list.emplace_back(
-        std::make_tuple(extra_input, 0));
+    GraphTransferInfo::NodeInput& node_input =
+        *node_input_info.add_node_input();
+    node_input.set_node_id(extra_input);
+    node_input.set_output_port(0);
   }
-  node_input_params_list_.emplace_back(input_params);
 }
 
 void GraphTransferer::AppendNodeOutputParams(
@@ -685,8 +690,9 @@ void GraphTransferer::AppendNodeOutputParams(
     const int id, const Node& node) {
   VLOG(1) << "Append output params: " << node.name() << ", "
           << node.num_outputs();
-  NodeOutputParams node_output_params;
-  node_output_params.node_id = id;
+  GraphTransferInfo::NodeOutputInfo& node_output_info =
+      *graph_transfer_info_.add_node_output_info();
+  node_output_info.set_node_id(id);
   for (int i = 0; i < node.num_outputs(); ++i) {
     const Node* output_node = nullptr;
     for (const Edge* const output_edge : node.out_edges()) {
@@ -726,9 +732,8 @@ void GraphTransferer::AppendNodeOutputParams(
       data_size = max_bytes_per_data * tensor_shape.num_elements();
     }
     CHECK(data_size >= 0);
-    node_output_params.max_sizes.push_back(data_size);
+    node_output_info.add_max_byte_size(data_size);
   }
-  node_output_params_list_.emplace_back(node_output_params);
 }
 
 void GraphTransferer::AppendNodeParamsWithIoParams(
@@ -908,16 +913,19 @@ void GraphTransferer::ClearCache() {
 
 void GraphTransferer::DumpNodeTransferParams() const {
   LOG(INFO) << "*** Const Nodes ***";
-  for (const ConstNodeTransferParams& params :
-       const_node_transfer_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " \"" << params.name << "\" (Const)";
-    LOG(INFO) << "  shape: " << params.shape[0] << params.shape[1]
-              << params.shape[2] << params.shape[3];
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       graph_transfer_info_.const_node_info()) {
+    // TODO(satok): Stop assuming shape size is 4.
+    CHECK(params.shape_size() == 4);
+    LOG(INFO) << "[ " << params.node_id() << " \"" << params.name()
+              << "\" (Const)";
+    LOG(INFO) << "  shape: " << params.shape(0) << params.shape(1)
+              << params.shape(2) << params.shape(3);
     LOG(INFO) << "  data_name: "
-              << (params.data_size <= 0
+              << (params.data().length() <= 0
                       ? ""
-                      : DATA_NODE_PREFIX + ToString(params.node_id));
-    LOG(INFO) << "  data_size: " << params.data_size << " bytes"
+                      : DATA_NODE_PREFIX + ToString(params.node_id()));
+    LOG(INFO) << "  data_size: " << params.data().length() << " bytes"
               << " ]";
   }
   LOG(INFO) << "******\n";
@@ -937,19 +945,20 @@ void GraphTransferer::DumpNodeTransferParams() const {
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Node input params ***";
-  for (const NodeInputParams& params : node_input_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " ]";
-    for (const std::tuple<int, int>& pair :
-         params.input_node_id_and_output_port_list) {
-      LOG(INFO) << "    src node id = " << std::get<0>(pair)
-                << ", output port = " << std::get<1>(pair);
+  for (const GraphTransferInfo::NodeInputInfo& params :
+       graph_transfer_info_.node_input_info()) {
+    LOG(INFO) << "[ " << params.node_id() << " ]";
+    for (const GraphTransferInfo::NodeInput& node_input : params.node_input()) {
+      LOG(INFO) << "    src node id = " << node_input.node_id()
+                << ", output port = " << node_input.output_port();
     }
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Node output params ***";
-  for (const NodeOutputParams& params : node_output_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " ]";
-    for (const int max_size : params.max_sizes) {
+  for (const GraphTransferInfo::NodeOutputInfo& params :
+       graph_transfer_info_.node_output_info()) {
+    LOG(INFO) << "[ " << params.node_id() << " ]";
+    for (const int max_size : params.max_byte_size()) {
       LOG(INFO) << "    max_size = " << max_size;
     }
   }
@@ -957,19 +966,22 @@ void GraphTransferer::DumpNodeTransferParams() const {
 }
 
 void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
-  for (const ConstNodeTransferParams& params :
-       const_node_transfer_params_list_) {
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       graph_transfer_info_.const_node_info()) {
     std::stringstream sstream;
-    sstream << "---(CONST) [" << std::hex << params.node_id << std::dec << ","
-            << params.shape[0] << "," << params.shape[1] << ","
-            << params.shape[2] << "," << params.shape[3] << ","
-            << (params.data_size <= 0
+    // TODO(satok): Stop assuming shape size is 4.
+    CHECK(params.shape_size() == 4);
+    sstream << "---(CONST) [" << std::hex << params.node_id() << std::dec << ","
+            << params.shape(0) << "," << params.shape(1) << ","
+            << params.shape(2) << "," << params.shape(3) << ","
+            << (params.data().length() <= 0
                     ? ""
-                    : DATA_NODE_PREFIX + ToString(params.node_id))
-            << "," << params.data_size << "," << params.name << "]";
+                    : DATA_NODE_PREFIX + ToString(params.node_id()))
+            << "," << params.data().length() << "," << params.name() << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Const node count = " << const_node_transfer_params_list_.size();
+  LOG(INFO) << "Const node count = "
+            << graph_transfer_info_.const_node_info_size();
   for (const GraphTransferInfo::NodeInfo& params :
        graph_transfer_info_.node_info()) {
     std::stringstream sstream;
@@ -985,28 +997,31 @@ void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
     LOG(INFO) << sstream.str();
   }
   LOG(INFO) << "Op node count = " << graph_transfer_info_.node_info_size();
-  for (const NodeInputParams& params : node_input_params_list_) {
+  for (const GraphTransferInfo::NodeInputInfo& params :
+       graph_transfer_info_.node_input_info()) {
     std::stringstream sstream;
-    sstream << "---(INPUT) [" << std::hex << params.node_id << std::dec;
-    for (const std::tuple<int, int>& pair :
-         params.input_node_id_and_output_port_list) {
-      sstream << "," << std::hex << std::get<0>(pair) << std::dec << ","
-              << std::get<1>(pair);
+    sstream << "---(INPUT) [" << std::hex << params.node_id() << std::dec;
+    for (const GraphTransferInfo::NodeInput& node_input : params.node_input()) {
+      sstream << "," << std::hex << node_input.node_id() << std::dec << ","
+              << node_input.output_port();
     }
     sstream << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Input params count = " << node_input_params_list_.size();
-  for (const NodeOutputParams& params : node_output_params_list_) {
+  LOG(INFO) << "Input params count = "
+            << graph_transfer_info_.node_input_info_size();
+  for (const GraphTransferInfo::NodeOutputInfo& params :
+       graph_transfer_info_.node_output_info()) {
     std::stringstream sstream;
-    sstream << "---(OUTPUT) [" << std::hex << params.node_id << std::dec;
-    for (const int max_size : params.max_sizes) {
+    sstream << "---(OUTPUT) [" << std::hex << params.node_id() << std::dec;
+    for (const int max_size : params.max_byte_size()) {
       sstream << "," << max_size;
     }
     sstream << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Output params count = " << node_input_params_list_.size();
+  LOG(INFO) << "Output params count = "
+            << graph_transfer_info_.node_output_info_size();
 }
 
 }  // namespace tensorflow

@@ -118,11 +118,11 @@ static GraphDef CreatePoolGraphDef() {
   return def;
 }
 
-static const GraphTransferer::ConstNodeTransferParams* FindConstNodeParams(
+static const GraphTransferInfo::ConstNodeInfo* FindConstNodeInfo(
     const GraphTransferer& gt, const string& name) {
-  for (const GraphTransferer::ConstNodeTransferParams& params :
-       gt.GetConstNodeParams()) {
-    if (params.name == name) {
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       gt.GetGraphTransferInfo().const_node_info()) {
+    if (params.name() == name) {
       return &params;
     }
   }
@@ -140,22 +140,22 @@ static const GraphTransferInfo::NodeInfo* FindNodeInfo(
   return nullptr;
 }
 
-static const GraphTransferer::NodeInputParams* FindNodeInputParams(
+static const GraphTransferInfo::NodeInputInfo* FindNodeInputInfo(
     const GraphTransferer& gt, const int node_id) {
-  for (const GraphTransferer::NodeInputParams& params :
-       gt.GetNodeInputParams()) {
-    if (params.node_id == node_id) {
+  for (const GraphTransferInfo::NodeInputInfo& params :
+       gt.GetGraphTransferInfo().node_input_info()) {
+    if (params.node_id() == node_id) {
       return &params;
     }
   }
   return nullptr;
 }
 
-static const GraphTransferer::NodeOutputParams* FindNodeOutputParams(
+static const GraphTransferInfo::NodeOutputInfo* FindNodeOutputInfo(
     const GraphTransferer& gt, const int node_id) {
-  for (const GraphTransferer::NodeOutputParams& params :
-       gt.GetNodeOutputParams()) {
-    if (params.node_id == node_id) {
+  for (const GraphTransferInfo::NodeOutputInfo& params :
+       gt.GetGraphTransferInfo().node_output_info()) {
+    if (params.node_id() == node_id) {
       return &params;
     }
   }
@@ -166,24 +166,23 @@ static void SanityCheckNodes(const GraphTransferer& gt) {
   for (const GraphTransferInfo::NodeInfo& params :
        gt.GetGraphTransferInfo().node_info()) {
     if (params.input_count() > 0) {
-      const GraphTransferer::NodeInputParams* input_params =
-          FindNodeInputParams(gt, params.node_id());
+      const GraphTransferInfo::NodeInputInfo* input_params =
+          FindNodeInputInfo(gt, params.node_id());
       ASSERT_NE(nullptr, input_params);
-      EXPECT_EQ(params.input_count(),
-                input_params->input_node_id_and_output_port_list.size());
-      EXPECT_EQ(params.node_id(), input_params->node_id);
-      for (const std::tuple<int, int>& pair :
-           input_params->input_node_id_and_output_port_list) {
-        EXPECT_GE(std::get<1>(pair), 0);
+      EXPECT_EQ(params.input_count(), input_params->node_input_size());
+      EXPECT_EQ(params.node_id(), input_params->node_id());
+      for (const GraphTransferInfo::NodeInput& node_input :
+           input_params->node_input()) {
+        EXPECT_GE(node_input.output_port(), 0);
       }
     }
     if (params.output_count() > 0) {
-      const GraphTransferer::NodeOutputParams* output_params =
-          FindNodeOutputParams(gt, params.node_id());
+      const GraphTransferInfo::NodeOutputInfo* output_params =
+          FindNodeOutputInfo(gt, params.node_id());
       ASSERT_NE(nullptr, output_params);
-      EXPECT_EQ(params.output_count(), output_params->max_sizes.size());
-      EXPECT_EQ(params.node_id(), output_params->node_id);
-      for (const int max_size : output_params->max_sizes) {
+      EXPECT_EQ(params.output_count(), output_params->max_byte_size_size());
+      EXPECT_EQ(params.node_id(), output_params->node_id());
+      for (const int max_size : output_params->max_byte_size()) {
         EXPECT_GE(max_size, 0);
       }
     }
@@ -198,26 +197,29 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
                   .ok());
   SanityCheckNodes(gt_);
 
-  const int const_node_count = gt_.GetConstNodeParams().size();
+  const int const_node_count =
+      gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
-  const GraphTransferer::ConstNodeTransferParams* params_a =
-      FindConstNodeParams(gt_, NAME_A);
+  const GraphTransferInfo::ConstNodeInfo* params_a =
+      FindConstNodeInfo(gt_, NAME_A);
   ASSERT_TRUE(params_a != nullptr);
-  EXPECT_EQ(NAME_A, params_a->name);
-  EXPECT_EQ(1, params_a->shape[0]);
-  EXPECT_EQ(1, params_a->shape[1]);
-  EXPECT_EQ(1, params_a->shape[2]);
-  EXPECT_EQ(1, params_a->shape[3]);
-  EXPECT_EQ(4, params_a->data_size);
+  EXPECT_EQ(NAME_A, params_a->name());
+  ASSERT_EQ(4, params_a->shape_size());
+  EXPECT_EQ(1, params_a->shape(0));
+  EXPECT_EQ(1, params_a->shape(1));
+  EXPECT_EQ(1, params_a->shape(2));
+  EXPECT_EQ(1, params_a->shape(3));
+  EXPECT_EQ(4, params_a->data().length());
 
-  const GraphTransferer::ConstNodeTransferParams* params_b =
-      FindConstNodeParams(gt_, NAME_B);
+  const GraphTransferInfo::ConstNodeInfo* params_b =
+      FindConstNodeInfo(gt_, NAME_B);
   ASSERT_TRUE(params_b != nullptr);
-  EXPECT_EQ(1, params_b->shape[0]);
-  EXPECT_EQ(1, params_b->shape[1]);
-  EXPECT_EQ(1, params_b->shape[2]);
-  EXPECT_EQ(1, params_b->shape[3]);
-  EXPECT_EQ(4, params_b->data_size);
+  ASSERT_EQ(4, params_b->shape_size());
+  EXPECT_EQ(1, params_b->shape(0));
+  EXPECT_EQ(1, params_b->shape(1));
+  EXPECT_EQ(1, params_b->shape(2));
+  EXPECT_EQ(1, params_b->shape(3));
+  EXPECT_EQ(4, params_b->data().length());
 }
 
 TEST_F(GraphTransfererTest, DryRunAddGraphA) {
@@ -343,7 +345,8 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
                                      EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
-  const int const_node_count = gt_.GetConstNodeParams().size();
+  const int const_node_count =
+      gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
   const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
   ASSERT_EQ(3, op_node_count);
@@ -368,7 +371,8 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
                                      EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
-  const int const_node_count = gt_.GetConstNodeParams().size();
+  const int const_node_count =
+      gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
   const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
   ASSERT_EQ(3, op_node_count);

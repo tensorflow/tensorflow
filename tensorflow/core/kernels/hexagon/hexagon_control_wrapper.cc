@@ -43,15 +43,17 @@ bool HexagonControlWrapper::Init() {
 bool HexagonControlWrapper::Finalize() { return soc_interface_Finalize(); }
 bool HexagonControlWrapper::SetupGraph(
     const GraphTransferer &graph_transferer) {
+  const GraphTransferInfo& graph_transfer_info =
+      graph_transferer.GetGraphTransferInfo();
   int inputs_count = 0;
   int outputs_count = 0;
-  for (const GraphTransferer::NodeInputParams& input_params :
-       graph_transferer.GetNodeInputParams()) {
-    inputs_count += input_params.input_node_id_and_output_port_list.size();
+  for (const GraphTransferInfo::NodeInputInfo& input_params :
+       graph_transfer_info.node_input_info()) {
+    inputs_count += input_params.node_input_size();
   }
-  for (const GraphTransferer::NodeOutputParams& output_params :
-       graph_transferer.GetNodeOutputParams()) {
-    outputs_count += output_params.max_sizes.size();
+  for (const GraphTransferInfo::NodeOutputInfo& output_params :
+       graph_transfer_info.node_output_info()) {
+    outputs_count += output_params.max_byte_size_size();
   }
   // Allocate memory for node inputs and node outputs
   soc_interface_AllocateNodeInputAndNodeOutputArray(inputs_count,
@@ -59,16 +61,16 @@ bool HexagonControlWrapper::SetupGraph(
 
   // Construct node input parameters
   std::unordered_map<int, std::tuple<void*, int>> inputs_map;
-  for (const GraphTransferer::NodeInputParams& input_params :
-       graph_transferer.GetNodeInputParams()) {
-    const int count = input_params.input_node_id_and_output_port_list.size();
+  for (const GraphTransferInfo::NodeInputInfo& input_params :
+       graph_transfer_info.node_input_info()) {
+    const int count = input_params.node_input_size();
     int node_ids[count];
     int ports[count];
     for (int i = 0; i < count; ++i) {
-      const std::tuple<int, int> id_and_port =
-          input_params.input_node_id_and_output_port_list.at(i);
-      node_ids[i] = std::get<0>(id_and_port) + NODE_ID_OFFSET;
-      ports[i] = std::get<1>(id_and_port);
+      const GraphTransferInfo::NodeInput& node_input =
+          input_params.node_input(i);
+      node_ids[i] = node_input.node_id() + NODE_ID_OFFSET;
+      ports[i] = node_input.output_port();
     }
     void* inputs_ptr = soc_interface_SetOneNodeInputs(count, node_ids, ports);
     const int node_id = input_params.node_id;
@@ -78,12 +80,12 @@ bool HexagonControlWrapper::SetupGraph(
 
   // Construct node output parameters
   std::unordered_map<int, std::tuple<void*, int>> outputs_map;
-  for (const GraphTransferer::NodeOutputParams& output_params :
-       graph_transferer.GetNodeOutputParams()) {
-    const int count = output_params.max_sizes.size();
+  for (const GraphTransferInfo::NodeOutputInfo& output_params :
+       graph_transfer_info.node_output_info()) {
+    const int count = output_params.max_byte_size_size();
     int sizes[count];
     for (int i = 0; i < count; ++i) {
-      const int size = output_params.max_sizes.at(i);
+      const int size = output_params.max_byte_size(i);
       sizes[i] = size;
     }
     void* outputs_ptr = soc_interface_SetOneNodeOutputs(count, sizes);
@@ -97,13 +99,15 @@ bool HexagonControlWrapper::SetupGraph(
 
   // Initialize graph
   // 1. Setup const nodes
-  for (const GraphTransferer::ConstNodeTransferParams& params :
-       graph_transferer.GetConstNodeParams()) {
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       graph_transfer_info.const_node_info()) {
     const int node_id = params.node_id;
-    const int64 shape_0 = params.shape[0];
-    const int64 shape_1 = params.shape[1];
-    const int64 shape_2 = params.shape[2];
-    const int64 shape_3 = params.shape[3];
+    // TODO(satok): Stop assuming shape size is 4.
+    CHECK(params.shape_size() == 4);
+    const int64 shape_0 = params.shape(0);
+    const int64 shape_1 = params.shape(1);
+    const int64 shape_2 = params.shape(2);
+    const int64 shape_3 = params.shape(3);
     const int data_size = params.data_size;
     CHECK(dummy_const_data_.count(node_id) == 0);
     auto data = dummy_const_data_.emplace(
@@ -115,10 +119,10 @@ bool HexagonControlWrapper::SetupGraph(
         reinterpret_cast<uintptr_t>(data.first->second.data());
     const int shift_count = (16 - data_ptr_int % 16) % 16;
     uint8* data_ptr = data.first->second.data() + shift_count;
-    std::memcpy(data_ptr, params.data.data(), data_size);
-    soc_interface_AppendConstNode(params.name.c_str(), node_id + NODE_ID_OFFSET,
-                                  shape_0, shape_1, shape_2, shape_3, data_ptr,
-                                  data_size);
+    std::memcpy(data_ptr, params.data().data(), data_size);
+    soc_interface_AppendConstNode(params.name().c_str(),
+                                  node_id + NODE_ID_OFFSET, shape_0, shape_1,
+                                  shape_2, shape_3, data_ptr, data_size);
   }
 
   // 2. Setup op nodes
