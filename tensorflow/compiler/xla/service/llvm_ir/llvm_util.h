@@ -219,12 +219,11 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // compilation options.
-llvm::FastMathFlags GetFastMathFlags(
-    const CompilationOptions& compilation_options);
+llvm::FastMathFlags GetFastMathFlags(const ExecutionOptions& execution_options);
 
 // Sets values in the given TargetOptions struct according to the given
 // compilation options.
-void SetTargetOptions(const CompilationOptions& compilation_options,
+void SetTargetOptions(const ExecutionOptions& execution_options,
                       llvm::TargetOptions* target_options);
 
 }  // namespace llvm_ir

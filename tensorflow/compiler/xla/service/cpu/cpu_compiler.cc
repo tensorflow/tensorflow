@@ -257,9 +257,9 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
 namespace {
 
 llvm::TargetOptions CompilerTargetOptions(
-    const CompilationOptions& compilation_options) {
+    const ExecutionOptions& execution_options) {
   llvm::TargetOptions target_options;
-  llvm_ir::SetTargetOptions(compilation_options, &target_options);
+  llvm_ir::SetTargetOptions(execution_options, &target_options);
   return target_options;
 }
 
@@ -292,7 +292,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
   auto jit = MakeUnique<SimpleOrcJIT>(
-      CompilerTargetOptions(module_config->compilation_options()),
+      CompilerTargetOptions(module_config->execution_options()),
       CodeGenOptLevel());
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
@@ -482,8 +482,8 @@ CpuCompiler::CompileAheadOfTime(
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags.
   for (const auto& module_config : module_configs) {
-    const auto& options0 = module_configs[0]->compilation_options();
-    const auto& options1 = module_config->compilation_options();
+    const auto& options0 = module_configs[0]->execution_options();
+    const auto& options1 = module_config->execution_options();
     if (!protobuf_util::ProtobufEquals(options0, options1)) {
       return InvalidArgument(
           "All HLO module configs must have matching compilation options. "
@@ -544,7 +544,7 @@ CpuCompiler::CompileAheadOfTime(
   std::unique_ptr<llvm::TargetMachine> target_machine =
       WrapUnique(target->createTargetMachine(
           triple.getTriple(), cpu_name, features,
-          CompilerTargetOptions(module_configs[0]->compilation_options()),
+          CompilerTargetOptions(module_configs[0]->execution_options()),
           reloc_model, llvm::CodeModel::Default, opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.

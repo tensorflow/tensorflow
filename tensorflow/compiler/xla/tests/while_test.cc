@@ -303,7 +303,7 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
         auto result,
         client_->ExecuteAndTransfer(computation, {},
                                     /*shape_with_output_layout=*/nullptr,
-                                    /*compilation_options=*/nullptr,
+                                    /*execution_options=*/nullptr,
                                     /*execution_profile=*/nullptr,
                                     /*seed=*/65));
   }
