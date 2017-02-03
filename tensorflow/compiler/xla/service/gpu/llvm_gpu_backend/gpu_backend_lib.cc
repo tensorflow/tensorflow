@@ -136,7 +136,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
   // Set options from hlo_module_config (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(hlo_module_config.compilation_options(),
+  llvm_ir::SetTargetOptions(hlo_module_config.execution_options(),
                             &target_options);
 
   // Enable FMA synthesis if desired.

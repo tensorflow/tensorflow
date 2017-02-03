@@ -20,11 +20,11 @@ import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
 
-// These settings control how XLA compiles code.  Not all settings will have an
-// effect on every platform.
+// These settings control how XLA compiles and/or runs code.  Not all settings
+// will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-message CompilationOptions {
+message ExecutionOptions {
   // When false, "unsafe" mathematical optimizations are enabled.  These
   // transformations include but are not limited to:
   //
@@ -171,8 +171,8 @@ message ExecuteRequest {
   // If not provided, the default device will be chosen.
   DeviceHandle device_handle = 5;
 
-  // Options that affect the generated code XLA uses to service this request.
-  CompilationOptions compilation_options = 6;
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 6;
 }
 
 message ExecuteParallelRequest {
@@ -204,8 +204,8 @@ message ExecuteAsyncRequest {
   // TODO(b/32083678): This forces a recompilation.
   uint64 seed = 4;
 
-  // Options that affect the generated code XLA uses to service this request.
-  CompilationOptions compilation_options = 6;
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 6;
 }
 
 message ExecuteAsyncResponse {

@@ -152,11 +152,11 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout,
-    const CompilationOptions* compilation_options,
+    const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile, uint64 seed) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
                       Execute(computation, arguments, shape_with_output_layout,
-                              compilation_options, execution_profile, seed));
+                              execution_options, execution_profile, seed));
   return Transfer(*data, shape_with_output_layout);
 }
 
@@ -206,12 +206,12 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout,
-    const CompilationOptions* compilation_options,
+    const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile, uint64 seed) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
-  if (compilation_options != nullptr) {
-    *request.mutable_compilation_options() = *compilation_options;
+  if (execution_options != nullptr) {
+    *request.mutable_execution_options() = *execution_options;
   }
   request.set_seed(seed);
   for (GlobalData* argument : arguments) {
@@ -314,7 +314,7 @@ StatusOr<ExecutionHandle> Client::ExecuteAsync(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout,
-    const CompilationOptions* compilation_options, uint64 seed) {
+    const ExecutionOptions* execution_options, uint64 seed) {
   ExecuteAsyncRequest request;
   *request.mutable_computation() = computation.handle();
   request.set_seed(seed);
@@ -324,8 +324,8 @@ StatusOr<ExecutionHandle> Client::ExecuteAsync(
   if (shape_with_output_layout != nullptr) {
     *request.mutable_shape_with_output_layout() = *shape_with_output_layout;
   }
-  if (compilation_options != nullptr) {
-    *request.mutable_compilation_options() = *compilation_options;
+  if (execution_options != nullptr) {
+    *request.mutable_execution_options() = *execution_options;
   }
 
   ExecuteAsyncResponse response;
