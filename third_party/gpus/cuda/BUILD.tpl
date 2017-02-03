@@ -33,6 +33,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "FreeBSD",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "cuda_headers",
     hdrs = glob([
@@ -50,7 +56,7 @@ cc_library(
     srcs = ["lib/%{cudart_static_lib}"],
     includes = ["include/"],
     linkopts = select({
-            "//tensorflow:FreeBSD": [],
+            ":FreeBSD": [],
             "//conditions:default": ["-ldl"],
         }) + [
         "-lpthread",
