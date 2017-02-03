@@ -31,6 +31,12 @@ limitations under the License.
 #endif
 #endif /* __SSE4_2__ */
 
+// This version of Apple clang has a bug,  claiming support for
+// __has_builtin, but lacking the __cpu_model symbol required by it
+#if defined(__APPLE__) && (__clang_major__ == 7) && (__clang_minor__ == 3)
+#undef USE_SSE_CRC32C
+#endif
+
 #ifdef USE_SSE_CRC32C
 #include <nmmintrin.h>
 #endif
