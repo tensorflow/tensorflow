@@ -99,7 +99,7 @@ key, value = reader.read(filename_queue)
 record_defaults = [[1], [1], [1], [1], [1]]
 col1, col2, col3, col4, col5 = tf.decode_csv(
     value, record_defaults=record_defaults)
-features = tf.pack([col1, col2, col3, col4])
+features = tf.stack([col1, col2, col3, col4])
 
 with tf.Session() as sess:
   # Start populating the filename queue.

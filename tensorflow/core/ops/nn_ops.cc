@@ -1860,6 +1860,7 @@ values: The `k` largest elements along each last dimensional slice.
 indices: The indices of `values` within the last dimension of `input`.
 )doc");
 
+// This is the same as `TopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("TopKV2")
     .Input("input: T")
     .Input("k: int32")
@@ -1881,8 +1882,6 @@ row (resp. vector along the last dimension).  Thus,
     values.shape = indices.shape = input.shape[:-1] + [k]
 
 If two elements are equal, the lower-index element appears first.
-
-This is the same as `TopK`, but takes `k` as in input rather than an attr.
 
 input: 1-D or higher with last dimension at least `k`.
 k: 0-D.  Number of top elements to look for along the last dimension (along each

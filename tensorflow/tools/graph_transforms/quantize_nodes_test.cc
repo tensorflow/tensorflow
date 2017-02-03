@@ -260,7 +260,7 @@ class QuantizeNodesTest : public ::testing::Test {
     Output b_op = Const(root.WithOpName("b_op"), Input::Initializer(b_tensor));
 
     Output concat_op =
-        Concat(root.WithOpName("concat_op"), shape_op, {a_op, b_op});
+        Concat(root.WithOpName("concat_op"), {a_op, b_op}, shape_op);
 
     GraphDef float_graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));

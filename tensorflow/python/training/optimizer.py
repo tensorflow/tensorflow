@@ -24,8 +24,10 @@ import abc
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
@@ -60,7 +62,8 @@ class _RefVariableProcessor(_OptimizableVariable):
     else:
       assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
                                                 "tensor nor IndexedSlices.")
-      return optimizer._apply_sparse(g, self._v)  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      return optimizer._apply_sparse_duplicate_indices(g, self._v)
 
 
 class _DenseReadResourceVariableProcessor(_OptimizableVariable):
@@ -525,11 +528,55 @@ class Optimizer(object):
   def _resource_apply_dense(self, grad, handle):
     raise NotImplementedError()
 
-  def _apply_sparse(self, grad, var):
-    """Add ops to apply sparse gradients to `var`.
+  def _apply_sparse_duplicate_indices(self, grad, var):
+    """Add ops to apply sparse gradients to `var`, with repeated sparse indices.
+
+    Optimizers which override this method must deal with IndexedSlices objects
+    such as the following:
+
+      IndexedSlicesValue(values=[1, 1], indices=[0, 0], dense_shape=[1])
+
+    The correct interpretation is:
+
+      IndexedSlicesValue(values=[2], indices=[0], dense_shape=[1])
+
+    Many optimizers deal incorrectly with repeated indices when updating based
+    on sparse gradients (e.g. summing squares rather than squaring the sum, or
+    applying momentum terms multiple times). Adding first is always the correct
+    behavior, so this is enforced here by reconstructing the IndexedSlices to
+    have only unique indices, then calling _apply_sparse.
+
+    Optimizers which deal correctly with repeated indices may instead override
+    this method to avoid the overhead of summing indices.
 
     Args:
       grad: `IndexedSlices`.
+      var: A `Variable` object.
+
+    Returns:
+      An `Operation`.
+    """
+    unique_indices, new_index_positions = array_ops.unique(grad.indices)
+    summed_values = math_ops.unsorted_segment_sum(
+        grad.values, new_index_positions, array_ops.shape(unique_indices)[0])
+    gradient_no_duplicate_indices = ops.IndexedSlices(
+        indices=unique_indices,
+        values=summed_values,
+        dense_shape=grad.dense_shape)
+    return self._apply_sparse(gradient_no_duplicate_indices, var)
+
+  def _apply_sparse(self, grad, var):
+    """Add ops to apply sparse gradients to `var`.
+
+    The IndexedSlices object passed to `grad` in this function is by default
+    pre-processed in `_apply_sparse_duplicate_indices` to remove duplicate
+    indices (see its docstring for details). Optimizers which can tolerate or
+    have correct special cases for duplicate sparse indices may override
+    `_apply_sparse_duplicate_indices` instead of this function, avoiding that
+    overhead.
+
+    Args:
+      grad: `IndexedSlices`, with no repeated indices.
       var: A `Variable` object.
 
     Return:

@@ -140,28 +140,37 @@ def tf_gen_op_libs(op_lib_names, deps=None):
                       linkstatic=1,)
 
 def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
-                         op_gen="//tensorflow/cc:cc_op_gen_main"):
+                         op_gen="//tensorflow/cc:cc_op_gen_main",
+                         deps=None,
+                         override_file=None,
+                         include_internal_ops=0):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
+  if deps == None:
+    deps = [pkg + ":" + name + "_op_lib"]
   native.cc_binary(
       name = tool,
       copts = tf_copts(),
       linkopts = ["-lm"],
       linkstatic = 1,   # Faster to link this one-time-use binary dynamically
-      deps = ([op_gen, pkg + ":" + name + "_op_lib"])
+      deps = [op_gen] + deps
   )
 
-  # Run the op generator.
-  if name == "sendrecv_ops" or name == "function_ops":
-    include_internal = "1"
+  if override_file == None:
+    srcs = []
+    override_arg = ","
   else:
-    include_internal = "0"
+    srcs = [override_file]
+    override_arg = "$(location " + override_file + ")"
   native.genrule(
       name=name + "_genrule",
-      outs=[out_ops_file + ".h", out_ops_file + ".cc"],
+      outs=[out_ops_file + ".h", out_ops_file + ".cc",
+            out_ops_file + "_internal.h", out_ops_file + "_internal.cc"],
+      srcs=srcs,
       tools=[":" + tool],
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
-           "$(location :" + out_ops_file + ".cc) " + include_internal))
+           "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
+           str(include_internal_ops)))
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate individual C++ .cc and .h
@@ -181,6 +190,15 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
 #            hdrs = [ "ops/array_ops.h",
 #                     "ops/math_ops.h" ],
 #            deps = [ ... ])
+#
+# Plus a private library for the "hidden" ops.
+# cc_library(name = "tf_ops_lib_internal",
+#            srcs = [ "ops/array_ops_internal.cc",
+#                     "ops/math_ops_internal.cc" ],
+#            hdrs = [ "ops/array_ops_internal.h",
+#                     "ops/math_ops_internal.h" ],
+#            deps = [ ... ])
+# TODO(josh11b): Cleaner approach for hidden ops.
 def tf_gen_op_wrappers_cc(name,
                           op_lib_names=[],
                           other_srcs=[],
@@ -192,13 +210,21 @@ def tf_gen_op_wrappers_cc(name,
                               "//tensorflow/cc:const_op",
                           ],
                           op_gen="//tensorflow/cc:cc_op_gen_main",
+                          override_file=None,
+                          include_internal_ops=0,
                           visibility=None):
   subsrcs = other_srcs
   subhdrs = other_hdrs
+  internalsrcs = []
+  internalhdrs = []
   for n in op_lib_names:
-    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg, op_gen=op_gen)
+    tf_gen_op_wrapper_cc(
+        n, "ops/" + n, pkg=pkg, op_gen=op_gen, override_file=override_file,
+        include_internal_ops=include_internal_ops)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
+    internalsrcs += ["ops/" + n + "_internal.cc"]
+    internalhdrs += ["ops/" + n + "_internal.h"]
 
   native.cc_library(name=name,
                     srcs=subsrcs,
@@ -214,6 +240,20 @@ def tf_gen_op_wrappers_cc(name,
                     copts=tf_copts(),
                     alwayslink=1,
                     visibility=visibility)
+  native.cc_library(name=name + "_internal",
+                    srcs=internalsrcs,
+                    hdrs=internalhdrs,
+                    deps=deps + if_not_android([
+                        "//tensorflow/core:core_cpu",
+                        "//tensorflow/core:framework",
+                        "//tensorflow/core:lib",
+                        "//tensorflow/core:protos_all_cc",
+                    ]) + if_android([
+                        "//tensorflow/core:android_tensorflow_lib",
+                    ]),
+                    copts=tf_copts(),
+                    alwayslink=1,
+                    visibility=["//tensorflow:internal"])
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
