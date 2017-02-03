@@ -449,19 +449,18 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(
-    const ExecutionOptions& execution_options) {
+llvm::FastMathFlags GetFastMathFlags(const HloModuleConfig& config) {
   llvm::FastMathFlags flags;
-  if (!execution_options.disable_fast_math()) {
+  if (!config.fast_math_disabled()) {
     // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
     flags.setUnsafeAlgebra();
   }
   return flags;
 }
 
-void SetTargetOptions(const ExecutionOptions& execution_options,
+void SetTargetOptions(const HloModuleConfig& config,
                       llvm::TargetOptions* target_options) {
-  bool fast = !execution_options.disable_fast_math();
+  bool fast = !config.fast_math_disabled();
   // In LLVM backend flags, UnsafeFPMath does not explicitly imply
   // NoInfs, etc.
   target_options->UnsafeFPMath = fast;
