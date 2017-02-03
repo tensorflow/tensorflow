@@ -1341,6 +1341,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":resource_variable_ops_gen",
         ":util",
+        ":variables",
     ],
 )
 
