@@ -450,18 +450,18 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
 }
 
 llvm::FastMathFlags GetFastMathFlags(
-    const CompilationOptions& compilation_options) {
+    const ExecutionOptions& execution_options) {
   llvm::FastMathFlags flags;
-  if (!compilation_options.disable_fast_math()) {
+  if (!execution_options.disable_fast_math()) {
     // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
     flags.setUnsafeAlgebra();
   }
   return flags;
 }
 
-void SetTargetOptions(const CompilationOptions& compilation_options,
+void SetTargetOptions(const ExecutionOptions& execution_options,
                       llvm::TargetOptions* target_options) {
-  bool fast = !compilation_options.disable_fast_math();
+  bool fast = !execution_options.disable_fast_math();
   // In LLVM backend flags, UnsafeFPMath does not explicitly imply
   // NoInfs, etc.
   target_options->UnsafeFPMath = fast;

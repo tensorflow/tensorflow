@@ -283,7 +283,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Allocation*> arguments,
     const Shape* shape_with_output_layout,
-    const CompilationOptions& compilation_options, uint64 seed) {
+    const ExecutionOptions& execution_options, uint64 seed) {
   auto module_config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = module_config->mutable_entry_computation_layout();
 
@@ -323,7 +323,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 
   module_config->set_seed(seed);
   module_config->set_replica_count(execute_backend_->Replicas().size());
-  module_config->set_compilation_options(compilation_options);
+  module_config->set_execution_options(execution_options);
 
   return std::move(module_config);
 }
@@ -681,7 +681,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, arg_allocations,
                            shape_with_output_layout,
-                           request.compilation_options(), request.seed()));
+                           request.execution_options(), request.seed()));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -773,7 +773,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(*program_shape, arg_allocations,
-                         shape_with_output_layout, arg->compilation_options(),
+                         shape_with_output_layout, arg->execution_options(),
                          arg->seed()));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
@@ -846,7 +846,7 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(*program_shape, arg_allocations,
-                         shape_with_output_layout, arg->compilation_options(),
+                         shape_with_output_layout, arg->execution_options(),
                          arg->seed()));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
@@ -1147,15 +1147,15 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   }
 
   // We use fixed compilation options for computing constants.
-  CompilationOptions compilation_options;
-  compilation_options.set_disable_fast_math(true);
+  ExecutionOptions execution_options;
+  execution_options.set_disable_fast_math(true);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(
           program_shape, {},
           arg->has_output_layout() ? &shape_with_output_layout : nullptr,
-          compilation_options,
+          execution_options,
           /*seed=*/0));
 
   TF_ASSIGN_OR_RETURN(

@@ -240,7 +240,7 @@ class ClientLibraryTestBase : public ::testing::Test {
       ComputationDataHandle* data_handle);
 
   Client* client_;
-  CompilationOptions compilation_options_;
+  ExecutionOptions compilation_options_;
 };
 
 template <typename NativeT>

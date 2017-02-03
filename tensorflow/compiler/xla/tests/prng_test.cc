@@ -67,7 +67,7 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
       auto actual,
       client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                   /*shape_with_output_layout=*/nullptr,
-                                  /*compilation_options=*/nullptr,
+                                  /*execution_options=*/nullptr,
                                   /*execution_profile=*/nullptr,
                                   /*seed=*/kTestSeed));
   EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
@@ -126,7 +126,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
       client_->ExecuteAndTransfer(computation,
                                   /*arguments=*/{param0_data.get()},
                                   /*shape_with_output_layout=*/nullptr,
-                                  /*compilation_options=*/nullptr,
+                                  /*execution_options=*/nullptr,
                                   /*execution_profile=*/nullptr, /*seed=*/125));
   EXPECT_EQ(actual->f32s_size(), param0_literal->f32s_size());
   for (int i = 0; i < param0_literal->f32s_size(); ++i) {
@@ -156,7 +156,7 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
         result1,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                     /*shape_with_output_layout=*/nullptr,
-                                    /*compilation_options=*/nullptr,
+                                    /*execution_options=*/nullptr,
                                     /*execution_profile=*/nullptr,
                                     /*seed=*/42));
   }
@@ -168,14 +168,14 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
         result2,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                     /*shape_with_output_layout=*/nullptr,
-                                    /*compilation_options=*/nullptr,
+                                    /*execution_options=*/nullptr,
                                     /*execution_profile=*/nullptr,
                                     /*seed=*/42));
     TF_ASSIGN_OR_ASSERT_OK(
         result3,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                     /*shape_with_output_layout=*/nullptr,
-                                    /*compilation_options=*/nullptr,
+                                    /*execution_options=*/nullptr,
                                     /*execution_profile=*/nullptr,
                                     /*seed=*/42));
   }
@@ -189,7 +189,7 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
         result4,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                     /*shape_with_output_layout=*/nullptr,
-                                    /*compilation_options=*/nullptr,
+                                    /*execution_options=*/nullptr,
                                     /*execution_profile=*/nullptr,
                                     /*seed=*/65));
     TF_ASSIGN_OR_ASSERT_OK(
