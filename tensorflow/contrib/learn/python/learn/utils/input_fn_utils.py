@@ -41,7 +41,7 @@ InputFnOps = collections.namedtuple('InputFnOps',
                                      'default_inputs'])
 
 
-def build_parsing_serving_input_fn(feature_spec, default_batch_size=1):
+def build_parsing_serving_input_fn(feature_spec, default_batch_size=None):
   """Build an input_fn appropriate for serving, expecting fed tf.Examples.
 
   Creates an input_fn that expects a serialized tf.Example fed into a string
@@ -52,6 +52,7 @@ def build_parsing_serving_input_fn(feature_spec, default_batch_size=1):
   Args:
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.
     default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
 
   Returns:
     An input_fn suitable for use in serving.
@@ -68,7 +69,7 @@ def build_parsing_serving_input_fn(feature_spec, default_batch_size=1):
   return input_fn
 
 
-def build_default_serving_input_fn(features, default_batch_size=1):
+def build_default_serving_input_fn(features, default_batch_size=None):
   """Build an input_fn appropriate for serving, expecting feature Tensors.
 
   Creates an input_fn that expects all features to be fed directly.
@@ -78,6 +79,7 @@ def build_default_serving_input_fn(features, default_batch_size=1):
   Args:
     features: a dict of string to `Tensor`.
     default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
 
   Returns:
     An input_fn suitable for use in serving.

@@ -133,7 +133,8 @@ class CudnnRNNBenchmark(test.Benchmark):
 
         cell = core_rnn_cell_impl.LSTMCell(
             num_units=num_units, initializer=initializer, state_is_tuple=True)
-        multi_cell = core_rnn_cell_impl.MultiRNNCell([cell] * num_layers)
+        multi_cell = core_rnn_cell_impl.MultiRNNCell(
+            [cell() for _ in range(num_layers)])
         outputs, final_state = core_rnn.static_rnn(
             multi_cell, inputs, dtype=dtypes.float32)
         trainable_variables = ops.get_collection(
@@ -156,8 +157,10 @@ class CudnnRNNBenchmark(test.Benchmark):
         inputs = seq_length * [
             array_ops.zeros([batch_size, num_units], dtypes.float32)
         ]
-        cell = lstm_ops.LSTMBlockCell(num_units=num_units)
-        multi_cell = core_rnn_cell_impl.MultiRNNCell([cell] * num_layers)
+        cell = lambda: lstm_ops.LSTMBlockCell(num_units=num_units)  # pylint: disable=cell-var-from-loop
+
+        multi_cell = core_rnn_cell_impl.MultiRNNCell(
+            [cell() for _ in range(num_layers)])
         outputs, final_state = core_rnn.static_rnn(
             multi_cell, inputs, dtype=dtypes.float32)
         trainable_variables = ops.get_collection(

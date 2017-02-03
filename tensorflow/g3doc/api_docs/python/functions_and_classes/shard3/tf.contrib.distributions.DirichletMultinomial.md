@@ -25,9 +25,9 @@ This class provides methods to create indexed batches of Dirichlet
 Multinomial distributions.  If the provided `alpha` is rank 2 or higher, for
 every fixed set of leading dimensions, the last dimension represents one
 single Dirichlet Multinomial distribution.  When calling distribution
-functions (e.g. `dist.pmf(counts)`), `alpha` and `counts` are broadcast to the
-same shape (if possible).  In all cases, the last dimension of alpha/counts
-represents single Dirichlet Multinomial distributions.
+functions (e.g. `dist.prob(counts)`), `alpha` and `counts` are broadcast to
+the same shape (if possible).  In all cases, the last dimension of
+alpha/counts represents single Dirichlet Multinomial distributions.
 
 #### Examples
 
@@ -43,15 +43,15 @@ The distribution functions can be evaluated on counts.
 ```python
 # counts same shape as alpha.
 counts = [0, 0, 2]
-dist.pmf(counts)  # Shape []
+dist.prob(counts)  # Shape []
 
 # alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match counts.
 counts = [[1, 1, 0], [1, 0, 1]]
-dist.pmf(counts)  # Shape [2]
+dist.prob(counts)  # Shape [2]
 
 # alpha will be broadcast to shape [5, 7, 3] to match counts.
 counts = [[...]]  # Shape [5, 7, 3]
-dist.pmf(counts)  # Shape [5, 7]
+dist.prob(counts)  # Shape [5, 7]
 ```
 
 Creates a 2-batch of 3-class distributions.
@@ -63,7 +63,7 @@ dist = DirichletMultinomial(n, alpha)
 
 # counts will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
 counts = [2, 1, 0]
-dist.pmf(counts)  # Shape [2]
+dist.prob(counts)  # Shape [2]
 ```
 - - -
 
@@ -162,7 +162,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.cdf(value, name='cdf', **condition_kwargs)` {#DirichletMultinomial.cdf}
+#### `tf.contrib.distributions.DirichletMultinomial.cdf(value, name='cdf')` {#DirichletMultinomial.cdf}
 
 Cumulative distribution function.
 
@@ -177,7 +177,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -207,6 +206,69 @@ intialization arguments.
 *  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
     of self.parameters and override_parameters_kwargs, i.e.,
     `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.covariance(name='covariance')` {#DirichletMultinomial.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+
+Additional documentation from `DirichletMultinomial`:
+
+The covariance for each batch member is defined as the following:
+
+```
+Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+(n + alpha_0) / (1 + alpha_0)
+```
+
+where `alpha_0 = sum_j alpha_j`.
+
+The covariance between elements in a batch is defined as:
+
+```
+Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+(n + alpha_0) / (1 + alpha_0)
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
 
 
 - - -
@@ -277,13 +339,6 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.is_reparameterized` {#DirichletMultinomial.is_reparameterized}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.DirichletMultinomial.is_scalar_batch(name='is_scalar_batch')` {#DirichletMultinomial.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
@@ -318,7 +373,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#DirichletMultinomial.log_cdf}
+#### `tf.contrib.distributions.DirichletMultinomial.log_cdf(value, name='log_cdf')` {#DirichletMultinomial.log_cdf}
 
 Log cumulative distribution function.
 
@@ -337,7 +392,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -348,57 +402,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.log_pdf(value, name='log_pdf', **condition_kwargs)` {#DirichletMultinomial.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.log_pmf(value, name='log_pmf', **condition_kwargs)` {#DirichletMultinomial.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.log_prob(value, name='log_prob', **condition_kwargs)` {#DirichletMultinomial.log_prob}
+#### `tf.contrib.distributions.DirichletMultinomial.log_prob(value, name='log_prob')` {#DirichletMultinomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -422,7 +426,6 @@ it sums up to `n` and its components are equal to integer values.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -433,7 +436,7 @@ it sums up to `n` and its components are equal to integer values.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#DirichletMultinomial.log_survival_function}
+#### `tf.contrib.distributions.DirichletMultinomial.log_survival_function(value, name='log_survival_function')` {#DirichletMultinomial.log_survival_function}
 
 Log survival function.
 
@@ -453,7 +456,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -495,7 +497,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -513,7 +519,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.DirichletMultinomial.param_static_shapes(cls, sample_shape)` {#DirichletMultinomial.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -540,57 +554,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.pdf(value, name='pdf', **condition_kwargs)` {#DirichletMultinomial.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.pmf(value, name='pmf', **condition_kwargs)` {#DirichletMultinomial.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.prob(value, name='prob', **condition_kwargs)` {#DirichletMultinomial.prob}
+#### `tf.contrib.distributions.DirichletMultinomial.prob(value, name='prob')` {#DirichletMultinomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -614,7 +578,6 @@ it sums up to `n` and its components are equal to integer values.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -625,7 +588,22 @@ it sums up to `n` and its components are equal to integer values.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#DirichletMultinomial.sample}
+#### `tf.contrib.distributions.DirichletMultinomial.reparameterization_type` {#DirichletMultinomial.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.sample(sample_shape=(), seed=None, name='sample')` {#DirichletMultinomial.sample}
 
 Generate samples of the specified shape.
 
@@ -638,7 +616,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -648,14 +625,34 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.std(name='std')` {#DirichletMultinomial.std}
+#### `tf.contrib.distributions.DirichletMultinomial.stddev(name='stddev')` {#DirichletMultinomial.stddev}
 
 Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.survival_function(value, name='survival_function', **condition_kwargs)` {#DirichletMultinomial.survival_function}
+#### `tf.contrib.distributions.DirichletMultinomial.survival_function(value, name='survival_function')` {#DirichletMultinomial.survival_function}
 
 Survival function.
 
@@ -672,11 +669,10 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -693,22 +689,24 @@ Python boolean indicated possibly expensive checks are enabled.
 
 Variance.
 
-Additional documentation from `DirichletMultinomial`:
+Variance is defined as,
 
-The variance for each batch member is defined as the following:
-
-```
-Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
-(n + alpha_0) / (1 + alpha_0)
+```none
+Var = E[(X - E[X])**2]
 ```
 
-where `alpha_0 = sum_j alpha_j`.
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
-The covariance between elements in a batch is defined as:
+##### Args:
 
-```
-Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
-(n + alpha_0) / (1 + alpha_0)
-```
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

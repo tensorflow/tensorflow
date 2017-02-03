@@ -99,20 +99,25 @@ HloInstruction* HloComputation::AddInstructionInternal(
   return pinst;
 }
 
-void HloComputation::RemoveInstructionAndUnusedOperands(
-    HloInstruction* instruction) {
-  CHECK_NE(root_instruction(), instruction);
+/* static */ bool HloComputation::IsRemovable(const HloOpcode& opcode) {
+  return !(opcode == HloOpcode::kParameter || opcode == HloOpcode::kRecv ||
+           opcode == HloOpcode::kSend || opcode == HloOpcode::kTrace ||
+           opcode == HloOpcode::kOutfeed);
+}
 
-  CHECK_EQ(0, instruction->user_count());
-  CHECK_NE(instruction->opcode(), HloOpcode::kParameter)
-      << "Cannot remove parameter instructions";
+Status HloComputation::RemoveInstructionAndUnusedOperands(
+    HloInstruction* instruction) {
+  TF_RET_CHECK(root_instruction() != instruction);
+
+  TF_RET_CHECK(instruction->user_count() == 0);
+  TF_RET_CHECK(HloComputation::IsRemovable(instruction->opcode()));
   std::queue<HloInstruction*> remove;
   remove.push(instruction);
   while (!remove.empty()) {
     HloInstruction* item = remove.front();
     remove.pop();
     if (item->user_count() != 0 || item == root_instruction_ ||
-        item->opcode() == HloOpcode::kParameter) {
+        !HloComputation::IsRemovable(item->opcode())) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {
@@ -121,20 +126,24 @@ void HloComputation::RemoveInstructionAndUnusedOperands(
 
     // If an instruction has the same operand more than once, we must not remove
     // it again.
-    RemoveInstruction(item);
+    TF_RETURN_IF_ERROR(RemoveInstruction(item));
   }
+  return Status::OK();
 }
 
-bool HloComputation::RemoveInstructionIfFound(HloInstruction* instruction) {
-  CHECK_NE(instruction->opcode(), HloOpcode::kParameter)
-      << "Cannot remove parameter instructions";
-  CHECK_NE(root_instruction(), instruction) << "cannot remove root instruction";
-  CHECK_EQ(0, instruction->user_count())
+StatusOr<bool> HloComputation::RemoveInstructionIfFound(
+    HloInstruction* instruction) {
+  TF_RET_CHECK(IsRemovable(instruction->opcode()));
+  TF_RET_CHECK(root_instruction() != instruction)
+      << "cannot remove root instruction";
+  TF_RET_CHECK(instruction->user_count() == 0)
       << "instruction with users cannot be removed";
 
   if (instruction_iterators_.count(instruction) == 0) {
     return false;
   }
+  VLOG(2) << "Removing instruction " << instruction->name()
+          << " from computation " << name();
   auto inst_it = instruction_iterators_.at(instruction);
   (*inst_it)->set_parent(nullptr);
   instruction->DetachFromOperands();
@@ -142,18 +151,20 @@ bool HloComputation::RemoveInstructionIfFound(HloInstruction* instruction) {
   return true;
 }
 
-void HloComputation::RemoveInstruction(HloInstruction* instruction) {
-  CHECK(RemoveInstructionIfFound(instruction))
-      << instruction->ToString() << " is not a member of computation "
-      << name();
+Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(bool removed, RemoveInstructionIfFound(instruction));
+  TF_RET_CHECK(removed) << instruction->ToString()
+                        << " is not a member of computation " << name();
+  return Status::OK();
 }
 
-void HloComputation::ReplaceUsesOfInstruction(
+Status HloComputation::ReplaceUsesOfInstruction(
     HloInstruction* instruction_to_replace, HloInstruction* instruction) {
-  instruction_to_replace->ReplaceAllUsesWith(instruction);
+  TF_RETURN_IF_ERROR(instruction_to_replace->ReplaceAllUsesWith(instruction));
   if (instruction_to_replace == root_instruction()) {
     set_root_instruction(instruction);
   }
+  return Status::OK();
 }
 
 void HloComputation::set_root_instruction(
@@ -296,16 +307,16 @@ void HloComputation::FuseInstructionsInto(
     HloInstruction* fusion_instruction) {
   CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
   HloInstruction* root = instructions_to_fuse.front();
-  root->ReplaceAllUsesWith(fusion_instruction);
+  TF_CHECK_OK(root->ReplaceAllUsesWith(fusion_instruction));
   if (root == root_instruction()) {
     set_root_instruction(fusion_instruction);
   }
-  RemoveInstruction(root);
+  TF_CHECK_OK(RemoveInstruction(root));
   for (size_t i = 1; i < instructions_to_fuse.size(); ++i) {
     HloInstruction* instruction = instructions_to_fuse[i];
     fusion_instruction->FuseInstruction(instruction);
     if (instruction->user_count() == 0) {
-      RemoveInstruction(instruction);
+      TF_CHECK_OK(RemoveInstruction(instruction));
     }
   }
 }
@@ -384,6 +395,7 @@ Status HloComputation::AddControlDependency(HloInstruction* predecessor,
   TF_RET_CHECK(instruction_iterators_.count(predecessor) > 0);
   TF_RET_CHECK(instruction_iterators_.count(successor) > 0);
   successor->AddControlPredecessor(predecessor);
+  predecessor->AddControlSuccessor(successor);
   return Status::OK();
 }
 
@@ -417,21 +429,22 @@ bool HloComputation::operator==(const HloComputation& other) const {
   return eq(root_instruction(), other.root_instruction());
 }
 
-void HloComputation::ReplaceWithNewInstruction(
+Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,
     std::unique_ptr<HloInstruction> new_instruction) {
-  ReplaceInstruction(old_instruction,
-                     AddInstruction(std::move(new_instruction)));
+  return ReplaceInstruction(old_instruction,
+                            AddInstruction(std::move(new_instruction)));
 }
 
-void HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
-                                        HloInstruction* new_instruction) {
-  CHECK(ShapeUtil::Compatible(old_instruction->shape(),
-                              new_instruction->shape()));
+Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
+                                          HloInstruction* new_instruction) {
+  TF_RET_CHECK(ShapeUtil::Compatible(old_instruction->shape(),
+                                     new_instruction->shape()));
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
-  ReplaceUsesOfInstruction(old_instruction, new_instruction);
-  RemoveInstructionAndUnusedOperands(old_instruction);
+  TF_RETURN_IF_ERROR(
+      ReplaceUsesOfInstruction(old_instruction, new_instruction));
+  return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 
 HloComputation::ReachabilityMap::ReachabilityMap(
@@ -501,6 +514,7 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   // Visit all dead roots.
   for (auto& instruction : instructions()) {
     if (instruction->user_count() == 0 &&
+        instruction->control_successors().empty() &&
         instruction.get() != root_instruction()) {
       // Call FinishVisit only at the end.
       TF_RETURN_IF_ERROR(
@@ -509,6 +523,30 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   }
   // Visit root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
+}
+
+Status HloComputation::AcceptOrdered(
+    DfsHloVisitor* visitor,
+    const std::vector<const HloInstruction*>& order) const {
+  TF_RET_CHECK(order.size() == instruction_count());
+  std::unordered_set<const HloInstruction*> visited;
+  for (const HloInstruction* instruction : order) {
+    TF_RET_CHECK(instruction_iterators_.count(instruction) == 1)
+        << "Instruction " << instruction->name() << " is not in computation "
+        << name();
+    TF_RET_CHECK(visited.count(instruction) == 0)
+        << "Instruction " << instruction->name()
+        << " appears more than once in order";
+    HloInstruction* mutable_instruction =
+        const_cast<HloInstruction*>(instruction);
+    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    visitor->SetVisited(*mutable_instruction);
+    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    visited.insert(instruction);
+  }
+  TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
+  return Status::OK();
 }
 
 Status HloComputation::Accept(

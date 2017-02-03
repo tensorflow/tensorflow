@@ -149,7 +149,6 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
 
 __all__ = [
@@ -283,30 +282,43 @@ class StopAfterNEvalsHook(session_run_hook.SessionRunHook):
 class SummaryAtEndHook(session_run_hook.SessionRunHook):
   """A run hook that saves a summary with the results of evaluation."""
 
-  def __init__(self, log_dir, summary_op=None, feed_dict=None):
+  def __init__(self, log_dir=None, summary_writer=None,
+               summary_op=None, feed_dict=None):
     """Constructs the Summary Hook.
 
     Args:
-      log_dir: The directory where the logs are saved to.
+      log_dir: The directory where the summary events are saved to.  Used only
+        when `summary_writer` is not specified.
+      summary_writer: A `tf.summary.FileWriter` to write summary events with.
       summary_op: The summary op to run. If left as `None`, then all summaries
         in the tf.GraphKeys.SUMMARIES collection are used.
       feed_dict: An optional feed dictionary to use when evaluating the
         summaries.
+
+    Raises:
+      ValueError: If both `log_dir` and `summary_writer` are `None`.
     """
     self._summary_op = summary_op
     self._feed_dict = feed_dict
-    self._summary_writer = summary_io.SummaryWriter(log_dir)
+    self._summary_writer = summary_writer
+    self._log_dir = log_dir
+    self._summary_writer = summary_writer
+    if self._log_dir is None and self._summary_writer is None:
+      raise ValueError('One of log_dir or summary_writer should be used.')
     self._global_step = variables.get_or_create_global_step()
 
   def begin(self):
+    if self._summary_writer is None and self._log_dir:
+      self._summary_writer = summary.FileWriterCache.get(self._log_dir)
     if self._summary_op is None:
       self._summary_op = summary.merge_all()
 
   def end(self, session):
     global_step = training_util.global_step(session, self._global_step)
     summary_str = session.run(self._summary_op, self._feed_dict)
-    self._summary_writer.add_summary(summary_str, global_step)
-    self._summary_writer.flush()
+    if self._summary_writer:
+      self._summary_writer.add_summary(summary_str, global_step)
+      self._summary_writer.flush()
 
 
 def _scaffold_with_init(scaffold, saver, checkpoint_path):

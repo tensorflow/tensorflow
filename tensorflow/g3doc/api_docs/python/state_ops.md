@@ -1425,7 +1425,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types:
+    `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
+    `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
 *  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be added to the variable.
@@ -1452,7 +1454,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types:
+    `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
+    `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
 *  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be subtracted to the variable.
@@ -1930,7 +1934,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, use_resource=None, custom_getter=None)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -1943,7 +1947,7 @@ for an extensive description of how reusing works. Here is a basic example:
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 
@@ -1988,6 +1992,9 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -2032,7 +2039,7 @@ for an extensive description of how reusing works. Here is a basic example:
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 
@@ -2075,6 +2082,9 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -2121,9 +2131,12 @@ Attributes:
   custom_getter: default custom getter passed to get_variable.
   name_scope: The name passed to `tf.name_scope`.
   dtype: default type passed to get_variable (defaults to DT_FLOAT).
+  use_resource: if False, create a normal Variable; if True create an
+    experimental ResourceVariable with well-defined semantics. Defaults
+    to False (will later change to True).
 - - -
 
-#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32)` {#VariableScope.__init__}
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32, use_resource=None)` {#VariableScope.__init__}
 
 Creates a new VariableScope with the given properties.
 
@@ -2151,7 +2164,7 @@ Creates a new VariableScope with the given properties.
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, use_resource=None, custom_getter=None)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
@@ -2247,10 +2260,24 @@ Set partitioner for this scope.
 Set regularizer for this scope.
 
 
+- - -
+
+#### `tf.VariableScope.set_use_resource(use_resource)` {#VariableScope.set_use_resource}
+
+Sets whether to use ResourceVariables for this scope.
+
 
 - - -
 
-### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_scope}
+#### `tf.VariableScope.use_resource` {#VariableScope.use_resource}
+
+
+
+
+
+- - -
+
+### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_scope}
 
 Returns a context manager for defining ops that creates variables (layers).
 
@@ -2335,6 +2362,9 @@ then all its sub-scopes become reusing as well.
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 *  <b>`dtype`</b>: type of variables created in this scope (defaults to the type
     in the passed scope, or inherited from parent scope).
+*  <b>`use_resource`</b>: If False, all variables will be regular Variables. If True,
+    experimental ResourceVariables with well-defined semantics will be used
+    instead. Defaults to False (will later change to True).
 
 ##### Returns:
 
@@ -2350,7 +2380,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_op_scope}
 
 Deprecated: context manager for defining an op that creates variables.
 
@@ -2509,6 +2539,9 @@ Args:
     elements of the initialized variable will be set to the corresponding
     value in the `value` argument.
   dtype: The data type.
+  verify_shape: Boolean that enables verification of the shape of `value`. If
+    `True`, the initializer will throw an error if the shape of `value` is not
+    compatible with the shape of the initialized tensor.
 
 Examples:
   The following example can be rewritten using a numpy.ndarray instead
@@ -2525,7 +2558,6 @@ Examples:
   >>> init = tf.constant_initializer(value)
 
   >>> print('fitting shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
   >>>   x.initializer.run()
@@ -2536,7 +2568,6 @@ Examples:
    [ 4.  5.  6.  7.]]
 
   >>> print('larger shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
   >>>   x.initializer.run()
@@ -2548,11 +2579,17 @@ Examples:
    [ 7.  7.  7.  7.]]
 
   >>> print('smaller shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
   ValueError: Too many elements provided. Needed at most 6, but received 8
+
+  >>> print('shape verification:')
+  >>> init_verify = tf.constant_initializer(value, verify_shape=True)
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
+
+  TypeError: Expected Tensor's shape: (3, 4), got (8,).
 ```
 - - -
 
@@ -2563,7 +2600,7 @@ Examples:
 
 - - -
 
-#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32)` {#constant_initializer.__init__}
+#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32, verify_shape=False)` {#constant_initializer.__init__}
 
 
 

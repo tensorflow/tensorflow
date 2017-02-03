@@ -638,8 +638,7 @@ Status CheckLayouts(
 }  // namespace
 
 LayoutAssignment::LayoutAssignment(ComputationLayout* entry_computation_layout)
-    : HloPass("layout-assignment"),
-      entry_computation_layout_(entry_computation_layout) {
+    : entry_computation_layout_(entry_computation_layout) {
   VLOG(1) << "entry computation layout given to layout assignment: "
           << entry_computation_layout_->ToString();
   // Layouts of all parameter instructions must be set.
@@ -1115,8 +1114,7 @@ Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
   TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
                       CreateCopyWithNewLayout(operand_layout.shape(), operand));
 
-  instruction->ReplaceOperandWith(operand_no, operand_copy);
-  return Status::OK();
+  return instruction->ReplaceOperandWith(operand_no, operand_copy);
 }
 
 // For fusion instructions, set the layout of each fused parameter instruction

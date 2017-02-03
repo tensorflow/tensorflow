@@ -91,7 +91,7 @@ def strip_unused_from_files(input_graph, input_binary, output_graph,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(f.read().decode("utf-8"), input_graph_def)
+      text_format.Merge(f.read(), input_graph_def)
 
   output_graph_def = strip_unused(input_graph_def,
                                   input_node_names.split(","),

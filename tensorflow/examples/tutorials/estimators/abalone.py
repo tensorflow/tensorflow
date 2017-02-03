@@ -25,7 +25,7 @@ from six.moves import urllib
 
 import numpy as np
 import tensorflow as tf
-
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 
 FLAGS = None
 
@@ -43,7 +43,7 @@ def maybe_download(train_data, test_data, predict_data):
     train_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.request.urlretrieve(
         "http://download.tensorflow.org/data/abalone_train.csv",
-        train_file.name)  # pylint: disable=line-too-long
+        train_file.name)
     train_file_name = train_file.name
     train_file.close()
     print("Training data is downloaded to %s" % train_file_name)
@@ -53,7 +53,7 @@ def maybe_download(train_data, test_data, predict_data):
   else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.request.urlretrieve(
-        "http://download.tensorflow.org/data/abalone_test.csv", test_file.name)  # pylint: disable=line-too-long
+        "http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
     test_file_name = test_file.name
     test_file.close()
     print("Test data is downloaded to %s" % test_file_name)
@@ -64,7 +64,7 @@ def maybe_download(train_data, test_data, predict_data):
     predict_file = tempfile.NamedTemporaryFile(delete=False)
     urllib.request.urlretrieve(
         "http://download.tensorflow.org/data/abalone_predict.csv",
-        predict_file.name)  # pylint: disable=line-too-long
+        predict_file.name)
     predict_file_name = predict_file.name
     predict_file.close()
     print("Prediction data is downloaded to %s" % predict_file_name)
@@ -72,7 +72,6 @@ def maybe_download(train_data, test_data, predict_data):
   return train_file_name, test_file_name, predict_file_name
 
 
-# pylint: disable=unused-argument
 def model_fn(features, targets, mode, params):
   """Model function for Estimator."""
 
@@ -91,7 +90,13 @@ def model_fn(features, targets, mode, params):
   predictions_dict = {"ages": predictions}
 
   # Calculate loss using mean squared error
-  loss = tf.contrib.losses.mean_squared_error(predictions, targets)
+  loss = tf.losses.mean_squared_error(targets, predictions)
+
+  # Calculate root mean squared error as additional eval metric
+  eval_metric_ops = {
+      "rmse": tf.metrics.root_mean_squared_error(
+          tf.cast(targets, tf.float64), predictions)
+  }
 
   train_op = tf.contrib.layers.optimize_loss(
       loss=loss,
@@ -99,7 +104,12 @@ def model_fn(features, targets, mode, params):
       learning_rate=params["learning_rate"],
       optimizer="SGD")
 
-  return predictions_dict, loss, train_op
+  return model_fn_lib.ModelFnOps(
+      mode=mode,
+      predictions=predictions_dict,
+      loss=loss,
+      train_op=train_op,
+      eval_metric_ops=eval_metric_ops)
 
 
 def main(unused_argv):
@@ -122,7 +132,7 @@ def main(unused_argv):
   # Set model params
   model_params = {"learning_rate": LEARNING_RATE}
 
-  # Build 2 layer fully connected DNN with 10, 10 units respectively.
+  # Instantiate Estimator
   nn = tf.contrib.learn.Estimator(model_fn=model_fn, params=model_params)
 
   # Fit
@@ -130,8 +140,8 @@ def main(unused_argv):
 
   # Score accuracy
   ev = nn.evaluate(x=test_set.data, y=test_set.target, steps=1)
-  loss_score = ev["loss"]
-  print("Loss: %s" % loss_score)
+  print("Loss: %s" % ev["loss"])
+  print("Root Mean Squared Error: %s" % ev["rmse"])
 
   # Print out predictions
   predictions = nn.predict(x=prediction_set.data, as_iterable=True)

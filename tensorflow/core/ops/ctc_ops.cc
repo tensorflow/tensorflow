@@ -113,7 +113,7 @@ Performs greedy decoding on the logits given in inputs.
 A note about the attribute merge_repeated: if enabled, when
 consecutive logits' maximum indices are the same, only the first of
 these is emitted.  Labeling the blank '*', the sequence "A B B * B B"
-becomes "A B" if merge_repeated = True and "A B B B B" if
+becomes "A B B" if merge_repeated = True and "A B B B B" if
 merge_repeated = False.
 
 Regardless of the value of merge_repeated, if the maximum index of a given

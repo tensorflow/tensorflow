@@ -164,9 +164,10 @@ StreamExecutor::StreamExecutor(PlatformKind platform_kind,
 }
 
 StreamExecutor::StreamExecutor(
-    const Platform *platform, internal::StreamExecutorInterface *implementation)
+    const Platform *platform,
+    std::unique_ptr<internal::StreamExecutorInterface> implementation)
     : platform_(platform),
-      implementation_(implementation),
+      implementation_(std::move(implementation)),
       device_ordinal_(-1),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
@@ -491,7 +492,12 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
   // Tracing overloaded methods is very difficult due to issues with type
   // inference on template args. Since use of these overloaded methods is
   // discouraged anyway, this isn't a huge deal.
-  return implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  port::Status status =
+      implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 bool StreamExecutor::SynchronousMemcpy(void *host_dst,
@@ -501,7 +507,12 @@ bool StreamExecutor::SynchronousMemcpy(void *host_dst,
           << ", gpu_src=" << gpu_src.opaque() << ", size=" << size << ") D2H"
           << StackTraceIfVLOG10();
 
-  return implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  port::Status status =
+      implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
@@ -511,8 +522,12 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
           << gpu_dst->opaque() << ", gpu_src=" << gpu_src.opaque()
           << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
 
-  return implementation_->SynchronousMemcpyDeviceToDevice(gpu_dst, gpu_src,
-                                                          size);
+  port::Status status =
+      implementation_->SynchronousMemcpyDeviceToDevice(gpu_dst, gpu_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 port::Status StreamExecutor::SynchronousMemcpyD2H(
@@ -525,13 +540,15 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
   SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H,
                &result, gpu_src, size, host_dst);
 
-  if (!implementation_->SynchronousMemcpy(host_dst, gpu_src, size)) {
+  port::Status status =
+      implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  if (!status.ok()) {
     return port::Status{
         port::error::INTERNAL,
         port::Printf(
             "failed to synchronously memcpy device-to-host: GPU %p to host %p "
-            "size %lld",
-            gpu_src.opaque(), host_dst, size)};
+            "size %lld: %s",
+            gpu_src.opaque(), host_dst, size, status.ToString().c_str())};
   }
 
   return result;
@@ -548,12 +565,15 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(const void *host_src,
   SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D,
                &result, host_src, size, gpu_dst);
 
-  if (!implementation_->SynchronousMemcpy(gpu_dst, host_src, size)) {
+  port::Status status =
+      implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  if (!status.ok()) {
     result = port::Status{
         port::error::INTERNAL,
         port::Printf("failed to synchronously memcpy host-to-device: host "
-                     "%p to GPU %p size %lld",
-                     host_src, gpu_dst->opaque(), size)};
+                     "%p to GPU %p size %lld: %s",
+                     host_src, gpu_dst->opaque(), size,
+                     status.ToString().c_str())};
   }
 
   return result;

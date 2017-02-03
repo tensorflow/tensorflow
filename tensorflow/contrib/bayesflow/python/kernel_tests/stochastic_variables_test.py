@@ -44,14 +44,14 @@ class StochasticVariablesTest(test.TestCase):
     with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma)):
+            dist_cls=dist.NormalWithSoftplusScale)):
       v = variable_scope.get_variable("sv", shape)
 
     self.assertTrue(isinstance(v, st.StochasticTensor))
-    self.assertTrue(isinstance(v.distribution, dist.NormalWithSoftplusSigma))
+    self.assertTrue(isinstance(v.distribution, dist.NormalWithSoftplusScale))
 
     self.assertEqual(
-        {"stochastic_variables/sv_mu", "stochastic_variables/sv_sigma"},
+        {"stochastic_variables/sv_loc", "stochastic_variables/sv_scale"},
         set([v.op.name for v in variables.global_variables()]))
     self.assertEqual(
         set(variables.trainable_variables()), set(variables.global_variables()))
@@ -67,18 +67,18 @@ class StochasticVariablesTest(test.TestCase):
     with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma,
+            dist_cls=dist.NormalWithSoftplusScale,
             dist_kwargs={"validate_args": True},
             param_initializers={
-                "mu": np.ones(shape) * 4.,
-                "sigma": np.ones(shape) * 2.
+                "loc": np.ones(shape) * 4.,
+                "scale": np.ones(shape) * 2.
             })):
       v = variable_scope.get_variable("sv")
 
     for var in variables.global_variables():
-      if "mu" in var.name:
+      if "loc" in var.name:
         mu_var = var
-      if "sigma" in var.name:
+      if "scale" in var.name:
         sigma_var = var
 
     v = ops.convert_to_tensor(v)
@@ -98,19 +98,19 @@ class StochasticVariablesTest(test.TestCase):
     with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma,
+            dist_cls=dist.NormalWithSoftplusScale,
             dist_kwargs={"validate_args": True},
             param_initializers={
-                "mu": np.ones(
+                "loc": np.ones(
                     shape, dtype=np.float32) * 4.,
-                "sigma": sigma_init
+                "scale": sigma_init
             })):
       v = variable_scope.get_variable("sv", shape)
 
     for var in variables.global_variables():
-      if "mu" in var.name:
+      if "loc" in var.name:
         mu_var = var
-      if "sigma" in var.name:
+      if "scale" in var.name:
         sigma_var = var
 
     v = ops.convert_to_tensor(v)
@@ -126,7 +126,7 @@ class StochasticVariablesTest(test.TestCase):
     with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma, prior=prior)):
+            dist_cls=dist.NormalWithSoftplusScale, prior=prior)):
       w = variable_scope.get_variable("weights", shape)
 
     x = random_ops.random_uniform((8, 10))
@@ -149,7 +149,7 @@ class StochasticVariablesTest(test.TestCase):
     with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma, prior=prior_init)):
+            dist_cls=dist.NormalWithSoftplusScale, prior=prior_init)):
       w = variable_scope.get_variable("weights", (10, 20))
 
     x = random_ops.random_uniform((8, 10))

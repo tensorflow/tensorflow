@@ -1341,6 +1341,7 @@ cc_test(
         "local_client_aot_test.cc",
         ":local_client_aot_test_computation.o",
     ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:test",

@@ -48,13 +48,11 @@ void OpticalFlow::NextFrame(const ImageData* const image_data) {
 
 // Static heart of the optical flow computation.
 // Lucas Kanade algorithm.
-bool OpticalFlow::FindFlowAtPoint_LK(const Image<uint8>& img_I,
-                                     const Image<uint8>& img_J,
-                                     const Image<int32>& I_x,
-                                     const Image<int32>& I_y,
-                                     const float p_x,
-                                     const float p_y,
-                                     float* out_g_x,
+bool OpticalFlow::FindFlowAtPoint_LK(const Image<uint8_t>& img_I,
+                                     const Image<uint8_t>& img_J,
+                                     const Image<int32_t>& I_x,
+                                     const Image<int32_t>& I_y, const float p_x,
+                                     const float p_y, float* out_g_x,
                                      float* out_g_y) {
   float g_x = *out_g_x;
   float g_y = *out_g_y;
@@ -215,26 +213,21 @@ bool OpticalFlow::FindFlowAtPoint_LK(const Image<uint8>& img_I,
 
 
 // Pointwise flow using translational 2dof ESM.
-bool OpticalFlow::FindFlowAtPoint_ESM(const Image<uint8>& img_I,
-                                      const Image<uint8>& img_J,
-                                      const Image<int32>& I_x,
-                                      const Image<int32>& I_y,
-                                      const Image<int32>& J_x,
-                                      const Image<int32>& J_y,
-                                      const float p_x,
-                                      const float p_y,
-                                      float* out_g_x,
-                                      float* out_g_y) {
+bool OpticalFlow::FindFlowAtPoint_ESM(
+    const Image<uint8_t>& img_I, const Image<uint8_t>& img_J,
+    const Image<int32_t>& I_x, const Image<int32_t>& I_y,
+    const Image<int32_t>& J_x, const Image<int32_t>& J_y, const float p_x,
+    const float p_y, float* out_g_x, float* out_g_y) {
   float g_x = *out_g_x;
   float g_y = *out_g_y;
   const float area_inv = 1.0f / static_cast<float>(kFlowArraySize);
 
   // Get values for frame 1. They remain constant through the inner
   // iteration loop.
-  uint8 vals_I[kFlowArraySize];
-  uint8 vals_J[kFlowArraySize];
-  int16 src_gradient_x[kFlowArraySize];
-  int16 src_gradient_y[kFlowArraySize];
+  uint8_t vals_I[kFlowArraySize];
+  uint8_t vals_J[kFlowArraySize];
+  int16_t src_gradient_x[kFlowArraySize];
+  int16_t src_gradient_y[kFlowArraySize];
 
   // TODO(rspring): try out the IntegerPatchAlign() method once
   // the code for that is in ../common.
@@ -273,7 +266,7 @@ bool OpticalFlow::FindFlowAtPoint_ESM(const Image<uint8>& img_I,
       (left_trunc + patch_size) < img_J.width_less_one_ &&
       (top_trunc + patch_size) < img_J.height_less_one_) {
     int templ_index = 0;
-    const uint8* j_row = img_J[top_trunc] + left_trunc;
+    const uint8_t* j_row = img_J[top_trunc] + left_trunc;
 
     const int j_stride = img_J.stride();
 
@@ -301,10 +294,10 @@ bool OpticalFlow::FindFlowAtPoint_ESM(const Image<uint8>& img_I,
       break;
     }
 
-    const uint8* templ_row = vals_I;
-    const uint8* extract_row = vals_J;
-    const int16* src_dx_row = src_gradient_x;
-    const int16* src_dy_row = src_gradient_y;
+    const uint8_t* templ_row = vals_I;
+    const uint8_t* extract_row = vals_J;
+    const int16_t* src_dx_row = src_gradient_x;
+    const int16_t* src_dy_row = src_gradient_y;
 
     for (int y = 0; y < patch_size; ++y, templ_row += patch_size,
          src_dx_row += patch_size, src_dy_row += patch_size,
@@ -312,19 +305,18 @@ bool OpticalFlow::FindFlowAtPoint_ESM(const Image<uint8>& img_I,
       const int fp_y = top_fixed + (y << 16);
       for (int x = 0; x < patch_size; ++x) {
         const int fp_x = left_fixed + (x << 16);
-        int32 target_dx = J_x.GetPixelInterpFixed1616(fp_x, fp_y);
-        int32 target_dy = J_y.GetPixelInterpFixed1616(fp_x, fp_y);
+        int32_t target_dx = J_x.GetPixelInterpFixed1616(fp_x, fp_y);
+        int32_t target_dy = J_y.GetPixelInterpFixed1616(fp_x, fp_y);
 
         // Combine the two Jacobians.
         // Right-shift by one to account for the fact that we add
         // two Jacobians.
-        int32 dx = (src_dx_row[x] + target_dx) >> 1;
-        int32 dy = (src_dy_row[x] + target_dy) >> 1;
+        int32_t dx = (src_dx_row[x] + target_dx) >> 1;
+        int32_t dy = (src_dy_row[x] + target_dy) >> 1;
 
         // The current residual b - h(q) == extracted - (template + offset)
-        int32 diff = static_cast<int32>(extract_row[x]) -
-                     static_cast<int32>(templ_row[x]) -
-                     bright_offset;
+        int32_t diff = static_cast<int32_t>(extract_row[x]) -
+                       static_cast<int32_t>(templ_row[x]) - bright_offset;
 
         jtj[0] += dx * dx;
         jtj[1] += dx * dy;
@@ -344,8 +336,8 @@ bool OpticalFlow::FindFlowAtPoint_ESM(const Image<uint8>& img_I,
     jtj[0] += kEsmRegularizer;
     jtj[2] += kEsmRegularizer;
 
-    const int64 prod1 = static_cast<int64>(jtj[0]) * jtj[2];
-    const int64 prod2 = static_cast<int64>(jtj[1]) * jtj[1];
+    const int64_t prod1 = static_cast<int64_t>(jtj[0]) * jtj[2];
+    const int64_t prod2 = static_cast<int64_t>(jtj[1]) * jtj[1];
 
     // One ESM step.
     const float jtj_1[4] = { static_cast<float>(jtj[2]),
@@ -392,14 +384,14 @@ bool OpticalFlow::FindFlowAtPointReversible(
   const ImageData& frame_b = reverse_flow ? *frame1_ : *frame2_;
 
   // Images I (prev) and J (next).
-  const Image<uint8>& img_I = *frame_a.GetPyramidSqrt2Level(level * 2);
-  const Image<uint8>& img_J = *frame_b.GetPyramidSqrt2Level(level * 2);
+  const Image<uint8_t>& img_I = *frame_a.GetPyramidSqrt2Level(level * 2);
+  const Image<uint8_t>& img_J = *frame_b.GetPyramidSqrt2Level(level * 2);
 
   // Computed gradients.
-  const Image<int32>& I_x = *frame_a.GetSpatialX(level);
-  const Image<int32>& I_y = *frame_a.GetSpatialY(level);
-  const Image<int32>& J_x = *frame_b.GetSpatialX(level);
-  const Image<int32>& J_y = *frame_b.GetSpatialY(level);
+  const Image<int32_t>& I_x = *frame_a.GetSpatialX(level);
+  const Image<int32_t>& I_y = *frame_a.GetSpatialY(level);
+  const Image<int32_t>& J_x = *frame_b.GetSpatialX(level);
+  const Image<int32_t>& J_y = *frame_b.GetSpatialY(level);
 
   // Shrink factor from original.
   const float shrink_factor = (1 << level);

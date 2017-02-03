@@ -1,7 +1,7 @@
 The multivariate normal distribution on `R^k`.
 
 This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
-`diag_stdev`, representing the standard deviations.  This distribution
+`diag_stddev`, representing the standard deviations.  This distribution
 assumes the random variables, `(X_1,...,X_k)` are independent, thus no
 non-diagonal terms of the covariance matrix are needed.
 
@@ -10,7 +10,7 @@ This allows for `O(k)` pdf evaluation, sampling, and storage.
 #### Mathematical details
 
 The PDF of this distribution is defined in terms of the diagonal covariance
-determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
+determined by `diag_stddev`: `C_{ii} = diag_stddev[i]**2`.
 
 ```
 f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
@@ -26,16 +26,16 @@ Extra leading dimensions, if provided, allow for batches.
 ```python
 # Initialize a single 3-variate Gaussian with diagonal standard deviation.
 mu = [1, 2, 3.]
-diag_stdev = [4, 5, 6.]
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+diag_stddev = [4, 5, 6.]
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 dist.pdf([-1, 0, 1])
 
 # Initialize a batch of two 3-variate Gaussians.
 mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
-diag_stdev = ...  # shape 2 x 3, positive.
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+diag_stddev = ...  # shape 2 x 3, positive.
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
 
 # Evaluate this on a two observations, each in R^3, returning a length two
 # tensor.
@@ -44,21 +44,22 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stdev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stddev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
-User must provide means `mu` and standard deviations `diag_stdev`.
+User must provide means `mu` and standard deviations `diag_stddev`.
 Each batch member represents a random vector `(X_1,...,X_k)` of independent
 random normals.
-The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
+The mean of `X_i` is `mu[i]`, and the standard deviation is
+`diag_stddev[i]`.
 
 ##### Args:
 
 
 *  <b>`mu`</b>: Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
-*  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
+*  <b>`diag_stddev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
     representing the standard deviations.  Must be positive.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate
     input with asserts.  If `validate_args` is `False`,
@@ -72,7 +73,7 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `mu` and `diag_stdev` are different dtypes.
+*  <b>`TypeError`</b>: If `mu` and `diag_stddev` are different dtypes.
 
 
 - - -
@@ -118,7 +119,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.cdf(value, name='cdf', **condition_kwargs)` {#MultivariateNormalDiag.cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiag.cdf(value, name='cdf')` {#MultivariateNormalDiag.cdf}
 
 Cumulative distribution function.
 
@@ -133,7 +134,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -163,6 +163,50 @@ intialization arguments.
 *  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
     of self.parameters and override_parameters_kwargs, i.e.,
     `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.covariance(name='covariance')` {#MultivariateNormalDiag.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
 
 
 - - -
@@ -233,13 +277,6 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_reparameterized` {#MultivariateNormalDiag.is_reparameterized}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiag.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
@@ -274,7 +311,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_cdf(value, name='log_cdf', **condition_kwargs)` {#MultivariateNormalDiag.log_cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiag.log_cdf}
 
 Log cumulative distribution function.
 
@@ -293,7 +330,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -304,57 +340,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_pdf(value, name='log_pdf', **condition_kwargs)` {#MultivariateNormalDiag.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_pmf(value, name='log_pmf', **condition_kwargs)` {#MultivariateNormalDiag.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_prob(value, name='log_prob', **condition_kwargs)` {#MultivariateNormalDiag.log_prob}
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_prob(value, name='log_prob')` {#MultivariateNormalDiag.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -379,7 +365,6 @@ or
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -397,7 +382,7 @@ Log of determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#MultivariateNormalDiag.log_survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiag.log_survival_function}
 
 Log survival function.
 
@@ -417,7 +402,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -459,7 +443,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -477,7 +465,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiag.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -504,57 +500,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.pdf(value, name='pdf', **condition_kwargs)` {#MultivariateNormalDiag.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiag.pmf(value, name='pmf', **condition_kwargs)` {#MultivariateNormalDiag.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiag.prob(value, name='prob', **condition_kwargs)` {#MultivariateNormalDiag.prob}
+#### `tf.contrib.distributions.MultivariateNormalDiag.prob(value, name='prob')` {#MultivariateNormalDiag.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -579,7 +525,6 @@ or
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -590,7 +535,22 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#MultivariateNormalDiag.sample}
+#### `tf.contrib.distributions.MultivariateNormalDiag.reparameterization_type` {#MultivariateNormalDiag.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiag.sample}
 
 Generate samples of the specified shape.
 
@@ -603,7 +563,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -627,14 +586,34 @@ Determinant of covariance matrix.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.std(name='std')` {#MultivariateNormalDiag.std}
+#### `tf.contrib.distributions.MultivariateNormalDiag.stddev(name='stddev')` {#MultivariateNormalDiag.stddev}
 
 Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.survival_function(value, name='survival_function', **condition_kwargs)` {#MultivariateNormalDiag.survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiag.survival_function(value, name='survival_function')` {#MultivariateNormalDiag.survival_function}
 
 Survival function.
 
@@ -651,11 +630,10 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -671,5 +649,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.MultivariateNormalDiag.variance(name='variance')` {#MultivariateNormalDiag.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

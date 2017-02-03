@@ -64,7 +64,7 @@ class QuantizedDistributionTest(test.TestCase):
 
         # pmf
         pmf_n1, pmf_0, pmf_1, pmf_2, pmf_3, pmf_4, pmf_5 = sess.run(
-            qdist.pmf([-1., 0., 1., 2., 3., 4., 5.]))
+            qdist.prob([-1., 0., 1., 2., 3., 4., 5.]))
         # uniform had no mass below -1.
         self.assertAllClose(0., pmf_n1)
         # uniform had no mass below 0.
@@ -151,11 +151,11 @@ class QuantizedDistributionTest(test.TestCase):
       x = rng.randint(-3, 13, size=batch_shape).astype(np.float32)
 
       # pmf
-      # qdist.pmf(j) = 1 / 10 for j in {1,...,10}, and 0 otherwise,
+      # qdist.prob(j) = 1 / 10 for j in {1,...,10}, and 0 otherwise,
       expected_pmf = (1 / 10) * np.ones(batch_shape)
       expected_pmf[x < 1] = 0.
       expected_pmf[x > 10] = 0.
-      self.assertAllClose(expected_pmf, qdist.pmf(x).eval())
+      self.assertAllClose(expected_pmf, qdist.prob(x).eval())
 
       # cdf
       # qdist.cdf(j)
@@ -171,9 +171,9 @@ class QuantizedDistributionTest(test.TestCase):
     batch_shape = (2,)
     with self.test_session():
       normal = distributions.Normal(
-          mu=array_ops.zeros(
+          loc=array_ops.zeros(
               batch_shape, dtype=dtypes.float32),
-          sigma=array_ops.ones(
+          scale=array_ops.ones(
               batch_shape, dtype=dtypes.float32))
 
       qdist = distributions.QuantizedDistribution(
@@ -231,16 +231,16 @@ class QuantizedDistributionTest(test.TestCase):
           distribution=distributions.Exponential(lam=0.2))
       # Standard error should be less than 1 / (2 * sqrt(n_samples))
       n_samples = 10000
-      std_err_bound = 1 / (2 * np.sqrt(n_samples))
+      stddev_err_bound = 1 / (2 * np.sqrt(n_samples))
       samps = qdist.sample((n_samples,), seed=42).eval()
       # The smallest value the samples can take on is 1, which corresponds to
       # the interval (0, 1].  Recall we use ceiling in the sampling definition.
       self.assertLess(0.5, samps.min())
       x_vals = np.arange(1, 11).astype(np.float32)
-      pmf_vals = qdist.pmf(x_vals).eval()
+      pmf_vals = qdist.prob(x_vals).eval()
       for ii in range(10):
         self.assertAllClose(
-            pmf_vals[ii], (samps == x_vals[ii]).mean(), atol=std_err_bound)
+            pmf_vals[ii], (samps == x_vals[ii]).mean(), atol=stddev_err_bound)
 
   def testNormalCdfAndSurvivalFunction(self):
     # At integer values, the result should be the same as the standard normal.
@@ -250,7 +250,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=mu, sigma=sigma))
+              loc=mu, scale=sigma))
       sp_normal = stats.norm(mu, sigma)
 
       x = rng.randint(-5, 5, size=batch_shape).astype(np.float64)
@@ -267,7 +267,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=mu, sigma=sigma))
+              loc=mu, scale=sigma))
       sp_normal = stats.norm(mu, sigma)
 
       x = rng.randint(-10, 10, size=batch_shape).astype(np.float64)
@@ -282,7 +282,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=-2.,
           upper_cutoff=2.)
       sm_normal = stats.norm(0., 1.)
@@ -305,7 +305,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=-2.,
           upper_cutoff=2.)
       sm_normal = stats.norm(0., 1.)
@@ -337,7 +337,7 @@ class QuantizedDistributionTest(test.TestCase):
         sigma = variables.Variable(1., name="sigma", dtype=dtype)
         qdist = distributions.QuantizedDistribution(
             distribution=distributions.Normal(
-                mu=mu, sigma=sigma))
+                loc=mu, scale=sigma))
         x = np.arange(-100, 100, 2).astype(dtype)
         proba = qdist.log_prob(x)
         grads = gradients_impl.gradients(proba, [mu, sigma])
@@ -353,7 +353,7 @@ class QuantizedDistributionTest(test.TestCase):
       sigma = variables.Variable(1.0, name="sigma")
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=mu, sigma=sigma))
+              loc=mu, scale=sigma))
       x = math_ops.ceil(4 * rng.rand(100).astype(np.float32) - 2)
 
       variables.global_variables_initializer().run()
@@ -369,7 +369,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=1.,  # not strictly less than upper_cutoff.
           upper_cutoff=1.,
           validate_args=True)
@@ -382,7 +382,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1.),
+              loc=0., scale=1.),
           lower_cutoff=1.5,
           upper_cutoff=10.,
           validate_args=True)
@@ -395,7 +395,7 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=0., sigma=1., validate_args=False),
+              loc=0., scale=1., validate_args=False),
           lower_cutoff=1.5,
           upper_cutoff=10.11)
 
@@ -409,8 +409,8 @@ class QuantizedDistributionTest(test.TestCase):
     with self.test_session():
       qdist = distributions.QuantizedDistribution(
           distribution=distributions.Normal(
-              mu=array_ops.zeros(batch_shape),
-              sigma=array_ops.zeros(batch_shape)),
+              loc=array_ops.zeros(batch_shape),
+              scale=array_ops.zeros(batch_shape)),
           lower_cutoff=1.0,
           upper_cutoff=10.0)
 

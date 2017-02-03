@@ -133,7 +133,8 @@ class XlaContext : public ResourceBase {
 
   // Create a new XlaContext.
   XlaContext(XlaCompiler* compiler, xla::Client* client,
-             const string& computation_name, bool allow_cpu_custom_calls);
+             const string& computation_name, bool allow_cpu_custom_calls,
+             bool resolve_compile_time_constants);
 
   // Builds XLA computations for each of the arguments.
   // Should only be called once to initialize the arguments. Not thread-safe.
@@ -242,6 +243,10 @@ class XlaContext : public ResourceBase {
 
   // Allow ops to emit CustomCall operations for CPU.
   const bool allow_cpu_custom_calls_;
+
+  // If true, constant return values are returned as Tensors instead of
+  // run-time computation outptus.
+  const bool resolve_compile_time_constants_;
 
   // When 'has_context_parameter_' is true, this is the computation handle
   // for an additional final parameter to the computation, through which will be

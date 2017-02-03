@@ -195,11 +195,11 @@ class QuantizedDistribution(distributions.Distribution):
         instance of `Distribution`.
       lower_cutoff:  `Tensor` with same `dtype` as this distribution and shape
         able to be added to samples.  Should be a whole number.  Default `None`.
-        If provided, base distribution's pdf/pmf should be defined at
+        If provided, base distribution's `prob` should be defined at
         `lower_cutoff`.
       upper_cutoff:  `Tensor` with same `dtype` as this distribution and shape
         able to be added to samples.  Should be a whole number.  Default `None`.
-        If provided, base distribution's pdf/pmf should be defined at
+        If provided, base distribution's `prob` should be defined at
         `upper_cutoff - 1`.
         `upper_cutoff` must be strictly greater than `lower_cutoff`.
       validate_args: Python boolean.  Whether to validate input with asserts.
@@ -253,7 +253,7 @@ class QuantizedDistribution(distributions.Distribution):
     super(QuantizedDistribution, self).__init__(
         dtype=self._dist.dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distributions.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=self._dist.allow_nan_stats,
         parameters=parameters,

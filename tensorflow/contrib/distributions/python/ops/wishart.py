@@ -83,7 +83,7 @@ class _WishartOperatorPD(distribution.Distribution):
       scale_operator_pd: `float` or `double` instance of `OperatorPDBase`.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a
-        Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
+        Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
       validate_args: `Boolean`, default `False`.  Whether to validate input with
@@ -145,7 +145,7 @@ class _WishartOperatorPD(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         is_continuous=True,
-        is_reparameterized=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=([self._df, self._dimension] +
                        self._scale_operator_pd.inputs),
@@ -360,7 +360,7 @@ class _WishartOperatorPD(distribution.Distribution):
       return linalg_ops.cholesky(v)
     return v
 
-  def _std(self):
+  def _stddev(self):
     if self.cholesky_input_output_matrices:
       raise ValueError(
           "Computing std. dev. when is cholesky_input_output_matrices=True "
@@ -458,12 +458,12 @@ class WishartCholesky(_WishartOperatorPD):
 
   # Evaluate this on an observation in R^3, returning a scalar.
   x = ... # A 3x3 positive definite matrix.
-  dist.pdf(x)  # Shape is [], a scalar.
+  dist.prob(x)  # Shape is [], a scalar.
 
   # Evaluate this on a two observations, each in R^{3x3}, returning a length two
   # Tensor.
   x = [x0, x1]  # Shape is [2, 3, 3].
-  dist.pdf(x)  # Shape is [2].
+  dist.prob(x)  # Shape is [2].
 
   # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
   df = [5, 4]
@@ -472,7 +472,7 @@ class WishartCholesky(_WishartOperatorPD):
 
   # Evaluate this on four observations.
   x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3].
-  dist.pdf(x)  # Shape is [2, 2].
+  dist.prob(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
   #   in tf.contrib.distributions.matrix_diag_transform.
@@ -496,7 +496,7 @@ class WishartCholesky(_WishartOperatorPD):
         the symmetric positive definite scale matrix of the distribution.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a
-        Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
+        Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
       validate_args: `Boolean`, default `False`.  Whether to validate input
@@ -559,12 +559,12 @@ class WishartFull(_WishartOperatorPD):
 
   # Evaluate this on an observation in R^3, returning a scalar.
   x = ... # A 3x3 positive definite matrix.
-  dist.pdf(x)  # Shape is [], a scalar.
+  dist.prob(x)  # Shape is [], a scalar.
 
   # Evaluate this on a two observations, each in R^{3x3}, returning a length two
   # Tensor.
   x = [x0, x1]  # Shape is [2, 3, 3].
-  dist.pdf(x)  # Shape is [2].
+  dist.prob(x)  # Shape is [2].
 
   # Initialize two 3x3 Wisharts with Full factored scale matrices.
   df = [5, 4]
@@ -573,7 +573,7 @@ class WishartFull(_WishartOperatorPD):
 
   # Evaluate this on four observations.
   x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3]; xi is positive definite.
-  dist.pdf(x)  # Shape is [2, 2].
+  dist.prob(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
   #   in tf.contrib.distributions.matrix_diag_transform.
@@ -597,7 +597,7 @@ class WishartFull(_WishartOperatorPD):
         scale matrix of the distribution.
       cholesky_input_output_matrices: `Boolean`. Any function which whose input
         or output is a matrix assumes the input is Cholesky and returns a
-        Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
+        Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
       validate_args: `Boolean`, default `False`.  Whether to validate input with

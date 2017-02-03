@@ -108,9 +108,8 @@ func Example() {
 	}
 	// Shape of the product: The number of rows is fixed by m1, but the
 	// number of columns will depend on m2, which is unknown.
-	shape, _ := output.Shape()
-	fmt.Println(shape)
-	// Output: [2 -1]
+	fmt.Println(output.Shape())
+	// Output: [2, ?]
 }
 
 func ExampleScope_SubScope() {

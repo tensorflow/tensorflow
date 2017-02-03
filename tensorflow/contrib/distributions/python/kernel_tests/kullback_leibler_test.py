@@ -42,7 +42,7 @@ class KLTest(test.TestCase):
     def _kl(a, b, name=None):  # pylint: disable=unused-argument,unused-variable
       return name
 
-    a = MyDist(mu=0.0, sigma=1.0)
+    a = MyDist(loc=0.0, scale=1.0)
     # Run kl() with allow_nan=True because strings can't go through is_nan.
     self.assertEqual("OK", kullback_leibler.kl(a, a, allow_nan=True, name="OK"))
 
@@ -60,7 +60,7 @@ class KLTest(test.TestCase):
     # pylint: disable=unused-argument,unused-variable
 
     with self.test_session():
-      a = MyDistException(mu=0.0, sigma=1.0)
+      a = MyDistException(loc=0.0, scale=1.0)
       kl = kullback_leibler.kl(a, a)
       with self.assertRaisesOpError(
           "KL calculation between .* and .* returned NaN values"):
@@ -113,9 +113,9 @@ class KLTest(test.TestCase):
 
     # pylint: enable=unused-argument,unused_variable
 
-    sub1 = Sub1(mu=0.0, sigma=1.0)
-    sub2 = Sub2(mu=0.0, sigma=1.0)
-    sub11 = Sub11(mu=0.0, sigma=1.0)
+    sub1 = Sub1(loc=0.0, scale=1.0)
+    sub2 = Sub2(loc=0.0, scale=1.0)
+    sub11 = Sub11(loc=0.0, scale=1.0)
 
     self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub1, allow_nan=True))
     self.assertEqual("sub1-2", kullback_leibler.kl(sub1, sub2, allow_nan=True))

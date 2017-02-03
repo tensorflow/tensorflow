@@ -70,7 +70,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",
@@ -176,6 +176,20 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "random_ops_test",
+    size = "small",
+    srcs = ["random_ops_test.py"],
+    # TODO(b/31361304): enable RNG ops on GPU when parallelized.
+    disabled_backends = ["gpu"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
     ],
 )
 

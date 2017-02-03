@@ -23,15 +23,18 @@ import os
 import sys
 import tempfile
 
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
+# pylint: disable=g-bad-todo
+# TODO(#6568): Remove this hack that makes dlopen() not crash.
+# pylint: enable=g-bad-todo
+# pylint: disable=g-import-not-at-top
 if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
+from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.layers.python.layers import feature_column_ops
-import tensorflow.contrib.layers.python.layers.feature_column as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib

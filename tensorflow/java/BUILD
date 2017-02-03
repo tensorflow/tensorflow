@@ -7,9 +7,20 @@ licenses(["notice"])  # Apache 2.0
 
 java_library(
     name = "tensorflow",
-    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    srcs = [":java_sources"],
     data = [":libtensorflow_jni"],
     visibility = ["//visibility:public"],
+)
+
+# NOTE(ashankar): Rule to include the Java API in the Android Inference Library
+# .aar. At some point, might make sense for a .aar rule here instead.
+filegroup(
+    name = "java_sources",
+    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    visibility = [
+        "//tensorflow/contrib/android:__pkg__",
+        "//tensorflow/java:__pkg__",
+    ],
 )
 
 java_library(
@@ -56,6 +67,18 @@ java_test(
 )
 
 java_test(
+    name = "ShapeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/ShapeTest.java"],
+    test_class = "org.tensorflow.ShapeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
+)
+
+java_test(
     name = "TensorFlowTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
@@ -73,6 +96,7 @@ java_test(
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
+        ":testutil",
         "//external:junit",
     ],
 )
@@ -95,6 +119,7 @@ cc_binary(
     # symbols from the library. This reduces the size of the library
     # considerably (~50% as of January 2017).
     linkopts = select({
+        "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
             LINKER_EXPORTED_SYMBOLS,

@@ -33,7 +33,7 @@ dist = tf.contrib.distributions.MVNCholesky(mu, chol)
 
 # Standard log loss.  Minimizing this will "train" mu and chol, and then dist
 # will be a distribution predicting labels as multivariate Gaussians.
-loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+loss = -1 * tf.reduce_mean(dist.log_prob(labels))
 ```
 
 ##### Args:

@@ -65,7 +65,7 @@ class Beta(distribution.Distribution):
   This class provides methods to create indexed batches of Beta
   distributions. One entry of the broadcasted
   shape represents of `a` and `b` represents one single Beta distribution.
-  When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
+  When calling distribution functions (e.g. `dist.prob(x)`), `a`, `b`
   and `x` are broadcast to the same shape (if possible).
   Every entry in a/b/x corresponds to a single Beta distribution.
 
@@ -83,15 +83,15 @@ class Beta(distribution.Distribution):
   ```python
   # x same shape as a.
   x = [.2, .3, .7]
-  dist.pdf(x)  # Shape [3]
+  dist.prob(x)  # Shape [3]
 
   # a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
   x = [[.1, .4, .5], [.2, .3, .5]]
-  dist.pdf(x)  # Shape [2, 3]
+  dist.prob(x)  # Shape [2, 3]
 
   # a/b will be broadcast to shape [5, 7, 3] to match x.
   x = [[...]]  # Shape [5, 7, 3]
-  dist.pdf(x)  # Shape [5, 7, 3]
+  dist.prob(x)  # Shape [5, 7, 3]
   ```
 
   Creates a 2-batch of 3-class distributions.
@@ -103,7 +103,7 @@ class Beta(distribution.Distribution):
 
   # x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
   x = [.2, .3, .9]
-  dist.pdf(x)  # Shape [2]
+  dist.prob(x)  # Shape [2]
   ```
 
   """
@@ -157,7 +157,7 @@ class Beta(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         is_continuous=True,
-        is_reparameterized=False,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._a, self._b, self._a_b_sum],
         name=ns)
@@ -240,9 +240,6 @@ class Beta(distribution.Distribution):
   def _variance(self):
     return (self.a * self.b) / (self.a_b_sum**2. * (self.a_b_sum + 1.))
 
-  def _std(self):
-    return math_ops.sqrt(self.variance())
-
   @distribution_util.AppendDocstring(
       """Note that the mode for the Beta distribution is only defined
       when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
@@ -319,10 +316,10 @@ def _kl_beta_beta(d1, d2, name=None):
   with ops.name_scope(name, "kl_beta_beta", inputs):
     # ln(B(a', b') / B(a, b))
     log_betas = (math_ops.lgamma(d2.a) + math_ops.lgamma(d2.b)
-                - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
-                - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
+                 - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
+                 - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
     # (a - a')*psi(a) + (b - b')*psi(b) + (a' - a + b' - b)*psi(a + b)
-    digammas = ((d1.a - d2.a)*math_ops.digamma(d1.a)
-              + (d1.b - d2.b)*math_ops.digamma(d1.b)
-              + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
+    digammas = ((d1.a - d2.a) * math_ops.digamma(d1.a)
+                + (d1.b - d2.b) * math_ops.digamma(d1.b)
+                + (d2.a_b_sum - d1.a_b_sum) * math_ops.digamma(d1.a_b_sum))
     return log_betas + digammas

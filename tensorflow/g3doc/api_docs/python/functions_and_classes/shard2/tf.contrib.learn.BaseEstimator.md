@@ -1,12 +1,6 @@
 Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-Concrete implementation of this class should provide the following functions:
-
-  * _get_train_ops
-  * _get_eval_ops
-  * _get_predict_ops
-
-`Estimator` implemented below is a good example of how to use this class.
+Users should not instantiate or subclass this class. Instead, use `Estimator`.
 - - -
 
 #### `tf.contrib.learn.BaseEstimator.__init__(model_dir=None, config=None)` {#BaseEstimator.__init__}
@@ -96,6 +90,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
     `signature_fn` without filtering.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 *  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: the checkpoint path of the model to be exported. If it is
+      `None` (which is default), will use the latest checkpoint in
+      export_dir.
 
 ##### Returns:
 

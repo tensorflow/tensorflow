@@ -77,7 +77,7 @@ def assert_scalar_congruency(bijector,
   3. the jacobian is the correct change of measure.
 
   This can only be used for a Bijector mapping open subsets of the real line
-  to themselves.  This is due to the fact that this test compares the pdf
+  to themselves.  This is due to the fact that this test compares the `prob`
   before/after transformation with the Lebesgue measure on the line.
 
   Args:
@@ -194,7 +194,6 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
   # values for which these end up being bad, especially in 16bit.
   assert_finite(x)
   assert_finite(y)
-  np.testing.assert_array_less(0, y)
 
   f_x = bijector.forward(x)
   g_y = bijector.inverse(y)
@@ -497,7 +496,8 @@ class InlineBijectorTest(test.TestCase):
           forward_fn=math_ops.exp,
           inverse_fn=math_ops.log,
           inverse_log_det_jacobian_fn=(
-              lambda y: -math_ops.reduce_sum(math_ops.log(y), reduction_indices=-1)),
+              lambda y: -math_ops.reduce_sum(  # pylint: disable=g-long-lambda
+                  math_ops.log(y), reduction_indices=-1)),
           forward_log_det_jacobian_fn=(
               lambda x: math_ops.reduce_sum(x, reduction_indices=-1)),
           name="exp")
@@ -1301,7 +1301,7 @@ class AffineBijectorTest(test.TestCase):
   def _matrix_diag(self, d):
     """Batch version of np.diag."""
     orig_shape = d.shape
-    d = np.reshape(d, (np.prod(d.shape[:-1]), d.shape[-1]))
+    d = np.reshape(d, (int(np.prod(d.shape[:-1])), d.shape[-1]))
     diag_list = []
     for i in range(d.shape[0]):
       diag_list.append(np.diag(d[i, ...]))
@@ -1314,8 +1314,8 @@ class AffineBijectorTest(test.TestCase):
       return itertools.chain.from_iterable(
           itertools.combinations(s, r) for r in range(len(s) + 1))
 
-    with self.test_session():
-      for args in _powerset(scale_params.items()):
+    for args in _powerset(scale_params.items()):
+      with self.test_session():
         args = dict(args)
 
         scale_args = dict({"x": x}, **args)

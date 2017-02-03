@@ -24,7 +24,7 @@ config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
-        "android_cpu": "armeabi-v7a",
+        "cpu": "armeabi-v7a",
     },
     visibility = ["//visibility:public"],
 )
@@ -33,7 +33,7 @@ config_setting(
     name = "android_arm64",
     values = {
         "crosstool_top": "//external:android/crosstool",
-        "android_cpu": "arm64-v8a",
+        "cpu": "arm64-v8a",
     },
     visibility = ["//visibility:public"],
 )
@@ -67,6 +67,22 @@ config_setting(
 config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "debug",
+    values = {
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -241,10 +257,11 @@ load(
 
 filegroup(
     name = "intel_binary_blob",
-    data = if_mkl([
-						"//third_party/mkl:intel_binary_blob",
-						],
-						),
+    data = if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 # -------------------------------------------

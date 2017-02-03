@@ -407,6 +407,7 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -579,6 +580,7 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_shared",
         ":debugger_cli_common",
         ":local_cli_wrapper",
         "//tensorflow/python:array_ops",
@@ -589,6 +591,18 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+    ],
+)
+
+sh_test(
+    name = "examples_test",
+    size = "small",
+    srcs = ["examples/examples_test.sh"],
+    data = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 

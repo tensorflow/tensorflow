@@ -93,6 +93,38 @@ namespace xla {
       ComputationBuilder::CreateDefaultConvDimensionNumbers());
 }
 
+/* static */ std::unique_ptr<Array4D<float>>
+ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
+                                    const Array4D<float>& depthwise_weights,
+                                    const Array4D<float>& pointwise_weights,
+                                    std::pair<int64, int64> kernel_stride,
+                                    Padding padding) {
+  const int64 depth_multiplier = depthwise_weights.planes();
+  CHECK_EQ(pointwise_weights.depth(), input.depth() * depth_multiplier);
+
+  // Combine the two weights by reducing the depth_multiplier, so that we can
+  // apply a single convolution on the combined weights.
+  Array4D<float> weights(pointwise_weights.planes(), input.depth(),
+                         depthwise_weights.height(), depthwise_weights.width());
+  for (int64 kx = 0; kx < depthwise_weights.width(); ++kx) {
+    for (int64 ky = 0; ky < depthwise_weights.height(); ++ky) {
+      for (int64 kz = 0; kz < input.depth(); ++kz) {
+        for (int64 out = 0; out < pointwise_weights.planes(); ++out) {
+          float weight = 0.0;
+          for (int64 depth = 0; depth < depth_multiplier; ++depth) {
+            weight +=
+                depthwise_weights(depth, kz, ky, kx) *
+                pointwise_weights(out, depth + kz * depth_multiplier, 0, 0);
+          }
+          weights(out, kz, ky, kx) = weight;
+        }
+      }
+    }
+  }
+
+  return ConvArray4D(input, weights, kernel_stride, padding);
+}
+
 /* static */ int64 ReferenceUtil::WindowCount(int64 unpadded_width,
                                               int64 window_len, int64 stride,
                                               Padding padding) {
@@ -515,24 +547,26 @@ ReferenceUtil::ReduceToRowArray2D(
   int64 interior_padding0 = padding.dimensions(0).interior_padding();
   int64 out0 =
       in0 + low_padding0 + high_padding0 + (in0 - 1) * interior_padding0;
+
   int64 in1 = operand.n2();
   int64 high_padding1 = padding.dimensions(1).edge_padding_high();
   int64 low_padding1 = padding.dimensions(1).edge_padding_low();
   int64 interior_padding1 = padding.dimensions(1).interior_padding();
   int64 out1 =
       in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
+
   auto result = MakeUnique<Array2D<float>>(out0, out1);
   result->Fill(pad);
-  int64 i0 = 0;
-  for (int64 o0 = low_padding0; o0 < out0 - high_padding0;
-       o0 += interior_padding0 + 1) {
-    int64 i1 = 0;
-    for (int64 o1 = low_padding1; o1 < out1 - high_padding1;
-         o1 += interior_padding1 + 1) {
-      (*result)(o0, o1) = operand(i0, i1);
-      ++i1;
+  int64 o0 = low_padding0;
+  for (int64 i0 = 0; i0 < in0; ++i0) {
+    int64 o1 = low_padding1;
+    for (int64 i1 = 0; i1 < in1; ++i1) {
+      if (o0 >= 0 && o1 >= 0 && o0 < out0 && o1 < out1) {
+        (*result)(o0, o1) = operand(i0, i1);
+      }
+      o1 += interior_padding1 + 1;
     }
-    ++i0;
+    o0 += interior_padding0 + 1;
   }
   return result;
 }

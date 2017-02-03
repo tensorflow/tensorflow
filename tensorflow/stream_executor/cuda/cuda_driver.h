@@ -251,12 +251,14 @@ class CUDADriver {
   // -- Synchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
 
-  static bool SynchronousMemcpyD2H(CudaContext* context, void *host_dst,
-                                   CUdeviceptr gpu_src, uint64 size);
-  static bool SynchronousMemcpyH2D(CudaContext* context, CUdeviceptr gpu_dst,
-                                   const void *host_src, uint64 size);
-  static bool SynchronousMemcpyD2D(CudaContext* context, CUdeviceptr gpu_dst,
-                                   CUdeviceptr gpu_src, uint64 size);
+  static port::Status SynchronousMemcpyD2H(CudaContext* context, void* host_dst,
+                                           CUdeviceptr gpu_src, uint64 size);
+  static port::Status SynchronousMemcpyH2D(CudaContext* context,
+                                           CUdeviceptr gpu_dst,
+                                           const void* host_src, uint64 size);
+  static port::Status SynchronousMemcpyD2D(CudaContext* context,
+                                           CUdeviceptr gpu_dst,
+                                           CUdeviceptr gpu_src, uint64 size);
 
   // -- Asynchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362

@@ -36,7 +36,6 @@ from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -53,6 +52,7 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -68,7 +68,6 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
 
@@ -336,13 +335,7 @@ class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Concrete implementation of this class should provide the following functions:
-
-    * _get_train_ops
-    * _get_eval_ops
-    * _get_predict_ops
-
-  `Estimator` implemented below is a good example of how to use this class.
+  Users should not instantiate or subclass this class. Instead, use `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -600,7 +593,8 @@ class BaseEstimator(
              signature_fn=None,
              prediction_key=None,
              default_batch_size=1,
-             exports_to_keep=None):
+             exports_to_keep=None,
+             checkpoint_path=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -627,6 +621,9 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+      checkpoint_path: the checkpoint path of the model to be exported. If it is
+          `None` (which is default), will use the latest checkpoint in
+          export_dir.
 
     Returns:
       The string path to the exported directory. NB: this functionality was
@@ -644,7 +641,8 @@ class BaseEstimator(
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
+        exports_to_keep=exports_to_keep,
+        checkpoint_path=checkpoint_path)
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
@@ -800,24 +798,14 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      # The default return type of _get_eval_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_eval_ops returns an
-      # `eval_dict` dictionary of Tensors. The following else-statement code
-      # covers these cases, but will soon be deleted after the subclasses are
-      # updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
-      eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
-        eval_dict = eval_ops.eval_metric_ops
-      else:  # Legacy signature
-        eval_dict = eval_ops
+      eval_dict = self._get_eval_ops(features, labels, metrics).eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
-      hooks = hooks or []
+      # We need to copy the hook array as we modify it, thus [:].
+      hooks = hooks[:] if hooks else []
       if feed_fn:
-        hooks.append(_FeedFnHook(feed_fn))
+        hooks.append(basic_session_run_hooks.FeedFnHook(feed_fn))
       if steps:
         hooks.append(
             evaluation.StopAfterNEvalsHook(
@@ -833,7 +821,8 @@ class BaseEstimator(
           master=self._config.evaluation_master,
           eval_ops=update_op,
           final_ops=eval_dict,
-          hooks=hooks)
+          hooks=hooks,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -862,11 +851,12 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
-      infer_ops = self._call_legacy_get_predict_ops(features)
+      infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
-              checkpoint_filename_with_path=checkpoint_path))
+              checkpoint_filename_with_path=checkpoint_path,
+              config=config_pb2.ConfigProto(allow_soft_placement=True)))
       if not as_iterable:
         with mon_sess:
           if not mon_sess.should_stop():
@@ -931,7 +921,7 @@ class BaseEstimator(
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
-      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
+      model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
@@ -978,36 +968,13 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=None) as mon_sess:
+          config=config_pb2.ConfigProto(allow_soft_placement=True)
+      ) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
       summary_io.SummaryWriterCache.clear()
       return loss
-
-  def _call_legacy_get_predict_ops(self, features):
-    # The default return type of _get_predict_ops is ModelFnOps. But there are
-    # some subclasses of tf.contrib.learn.Estimator which override this
-    # method and use the legacy signature, namely _get_predict_ops returns a
-    # `predictions` Tensor or dict or Tensors. The following else-statement
-    # code covers these cases, but will soon be deleted after the subclasses
-    # are updated.
-    # TODO(b/32664904): Update subclasses and delete the else-statement.
-    infer_ops = self._get_predict_ops(features)
-    if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return infer_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.INFER, predictions=infer_ops)
-
-  def _call_legacy_get_train_ops(self, features, labels):
-    train_ops = self._get_train_ops(features, labels)
-    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return train_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.TRAIN,
-        predictions=None,
-        loss=train_ops[1],
-        train_op=train_ops[0])
 
 
 def _identity_feature_engineering_fn(features, labels):
@@ -1216,22 +1183,20 @@ class Estimator(BaseEstimator):
         self._labels_info)
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
-  @experimental
   def export_savedmodel(
-      self, export_dir_base, input_fn,
+      self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
-      as_text=False,
-      exports_to_keep=None):
+      as_text=False):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
       export_dir_base: A string containing a directory to write the exported
         graph and checkpoints.
-      input_fn: A function that takes no argument and
+      serving_input_fn: A function that takes no argument and
         returns an `InputFnOps`.
       default_output_alternative_key: the name of the head to serve when none is
-        specified.
+        specified.  Not needed for single-headed models.
       assets_extra: A dict specifying how to populate the assets.extra directory
         within the exported SavedModel.  Each key should give the destination
         path (including the filename) relative to the assets.extra directory.
@@ -1240,7 +1205,6 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
-      exports_to_keep: Number of exports to keep.
 
     Returns:
       The string path to the exported directory.
@@ -1248,14 +1212,14 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if an unrecognized export_type is requested.
     """
-    if input_fn is None:
-      raise ValueError('input_fn must be defined.')
+    if serving_input_fn is None:
+      raise ValueError('serving_input_fn must be defined.')
 
     with ops.Graph().as_default() as g:
       contrib_variables.create_global_step(g)
 
-      # Call the input_fn and collect the input alternatives.
-      input_ops = input_fn()
+      # Call the serving_input_fn and collect the input alternatives.
+      input_ops = serving_input_fn()
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
 
@@ -1266,7 +1230,7 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
-      # Build the SignatureDefs from all pairs of input and output signatures
+      # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
@@ -1317,17 +1281,6 @@ class Estimator(BaseEstimator):
       return export_dir
 
 
-class _FeedFnHook(session_run_hook.SessionRunHook):
-  """Runs feed_fn and sets the feed_dict accordingly."""
-
-  def __init__(self, feed_fn):
-    self.feed_fn = feed_fn
-
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn())
-
-
 # For time of deprecation x,y from Estimator allow direct access.
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
@@ -1343,7 +1296,7 @@ class SKCompat(sklearn.BaseEstimator):
                                       epochs=None)
     all_monitors = []
     if feed_fn:
-      all_monitors = [_FeedFnHook(feed_fn)]
+      all_monitors = [basic_session_run_hooks.FeedFnHook(feed_fn)]
     if monitors:
       all_monitors.extend(monitors)
 

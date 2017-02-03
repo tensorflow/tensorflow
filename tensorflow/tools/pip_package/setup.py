@@ -35,6 +35,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
     'protobuf >= 3.1.0',
+    'werkzeug >= 0.11.10',
 ]
 
 project_name = 'tensorflow'

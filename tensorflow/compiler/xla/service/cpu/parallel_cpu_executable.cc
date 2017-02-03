@@ -134,7 +134,6 @@ ParallelCpuExecutable::ExecuteOnStream(
         se::DeviceMemoryBase device_allocation,
         memory_allocator->Allocate(device_ordinal, allocation.size()));
 
-    // TODO(eliben): refactor this into buffer_assignment
     if (VLOG_IS_ON(3)) {
       VLOG(3) << "ParallelCpuExecutable allocating " << allocation.size()
               << " bytes for allocation #" << i << " ["

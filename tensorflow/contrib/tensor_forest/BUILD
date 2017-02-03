@@ -27,11 +27,11 @@ filegroup(
     name = "custom_op_sources",
     srcs = glob(
         [
-            "core/ops/*.cc",
+            "kernels/*.cc",
             "ops/*.cc",
         ],
         exclude = [
-            "core/ops/*_test.cc",
+            "kernels/*_test.cc",
         ],
     ),
 )
@@ -40,7 +40,7 @@ filegroup(
     name = "custom_op_headers",
     srcs = glob(
         [
-            "core/ops/*.h",
+            "kernels/*.h",
         ],
     ),
 )
@@ -94,16 +94,16 @@ tf_gen_op_wrapper_py(
 tf_custom_op_library(
     name = "python/ops/_tensor_forest_ops.so",
     srcs = [
-        "core/ops/best_splits_op.cc",
-        "core/ops/count_extremely_random_stats_op.cc",
-        "core/ops/finished_nodes_op.cc",
-        "core/ops/grow_tree_op.cc",
-        "core/ops/reinterpret_string_to_float_op.cc",
-        "core/ops/sample_inputs_op.cc",
-        "core/ops/scatter_add_ndim_op.cc",
-        "core/ops/topn_ops.cc",
-        "core/ops/tree_predictions_op.cc",
-        "core/ops/update_fertile_slots_op.cc",
+        "kernels/best_splits_op.cc",
+        "kernels/count_extremely_random_stats_op.cc",
+        "kernels/finished_nodes_op.cc",
+        "kernels/grow_tree_op.cc",
+        "kernels/reinterpret_string_to_float_op.cc",
+        "kernels/sample_inputs_op.cc",
+        "kernels/scatter_add_ndim_op.cc",
+        "kernels/topn_ops.cc",
+        "kernels/tree_predictions_op.cc",
+        "kernels/update_fertile_slots_op.cc",
         "ops/tensor_forest_ops.cc",
     ],
     deps = [":tree_utils"],
@@ -185,10 +185,10 @@ py_library(
 
 cc_library(
     name = "tree_utils",
-    srcs = ["core/ops/tree_utils.cc"],
+    srcs = ["kernels/tree_utils.cc"],
     hdrs = [
-        "core/ops/data_spec.h",
-        "core/ops/tree_utils.h",
+        "kernels/data_spec.h",
+        "kernels/tree_utils.h",
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -346,7 +346,7 @@ cc_test(
     name = "tensor_forest_ops_test",
     size = "small",
     srcs = [
-        "core/ops/tensor_forest_ops_test.cc",
+        "kernels/tensor_forest_ops_test.cc",
         ":custom_op_sources",
     ],
     deps = [

@@ -59,10 +59,10 @@ class UniformTest(test.TestCase):
 
       expected_pdf = _expected_pdf()
 
-      pdf = uniform.pdf(x)
+      pdf = uniform.prob(x)
       self.assertAllClose(expected_pdf, pdf.eval())
 
-      log_pdf = uniform.log_pdf(x)
+      log_pdf = uniform.log_prob(x)
       self.assertAllClose(np.log(expected_pdf), log_pdf.eval())
 
   def testUniformShape(self):
@@ -85,7 +85,7 @@ class UniformTest(test.TestCase):
       x = np.array([0.0, 8.0], dtype=np.float32)
       expected_pdf = np.array([1.0 / (10.0 - 0.0), 1.0 / (10.0 - 5.0)])
 
-      pdf = uniform.pdf(x)
+      pdf = uniform.prob(x)
       self.assertAllClose(expected_pdf, pdf.eval())
 
   def testUniformCDF(self):
@@ -204,7 +204,7 @@ class UniformTest(test.TestCase):
       b = 100.0
       uniform = uniform_lib.Uniform(a=a, b=b)
       s_uniform = stats.uniform(loc=a, scale=b - a)
-      self.assertAllClose(uniform.std().eval(), s_uniform.std())
+      self.assertAllClose(uniform.stddev().eval(), s_uniform.std())
 
   def testUniformNans(self):
     with self.test_session():
@@ -217,7 +217,7 @@ class UniformTest(test.TestCase):
       self.assertTrue(math_ops.is_nan(nans).eval())
       with_nans = array_ops.stack([no_nans, nans])
 
-      pdf = uniform.pdf(with_nans)
+      pdf = uniform.prob(with_nans)
 
       is_nan = math_ops.is_nan(pdf).eval()
       self.assertFalse(is_nan[0])
@@ -229,7 +229,7 @@ class UniformTest(test.TestCase):
       b = [11.0, 100.0]
       uniform = uniform_lib.Uniform(a, b)
       self.assertTrue(
-          math_ops.reduce_all(uniform.pdf(uniform.sample(10)) > 0).eval())
+          math_ops.reduce_all(uniform.prob(uniform.sample(10)) > 0).eval())
 
   def testUniformBroadcasting(self):
     with self.test_session():
@@ -237,7 +237,7 @@ class UniformTest(test.TestCase):
       b = [11.0, 20.0]
       uniform = uniform_lib.Uniform(a, b)
 
-      pdf = uniform.pdf([[10.5, 11.5], [9.0, 19.0], [10.5, 21.0]])
+      pdf = uniform.prob([[10.5, 11.5], [9.0, 19.0], [10.5, 21.0]])
       expected_pdf = np.array([[1.0, 0.1], [0.0, 0.1], [1.0, 0.0]])
       self.assertAllClose(expected_pdf, pdf.eval())
 
@@ -247,7 +247,7 @@ class UniformTest(test.TestCase):
       b = [11.0, 20.0]
       uniform = uniform_lib.Uniform(a, b)
 
-      pdf = uniform.pdf(uniform.sample((2, 3)))
+      pdf = uniform.prob(uniform.sample((2, 3)))
       # pylint: disable=bad-continuation
       expected_pdf = [
           [[1.0, 0.1], [1.0, 0.1], [1.0, 0.1]],
@@ -256,7 +256,7 @@ class UniformTest(test.TestCase):
       # pylint: enable=bad-continuation
       self.assertAllClose(expected_pdf, pdf.eval())
 
-      pdf = uniform.pdf(uniform.sample())
+      pdf = uniform.prob(uniform.sample())
       expected_pdf = [1.0, 0.1]
       self.assertAllClose(expected_pdf, pdf.eval())
 

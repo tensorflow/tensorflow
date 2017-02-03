@@ -59,9 +59,10 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Ceil").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Concat").TypeConstraint("T", kCpuAllTypes));
-REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("ConcatV2")
-                                            .TypeConstraint("T", kCpuAllTypes)
-                                            .TypeConstraint("Tidx", DT_INT32));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("ConcatV2")
+                        .TypeConstraint("T", kCpuAllTypes)
+                        .TypeConstraint("Tidx", DT_INT32));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("ConcatOffset"));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Conv2D").TypeConstraint("T", kCpuFloatTypes));
@@ -165,8 +166,11 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Prod").TypeConstraint("T", kCpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Range").TypeConstraint("Tidx", kCpuNumericTypes));
-// TODO(b/31361304): disabled because of XLA bugs.
-// REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("RandomStandardNormal"));
+// TODO(b/34339814): implement inverse erf for double types and update the
+// type constraint.
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("RandomStandardNormal").TypeConstraint("dtype", DT_FLOAT));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("RandomUniform"));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("RandomUniformInt"));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("Rank"));

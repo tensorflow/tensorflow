@@ -276,7 +276,7 @@ DirectSession::~DirectSession() {
     it.second.reset(nullptr);
   }
   for (auto& it : executors_) {
-    it.second.reset(nullptr);
+    it.second.reset();
   }
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
@@ -450,10 +450,12 @@ Status DirectSession::Run(const RunOptions& run_options,
         options_.config.graph_options().build_cost_model();
     const int64 build_cost_model_after =
         options_.config.graph_options().build_cost_model_after();
-    update_cost_model =
-        ((executors_and_keys->step_count + 1 - build_cost_model_after) %
-             build_cost_model_every ==
-         0);
+    int measure_step_count =
+        executors_and_keys->step_count - build_cost_model_after;
+    if (measure_step_count >= 0) {
+      update_cost_model =
+          ((measure_step_count + 1) % build_cost_model_every == 0);
+    }
   }
   if (do_trace || update_cost_model) {
     run_state.collector.reset(
@@ -739,8 +741,7 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
   for (const auto& input : inputs) {
     auto it = executors_and_keys->input_keys.find(input.first);
     if (it == executors_and_keys->input_keys.end()) {
-      return errors::InvalidArgument("'", input.first,
-                                     "' is not a pre-defined feed!");
+      return errors::Internal("'", input.first, "' is not a pre-defined feed.");
     }
     const string& input_key = it->second;
 
@@ -775,9 +776,8 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
     const string& output_name = output_names[output_offset];
     auto it = executors_and_keys->output_keys.find(output_name);
     if (it == executors_and_keys->output_keys.end()) {
-      return errors::InvalidArgument("'", output_name,
-                                     "' was not defined as a fetch"
-                                     " target in PRunSetup.");
+      return errors::Internal("'", output_name,
+                              "' is not a pre-defined fetch.");
     }
     const string& output_key = it->second;
     Tensor output_tensor;
@@ -868,32 +868,26 @@ Status DirectSession::GetOrCreateExecutors(
     thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
     ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
-  // Sort the inputs and outputs, so we don't create separate
-  // executors when a user passes in the same inputs/outputs in
-  // different orders.
-  //
-  // We could consider some other signature instead of sorting that
-  // preserves the same property to avoid the sort in the future.
-  std::vector<string> inputs_sorted(inputs.begin(), inputs.end());
-  std::sort(inputs_sorted.begin(), inputs_sorted.end());
-  std::vector<string> outputs_sorted(outputs.begin(), outputs.end());
-  std::sort(outputs_sorted.begin(), outputs_sorted.end());
-  std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
-  std::sort(tn_sorted.begin(), tn_sorted.end());
-
   string debug_tensor_watches_summary;
+  int64 handle_name_counter_value = -1;
+  if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
+    handle_name_counter_value = handle_name_counter_.fetch_add(1);
+  }
   if (run_state_args->debugger_state) {
     debug_tensor_watches_summary =
         run_state_args->debugger_state->SummarizeDebugTensorWatches();
   }
-  const string key = strings::StrCat(
-      str_util::Join(inputs_sorted, ","), "->",
-      str_util::Join(outputs_sorted, ","), "/", str_util::Join(tn_sorted, ","),
-      "/", run_state_args->is_partial_run, "/", debug_tensor_watches_summary);
 
-  // Set the handle.
-  run_state_args->handle =
-      strings::StrCat(key, ";", handle_name_counter_.fetch_add(1));
+  // Fast lookup path, no sorting.
+  const string key = strings::StrCat(
+      str_util::Join(inputs, ","), "->", str_util::Join(outputs, ","), "/",
+      str_util::Join(target_nodes, ","), "/", run_state_args->is_partial_run,
+      "/", debug_tensor_watches_summary);
+  // Set the handle, if it's needed to log memory or for partial run.
+  if (handle_name_counter_value >= 0) {
+    run_state_args->handle =
+        strings::StrCat(key, ";", handle_name_counter_value);
+  }
 
   // See if we already have the executors for this run.
   {
@@ -905,12 +899,48 @@ Status DirectSession::GetOrCreateExecutors(
     }
   }
 
+  // Slow lookup path, the unsorted key missed the cache.
+  // Sort the inputs and outputs, and look up with the sorted key in case an
+  // earlier call used a different order of inputs and outputs.
+  //
+  // We could consider some other signature instead of sorting that
+  // preserves the same property to avoid the sort in the future.
+  std::vector<string> inputs_sorted(inputs.begin(), inputs.end());
+  std::sort(inputs_sorted.begin(), inputs_sorted.end());
+  std::vector<string> outputs_sorted(outputs.begin(), outputs.end());
+  std::sort(outputs_sorted.begin(), outputs_sorted.end());
+  std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
+  std::sort(tn_sorted.begin(), tn_sorted.end());
+
+  const string sorted_key = strings::StrCat(
+      str_util::Join(inputs_sorted, ","), "->",
+      str_util::Join(outputs_sorted, ","), "/", str_util::Join(tn_sorted, ","),
+      "/", run_state_args->is_partial_run, "/", debug_tensor_watches_summary);
+  // Set the handle, if its needed to log memory or for partial run.
+  if (handle_name_counter_value >= 0) {
+    run_state_args->handle =
+        strings::StrCat(sorted_key, ";", handle_name_counter_value);
+  }
+
+  // See if we already have the executors for this run.
+  {
+    mutex_lock l(executor_lock_);
+    auto it = executors_.find(sorted_key);
+    if (it != executors_.end()) {
+      *executors_and_keys = it->second.get();
+      // Insert this under the original key.
+      executors_.emplace(key, it->second);
+      return Status::OK();
+    }
+  }
+
+  // Nothing found, so create the executors and store in the cache.
   BuildGraphOptions options;
   options.feed_endpoints = inputs_sorted;
   options.fetch_endpoints = outputs_sorted;
   options.target_nodes = tn_sorted;
 
-  std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
+  std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
   // The executor_lock_ is intentionally released while executor is
   // being created.
@@ -1019,7 +1049,10 @@ Status DirectSession::GetOrCreateExecutors(
 
   // Another thread may have created the entry before us, in which case we will
   // reuse the already created one.
-  auto insert_result = executors_.emplace(key, std::move(ek));
+  auto insert_result = executors_.emplace(sorted_key, ek);
+  // Insert the value under the original key, so the fast path lookup will work
+  // if the user uses the same order of inputs, outputs, and targets again.
+  executors_.emplace(key, insert_result.first->second);
   *executors_and_keys = insert_result.first->second.get();
 
   return Status::OK();
