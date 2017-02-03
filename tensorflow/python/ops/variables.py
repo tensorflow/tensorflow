@@ -1326,19 +1326,5 @@ ops.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)
 # pylint: enable=protected-access
 
+
 ops.register_dense_tensor_like_type(Variable)
-ops.register_proto_function(
-    ops.GraphKeys.GLOBAL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=Variable.to_proto,
-    from_proto=Variable.from_proto)
-ops.register_proto_function(
-    ops.GraphKeys.TRAINABLE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=Variable.to_proto,
-    from_proto=Variable.from_proto)
-ops.register_proto_function(
-    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=Variable.to_proto,
-    from_proto=Variable.from_proto)
