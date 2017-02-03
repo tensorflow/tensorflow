@@ -28,6 +28,8 @@ from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 
+RL = debugger_cli_common.RichLine
+
 
 class NodeStepperCLI(object):
   """Command-line-interface backend of Node Stepper."""
@@ -287,54 +289,26 @@ class NodeStepperCLI(object):
       (list of tuples) The font attribute segments, with offset applied.
     """
 
-    stat_string = ""
-    font_attr_segs = []
-    position = offset
+    status = RL(" " * offset)
 
     node_name = element_name.split(":")[0]
-    if node_name in self._placeholders:
-      stat_string += "P"
-      font_attr_segs.append((position, position + 1, "cyan"))
-    else:
-      stat_string += " "
-    position += 1
-
-    if self._node_stepper.is_feedable(str(element_name)):
-      stat_string += " "
-    else:
-      stat_string += "U"
-      font_attr_segs.append((position, position + 1, "red"))
-    position += 1
-
-    if element_name in handle_node_names:
-      stat_string += "H"
-      font_attr_segs.append((position, position + 1, "green"))
-    else:
-      stat_string += " "
-    position += 1
+    status += RL("P", "cyan") if node_name in self._placeholders else " "
+    status += (RL("U", "red")
+               if not self._node_stepper.is_feedable(str(element_name))
+               else " ")
+    status += (RL("H", "green") if element_name in handle_node_names else " ")
 
     slots = self._node_stepper.output_slots_in_closure(element_name)
-    has_override = False
-    for slot in slots:
-      if element_name + ":%d" % slot in override_names:
-        has_override = True
-        break
+    has_override = any(element_name + ":%d" % slot in override_names
+                       for slot in slots)
+    status += RL("O", "yellow") if has_override else " "
+    status += (RL(self.STATE_DIRTY_VARIABLE, "magenta")
+               if element_name in dirty_variable_names
+               else " ")
 
-    if has_override:
-      stat_string += "O"
-      font_attr_segs.append((position, position + 1, "yellow"))
-    else:
-      stat_string += " "
-    position += 1
-
-    if element_name in dirty_variable_names:
-      stat_string += self.STATE_DIRTY_VARIABLE
-      font_attr_segs.append((position, position + 1, "magenta"))
-    else:
-      stat_string += " "
-    position += 1
-
-    return stat_string, font_attr_segs
+    # TODO(ebreck) Return status here, once the caller is updated with the
+    # RichLine API.
+    return status.text[offset:], status.font_attr_segs
 
   def _node_status_label_legend(self):
     """Get legend for node-status labels.
@@ -343,40 +317,18 @@ class NodeStepperCLI(object):
       (debugger_cli_common.RichTextLines) Legend text.
     """
 
-    lines = []
-    font_attr_segs = {}
-
-    line_counter = 0
-    lines.append("")
-    lines.append("Legend:")
-    line_counter += 2
-
-    lines.append("  P - Placeholder")
-    font_attr_segs[line_counter] = [(2, 3, "cyan")]
-    line_counter += 1
-
-    lines.append("  U - Unfeedable")
-    font_attr_segs[line_counter] = [(2, 3, "red")]
-    line_counter += 1
-
-    lines.append(
-        "  H - Already continued-to; Tensor handle available from output "
-        "slot(s)"
-    )
-    font_attr_segs[line_counter] = [(2, 3, "green")]
-    line_counter += 1
-
-    lines.append("  O - Has overriding (injected) tensor value")
-    font_attr_segs[line_counter] = [(2, 3, "yellow")]
-    line_counter += 1
-
-    lines.append(
-        "  D - Dirty variable: Variable already updated this node stepper.")
-    font_attr_segs[line_counter] = [(2, 3, "magenta")]
-    line_counter += 1
-
-    return debugger_cli_common.RichTextLines(
-        lines, font_attr_segs=font_attr_segs)
+    return debugger_cli_common.rich_text_lines_from_rich_line_list([
+        RL(""),
+        RL("Legend:"),
+        RL("  ") + RL("P", "cyan") + " - Placeholder",
+        RL("  ") + RL("U", "red") + " - Unfeedable",
+        (RL("  ") + RL("H", "green") +
+         " - Already continued-to; Tensor handle available from output "
+         "slot(s)"),
+        (RL("  ") + RL("O", "yellow") +
+         " - Has overriding (injected) tensor value"),
+        (RL("  ") + RL("D", "magenta") +
+         " - Dirty variable: Variable already updated this node stepper.")])
 
   def cont(self, args, screen_info=None):
     """Continue-to action on the graph."""
