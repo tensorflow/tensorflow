@@ -481,6 +481,7 @@ class _DefinedFunction(object):
   @property
   def captured_inputs(self):
     """Returns the list of implicitly captured inputs."""
+    self._create_definition_if_needed()
     return self._extra_inputs
 
   def _create_definition_if_needed(self):
