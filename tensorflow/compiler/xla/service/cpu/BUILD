@@ -46,6 +46,7 @@ cc_library(
         ":parallel_cpu_executable",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
