@@ -2488,6 +2488,22 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["training/adam_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":framework",
+        ":math_ops",
+        ":platform",
+        ":training",
+        ":platform_test",
+        ":client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_tests(
     name = "training_tests",
     size = "small",
@@ -2495,7 +2511,6 @@ cuda_py_tests(
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
-        "training/adam_test.py",
         "training/basic_loops_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
