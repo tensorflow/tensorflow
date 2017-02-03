@@ -134,6 +134,10 @@ function main() {
   source tools/python_bin_path.sh
 
   pushd ${TMPDIR}
+
+  # No Python unit test files should go into the PIP package.
+  rm -f $(find ./ -name '*_test.py')
+
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
   "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${GPU_FLAG} >/dev/null

@@ -26,7 +26,7 @@ import threading
 import time
 
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
-from tensorflow.contrib.testing.python.framework import util_test
+from tensorflow.contrib.testing.python.framework import test_util
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
 from tensorflow.python.client import session as session_lib
@@ -227,7 +227,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
           save_summaries_steps=100) as session:
         for _ in range(101):
           session.run(new_gstep)
-    summaries = util_test.latest_summaries(logdir)
+    summaries = test_util.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
     self.assertIn('global_step/sec', tags)
@@ -247,7 +247,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
         time.sleep(0.2)
         for _ in range(101):
           session.run(new_gstep)
-    summaries = util_test.latest_summaries(logdir)
+    summaries = test_util.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
     self.assertIn('global_step/sec', tags)

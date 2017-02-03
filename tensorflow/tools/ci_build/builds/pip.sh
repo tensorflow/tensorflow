@@ -163,6 +163,11 @@ if [[ $(echo ${WHL_PATH} | wc -w) -ne 1 ]]; then
 "directory: ${PIP_WHL_DIR}"
 fi
 
+# Display size of the PIP file.
+echo
+echo "Size of the PIP wheel file: $(ls -l ${WHL_PATH} | awk '{print $5}')"
+echo
+
 # Rename the whl file properly so it will have the python
 # version tags and platform tags that won't cause pip install issues.
 if [[ $(uname) == "Linux" ]]; then

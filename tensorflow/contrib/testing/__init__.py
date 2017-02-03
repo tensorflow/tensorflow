@@ -20,5 +20,5 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.testing.python.framework.fake_summary_writer import *
-from tensorflow.contrib.testing.python.framework.util_test import *
+from tensorflow.contrib.testing.python.framework.test_util import *
 # pylint: enable=unused-import,wildcard-import

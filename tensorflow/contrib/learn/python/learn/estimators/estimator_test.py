@@ -54,7 +54,7 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
 from tensorflow.contrib.metrics.python.ops import metric_ops
-from tensorflow.contrib.testing.python.framework import util_test
+from tensorflow.contrib.testing.python.framework import test_util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -796,8 +796,8 @@ class EstimatorTest(test.TestCase):
     est = estimator.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn, steps=200)
     est.evaluate(input_fn=boston_input_fn, steps=200)
-    loss_summary = util_test.simple_values_from_events(
-        util_test.latest_events(est.model_dir), ['OptimizeLoss/loss'])
+    loss_summary = test_util.simple_values_from_events(
+        test_util.latest_events(est.model_dir), ['OptimizeLoss/loss'])
     self.assertEqual(1, len(loss_summary))
 
   def testLossInGraphCollection(self):
