@@ -167,7 +167,7 @@ class ImportGraphDefTest(test.TestCase):
     return ret
 
   def testBasic(self):
-    with ops.Graph().as_default():
+    with ops.Graph().as_default() as g:
       a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oif' }
@@ -218,6 +218,72 @@ class ImportGraphDefTest(test.TestCase):
 
       # Check that the op_def is still available.
       self.assertNotEqual(None, a.op_def)
+
+      # Check that the Ops were placed in the graph
+      self.assertEqual(a, g.get_operation_by_name("import/A"))
+      self.assertEqual(b, g.get_operation_by_name("import/B"))
+      self.assertEqual(c, g.get_operation_by_name("import/C"))
+      self.assertEqual(d, g.get_operation_by_name("import/D"))
+
+  def testBasicGraphParam(self):
+    g = ops.Graph()
+    a, b, c, d = importer.import_graph_def(
+        self._MakeGraphDef("""
+        node { name: 'A' op: 'Oif' }
+        node { name: 'B' op: 'Otl'
+               attr { key: 't'
+                      value { list { type: DT_INT32 type: DT_FLOAT } } } }
+        node { name: 'C' op: 'In'
+               attr { key: 'N' value { i: 2 } }
+               attr { key: 'T' value { type: DT_INT32 } }
+               input: 'A:0' input: 'B:0' }
+        node { name: 'D' op: 'In'
+               attr { key: 'N' value { i: 2 } }
+               attr { key: 'T' value { type: DT_FLOAT } }
+               input: 'A:1' input: 'B:1' }
+        """),
+        return_elements=["A", "B", "C", "D"],
+        name="import",
+        graph=g)
+
+    # Assert that the import process creates distinct tensors.
+    self.assertNotEqual(a.outputs[0].name, a.outputs[1].name)
+    self.assertNotEqual(b.outputs[0].name, b.outputs[1].name)
+    self.assertNotEqual(a.outputs[0].name, b.outputs[0].name)
+    self.assertNotEqual(a.outputs[0].name, b.outputs[1].name)
+    self.assertNotEqual(a.outputs[1].name, b.outputs[0].name)
+    self.assertNotEqual(a.outputs[1].name, b.outputs[1].name)
+
+    # Assert that the ops are connected according to the GraphDef topology.
+    self.assertEqual(c.inputs[0], a.outputs[0])
+    self.assertEqual(c.inputs[1], b.outputs[0])
+    self.assertEqual(d.inputs[0], a.outputs[1])
+    self.assertEqual(d.inputs[1], b.outputs[1])
+
+    # Check the types of the returned ops and tensors.
+    self.assertEqual(a.type, "Oif")
+    self.assertEqual(b.type, "Otl")
+    self.assertEqual(c.type, "In")
+    self.assertEqual(d.type, "In")
+    self.assertEqual(a.outputs[0].dtype, dtypes.int32)
+    self.assertEqual(a.outputs[1].dtype, dtypes.float32)
+    self.assertEqual(b.outputs[0].dtype, dtypes.int32)
+    self.assertEqual(b.outputs[1].dtype, dtypes.float32)
+
+    # Check the names of the returned ops.
+    self.assertEqual(a.name, "import/A")
+    self.assertEqual(b.name, "import/B")
+    self.assertEqual(c.name, "import/C")
+    self.assertEqual(d.name, "import/D")
+
+    # Check that the op_def is still available.
+    self.assertNotEqual(None, a.op_def)
+
+    # Check that the Ops were placed in the graph
+    self.assertEqual(a, g.get_operation_by_name("import/A"))
+    self.assertEqual(b, g.get_operation_by_name("import/B"))
+    self.assertEqual(c, g.get_operation_by_name("import/C"))
+    self.assertEqual(d, g.get_operation_by_name("import/D"))
 
   def testInputMap(self):
     with ops.Graph().as_default():
