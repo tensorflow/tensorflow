@@ -53,7 +53,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   string TestName() const;
 
   void SetFastMathDisabled(bool disabled) {
-    compilation_options_.set_disable_fast_math(disabled);
+    execution_options_.set_disable_fast_math(disabled);
   }
 
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
@@ -240,7 +240,7 @@ class ClientLibraryTestBase : public ::testing::Test {
       ComputationDataHandle* data_handle);
 
   Client* client_;
-  CompilationOptions compilation_options_;
+  ExecutionOptions execution_options_;
 };
 
 template <typename NativeT>

@@ -11,7 +11,7 @@ The softplus `Bijector` has the following two useful properties:
   ```python
   # Create the Y=g(X)=softplus(X) transform which works only on Tensors with 1
   # batch ndim and 2 event ndims (i.e., vector of matrices).
-  softplus = Softplus(batch_ndims=1, event_ndims=2)
+  softplus = Softplus(event_ndims=2)
   x = [[[1., 2],
          [3, 4]],
         [[5, 6],
@@ -34,6 +34,13 @@ The softplus `Bijector` has the following two useful properties:
 #### `tf.contrib.distributions.bijector.Softplus.dtype` {#Softplus.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softplus.event_ndims` {#Softplus.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -276,13 +283,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Softplus.name` {#Softplus.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Softplus.shaper` {#Softplus.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

@@ -33,6 +33,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -791,9 +792,15 @@ class SequenceQueueingStateSaver(object):
       not enough shape information is available from inputs to build
       the state saver.
     """
-
-    if capacity is not None and capacity < batch_size:
-      raise ValueError("capacity must be larger or equal to batch_size")
+    if capacity is not None and isinstance(batch_size, ops.Tensor):
+      with ops.control_dependencies([check_ops.assert_greater_equal(
+          math_ops.cast(capacity, dtype=dtypes.int64),
+          math_ops.cast(batch_size, dtype=dtypes.int64),
+          message="capacity needs to be >= batch_size.")]):
+        input_key = array_ops.identity(input_key)
+    elif capacity is not None and capacity < batch_size:
+      raise ValueError("capacity %d needs to be >= batch_size %d" % (
+          capacity, batch_size))
     # The barrier is ignorant of the number of actual examples, since a long
     # example that requires many iterations produces more elements in the
     # barrier than a short example. Furthermore, we don't have an upper bound
@@ -1701,7 +1708,9 @@ def _reconstruct_sparse_tensor_seq(sequence,
         ],
         axis=1)
     dense_shape = array_ops.concat(
-        [[batch_size], [num_unroll], sp_tensor.dense_shape[1:]], axis=0)
+        [[math_ops.cast(batch_size, dtype=dtypes.int64)],
+         [math_ops.cast(num_unroll, dtype=dtypes.int64)],
+         sp_tensor.dense_shape[1:]], axis=0)
     return sparse_tensor.SparseTensor(
         indices=indices,
         values=sp_tensor.values,

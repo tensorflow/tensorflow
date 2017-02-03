@@ -257,14 +257,11 @@ class Service : public ServiceInterface {
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
       const Backend* backend, int device_ordinal);
 
-  // Create a Hlo module config foe the given program shape and arguments. If
-  // shape_with_output_layout is not null, then the computation output layout is
-  // set to the layout of the given shape.
+  // Create a Hlo module config foe the given program shape and arguments.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const Shape* shape_with_output_layout,
-      const CompilationOptions& compilation_options, uint64 seed);
+      const ExecutionOptions& execution_options);
 
   // Builds an Executable for the given parameters. If
   // executable_for_compute_constant is true, then the executable is intended to
