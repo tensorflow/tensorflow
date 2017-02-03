@@ -299,13 +299,12 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
 
   for (int i = 1; i < 4; ++i) {
     TF_ASSIGN_OR_ASSERT_OK(auto computation, while_loop(i));
+
+    ExecutionOptions execution_options;
+    execution_options.set_seed(65);
     TF_ASSIGN_OR_ASSERT_OK(
         auto result,
-        client_->ExecuteAndTransfer(computation, {},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_options=*/nullptr,
-                                    /*execution_profile=*/nullptr,
-                                    /*seed=*/65));
+        client_->ExecuteAndTransfer(computation, {}, &execution_options));
   }
 }
 
