@@ -176,6 +176,87 @@ class BasicSamplingDecoderTest(test.TestCase):
       self.assertAllEqual(expected_step_next_inputs,
                           sess_results["step_next_inputs"])
 
+  def testStepWithScheduledEmbeddingTrainingSampler(self):
+    sequence_length = [3, 4, 3, 1, 0]
+    batch_size = 5
+    max_time = 8
+    input_depth = 7
+    vocabulary_size = 10
+
+    with self.test_session() as sess:
+      inputs = np.random.randn(
+          batch_size, max_time, input_depth).astype(np.float32)
+      embeddings = np.random.randn(
+          vocabulary_size, input_depth).astype(np.float32)
+      half = constant_op.constant(0.5)
+      cell = core_rnn_cell.LSTMCell(vocabulary_size)
+      sampler = sampling_decoder.ScheduledEmbeddingTrainingSampler(
+          inputs=inputs, sequence_length=sequence_length,
+          embedding=embeddings, sampling_probability=half,
+          time_major=False)
+      my_decoder = sampling_decoder.BasicSamplingDecoder(
+          cell=cell,
+          sampler=sampler,
+          initial_state=cell.zero_state(
+              dtype=dtypes.float32, batch_size=batch_size))
+      output_size = my_decoder.output_size
+      output_dtype = my_decoder.output_dtype
+      self.assertEqual(
+          sampling_decoder.SamplingDecoderOutput(vocabulary_size,
+                                                 tensor_shape.TensorShape([])),
+          output_size)
+      self.assertEqual(
+          sampling_decoder.SamplingDecoderOutput(dtypes.float32, dtypes.int32),
+          output_dtype)
+
+      (first_finished, first_inputs, first_state) = my_decoder.initialize()
+      (step_outputs, step_state, step_next_inputs,
+       step_finished) = my_decoder.step(
+           constant_op.constant(0), first_inputs, first_state)
+      batch_size_t = my_decoder.batch_size
+
+      self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(
+          isinstance(step_outputs, sampling_decoder.SamplingDecoderOutput))
+      self.assertEqual((batch_size, vocabulary_size),
+                       step_outputs[0].get_shape())
+      self.assertEqual((batch_size,), step_outputs[1].get_shape())
+      self.assertEqual((batch_size, vocabulary_size),
+                       first_state[0].get_shape())
+      self.assertEqual((batch_size, vocabulary_size),
+                       first_state[1].get_shape())
+      self.assertEqual((batch_size, vocabulary_size),
+                       step_state[0].get_shape())
+      self.assertEqual((batch_size, vocabulary_size),
+                       step_state[1].get_shape())
+
+      sess.run(variables.global_variables_initializer())
+      sess_results = sess.run({
+          "batch_size": batch_size_t,
+          "first_finished": first_finished,
+          "first_inputs": first_inputs,
+          "first_state": first_state,
+          "step_outputs": step_outputs,
+          "step_state": step_state,
+          "step_next_inputs": step_next_inputs,
+          "step_finished": step_finished
+      })
+
+      self.assertAllEqual([False, False, False, False, True],
+                          sess_results["first_finished"])
+      self.assertAllEqual([False, False, False, True, True],
+                          sess_results["step_finished"])
+      sample_ids = sess_results["step_outputs"].sample_id
+      batch_where_not_sampling = np.where(sample_ids == -1)
+      batch_where_sampling = np.where(sample_ids > -1)
+      self.assertAllEqual(
+          sess_results["step_next_inputs"][batch_where_sampling],
+          embeddings[sample_ids[batch_where_sampling]])
+      self.assertAllEqual(
+          sess_results["step_next_inputs"][batch_where_not_sampling],
+          np.squeeze(inputs[batch_where_not_sampling, 1]))
+
 
 if __name__ == "__main__":
   test.main()
