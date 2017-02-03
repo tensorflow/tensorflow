@@ -42,7 +42,7 @@ bool HexagonControlWrapper::Init() {
 
 bool HexagonControlWrapper::Finalize() { return soc_interface_Finalize(); }
 bool HexagonControlWrapper::SetupGraph(
-    const GraphTransferer &graph_transferer) {
+    const GraphTransferer& graph_transferer) {
   const GraphTransferInfo& graph_transfer_info =
       graph_transferer.GetGraphTransferInfo();
   int inputs_count = 0;
@@ -73,7 +73,7 @@ bool HexagonControlWrapper::SetupGraph(
       ports[i] = node_input.output_port();
     }
     void* inputs_ptr = soc_interface_SetOneNodeInputs(count, node_ids, ports);
-    const int node_id = input_params.node_id;
+    const int node_id = input_params.node_id();
     CHECK(inputs_map.count(node_id) == 0);
     inputs_map.emplace(node_id, std::make_tuple(inputs_ptr, count));
   }
@@ -89,7 +89,7 @@ bool HexagonControlWrapper::SetupGraph(
       sizes[i] = size;
     }
     void* outputs_ptr = soc_interface_SetOneNodeOutputs(count, sizes);
-    const int node_id = output_params.node_id;
+    const int node_id = output_params.node_id();
     CHECK(outputs_map.count(node_id) == 0);
     outputs_map.emplace(node_id, std::make_tuple(outputs_ptr, count));
   }
@@ -101,14 +101,14 @@ bool HexagonControlWrapper::SetupGraph(
   // 1. Setup const nodes
   for (const GraphTransferInfo::ConstNodeInfo& params :
        graph_transfer_info.const_node_info()) {
-    const int node_id = params.node_id;
+    const int node_id = params.node_id();
     // TODO(satok): Stop assuming shape size is 4.
     CHECK(params.shape_size() == 4);
     const int64 shape_0 = params.shape(0);
     const int64 shape_1 = params.shape(1);
     const int64 shape_2 = params.shape(2);
     const int64 shape_3 = params.shape(3);
-    const int data_size = params.data_size;
+    const int data_size = params.data().length();
     CHECK(dummy_const_data_.count(node_id) == 0);
     auto data = dummy_const_data_.emplace(
         std::piecewise_construct, std::make_tuple(node_id), std::make_tuple());
@@ -178,8 +178,8 @@ bool HexagonControlWrapper::TeardownGraph() {
   return soc_interface_TeardownGraph();
 }
 
-bool HexagonControlWrapper::FillInputNode(const string node_name,
-                                          const ByteArray bytes) {
+bool HexagonControlWrapper::FillInputNode(const string& node_name,
+                                          const ConstByteArray bytes) {
   uint64 byte_size;
   const int x = 1;
   const int y = 299;
@@ -213,6 +213,16 @@ bool HexagonControlWrapper::ReadOutputNode(
   return true;
 }
 
+bool HexagonControlWrapper::FillInputNode(const string& node_name,
+                                          const Tensor& tensor) {
+  StringPiece tensor_data = tensor.tensor_data();
+  const ConstByteArray ba =
+      ConstByteArray(reinterpret_cast<const uint8*>(tensor_data.data()),
+                     tensor_data.size(), tensor.dtype());
+  FillInputNode(node_name, ba);
+  return true;
+}
+
 #else
 int HexagonControlWrapper::GetVersion() { return -1; }
 bool HexagonControlWrapper::Init() { return false; }
@@ -222,11 +232,14 @@ bool HexagonControlWrapper::SetupGraph(const GraphTransferer &) {
 }
 bool HexagonControlWrapper::ExecuteGraph() { return false; }
 bool HexagonControlWrapper::TeardownGraph() { return false; }
-bool HexagonControlWrapper::FillInputNode(const string, const ByteArray) {
+bool HexagonControlWrapper::FillInputNode(const string&, const ConstByteArray) {
+  return false;
+}
+bool HexagonControlWrapper::FillInputNode(const string&, const Tensor&) {
   return false;
 }
 bool HexagonControlWrapper::ReadOutputNode(const string,
-                                           std::vector<ByteArray> *const) {
+                                           std::vector<ByteArray>* const) {
   return false;
 }
 #endif

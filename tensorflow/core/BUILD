@@ -449,6 +449,7 @@ tf_gen_op_libs(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "remote_fused_graph_ops",
         "resource_variable_ops",
         "sdca_ops",
         "set_ops",
@@ -634,6 +635,7 @@ cc_library(
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sdca_ops",
@@ -2298,6 +2300,28 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_remote_fused_graph_ops_test",
+    size = "small",
+    srcs = ["ops/remote_fused_graph_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
     ],
 )
 

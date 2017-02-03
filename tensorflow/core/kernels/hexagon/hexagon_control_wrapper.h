@@ -36,11 +36,12 @@ class HexagonControlWrapper final : public ISocControlWrapper {
   int GetVersion() final;
   bool Init() final;
   bool Finalize() final;
-  bool SetupGraph(const GraphTransferer &graph_transferer) final;
+  bool SetupGraph(const GraphTransferer& graph_transferer) final;
   bool ExecuteGraph() final;
   bool TeardownGraph() final;
-  bool FillInputNode(string node_name, const ByteArray bytes) final;
-  bool ReadOutputNode(string node_name, std::vector<ByteArray> *outputs) final;
+  bool FillInputNode(const string& node_name, const ConstByteArray bytes) final;
+  bool FillInputNode(const string& node_name, const Tensor& tensor) final;
+  bool ReadOutputNode(string node_name, std::vector<ByteArray>* outputs) final;
 
  private:
   // CAVEAT: Need offset as HVX library reserves some ids
