@@ -491,6 +491,10 @@ def assign_from_values_fn(var_names_to_values):
   return callback
 
 
+# pylint: disable=protected-access
+# Currently variable_scope doesn't provide very good APIs to access
+# all variables under scope and retrieve and check existing scopes.
+#
 # TODO(nsilberman): add flag to load exponential moving averages instead
 def assign_from_checkpoint(model_path, var_list):
   """Creates an operation to assign specific variables from a checkpoint.
@@ -498,9 +502,13 @@ def assign_from_checkpoint(model_path, var_list):
   Args:
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
-    var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the corresponding variables to initialize. If empty or
-        None, it would return  no_op(), None.
+    var_list: A list of (possibly partitioned) `Variable` objects
+        or a dictionary mapping names in the checkpoint to the
+        corresponding variables or list of variables to initialize
+        from that checkpoint value. For partitioned Variables, the
+        name in the checkpoint must be the full variable, not the
+        name of the partitioned variable, eg. "my_var" rather than
+        "my_var/part_4". If empty, returns no_op(), {}.
 
   Returns:
     the restore_op and the feed_dict that need to be run to restore var_list.
@@ -509,38 +517,65 @@ def assign_from_checkpoint(model_path, var_list):
     ValueError: If the checkpoint specified at `model_path` is missing one of
       the variables in `var_list`.
   """
-  reader = pywrap_tensorflow.NewCheckpointReader(model_path)
-
+  # Normalize var_list into a dictionary mapping names in the
+  # checkpoint to the list of variables to initialize from that
+  # checkpoint variable. Sliced (including partitioned) variables will
+  # end up under the same key.
+  grouped_vars = {}
   if isinstance(var_list, (tuple, list)):
-    var_list = {var.op.name: var for var in var_list}
+    for var in var_list:
+      if var._save_slice_info:
+        ckpt_name = var._save_slice_info.full_name
+      else:
+        ckpt_name = var.op.name
+      if ckpt_name not in grouped_vars:
+        grouped_vars[ckpt_name] = []
+      grouped_vars[ckpt_name].append(var)
 
+  else:
+    for ckpt_name, value in var_list.iteritems():
+      if isinstance(value, (tuple, list)):
+        grouped_vars[ckpt_name] = value
+      else:
+        grouped_vars[ckpt_name] = [value]
+
+  # Read each checkpoint entry. Create a placeholder variable and
+  # add the (possibly sliced) data from the checkpoint to the feed_dict.
+  reader = pywrap_tensorflow.NewCheckpointReader(model_path)
   feed_dict = {}
   assign_ops = []
-
-  for checkpoint_var_name in var_list:
-    var = var_list[checkpoint_var_name]
-    if not reader.has_tensor(checkpoint_var_name):
+  for ckpt_name in grouped_vars:
+    if not reader.has_tensor(ckpt_name):
       raise ValueError(
-          'Checkpoint is missing variable [%s]' % checkpoint_var_name)
+          'Checkpoint is missing variable [%s]' % ckpt_name)
+    ckpt_value = reader.get_tensor(ckpt_name)
 
-    var_value = reader.get_tensor(checkpoint_var_name)
-    placeholder_name = 'placeholder/' + var.op.name
-    placeholder_value = array_ops.placeholder(
-        dtype=var.dtype.base_dtype,
-        shape=var.get_shape(),
-        name=placeholder_name)
-    assign_ops.append(var.assign(placeholder_value))
+    for var in grouped_vars[ckpt_name]:
+      placeholder_tensor = array_ops.placeholder(
+          dtype=var.dtype.base_dtype,
+          shape=var.get_shape(),
+          name='placeholder/' + ckpt_name)
+      assign_ops.append(var.assign(placeholder_tensor))
 
-    if var.get_shape() != var_value.shape:
-      raise ValueError(
-          'Total size of new array must be unchanged for %s '
-          'lh_shape: [%s], rh_shape: [%s]'
-          % (checkpoint_var_name, str(var_value.shape), str(var.get_shape())))
+      if not var._save_slice_info:
+        if var.get_shape() != ckpt_value.shape:
+          raise ValueError(
+              'Total size of new array must be unchanged for %s '
+              'lh_shape: [%s], rh_shape: [%s]'
+              % (ckpt_name, str(ckpt_value.shape), str(var.get_shape())))
 
-    feed_dict[placeholder_value] = var_value.reshape(var.get_shape())
+        feed_dict[placeholder_tensor] = ckpt_value.reshape(ckpt_value.shape)
+      else:
+        slice_dims = zip(var._save_slice_info.var_offset,
+                         var._save_slice_info.var_shape)
+        slice_dims = [(start, start + size) for (start, size) in slice_dims]
+        slice_dims = [slice(*x) for x in slice_dims]
+        slice_value = ckpt_value[slice_dims]
+        feed_dict[placeholder_tensor] = slice_value
 
   assign_op = control_flow_ops.group(*assign_ops)
   return assign_op, feed_dict
+# pylint: enable=protected-access
 
 
 def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,

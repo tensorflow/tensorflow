@@ -35,7 +35,6 @@ namespace tensorflow {
 using std::get;
 using std::make_pair;
 using std::make_tuple;
-using std::pair;
 using std::tuple;
 
 using tensorforest::CHILDREN_INDEX;
@@ -98,6 +97,12 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
   const int32 num_accumulators = static_cast<int32>(
       params.candidate_split_features.shape().dim_size(0));
 
+  // Lambdas to capture the eigen-tensors so we don't the conversion overhead
+  // on each call to DecideNode.
+  const auto get_dense = tensorforest::GetDenseFunctor(params.dense_input);
+  const auto get_sparse = tensorforest::GetSparseFunctor(params.sparse_indices,
+                                                         params.sparse_values);
+
   for (int32 i = start; i < end; ++i) {
     int node_index = 0;
     params.results[i].splits_initialized = false;
@@ -114,14 +119,12 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
         // count it in the candidate/total split per-class-weights because
         // it won't have any candidate splits yet.
         if (accumulator >= 0 &&
-            IsAllInitialized(params.candidate_split_features.Slice(
-                accumulator, accumulator + 1))) {
+            IsAllInitialized(split_features, accumulator, num_splits)) {
           CHECK_LT(accumulator, num_accumulators);
           params.results[i].splits_initialized = true;
           for (int split = 0; split < num_splits; split++) {
             const int32 feature = split_features(accumulator, split);
-            if (!DecideNode(params.dense_input, params.sparse_indices,
-                            params.sparse_values, i, feature,
+            if (!DecideNode(get_dense, get_sparse, i, feature,
                             split_thresholds(accumulator, split),
                             params.input_spec)) {
               params.results[i].split_adds.push_back(split);
@@ -136,8 +139,7 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       }
       const int32 feature = tree(node_index, FEATURE_INDEX);
       node_index =
-          left_child + DecideNode(params.dense_input, params.sparse_indices,
-                                  params.sparse_values, i, feature,
+          left_child + DecideNode(get_dense, get_sparse, i, feature,
                                   thresholds(node_index), params.input_spec);
     }
   }
@@ -672,7 +674,8 @@ class CountExtremelyRandomStats : public OpKernel {
     }
   };
   template <typename V>
-  using PairMapType = std::unordered_map<pair<int32, int32>, V, PairIntHash>;
+  using PairMapType =
+      std::unordered_map<std::pair<int32, int32>, V, PairIntHash>;
 
   struct TupleIntHash {
    public:

@@ -63,8 +63,7 @@ int main(int argc, char** argv) {
       client->ExecuteAndTransfer(
           computation,
           /*arguments=*/{param0_data.get(), param1_data.get()},
-          /*shape_with_output_layout=*/nullptr,
-          /*compilation_options=*/nullptr,
+          /*execution_options=*/nullptr,
           /*execution_profile=*/&profile);
   std::unique_ptr<xla::Literal> actual = result.ConsumeValueOrDie();
 

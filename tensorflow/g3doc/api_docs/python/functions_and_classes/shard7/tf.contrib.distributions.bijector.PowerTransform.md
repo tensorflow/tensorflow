@@ -1,4 +1,4 @@
-Bijector which computes `Y = g(X) = (1 + X * c)**(1 / c), X >= -1 / c`.
+Compute `Y = g(X) = (1 + X * c)**(1 / c), X >= -1 / c`.
 
 The [power transform](https://en.wikipedia.org/wiki/Power_transform) maps
 inputs from `[0, inf]` to `[-1/c, inf]`; this is equivalent to the `inverse`
@@ -33,6 +33,13 @@ Instantiates the `PowerTransform` bijector.
 #### `tf.contrib.distributions.bijector.PowerTransform.dtype` {#PowerTransform.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.PowerTransform.event_ndims` {#PowerTransform.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -282,13 +289,6 @@ Returns the string name of this `Bijector`.
 #### `tf.contrib.distributions.bijector.PowerTransform.power` {#PowerTransform.power}
 
 The `c` in: `Y = g(X) = (1 + X * c)**(1 / c)`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.PowerTransform.shaper` {#PowerTransform.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

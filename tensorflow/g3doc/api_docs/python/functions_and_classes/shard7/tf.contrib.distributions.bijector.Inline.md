@@ -1,4 +1,4 @@
-Bijector constructed from callables implementing forward, inverse, and inverse_log_det_jacobian.
+Bijector constructed from custom callables.
 
 Example Use:
 
@@ -47,6 +47,13 @@ Creates a `Bijector` from callables.
 #### `tf.contrib.distributions.bijector.Inline.dtype` {#Inline.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Inline.event_ndims` {#Inline.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -289,13 +296,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Inline.name` {#Inline.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Inline.shaper` {#Inline.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

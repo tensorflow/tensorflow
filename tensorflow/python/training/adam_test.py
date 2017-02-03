@@ -24,6 +24,8 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -92,6 +94,18 @@ class AdamOptimizerTest(test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
+
+  def testSparseDevicePlacement(self):
+    with self.test_session(force_gpu=test.is_gpu_available()):
+      # If a GPU is available, tests that all optimizer ops can be placed on
+      # it (i.e. they have GPU kernels).
+      var = variables.Variable([[1.0], [2.0]])
+      indices = constant_op.constant([0, 1])
+      gathered_sum = math_ops.reduce_sum(array_ops.gather(var, indices))
+      optimizer = adam.AdamOptimizer(3.0)
+      minimize_op = optimizer.minimize(gathered_sum)
+      variables.global_variables_initializer().run()
+      minimize_op.run()
 
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

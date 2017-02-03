@@ -540,18 +540,50 @@ bool BestSplitDominatesClassificationChebyshev(const Tensor& total_counts,
   return dirichlet_bound > dominate_fraction;
 }
 
-bool DecideNode(const Tensor& dense_features,
-                const Tensor& sparse_input_indices,
-                const Tensor& sparse_input_values, int32 i, int32 feature,
+GetFeatureFnType GetDenseFunctor(const Tensor& dense) {
+  if (dense.shape().dims() == 2) {
+    const auto dense_features = dense.matrix<float>();
+    // Here we capture by value, which shouldn't incur a copy of the data
+    // because of the underlying use of Eigen::TensorMap.
+    return [dense_features](int32 i, int32 feature) {
+      return dense_features(i, feature);
+    };
+  } else {
+    return [](int32 i, int32 feature) {
+      LOG(ERROR) << "trying to access nonexistent dense features.";
+      return 0;
+    };
+  }
+}
+
+GetFeatureFnType GetSparseFunctor(const Tensor& sparse_indices,
+                                  const Tensor& sparse_values) {
+  if (sparse_indices.shape().dims() == 2) {
+    const auto indices = sparse_indices.matrix<int64>();
+    const auto values = sparse_values.vec<float>();
+    // Here we capture by value, which shouldn't incur a copy of the data
+    // because of the underlying use of Eigen::TensorMap.
+    return [indices, values](int32 i, int32 feature) {
+      return tensorforest::FindSparseValue(indices, values, i, feature);
+    };
+  } else {
+    return [](int32 i, int32 feature) {
+      LOG(ERROR) << "trying to access nonexistent sparse features.";
+      return 0;
+    };
+  }
+}
+
+bool DecideNode(const GetFeatureFnType& get_dense,
+                const GetFeatureFnType& get_sparse, int32 i, int32 feature,
                 float bias, const tensorforest::TensorForestDataSpec& spec) {
   if (feature < spec.dense_features_size()) {
-    const auto dense_input = dense_features.matrix<float>();
-    return DecideDenseNode(dense_input, i, feature, bias, spec);
+    return Decide(get_dense(i, feature), bias,
+                  FindDenseFeatureSpec(feature, spec));
   } else {
-    const auto sparse_indices = sparse_input_indices.matrix<int64>();
-    const auto sparse_values = sparse_input_values.vec<float>();
-    return DecideSparseNode(sparse_indices, sparse_values, i,
-                            feature - spec.dense_features_size(), bias, spec);
+    const int32 sparse_feature = feature - spec.dense_features_size();
+    return Decide(get_sparse(i, sparse_feature), bias,
+                  FindSparseFeatureSpec(sparse_feature, spec));
   }
 }
 
@@ -570,11 +602,6 @@ bool Decide(float value, float bias, DataColumnTypes type) {
   }
 }
 
-
-bool IsAllInitialized(const Tensor& features) {
-  const auto feature_vec = features.unaligned_flat<int32>();
-  return feature_vec(feature_vec.size() - 1) >= 0;
-}
 
 void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
                            float parent_sum, const float* parent_data,

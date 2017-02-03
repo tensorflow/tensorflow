@@ -41,6 +41,13 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
+#### `tf.contrib.distributions.bijector.SoftmaxCentered.event_ndims` {#SoftmaxCentered.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
+
+
+- - -
+
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.forward(x, name='forward')` {#SoftmaxCentered.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
@@ -279,13 +286,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.name` {#SoftmaxCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SoftmaxCentered.shaper` {#SoftmaxCentered.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

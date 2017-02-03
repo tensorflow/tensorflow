@@ -41,38 +41,26 @@ class Client {
 
   // Executes the computation with the given arguments and returns the global
   // data that was produced from the execution.
-  // * If shape_with_output_layout is not nullptr this points to a shape with a
-  //   layout to use as a hint when storing the output of the computation.
-  //   Subsequent transfers of this output array to the client may be faster
-  //   when using this layout.
-  // * If compilation_options is not nullptr, these options are passed to the
+  // * If execution_options is not nullptr, these options are passed to the
   //   service to affect how it compiles our computation.  (The pointer does not
   //   need to live beyond this call.)
   // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
   //   will be filled with profile data from the execution.
-  // * If seed is set then that seed is used for the graph execution.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const Shape* shape_with_output_layout = nullptr,
-      const CompilationOptions* compilation_options = nullptr,
-      ExecutionProfile* execution_profile = nullptr, uint64 seed = 0);
+      const ExecutionOptions* execution_options = nullptr,
+      ExecutionProfile* execution_profile = nullptr);
 
   // A struct to represent a computation instance to be executed.
   // * If device_handle is not nullptr, the computation is executed on a device
   //   associated with the handle. Otherwise, a device is chosen by the service.
-  // * If shapes_with_output_layout is not nullptr, the given shape and its
-  //   layout is used as a hint when storing the output of the computation.
-  // * If execution_profile is not nullptr, the pointed-to ExecutionProfile will
-  //   be filled with profile data from the execution of the computation.
-  // * seed is for the random number generator used in the computation.
   struct ComputationInstance {
     const Computation& computation;
     std::vector<GlobalData*> arguments;
     const DeviceHandle* device_handle;
-    const Shape* shape_with_output_layout;
+    ExecutionOptions execution_options;
     ExecutionProfile* execution_profile;
-    uint64 seed;
   };
 
   // Executes a list ComputationInstances and returns global data produced from
@@ -93,8 +81,7 @@ class Client {
   StatusOr<ExecutionHandle> ExecuteAsync(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const Shape* shape_with_output_layout = nullptr,
-      const CompilationOptions* compilation_options = nullptr, uint64 seed = 0);
+      const ExecutionOptions* execution_options = nullptr);
 
   // Waits until the given asynchronously launched execution of the computation
   // is complete and returns the execution result. Once this is called, the
@@ -141,9 +128,8 @@ class Client {
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const Shape* shape_with_output_layout = nullptr,
-      const CompilationOptions* compilation_options = nullptr,
-      ExecutionProfile* execution_profile = nullptr, uint64 seed = 0);
+      const ExecutionOptions* execution_options = nullptr,
+      ExecutionProfile* execution_profile = nullptr);
 
   // Unregister the memory for the given GlobalData on the device.
   Status Unregister(const GlobalData& data);
