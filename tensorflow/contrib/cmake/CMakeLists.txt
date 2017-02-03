@@ -170,7 +170,8 @@ if (tensorflow_ENABLE_GPU)
 
     # add cudnn
     include_directories(${CUDNN_HOME})
-    set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDNN_HOME}/lib/x64/cudnn.lib)
+    set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
+      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
 
     # create cuda_config.h
     FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
