@@ -328,7 +328,6 @@ tf_cuda_library(
         "framework/op.h",
         "framework/op_def_builder.h",
         "framework/op_def_util.h",
-        "framework/op_gen_lib.h",
         "framework/op_kernel.h",
         "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
@@ -382,6 +381,25 @@ tf_cuda_library(
     }),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
+)
+
+tf_proto_library_cc(
+    name = "op_gen_overrides_proto",
+    srcs = ["framework/op_gen_overrides.proto"],
+    cc_api_version = 2,
+    protodeps = [":protos_all"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "op_gen_lib",
+    srcs = ["framework/op_gen_lib.cc"],
+    hdrs = ["framework/op_gen_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":op_gen_overrides_proto_cc",
+    ],
 )
 
 cc_library(
@@ -761,12 +779,14 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "debug/**/*",
+            "framework/op_gen_*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
             "util/reporter.*",
+            "platform/**/cuda_libdevice_path.*",
             "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
@@ -1259,6 +1279,7 @@ tf_cuda_library(
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
+            "framework/op_gen_lib.*",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/version_info.cc",
@@ -1835,6 +1856,7 @@ tf_cc_tests(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",

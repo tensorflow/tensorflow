@@ -1,14 +1,14 @@
-Inverse Gamma with softplus applied to `alpha` and `beta`.
+Exponential with softplus transform on `rate`.
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='InverseGammaWithSoftplusAlphaBeta')` {#InverseGammaWithSoftplusAlphaBeta.__init__}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.__init__(rate, validate_args=False, allow_nan_stats=True, name='ExponentialWithSoftplusRate')` {#ExponentialWithSoftplusRate.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.allow_nan_stats` {#InverseGammaWithSoftplusAlphaBeta.allow_nan_stats}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.allow_nan_stats` {#ExponentialWithSoftplusRate.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -29,19 +29,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.alpha` {#InverseGammaWithSoftplusAlphaBeta.alpha}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.batch_shape` {#ExponentialWithSoftplusRate.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.batch_shape(name='batch_shape')` {#InverseGammaWithSoftplusAlphaBeta.batch_shape}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.batch_shape_tensor(name='batch_shape_tensor')` {#ExponentialWithSoftplusRate.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -56,14 +66,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.beta` {#InverseGammaWithSoftplusAlphaBeta.beta}
-
-Scale parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.cdf(value, name='cdf')` {#InverseGammaWithSoftplusAlphaBeta.cdf}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.cdf(value, name='cdf')` {#ExponentialWithSoftplusRate.cdf}
 
 Cumulative distribution function.
 
@@ -88,7 +91,14 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.copy(**override_parameters_kwargs)` {#InverseGammaWithSoftplusAlphaBeta.copy}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.concentration` {#ExponentialWithSoftplusRate.concentration}
+
+Concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.copy(**override_parameters_kwargs)` {#ExponentialWithSoftplusRate.copy}
 
 Creates a deep copy of the distribution.
 
@@ -111,7 +121,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.covariance(name='covariance')` {#InverseGammaWithSoftplusAlphaBeta.covariance}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.covariance(name='covariance')` {#ExponentialWithSoftplusRate.covariance}
 
 Covariance.
 
@@ -155,32 +165,35 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.dtype` {#InverseGammaWithSoftplusAlphaBeta.dtype}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.dtype` {#ExponentialWithSoftplusRate.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.entropy(name='entropy')` {#InverseGammaWithSoftplusAlphaBeta.entropy}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.entropy(name='entropy')` {#ExponentialWithSoftplusRate.entropy}
 
 Shannon entropy in nats.
-
-Additional documentation from `InverseGamma`:
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-+ (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.event_shape(name='event_shape')` {#InverseGammaWithSoftplusAlphaBeta.event_shape}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.event_shape` {#ExponentialWithSoftplusRate.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.event_shape_tensor(name='event_shape_tensor')` {#ExponentialWithSoftplusRate.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -197,42 +210,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.get_batch_shape()` {#InverseGammaWithSoftplusAlphaBeta.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.get_event_shape()` {#InverseGammaWithSoftplusAlphaBeta.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_continuous` {#InverseGammaWithSoftplusAlphaBeta.is_continuous}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.is_continuous` {#ExponentialWithSoftplusRate.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_batch}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.is_scalar_batch(name='is_scalar_batch')` {#ExponentialWithSoftplusRate.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -249,7 +234,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusAlphaBeta.is_scalar_event}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.is_scalar_event(name='is_scalar_event')` {#ExponentialWithSoftplusRate.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -266,7 +251,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.log_cdf(value, name='log_cdf')` {#InverseGammaWithSoftplusAlphaBeta.log_cdf}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.log_cdf(value, name='log_cdf')` {#ExponentialWithSoftplusRate.log_cdf}
 
 Log cumulative distribution function.
 
@@ -295,7 +280,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.log_prob(value, name='log_prob')` {#InverseGammaWithSoftplusAlphaBeta.log_prob}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.log_prob(value, name='log_prob')` {#ExponentialWithSoftplusRate.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -314,7 +299,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.log_survival_function(value, name='log_survival_function')` {#InverseGammaWithSoftplusAlphaBeta.log_survival_function}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.log_survival_function(value, name='log_survival_function')` {#ExponentialWithSoftplusRate.log_survival_function}
 
 Log survival function.
 
@@ -343,38 +328,34 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.mean(name='mean')` {#InverseGammaWithSoftplusAlphaBeta.mean}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.mean(name='mean')` {#ExponentialWithSoftplusRate.mean}
 
 Mean.
 
-Additional documentation from `InverseGamma`:
-
-The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
-`False`, an exception will be raised rather than returning `NaN`
-
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.mode(name='mode')` {#InverseGammaWithSoftplusAlphaBeta.mode}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.mode(name='mode')` {#ExponentialWithSoftplusRate.mode}
 
 Mode.
 
-Additional documentation from `InverseGamma`:
+Additional documentation from `Gamma`:
 
-The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
+The mode of a gamma distribution is `(shape - 1) / rate` when
+`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.name` {#InverseGammaWithSoftplusAlphaBeta.name}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.name` {#ExponentialWithSoftplusRate.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#InverseGammaWithSoftplusAlphaBeta.param_shapes}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ExponentialWithSoftplusRate.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -398,7 +379,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.param_static_shapes(cls, sample_shape)` {#InverseGammaWithSoftplusAlphaBeta.param_static_shapes}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.param_static_shapes(cls, sample_shape)` {#ExponentialWithSoftplusRate.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -428,14 +409,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.parameters` {#InverseGammaWithSoftplusAlphaBeta.parameters}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.parameters` {#ExponentialWithSoftplusRate.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.prob(value, name='prob')` {#InverseGammaWithSoftplusAlphaBeta.prob}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.prob(value, name='prob')` {#ExponentialWithSoftplusRate.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -454,7 +435,14 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.reparameterization_type` {#InverseGammaWithSoftplusAlphaBeta.reparameterization_type}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.rate` {#ExponentialWithSoftplusRate.rate}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.reparameterization_type` {#ExponentialWithSoftplusRate.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -469,7 +457,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.sample(sample_shape=(), seed=None, name='sample')` {#InverseGammaWithSoftplusAlphaBeta.sample}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.sample(sample_shape=(), seed=None, name='sample')` {#ExponentialWithSoftplusRate.sample}
 
 Generate samples of the specified shape.
 
@@ -491,7 +479,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.stddev(name='stddev')` {#InverseGammaWithSoftplusAlphaBeta.stddev}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.stddev(name='stddev')` {#ExponentialWithSoftplusRate.stddev}
 
 Standard deviation.
 
@@ -518,7 +506,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.survival_function(value, name='survival_function')` {#InverseGammaWithSoftplusAlphaBeta.survival_function}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.survival_function(value, name='survival_function')` {#ExponentialWithSoftplusRate.survival_function}
 
 Survival function.
 
@@ -544,14 +532,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.validate_args` {#InverseGammaWithSoftplusAlphaBeta.validate_args}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.validate_args` {#ExponentialWithSoftplusRate.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.variance(name='variance')` {#InverseGammaWithSoftplusAlphaBeta.variance}
+#### `tf.contrib.distributions.ExponentialWithSoftplusRate.variance(name='variance')` {#ExponentialWithSoftplusRate.variance}
 
 Variance.
 
@@ -563,13 +551,6 @@ Var = E[(X - E[X])**2]
 
 where `X` is the random variable associated with this distribution, `E`
 denotes expectation, and `Var.shape = batch_shape + event_shape`.
-
-
-Additional documentation from `InverseGamma`:
-
-Variance for inverse gamma is defined only for `alpha > 2`. If
-`self.allow_nan_stats` is `False`, an exception will be raised rather
-than returning `NaN`.
 
 ##### Args:
 

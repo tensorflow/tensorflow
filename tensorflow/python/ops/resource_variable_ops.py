@@ -324,3 +324,4 @@ ops.register_tensor_conversion_function(ResourceVariable, _dense_var_to_tensor)
 
 # pylint: disable=protected-access
 ResourceVariable._OverloadAllOperators()
+ops.register_dense_tensor_like_type(ResourceVariable)

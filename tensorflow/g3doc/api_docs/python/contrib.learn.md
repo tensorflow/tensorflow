@@ -485,7 +485,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#Estimator.export_savedmodel}
+#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#Estimator.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -506,6 +506,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -980,7 +982,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.KMeansClustering.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#KMeansClustering.export_savedmodel}
+#### `tf.contrib.learn.KMeansClustering.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#KMeansClustering.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -1001,6 +1003,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -1297,7 +1301,7 @@ Exclude the OrderedDict from pickling
 
 - - -
 
-#### `tf.contrib.learn.ModelFnOps.__new__(cls, mode, predictions=None, loss=None, train_op=None, eval_metric_ops=None, output_alternatives=None, training_chief_hooks=None, training_hooks=None, training_scaffold=None)` {#ModelFnOps.__new__}
+#### `tf.contrib.learn.ModelFnOps.__new__(cls, mode, predictions=None, loss=None, train_op=None, eval_metric_ops=None, output_alternatives=None, training_chief_hooks=None, training_hooks=None, scaffold=None)` {#ModelFnOps.__new__}
 
 Creates a validated `ModelFnOps` instance.
 
@@ -1339,7 +1343,7 @@ type.
     run on the chief worker during training.
 *  <b>`training_hooks`</b>: A list of `SessionRunHook` objects that will be run on
     all workers during training.
-*  <b>`training_scaffold`</b>: A `tf.train.Scaffold` object that can be used to set
+*  <b>`scaffold`</b>: A `tf.train.Scaffold` object that can be used to set
     initialization, saver, and more to be used in training.
 
 ##### Returns:
@@ -1389,6 +1393,13 @@ Alias for field number 0
 
 - - -
 
+#### `tf.contrib.learn.ModelFnOps.scaffold` {#ModelFnOps.scaffold}
+
+Alias for field number 7
+
+
+- - -
+
 #### `tf.contrib.learn.ModelFnOps.train_op` {#ModelFnOps.train_op}
 
 Alias for field number 2
@@ -1406,13 +1417,6 @@ Alias for field number 5
 #### `tf.contrib.learn.ModelFnOps.training_hooks` {#ModelFnOps.training_hooks}
 
 Alias for field number 6
-
-
-- - -
-
-#### `tf.contrib.learn.ModelFnOps.training_scaffold` {#ModelFnOps.training_scaffold}
-
-Alias for field number 7
 
 
 
@@ -1779,7 +1783,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNClassifier.export_savedmodel}
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNClassifier.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -1800,6 +1804,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -1945,7 +1951,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNClassifier.predict(*args, **kwargs)` {#DNNClassifier.predict}
 
-Returns predicted classes for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -1953,12 +1959,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -1969,6 +1984,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted classes with shape [batch_size] (or an iterable
   of predicted classes if as_iterable is True). Each predicted class is
   represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -2005,7 +2021,7 @@ altogether. The behavior of this flag is described below.
 
 #### `tf.contrib.learn.DNNClassifier.predict_proba(*args, **kwargs)` {#DNNClassifier.predict_proba}
 
-Returns prediction probabilities for given features. (deprecated arguments)
+Returns predicted probabilities for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -2205,7 +2221,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -2226,6 +2242,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -2371,7 +2389,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNRegressor.predict(*args, **kwargs)` {#DNNRegressor.predict}
 
-Returns predicted scores for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -2379,12 +2397,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -2395,6 +2422,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted scores (or an iterable of predicted scores if
   as_iterable is True). If `label_dimension == 1`, the shape of the output
   is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -2606,7 +2634,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNLinearCombinedRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNLinearCombinedRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNLinearCombinedRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNLinearCombinedRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -2627,6 +2655,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -2772,7 +2802,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNLinearCombinedRegressor.predict(*args, **kwargs)` {#DNNLinearCombinedRegressor.predict}
 
-Returns predicted scores for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -2780,12 +2810,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -2796,6 +2835,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted scores (or an iterable of predicted scores if
   as_iterable is True). If `label_dimension == 1`, the shape of the output
   is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -3041,7 +3081,7 @@ See BasEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNLinearCombinedClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#DNNLinearCombinedClassifier.export_savedmodel}
+#### `tf.contrib.learn.DNNLinearCombinedClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNLinearCombinedClassifier.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -3062,6 +3102,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -3229,7 +3271,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNLinearCombinedClassifier.predict(*args, **kwargs)` {#DNNLinearCombinedClassifier.predict}
 
-Returns predicted classes for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -3237,12 +3279,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -3253,6 +3304,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted classes with shape [batch_size] (or an iterable
   of predicted classes if as_iterable is True). Each predicted class is
   represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
@@ -3512,7 +3564,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearClassifier.export_savedmodel}
+#### `tf.contrib.learn.LinearClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#LinearClassifier.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -3533,6 +3585,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -3678,39 +3732,99 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
 
-Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.predict_classes(*args, **kwargs)` {#LinearClassifier.predict_classes}
 
-Runs inference to determine the predicted class (i.e. class index). (deprecated arguments)
+Returns predicted classes for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.predict_proba(*args, **kwargs)` {#LinearClassifier.predict_proba}
 
-Runs inference to determine the class probability predictions. (deprecated arguments)
+Returns predicted probabilities for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted probabilities with shape [batch_size, n_classes]
+  (or an iterable of predicted probabilities if as_iterable is True).
 
 
 - - -
@@ -3896,7 +4010,7 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#LinearRegressor.export_savedmodel}
+#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#LinearRegressor.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -3917,6 +4031,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -4062,26 +4178,70 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
 
-Runs inference to determine the predicted scores. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.predict_scores(*args, **kwargs)` {#LinearRegressor.predict_scores}
 
-Runs inference to determine the predicted scores. (deprecated arguments)
+Returns predicted scores for given features. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
 The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
 
 
 - - -
@@ -4418,9 +4578,18 @@ Typically constructed by a utility function specific to the exporter, such as
 The fields are:
   name: The directory name under the export base directory where exports of
     this type will be written.
-  export_fn: A function that writes an export, given an estimator and a
-    destination path.  This may be run repeatedly during continuous training,
-    or just once at the end of fixed-length training.
+  export_fn: A function that writes an export, given an estimator, a
+    destination path, and optionally a checkpoint path and an evaluation
+    result for that checkpoint.  This export_fn() may be run repeatedly during
+    continuous training, or just once at the end of fixed-length training.
+    Note the export_fn() may choose whether or not to export based on the eval
+    result or based on an internal timer or any other criterion, if exports
+    are not desired for every checkpoint.
+
+    The signature of this function must be one of:
+      * (estimator, export_path) -> export_path`
+      * (estimator, export_path, checkpoint_path) -> export_path`
+      * (estimator, export_path, checkpoint_path, eval_result) -> export_path`
 - - -
 
 #### `tf.contrib.learn.ExportStrategy.__getnewargs__()` {#ExportStrategy.__getnewargs__}
@@ -4451,9 +4620,29 @@ Return a nicely formatted representation string
 
 - - -
 
-#### `tf.contrib.learn.ExportStrategy.export(estimator, export_path)` {#ExportStrategy.export}
+#### `tf.contrib.learn.ExportStrategy.export(estimator, export_path, checkpoint_path=None, eval_result=None)` {#ExportStrategy.export}
+
+Exports the given Estimator to a specific format.
+
+##### Args:
 
 
+*  <b>`estimator`</b>: the Estimator to export.
+*  <b>`export_path`</b>: A string containing a directory where to write the export.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the strategy may locate a checkpoint (e.g. the most recent) by itself.
+*  <b>`eval_result`</b>: The output of Estimator.evaluate on this checkpoint.  This
+    should be set only if checkpoint_path is provided (otherwise it is
+    unclear which checkpoint this eval refers to).
+
+##### Returns:
+
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the export_fn does not have the required signature
 
 
 - - -

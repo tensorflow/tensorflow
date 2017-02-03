@@ -73,9 +73,8 @@ IrEmitter::IrEmitter(
       hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module_config) {
-  llvm::FastMathFlags fast_math_flags;
-  llvm_ir::SetFastMathFlags(&fast_math_flags);
-  ir_builder_.setFastMathFlags(fast_math_flags);
+  ir_builder_.setFastMathFlags(
+      llvm_ir::GetFastMathFlags(hlo_module_config.compilation_options()));
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(

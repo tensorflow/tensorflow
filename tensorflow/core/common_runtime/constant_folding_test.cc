@@ -266,9 +266,40 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
       DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
                                   Env::Default(), nullptr, g, &was_mutated);
   EXPECT_FALSE(was_mutated);
-  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(status.ok());
 
   g_ = nullptr;
+}
+
+REGISTER_OP("ConstantFoldingTestOp").Input("a: int64").Output("b: int64");
+
+TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
+  Graph* g = g_.get();
+
+  Node* aconst = Constant<int64>(std::vector<int64>(5, 0), {5});
+  g->AddControlEdge(g->source_node(), aconst);
+
+  NodeDef def;
+  TF_ASSERT_OK(
+      NodeDefBuilder("testop", "ConstantFoldingTestOp", g->op_registry())
+          .Input(aconst->name(), 0, DT_INT64)
+          .Finalize(&def));
+  Status status;
+  Node* non_cpu = g->AddNode(def, &status);
+  TF_ASSERT_OK(status);
+  g->AddEdge(aconst, 0, non_cpu, 0);
+
+  Node* non_cpu_send =
+      test::graph::Send(g, non_cpu, "non_cpu_send", "sender", 0, "receiver");
+  g->AddControlEdge(non_cpu_send, g->sink_node());
+
+  // The non-CPU op should not have been constant folded.
+  bool was_mutated;
+  status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  EXPECT_TRUE(status.ok());
 }
 
 namespace {

@@ -472,7 +472,7 @@ Flattens the input while maintaining the batch_size.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If inputs.dense_shape is wrong.
+*  <b>`ValueError`</b>: If inputs rank is unknown or less than 2.
 
 
 - - -
@@ -2137,7 +2137,8 @@ Example:
     `sparse_column_with_*` functions.
 *  <b>`weight_column_name`</b>: A string defining a sparse column name which represents
     weight or value of the corresponding sparse id feature.
-*  <b>`dtype`</b>: Type of weights, such as `tf.float32`
+*  <b>`dtype`</b>: Type of weights, such as `tf.float32`. Only floating and integer
+    weights are supported.
 
 ##### Returns:
 

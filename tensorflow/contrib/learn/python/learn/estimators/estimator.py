@@ -934,7 +934,7 @@ class BaseEstimator(
       ])
       all_hooks.extend(hooks)
 
-      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
+      scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
       if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
         ops.add_to_collection(
             ops.GraphKeys.SAVERS,
@@ -1187,7 +1187,8 @@ class Estimator(BaseEstimator):
       self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
-      as_text=False):
+      as_text=False,
+      checkpoint_path=None):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1205,6 +1206,8 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
 
     Returns:
       The string path to the exported directory.
@@ -1235,9 +1238,9 @@ class Estimator(BaseEstimator):
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
 
-      # Locate the latest checkpoint
-      # TODO(soergel): does it help that we know we have one from this step?
-      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        # Locate the latest checkpoint
+        checkpoint_path = saver.latest_checkpoint(self._model_dir)
       if not checkpoint_path:
         raise NotFittedError("Couldn't find trained model at %s."
                              % self._model_dir)

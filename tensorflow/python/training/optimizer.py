@@ -28,9 +28,41 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+
+
+def _get_variable_for(v):
+  """Returns the ResourceVariable responsible for v, or v if not necessary."""
+  if v.op.type == "ResourceGather":
+    for var in variables.global_variables() + variables.local_variables():
+      if (isinstance(var, resource_variable_ops.ResourceVariable)
+          and var.handle is v.op.inputs[0]):
+        return var
+    raise ValueError("Got embedding lookup %s but"
+                     " could not locate source variable." % (str(v)))
+  return v
+
+
+def _deduplicate_indexed_slices(values, indices):
+  """Sums `values` associated with any non-unique `indices`.
+
+  Args:
+    values: A `Tensor` with rank >= 1.
+    indices: A one-dimensional integer `Tensor`, indexing into the first
+      dimension of `values` (as in an IndexedSlices object).
+  Returns:
+    A tuple of (`summed_values`, `unique_indices`) where `unique_indices` is a
+    de-duplicated version of `indices` and `summed_values` contains the sum of
+    `values` slices associated with each unique index.
+  """
+  unique_indices, new_index_positions = array_ops.unique(indices)
+  summed_values = math_ops.unsorted_segment_sum(
+      values, new_index_positions,
+      array_ops.shape(unique_indices)[0])
+  return (summed_values, unique_indices)
 
 
 def _var_key(var):
@@ -111,7 +143,7 @@ class _SparseResourceVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
-    return optimizer._resource_apply_sparse(
+    return optimizer._resource_apply_sparse_duplicate_indices(
         g, self._v.op.inputs[0], self._v.op.inputs[1])
 
 
@@ -415,7 +447,7 @@ class Optimizer(object):
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
     with ops.control_dependencies(None):
-      self._create_slots(var_list)
+      self._create_slots([_get_variable_for(v) for v in var_list])
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()
@@ -544,20 +576,48 @@ class Optimizer(object):
     """
     raise NotImplementedError()
 
-  def _resource_apply_sparse(self, grad, handle, indices):
-    """Add ops to apply sparse gradients to the variable `handle`.
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to `handle`, with repeated indices.
 
+    Optimizers which override this method must deal with repeated indices. See
+    the docstring of `_apply_sparse_duplicate_indices` for details. By default
+    the correct behavior, to sum non-unique indices and their associated
+    gradients, is enforced by first pre-processing `grad` and `indices` and
+    passing them on to `_resource_apply_sparse`. Optimizers which deal correctly
+    with duplicate indices may instead override this method to avoid the
+    overhead of summing.
 
     Args:
       grad: a `Tensor` representing the gradient for the affected indices.
       handle: a `Tensor` of dtype `resource` which points to the variable
        to be updated.
       indices: a `Tensor` of integral type representing the indices for
-       which the gradient is nonzero.
+       which the gradient is nonzero. Indices may be repeated.
 
     Returns:
       An `Operation` which updates the value of the variable.
+    """
+    summed_grad, unique_indices = _deduplicate_indexed_slices(
+        values=grad, indices=indices)
+    return self._resource_apply_sparse(summed_grad, handle, unique_indices)
 
+  def _resource_apply_sparse(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to the variable `handle`.
+
+    Similar to `_apply_sparse`, the `indices` argument to this method has been
+    de-duplicated. Optimizers which deal correctly with non-unique indices may
+    instead override `_resource_apply_sparse_duplicate_indices` to avoid this
+    overhead.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable
+       to be updated.
+      indices: a `Tensor` of integral type representing the indices for
+       which the gradient is nonzero. Indices are unique.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
     """
     raise NotImplementedError()
 
@@ -589,9 +649,8 @@ class Optimizer(object):
     Returns:
       An `Operation`.
     """
-    unique_indices, new_index_positions = array_ops.unique(grad.indices)
-    summed_values = math_ops.unsorted_segment_sum(
-        grad.values, new_index_positions, array_ops.shape(unique_indices)[0])
+    summed_values, unique_indices = _deduplicate_indexed_slices(
+        values=grad.values, indices=grad.indices)
     gradient_no_duplicate_indices = ops.IndexedSlices(
         indices=unique_indices,
         values=summed_values,

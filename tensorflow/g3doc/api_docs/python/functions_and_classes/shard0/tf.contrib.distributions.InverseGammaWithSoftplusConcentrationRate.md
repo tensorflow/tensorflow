@@ -1,28 +1,14 @@
-Beta with softplus transform on `a` and `b`.
+`InverseGamma` with softplus of `concentration` and `rate`.
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.__init__(a, b, validate_args=False, allow_nan_stats=True, name='BetaWithSoftplusAB')` {#BetaWithSoftplusAB.__init__}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.__init__(concentration, rate, validate_args=False, allow_nan_stats=True, name='InverseGammaWithSoftplusConcentrationRate')` {#InverseGammaWithSoftplusConcentrationRate.__init__}
 
 
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.a` {#BetaWithSoftplusAB.a}
-
-Shape parameter.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.a_b_sum` {#BetaWithSoftplusAB.a_b_sum}
-
-Sum of parameters.
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.allow_nan_stats` {#BetaWithSoftplusAB.allow_nan_stats}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.allow_nan_stats` {#InverseGammaWithSoftplusConcentrationRate.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -43,19 +29,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.b` {#BetaWithSoftplusAB.b}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.batch_shape` {#InverseGammaWithSoftplusConcentrationRate.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.batch_shape(name='batch_shape')` {#BetaWithSoftplusAB.batch_shape}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.batch_shape_tensor(name='batch_shape_tensor')` {#InverseGammaWithSoftplusConcentrationRate.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -70,7 +66,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.cdf(value, name='cdf')` {#BetaWithSoftplusAB.cdf}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.cdf(value, name='cdf')` {#InverseGammaWithSoftplusConcentrationRate.cdf}
 
 Cumulative distribution function.
 
@@ -95,7 +91,14 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.copy(**override_parameters_kwargs)` {#BetaWithSoftplusAB.copy}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.concentration` {#InverseGammaWithSoftplusConcentrationRate.concentration}
+
+Concentration parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.copy(**override_parameters_kwargs)` {#InverseGammaWithSoftplusConcentrationRate.copy}
 
 Creates a deep copy of the distribution.
 
@@ -118,7 +121,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.covariance(name='covariance')` {#BetaWithSoftplusAB.covariance}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.covariance(name='covariance')` {#InverseGammaWithSoftplusConcentrationRate.covariance}
 
 Covariance.
 
@@ -162,21 +165,35 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.dtype` {#BetaWithSoftplusAB.dtype}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.dtype` {#InverseGammaWithSoftplusConcentrationRate.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.entropy(name='entropy')` {#BetaWithSoftplusAB.entropy}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.entropy(name='entropy')` {#InverseGammaWithSoftplusConcentrationRate.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.event_shape(name='event_shape')` {#BetaWithSoftplusAB.event_shape}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.event_shape` {#InverseGammaWithSoftplusConcentrationRate.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.event_shape_tensor(name='event_shape_tensor')` {#InverseGammaWithSoftplusConcentrationRate.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -193,42 +210,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.get_batch_shape()` {#BetaWithSoftplusAB.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.get_event_shape()` {#BetaWithSoftplusAB.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_continuous` {#BetaWithSoftplusAB.is_continuous}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.is_continuous` {#InverseGammaWithSoftplusConcentrationRate.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_batch(name='is_scalar_batch')` {#BetaWithSoftplusAB.is_scalar_batch}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.is_scalar_batch(name='is_scalar_batch')` {#InverseGammaWithSoftplusConcentrationRate.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -245,7 +234,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.is_scalar_event(name='is_scalar_event')` {#BetaWithSoftplusAB.is_scalar_event}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.is_scalar_event(name='is_scalar_event')` {#InverseGammaWithSoftplusConcentrationRate.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -262,7 +251,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.log_cdf(value, name='log_cdf')` {#BetaWithSoftplusAB.log_cdf}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.log_cdf(value, name='log_cdf')` {#InverseGammaWithSoftplusConcentrationRate.log_cdf}
 
 Log cumulative distribution function.
 
@@ -275,14 +264,6 @@ log_cdf(x) := Log[ P[X <= x] ]
 Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
-
-
-Additional documentation from `Beta`:
-
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 ##### Args:
 
@@ -299,7 +280,7 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.log_prob(value, name='log_prob')` {#BetaWithSoftplusAB.log_prob}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.log_prob(value, name='log_prob')` {#InverseGammaWithSoftplusConcentrationRate.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -318,7 +299,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.log_survival_function(value, name='log_survival_function')` {#BetaWithSoftplusAB.log_survival_function}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.log_survival_function(value, name='log_survival_function')` {#InverseGammaWithSoftplusConcentrationRate.log_survival_function}
 
 Log survival function.
 
@@ -347,35 +328,40 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.mean(name='mean')` {#BetaWithSoftplusAB.mean}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.mean(name='mean')` {#InverseGammaWithSoftplusConcentrationRate.mean}
 
 Mean.
 
+Additional documentation from `InverseGamma`:
+
+The mean of an inverse gamma distribution is
+`rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
+otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+raised rather than returning `NaN`
+
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.mode(name='mode')` {#BetaWithSoftplusAB.mode}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.mode(name='mode')` {#InverseGammaWithSoftplusConcentrationRate.mode}
 
 Mode.
 
-Additional documentation from `Beta`:
+Additional documentation from `InverseGamma`:
 
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+The mode of an inverse gamma distribution is `rate / (concentration +
+1)`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.name` {#BetaWithSoftplusAB.name}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.name` {#InverseGammaWithSoftplusConcentrationRate.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#BetaWithSoftplusAB.param_shapes}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#InverseGammaWithSoftplusConcentrationRate.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -399,7 +385,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.param_static_shapes(cls, sample_shape)` {#BetaWithSoftplusAB.param_static_shapes}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.param_static_shapes(cls, sample_shape)` {#InverseGammaWithSoftplusConcentrationRate.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -429,24 +415,16 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.parameters` {#BetaWithSoftplusAB.parameters}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.parameters` {#InverseGammaWithSoftplusConcentrationRate.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.prob(value, name='prob')` {#BetaWithSoftplusAB.prob}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.prob(value, name='prob')` {#InverseGammaWithSoftplusConcentrationRate.prob}
 
 Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `Beta`:
-
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 ##### Args:
 
@@ -463,7 +441,14 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.reparameterization_type` {#BetaWithSoftplusAB.reparameterization_type}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.rate` {#InverseGammaWithSoftplusConcentrationRate.rate}
+
+Rate parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.reparameterization_type` {#InverseGammaWithSoftplusConcentrationRate.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -478,7 +463,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.sample(sample_shape=(), seed=None, name='sample')` {#BetaWithSoftplusAB.sample}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.sample(sample_shape=(), seed=None, name='sample')` {#InverseGammaWithSoftplusConcentrationRate.sample}
 
 Generate samples of the specified shape.
 
@@ -500,7 +485,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.stddev(name='stddev')` {#BetaWithSoftplusAB.stddev}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.stddev(name='stddev')` {#InverseGammaWithSoftplusConcentrationRate.stddev}
 
 Standard deviation.
 
@@ -527,7 +512,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.survival_function(value, name='survival_function')` {#BetaWithSoftplusAB.survival_function}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.survival_function(value, name='survival_function')` {#InverseGammaWithSoftplusConcentrationRate.survival_function}
 
 Survival function.
 
@@ -553,14 +538,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.validate_args` {#BetaWithSoftplusAB.validate_args}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.validate_args` {#InverseGammaWithSoftplusConcentrationRate.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.BetaWithSoftplusAB.variance(name='variance')` {#BetaWithSoftplusAB.variance}
+#### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.variance(name='variance')` {#InverseGammaWithSoftplusConcentrationRate.variance}
 
 Variance.
 
@@ -572,6 +557,13 @@ Var = E[(X - E[X])**2]
 
 where `X` is the random variable associated with this distribution, `E`
 denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+
+Additional documentation from `InverseGamma`:
+
+Variance for inverse gamma is defined only for `concentration > 2`. If
+`self.allow_nan_stats` is `False`, an exception will be raised rather
+than returning `NaN`.
 
 ##### Args:
 

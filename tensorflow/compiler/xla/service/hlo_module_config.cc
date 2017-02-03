@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
+#include <atomic>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -41,7 +42,7 @@ string HloModuleConfig::compilation_cache_key() const {
       entry_computation_layout_.result_shape().SerializeAsString());
   if (seed_ != 0) {
     // TODO(b/32083678): force recompilation to reset global state.
-    static int counter = 0;
+    static std::atomic<int> counter{0};
     tensorflow::strings::StrAppend(&key, "forcing recompile ", counter++);
   }
   if (replica_count() != 1) {

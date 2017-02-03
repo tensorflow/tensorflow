@@ -17,27 +17,16 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
+#if !defined(PLATFORM_GOOGLE)
+#include "cuda/cuda_config.h"
+#endif
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
 string CudaRoot() {
-  // 'bazel test' sets TEST_SRCDIR.
-  const string kRelativeCudaRoot = io::JoinPath("local_config_cuda", "cuda");
-  const char* test_srcdir = getenv("TEST_SRCDIR");
-  if (test_srcdir && test_srcdir[0] != '\0') {
-    return io::JoinPath(test_srcdir, kRelativeCudaRoot);
-  }
-
-  LOG(INFO) << "TEST_SRCDIR environment variable not set: using "
-            << kRelativeCudaRoot
-            << " under this executable's runfiles directory as the CUDA root.";
-  return io::JoinPath(
-      strings::StrCat(Env::Default()->GetExecutablePath(), ".runfiles"),
-      kRelativeCudaRoot);
+  VLOG(3) << "CUDA root = " << TF_CUDA_TOOLKIT_PATH;
+  return TF_CUDA_TOOLKIT_PATH;
 }
 
 }  // namespace tensorflow

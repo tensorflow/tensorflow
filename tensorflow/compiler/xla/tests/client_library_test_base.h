@@ -52,6 +52,10 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Returns the name of the test currently being run.
   string TestName() const;
 
+  void SetFastMathDisabled(bool disabled) {
+    compilation_options_.set_disable_fast_math(disabled);
+  }
+
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
 
   // Convenience methods for building and running a computation from a builder.
@@ -236,6 +240,7 @@ class ClientLibraryTestBase : public ::testing::Test {
       ComputationDataHandle* data_handle);
 
   Client* client_;
+  CompilationOptions compilation_options_;
 };
 
 template <typename NativeT>
