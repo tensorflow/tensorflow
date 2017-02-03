@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import functools
 import six
 
 from tensorflow.contrib import framework as framework_lib
@@ -27,12 +26,10 @@ from tensorflow.contrib import layers as layers_lib
 # TODO(ptucker): Use tf.losses and tf.metrics.
 from tensorflow.contrib import losses as losses_lib
 from tensorflow.contrib import metrics as metrics_lib
-from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import constants
-from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey as mkey
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -491,18 +488,18 @@ class _RegressionHead(_SingleHead):
       eval_metric_ops = None
       if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
         labels_tensor = _to_labels_tensor(labels, self._label_name)
-        loss = _training_loss(
-            features,
-            labels_tensor,
-            logits,
-            loss_fn=self._loss_fn,
-            weight_column_name=self.weight_column_name,
-            head_name=self.head_name)
+        loss, weighted_average_loss = _loss(
+            self._loss_fn(logits, labels_tensor),
+            _weight_tensor(features, self.weight_column_name))
+        logging_ops.scalar_summary(
+            _summary_key(self.head_name, mkey.LOSS), weighted_average_loss)
+
         if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
           train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
                                self.logits_dimension, self._loss_fn)
-        eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                           labels, predictions)
+        with ops.name_scope("default_metrics", values=[weighted_average_loss]):
+          eval_metric_ops = {_summary_key(self.head_name, mkey.LOSS):
+                             metrics_lib.streaming_mean(weighted_average_loss)}
 
     return model_fn.ModelFnOps(
         mode=mode,
@@ -526,15 +523,6 @@ class _RegressionHead(_SingleHead):
       if self.logits_dimension == 1:
         logits = array_ops.squeeze(logits, squeeze_dims=(1,), name=key)
       return {key: logits}
-
-  def _default_metrics(self):
-    """Returns a dict of `MetricSpec` keyed by `MetricKey`."""
-    return {
-        _summary_key(self.head_name, metric_key.MetricKey.LOSS):
-            _weighted_average_loss_metric_spec(
-                self._loss_fn, prediction_key.PredictionKey.SCORES,
-                self.label_name, self.weight_column_name)
-    }
 
 
 def _log_loss_with_two_classes(logits, labels):
@@ -617,23 +605,23 @@ class _BinaryLogisticHead(_SingleHead):
         logits = nn.bias_add(logits, centered_bias)
 
       predictions = self._logits_to_predictions(logits)
+      weight_tensor = _weight_tensor(features, self.weight_column_name)
       loss = None
       train_op = None
       eval_metric_ops = None
       if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
         labels_tensor = _to_labels_tensor(labels, self._label_name)
-        loss = _training_loss(
-            features,
-            labels_tensor,
-            logits,
-            loss_fn=self._loss_fn,
-            weight_column_name=self.weight_column_name,
-            head_name=self.head_name)
+        loss, weighted_average_loss = _loss(
+            self._loss_fn(logits, labels_tensor), weight_tensor)
+        logging_ops.scalar_summary(
+            _summary_key(self.head_name, mkey.LOSS), weighted_average_loss)
+
         if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
           train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
                                self.logits_dimension, self._loss_fn)
-        eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                           labels, predictions)
+        eval_metric_ops = self._default_metrics(weighted_average_loss,
+                                                predictions, labels_tensor,
+                                                weight_tensor)
 
     return model_fn.ModelFnOps(
         mode=mode,
@@ -671,52 +659,47 @@ class _BinaryLogisticHead(_SingleHead):
                   name=prediction_key.PredictionKey.CLASSES)
       }
 
-  def _default_metrics(self):
-    """Returns a dict of `MetricSpec` objects keyed by name."""
-    metrics = {
-        _summary_key(self.head_name, metric_key.MetricKey.LOSS):
-            _weighted_average_loss_metric_spec(
-                self._loss_fn, prediction_key.PredictionKey.LOGITS,
-                self.label_name, self.weight_column_name)
-    }
+  def _default_metrics(self, eval_loss, predictions, labels, weights):
+    """Returns a dict of metrics keyed by name."""
+    with ops.name_scope("default_metrics", values=(
+        [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
+      classes = predictions[prediction_key.PredictionKey.CLASSES]
+      logistic = predictions[prediction_key.PredictionKey.LOGISTIC]
 
-    # TODO(b/29366811): This currently results in both an "accuracy" and an
-    # "accuracy/threshold_0.500000_mean" metric for binary classification.
-    metrics[_summary_key(self.head_name, metric_key.MetricKey.ACCURACY)] = (
-        metric_spec.MetricSpec(metrics_lib.streaming_accuracy,
-                               prediction_key.PredictionKey.CLASSES,
-                               self.label_name, self.weight_column_name))
+      metrics = {_summary_key(self.head_name, mkey.LOSS):
+                 metrics_lib.streaming_mean(eval_loss)}
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
+      metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
+          metrics_lib.streaming_accuracy(classes, labels, weights))
+      metrics[_summary_key(self.head_name, mkey.PREDICTION_MEAN)] = (
+          _predictions_streaming_mean(logistic, weights))
+      metrics[_summary_key(self.head_name, mkey.LABEL_MEAN)] = (
+          _indicator_labels_streaming_mean(labels, weights))
 
-    def _add_binary_metric(key, metric_fn):
-      metrics[_summary_key(self.head_name, key)] = metric_spec.MetricSpec(
-          metric_fn, prediction_key.PredictionKey.LOGISTIC, self.label_name,
-          self.weight_column_name)
+      # Also include the streaming mean of the label as an accuracy baseline, as
+      # a reminder to users.
+      metrics[_summary_key(self.head_name, mkey.ACCURACY_BASELINE)] = (
+          _indicator_labels_streaming_mean(labels, weights))
+      metrics[_summary_key(self.head_name, mkey.AUC)] = (
+          _streaming_auc(logistic, labels, weights))
 
-    _add_binary_metric(metric_key.MetricKey.PREDICTION_MEAN,
-                       _predictions_streaming_mean)
-    _add_binary_metric(metric_key.MetricKey.LABEL_MEAN,
-                       _indicator_labels_streaming_mean)
+      for threshold in self._thresholds:
+        metrics[_summary_key(
+            self.head_name, mkey.ACCURACY_MEAN % threshold)] = (
+                _streaming_accuracy_at_threshold(logistic, labels, weights,
+                                                 threshold))
+        # Precision for positive examples.
+        metrics[_summary_key(
+            self.head_name, mkey.PRECISION_MEAN % threshold)] = (
+                _streaming_precision_at_threshold(logistic, labels, weights,
+                                                  threshold))
+        # Recall for positive examples.
+        metrics[_summary_key(
+            self.head_name, mkey.RECALL_MEAN % threshold)] = (
+                _streaming_recall_at_threshold(logistic, labels, weights,
+                                               threshold))
 
-    # Also include the streaming mean of the label as an accuracy baseline, as
-    # a reminder to users.
-    _add_binary_metric(metric_key.MetricKey.ACCURACY_BASELINE,
-                       _indicator_labels_streaming_mean)
-
-    _add_binary_metric(metric_key.MetricKey.AUC, _streaming_auc)
-
-    for threshold in self._thresholds:
-      _add_binary_metric(metric_key.MetricKey.ACCURACY_MEAN % threshold,
-                         _accuracy_at_threshold(threshold))
-      # Precision for positive examples.
-      _add_binary_metric(
-          metric_key.MetricKey.PRECISION_MEAN % threshold,
-          _streaming_at_threshold(metrics_lib.streaming_precision_at_thresholds,
-                                  threshold),)
-      # Recall for positive examples.
-      _add_binary_metric(metric_key.MetricKey.RECALL_MEAN % threshold,
-                         _streaming_at_threshold(
-                             metrics_lib.streaming_recall_at_thresholds,
-                             threshold))
     return metrics
 
 
@@ -813,27 +796,24 @@ class _MultiClassHead(_SingleHead):
         logits = nn.bias_add(logits, centered_bias)
 
       predictions = self._logits_to_predictions(logits)
+      weight_tensor = _weight_tensor(features, self.weight_column_name)
       loss = None
       train_op = None
       eval_metric_ops = None
       if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
         labels_tensor = _to_labels_tensor(labels, self._label_name,
                                           self._logits_dimension)
-        loss = _training_loss(
-            features,
-            labels_tensor,
-            logits,
-            loss_fn=self._loss_fn,
-            weight_column_name=self.weight_column_name,
-            head_name=self.head_name)
+        loss, weighted_average_loss = _loss(
+            self._loss_fn(logits, labels_tensor), weight_tensor)
+        logging_ops.scalar_summary(
+            _summary_key(self.head_name, mkey.LOSS), weighted_average_loss)
+
         if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
           train_op = _train_op(loss, labels_tensor, train_op_fn, centered_bias,
                                self.logits_dimension, self._loss_fn)
-        # MultiHead depends on labels being passed as a dict, not a single
-        # tensor.
-        eval_metric_ops = _eval_metric_ops(self._default_metrics(), features,
-                                           {self._label_name: labels_tensor},
-                                           predictions)
+        eval_metric_ops = self._default_metrics(weighted_average_loss,
+                                                predictions, labels_tensor,
+                                                weight_tensor)
     return model_fn.ModelFnOps(
         mode=mode,
         predictions=predictions,
@@ -863,112 +843,59 @@ class _MultiClassHead(_SingleHead):
                   logits, 1, name=prediction_key.PredictionKey.CLASSES)
       }
 
-  def _metric_spec(self, metric_fn, prediction_name):
-    return metric_spec.MetricSpec(metric_fn, prediction_name, self.label_name,
-                                  self.weight_column_name)
+  def _default_metrics(self, eval_loss, predictions, labels, weights):
+    """Returns a dict of metrics keyed by name."""
+    with ops.name_scope("default_metrics", values=(
+        [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
+      classes = predictions[prediction_key.PredictionKey.CLASSES]
+      probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
+      logits = predictions[prediction_key.PredictionKey.LOGITS]
 
-  def _default_metrics(self):
-    """Returns a dict of `MetricSpec` objects keyed by name."""
+      metrics = {_summary_key(self.head_name, mkey.LOSS):
+                 metrics_lib.streaming_mean(eval_loss)}
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
+      metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
+          metrics_lib.streaming_accuracy(classes, labels, weights))
+      metrics[_summary_key(self.head_name, mkey.AUC)] = (
+          _streaming_auc_with_class_id_label(
+              probabilities, labels, weights, self.logits_dimension))
 
-    def _streaming_auc_with_class_id_label(predictions, labels, weights=None):
-      indicator_labels = _class_id_labels_to_indicator(
-          labels, num_classes=self.logits_dimension)
-      return _streaming_auc(predictions, indicator_labels, weights)
-
-    loss_key = _summary_key(self.head_name, metric_key.MetricKey.LOSS)
-    accuracy_key = _summary_key(self.head_name, metric_key.MetricKey.ACCURACY)
-    auc_key = _summary_key(self.head_name, metric_key.MetricKey.AUC)
-    metrics = {
-        loss_key:
-            _weighted_average_loss_metric_spec(
-                self._loss_fn, prediction_key.PredictionKey.LOGITS,
-                self.label_name, self.weight_column_name),
-        # TODO(b/29366811): This currently results in both an "accuracy" and an
-        # "accuracy/threshold_0.500000_mean" metric for binary classification.
-        accuracy_key:
-            self._metric_spec(metrics_lib.streaming_accuracy,
-                              prediction_key.PredictionKey.CLASSES),
-        auc_key:
-            self._metric_spec(_streaming_auc_with_class_id_label,
-                              prediction_key.PredictionKey.PROBABILITIES)
-    }
-
-    def _class_predictions_streaming_mean(predictions,
-                                          labels,
-                                          weights=None,
-                                          class_id=None):
-      del labels
-      return metrics_lib.streaming_mean(
-          array_ops.where(
-              math_ops.equal(
-                  math_ops.to_int32(class_id), math_ops.to_int32(predictions)),
-              array_ops.ones_like(predictions),
-              array_ops.zeros_like(predictions)),
-          weights=weights)
-
-    def _class_labels_streaming_mean(predictions,
-                                     labels,
-                                     weights=None,
-                                     class_id=None):
-      del predictions
-      assert class_id is not None
-      return metrics_lib.streaming_mean(
-          array_ops.where(
-              math_ops.equal(
-                  math_ops.to_int32(class_id), math_ops.to_int32(labels)),
-              array_ops.ones_like(labels), array_ops.zeros_like(labels)),
-          weights=weights)
-
-    def _class_streaming_auc(predictions, labels, weights=None, class_id=None):
-      assert class_id is not None
-      indicator_labels = _class_id_labels_to_indicator(
-          labels, num_classes=self.logits_dimension)
-      return _streaming_auc(
-          predictions, indicator_labels, weights=weights, class_id=class_id)
-
-    for class_id in self._metric_class_ids:
-
-      # TODO(ptucker): Add per-class accuracy, precision, recall.
-
-      prediction_mean_key = _summary_key(
-          self.head_name, metric_key.MetricKey.CLASS_PREDICTION_MEAN % class_id)
-      label_mean_key = _summary_key(self.head_name,
-                                    metric_key.MetricKey.CLASS_LABEL_MEAN %
-                                    class_id)
-      probability_mean_key = _summary_key(
-          self.head_name,
-          metric_key.MetricKey.CLASS_PROBABILITY_MEAN % class_id)
-      logits_mean_key = _summary_key(self.head_name,
-                                     metric_key.MetricKey.CLASS_LOGITS_MEAN %
-                                     class_id)
-      auc_key = _summary_key(self.head_name,
-                             metric_key.MetricKey.CLASS_AUC % class_id)
-
-      metrics[prediction_mean_key] = self._metric_spec(
-          functools.partial(
-              _class_predictions_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.CLASSES)
-      metrics[label_mean_key] = self._metric_spec(
-          functools.partial(
-              _class_labels_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.PROBABILITIES)
-      metrics[probability_mean_key] = self._metric_spec(
-          functools.partial(
-              _predictions_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.PROBABILITIES)
-      metrics[logits_mean_key] = self._metric_spec(
-          functools.partial(
-              _predictions_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.LOGITS)
-      metrics[auc_key] = self._metric_spec(
-          functools.partial(
-              _class_streaming_auc, class_id=class_id),
-          prediction_key.PredictionKey.LOGITS)
+      for class_id in self._metric_class_ids:
+        # TODO(ptucker): Add per-class accuracy, precision, recall.
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_PREDICTION_MEAN % class_id)] = (
+                _class_predictions_streaming_mean(classes, weights, class_id))
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_LABEL_MEAN % class_id)] = (
+                _class_labels_streaming_mean(labels, weights, class_id))
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_PROBABILITY_MEAN % class_id)] = (
+                _predictions_streaming_mean(probabilities, weights, class_id))
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
+                _predictions_streaming_mean(logits, weights, class_id))
+        metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
+            _class_streaming_auc(logits, labels, weights, class_id,
+                                 self.logits_dimension))
 
     return metrics
 
 
 def _to_labels_tensor(labels, label_name, num_classes=None):
+  """Returns label as a tensor, converting from sparse to dense if needed.
+
+  Args:
+    labels: Label tensor or a dict containig labels.
+    label_name: Label name if labels is a dict.
+    num_classes: Number of classes.
+
+  Returns:
+    Dense label tensor. If label is sparse, it will be converted to dense.
+
+  Raises:
+    ValueError: if label is sparse and num_classes is not provided or <2
+  """
   labels = labels[label_name] if isinstance(labels, dict) else labels
   labels = framework_lib.convert_to_tensor_or_sparse_tensor(labels)
   if isinstance(labels, sparse_tensor.SparseTensor):
@@ -1023,19 +950,20 @@ class _BinarySvmHead(_BinaryLogisticHead):
                   name=prediction_key.PredictionKey.CLASSES)
       }
 
-  def _default_metrics(self):
+  def _default_metrics(self, eval_loss, predictions, labels, weights):
     """See `_MultiClassHead`."""
-    metrics = {
-        _summary_key(self.head_name, metric_key.MetricKey.LOSS):
-            _weighted_average_loss_metric_spec(
-                self._loss_fn, prediction_key.PredictionKey.LOGITS,
-                self.label_name, self.weight_column_name)
-    }
-    metrics[_summary_key(self.head_name, metric_key.MetricKey.ACCURACY)] = (
-        metric_spec.MetricSpec(metrics_lib.streaming_accuracy,
-                               prediction_key.PredictionKey.CLASSES,
-                               self.label_name, self.weight_column_name))
-    # TODO(sibyl-vie3Poto): add more metrics relevant for svms.
+    with ops.name_scope("default_metrics", values=(
+        [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
+      metrics = {_summary_key(self.head_name, mkey.LOSS):
+                 metrics_lib.streaming_mean(eval_loss)}
+
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
+      classes = predictions[prediction_key.PredictionKey.CLASSES]
+      metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
+          metrics_lib.streaming_accuracy(classes, labels, weights))
+      # TODO(sibyl-vie3Poto): add more metrics relevant for svms.
+
     return metrics
 
 
@@ -1077,69 +1005,39 @@ class _MultiLabelHead(_MultiClassHead):
                   name=prediction_key.PredictionKey.CLASSES)
       }
 
-  def _metric_spec(self, metric_fn, prediction_name):
-    return metric_spec.MetricSpec(metric_fn, prediction_name, self.label_name,
-                                  self.weight_column_name)
+  def _default_metrics(self, eval_loss, predictions, labels, weights):
+    """Returns a dict of metrics keyed by name."""
+    with ops.name_scope("default_metrics", values=(
+        [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
+      classes = predictions[prediction_key.PredictionKey.CLASSES]
+      probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
+      logits = predictions[prediction_key.PredictionKey.LOGITS]
 
-  def _default_metrics(self):
-    """Returns a dict of `MetricSpec` objects keyed by name."""
-    loss_key = _summary_key(self.head_name, metric_key.MetricKey.LOSS)
-    accuracy_key = _summary_key(self.head_name, metric_key.MetricKey.ACCURACY)
-    auc_key = _summary_key(self.head_name, metric_key.MetricKey.AUC)
+      metrics = {_summary_key(self.head_name, mkey.LOSS):
+                 metrics_lib.streaming_mean(eval_loss)}
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
+      metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
+          metrics_lib.streaming_accuracy(classes, labels, weights))
+      metrics[_summary_key(self.head_name, mkey.AUC)] = _streaming_auc(
+          probabilities, labels, weights)
 
-    metrics = {
-        loss_key:
-            _weighted_average_loss_metric_spec(
-                self._loss_fn, prediction_key.PredictionKey.LOGITS,
-                self.label_name, self.weight_column_name),
-        # TODO(b/29366811): This currently results in both an "accuracy" and an
-        # "accuracy/threshold_0.500000_mean" metric for binary classification.
-        accuracy_key:
-            self._metric_spec(metrics_lib.streaming_accuracy,
-                              prediction_key.PredictionKey.CLASSES),
-        auc_key:
-            self._metric_spec(_streaming_auc,
-                              prediction_key.PredictionKey.PROBABILITIES),
-    }
-
-    for class_id in self._metric_class_ids:
-
-      # TODO(ptucker): Add per-class accuracy, precision, recall.
-
-      prediction_mean_key = _summary_key(
-          self.head_name, metric_key.MetricKey.CLASS_PREDICTION_MEAN % class_id)
-      label_mean_key = _summary_key(self.head_name,
-                                    metric_key.MetricKey.CLASS_LABEL_MEAN %
-                                    class_id)
-      probability_mean_key = _summary_key(
-          self.head_name,
-          metric_key.MetricKey.CLASS_PROBABILITY_MEAN % class_id)
-      logits_mean_key = _summary_key(self.head_name,
-                                     metric_key.MetricKey.CLASS_LOGITS_MEAN %
-                                     class_id)
-      auc_key = _summary_key(self.head_name,
-                             metric_key.MetricKey.CLASS_AUC % class_id)
-
-      metrics[prediction_mean_key] = self._metric_spec(
-          functools.partial(
-              _predictions_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.CLASSES)
-      metrics[label_mean_key] = self._metric_spec(
-          functools.partial(
-              _indicator_labels_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.CLASSES)
-      metrics[probability_mean_key] = self._metric_spec(
-          functools.partial(
-              _predictions_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.PROBABILITIES)
-      metrics[logits_mean_key] = self._metric_spec(
-          functools.partial(
-              _predictions_streaming_mean, class_id=class_id),
-          prediction_key.PredictionKey.LOGITS)
-      metrics[auc_key] = self._metric_spec(
-          functools.partial(
-              _streaming_auc, class_id=class_id),
-          prediction_key.PredictionKey.LOGITS)
+      for class_id in self._metric_class_ids:
+        # TODO(ptucker): Add per-class accuracy, precision, recall.
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_PREDICTION_MEAN % class_id)] = (
+                _predictions_streaming_mean(classes, weights, class_id))
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_LABEL_MEAN % class_id)] = (
+                _indicator_labels_streaming_mean(labels, weights, class_id))
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_PROBABILITY_MEAN % class_id)] = (
+                _predictions_streaming_mean(probabilities, weights, class_id))
+        metrics[_summary_key(
+            self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
+                _predictions_streaming_mean(logits, weights, class_id))
+        metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
+            _streaming_auc(logits, labels, weights, class_id))
 
     return metrics
 
@@ -1363,13 +1261,32 @@ def _weight_tensor(features, weight_column_name):
   if not weight_column_name:
     return None
   with ops.name_scope(None, "weight_tensor",
-                      tuple(six.itervalues(features))) as name:
-    return array_ops.reshape(
-        math_ops.to_float(features[weight_column_name]), shape=(-1,), name=name)
+                      tuple(six.itervalues(features))):
+    return math_ops.to_float(features[weight_column_name])
 
 
-def _loss(loss_unweighted, weight, name):
-  """Returns a tuple of (loss, weighted_average_loss)."""
+def _loss(loss_unweighted, weight, name="loss"):
+  """Returns a tuple of (loss, weighted_average_loss).
+
+  loss is used for gradient descent while weighted_average_loss is used for
+  summaries to be backward compatible.
+
+  loss is different from the loss reported on the tensorboard as we
+  should respect the example weights when computing the gradient.
+
+    L = sum_{i} w_{i} * l_{i} / B
+
+  where B is the number of examples in the batch, l_{i}, w_{i} are individual
+  losses, and example weight.
+
+  Args:
+    loss_unweighted: Unweighted loss
+    weight: Weight tensor
+    name: Optional name
+
+  Returns:
+    A tuple of (loss, weighted_average_loss)
+  """
   with ops.name_scope(name, values=(loss_unweighted, weight)) as name_scope:
     if weight is None:
       loss = math_ops.reduce_mean(loss_unweighted, name=name_scope)
@@ -1445,49 +1362,6 @@ def _summary_key(head_name, val):
   return "%s/%s" % (val, head_name) if head_name else val
 
 
-def _training_loss(features,
-                   labels,
-                   logits,
-                   loss_fn,
-                   weight_column_name=None,
-                   head_name=None):
-  """Returns training loss tensor.
-
-  Training loss is different from the loss reported on the tensorboard as we
-  should respect the example weights when computing the gradient.
-
-    L = sum_{i} w_{i} * l_{i} / B
-
-  where B is the number of examples in the batch, l_{i}, w_{i} are individual
-  losses, and example weight.
-
-  Args:
-    features: Features `dict`.
-    labels: Either a `Tensor` for labels or in multihead case, a `dict` of
-      string to `Tensor`.
-    logits: logits, a float `Tensor`. Shape is `(batch_size, logits_dimension)`.
-    loss_fn: Function taking `logits` and `labels`, and returning the raw
-      unweighted loss.
-    weight_column_name: Key for weights `Tensor` in `features`, if applicable.
-    head_name: Head name, used for summary.
-
-  Returns:
-    A loss `Output`.
-  """
-  with ops.name_scope(None, "training_loss",
-                      tuple(six.itervalues(features)) +
-                      (labels, logits)) as name:
-    loss, weighted_average_loss = _loss(
-        loss_fn(logits, labels),
-        _weight_tensor(features, weight_column_name),
-        name=name)
-    # The tag must be same as the tag for eval loss, so the losses will show up
-    # in the same graph in tensorboard.
-    logging_ops.scalar_summary(
-        _summary_key(head_name, "loss"), weighted_average_loss)
-    return loss
-
-
 def _train_op(loss,
               labels,
               train_op_fn,
@@ -1507,15 +1381,6 @@ def _train_op(loss,
     return train_op
 
 
-def _eval_metric_ops(metrics, features, labels, predictions):
-  with ops.name_scope(None, "metrics",
-                      (tuple(six.itervalues(features)) +
-                       (labels,) + tuple(six.itervalues(predictions)))):
-    # pylint: disable=protected-access
-    return estimator._make_metrics_ops(metrics, features, labels, predictions)
-    # pylint: enable=protected-access
-
-
 def _sigmoid_cross_entropy_loss(logits, labels):
   with ops.name_scope(None, "sigmoid_cross_entropy_loss",
                       (logits, labels)) as name:
@@ -1531,25 +1396,7 @@ def _float_weights_or_none(weights):
     return math_ops.to_float(weights, name=name)
 
 
-def _weighted_average_loss_metric_spec(loss_fn, pred_key, label_key,
-                                       weight_key):
-
-  def _streaming_weighted_average_loss(predictions, labels, weights=None):
-    loss_unweighted = loss_fn(predictions, labels)
-    if weights is not None:
-      weights = math_ops.to_float(weights)
-    _, weighted_average_loss = _loss(loss_unweighted, weights, name="eval_loss")
-    return metrics_lib.streaming_mean(weighted_average_loss)
-
-  return metric_spec.MetricSpec(_streaming_weighted_average_loss, pred_key,
-                                label_key, weight_key)
-
-
-def _indicator_labels_streaming_mean(predictions,
-                                     labels,
-                                     weights=None,
-                                     class_id=None):
-  del predictions
+def _indicator_labels_streaming_mean(labels, weights=None, class_id=None):
   labels = ops.convert_to_tensor(labels)
   if class_id is not None:
     labels = labels[:, class_id]
@@ -1557,11 +1404,12 @@ def _indicator_labels_streaming_mean(predictions,
 
 
 def _predictions_streaming_mean(predictions,
-                                labels,
                                 weights=None,
                                 class_id=None):
-  del labels
   predictions = ops.convert_to_tensor(predictions)
+  if weights is not None:
+    weights = ops.convert_to_tensor(weights)
+
   if class_id is not None:
     predictions = predictions[:, class_id]
   return metrics_lib.streaming_mean(predictions, weights=weights)
@@ -1574,6 +1422,39 @@ def _class_id_labels_to_indicator(labels, num_classes):
   with ops.control_dependencies((_assert_labels_rank(labels),)):
     labels = array_ops.reshape(labels, (-1,))
   return array_ops.one_hot(labels, depth=num_classes, axis=-1)
+
+
+def _class_predictions_streaming_mean(predictions, weights, class_id):
+  return metrics_lib.streaming_mean(
+      array_ops.where(
+          math_ops.equal(
+              math_ops.to_int32(class_id), math_ops.to_int32(predictions)),
+          array_ops.ones_like(predictions),
+          array_ops.zeros_like(predictions)),
+      weights=weights)
+
+
+def _class_labels_streaming_mean(labels, weights, class_id):
+  return metrics_lib.streaming_mean(
+      array_ops.where(
+          math_ops.equal(
+              math_ops.to_int32(class_id), math_ops.to_int32(labels)),
+          array_ops.ones_like(labels), array_ops.zeros_like(labels)),
+      weights=weights)
+
+
+def _class_streaming_auc(predictions, labels, weights, class_id,
+                         num_classes):
+  indicator_labels = _class_id_labels_to_indicator(
+      labels, num_classes=num_classes)
+  return _streaming_auc(predictions, indicator_labels, weights, class_id)
+
+
+def _streaming_auc_with_class_id_label(predictions, labels, weights,
+                                       num_classes):
+  indicator_labels = _class_id_labels_to_indicator(
+      labels, num_classes=num_classes)
+  return _streaming_auc(predictions, indicator_labels, weights)
 
 
 def _streaming_auc(predictions, labels, weights=None, class_id=None):
@@ -1599,25 +1480,23 @@ def _assert_class_id(class_id, num_classes=None):
       raise ValueError("Invalid class_id %s." % class_id)
 
 
-def _accuracy_at_threshold(threshold):
-
-  def _accuracy_metric(predictions, labels, weights=None):
-    threshold_predictions = math_ops.to_float(
-        math_ops.greater_equal(predictions, threshold))
-    return metrics_lib.streaming_accuracy(
-        predictions=threshold_predictions, labels=labels, weights=weights)
-
-  return _accuracy_metric
+def _streaming_accuracy_at_threshold(predictions, labels, weights, threshold):
+  threshold_predictions = math_ops.to_float(
+      math_ops.greater_equal(predictions, threshold))
+  return metrics_lib.streaming_accuracy(
+      predictions=threshold_predictions, labels=labels, weights=weights)
 
 
-def _streaming_at_threshold(streaming_metrics_fn, threshold):
+def _streaming_precision_at_threshold(predictions, labels, weights, threshold):
+  precision_tensor, update_op = metrics_lib.streaming_precision_at_thresholds(
+      predictions, labels=labels, thresholds=(threshold,),
+      weights=_float_weights_or_none(weights))
+  return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
-  def _streaming_metrics(predictions, labels, weights=None):
-    precision_tensor, update_op = streaming_metrics_fn(
-        predictions,
-        labels=labels,
-        thresholds=(threshold,),
-        weights=_float_weights_or_none(weights))
-    return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
-  return _streaming_metrics
+def _streaming_recall_at_threshold(predictions, labels, weights, threshold):
+  precision_tensor, update_op = metrics_lib.streaming_recall_at_thresholds(
+      predictions, labels=labels, thresholds=(threshold,),
+      weights=_float_weights_or_none(weights))
+  return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
+
