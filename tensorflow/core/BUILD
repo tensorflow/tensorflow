@@ -77,6 +77,7 @@ load(
     "tf_opts_nortti_if_android",
     "cc_header_only_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
@@ -111,7 +112,10 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -1852,6 +1856,35 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
+)
+
+if_mkl(
+    tf_cc_test_mkl(
+        name = "mkl_related_tests",
+        size = "small",
+        srcs = ["graph/mkl_optimizer_merge_test.cc"],
+        linkstatic = tf_kernel_tests_linkstatic(),
+        deps = [
+            ":core",
+            ":core_cpu",
+            ":core_cpu_internal",
+            ":direct_session_internal",
+            ":framework",
+            ":framework_internal",
+            ":lib",
+            ":lib_internal",
+            ":ops",
+            ":protos_all_cc",
+            ":test",
+            ":test_main",
+            ":testlib",
+            "//tensorflow/cc:cc_ops",
+            "//tensorflow/cc:scope",
+            "//tensorflow/cc:sendrecv_ops",
+            "//tensorflow/core/kernels:ops_util",
+            "//third_party/eigen3",
+        ],
+    ),
 )
 
 tf_cc_tests_gpu(
