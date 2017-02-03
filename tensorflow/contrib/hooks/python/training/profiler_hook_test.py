@@ -23,11 +23,11 @@ import shutil
 import tempfile
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.contrib.hooks.python.training import ProfilerHook
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 
 
@@ -51,16 +51,15 @@ class ProfilerHookTest(test.TestCase):
 
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
-      basic_session_run_hooks.ProfilerHook(save_secs=10, save_steps=20)
+      ProfilerHook(save_secs=10, save_steps=20)
 
   def test_raise_in_none_secs_and_steps(self):
     with self.assertRaises(ValueError):
-      basic_session_run_hooks.ProfilerHook(save_secs=None, save_steps=None)
+      ProfilerHook(save_secs=None, save_steps=None)
 
   def test_save_secs_saves_in_first_step(self):
     with self.graph.as_default():
-      hook = basic_session_run_hooks.ProfilerHook(
-          save_secs=2, output_dir=self.output_dir)
+      hook = ProfilerHook(save_secs=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
         sess.run(self.train_op)
         self.assertEqual(1, self._count_timeline_files())
@@ -72,8 +71,7 @@ class ProfilerHookTest(test.TestCase):
 
     with self.graph.as_default():
       mock_time.return_value = current_time
-      hook = basic_session_run_hooks.ProfilerHook(
-          save_secs=2, output_dir=self.output_dir)
+      hook = ProfilerHook(save_secs=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
         sess.run(self.train_op)  # Saved.
         self.assertEqual(1, self._count_timeline_files())
@@ -97,8 +95,7 @@ class ProfilerHookTest(test.TestCase):
 
   def test_save_steps_saves_in_first_step(self):
     with self.graph.as_default():
-      hook = basic_session_run_hooks.ProfilerHook(
-          save_secs=2, output_dir=self.output_dir)
+      hook = ProfilerHook(save_secs=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
         sess.run(self.train_op)  # Saved.
         sess.run(self.train_op)  # Not saved.
@@ -106,8 +103,7 @@ class ProfilerHookTest(test.TestCase):
 
   def test_save_steps_saves_periodically(self):
     with self.graph.as_default():
-      hook = basic_session_run_hooks.ProfilerHook(
-          save_steps=2, output_dir=self.output_dir)
+      hook = ProfilerHook(save_steps=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
         self.assertEqual(0, self._count_timeline_files())
         sess.run(self.train_op)  # Saved.

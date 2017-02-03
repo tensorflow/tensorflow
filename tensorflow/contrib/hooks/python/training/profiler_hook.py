@@ -23,9 +23,12 @@ from __future__ import print_function
 
 import os.path
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
+from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 

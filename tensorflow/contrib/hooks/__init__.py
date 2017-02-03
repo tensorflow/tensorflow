@@ -22,7 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
-from tensorflow.contrib.hooks.python.hooks import *
+from tensorflow.contrib.hooks.python.training import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented

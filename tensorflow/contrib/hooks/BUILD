@@ -12,8 +12,8 @@ py_library(
     name = "hooks",
     srcs = [
         "__init__.py",
-        "python/hooks/__init__.py",
-        "python/hooks/profiler_hook.py",
+        "python/training/__init__.py",
+        "python/training/profiler_hook.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -29,10 +29,10 @@ py_library(
 py_test(
     name = "profiler_hook_test",
     size = "small",
-    srcs = ["python/hooks/profiler_hook_test.py"],
+    srcs = ["python/training/profiler_hook_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":session_run_hooks",
+        ":hooks",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",

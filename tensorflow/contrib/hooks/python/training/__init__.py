@@ -19,4 +19,4 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.hooks.python.hooks.profiler_hook import ProfilerHook
+from tensorflow.contrib.hooks.python.training.profiler_hook import ProfilerHook
