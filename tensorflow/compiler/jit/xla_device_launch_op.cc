@@ -117,7 +117,7 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     auto start_time = env->NowMicros();
     auto result = compiler->client()->Execute(
         kernel->computation, arg_ptrs, &kernel->xla_output_shape,
-        /*compilation_options=*/nullptr, &profile);
+        /*execution_options=*/nullptr, &profile);
     auto elapsed = env->NowMicros() - start_time;
     OP_REQUIRES(ctx, result.ok(), result.status());
 

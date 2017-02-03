@@ -61,11 +61,11 @@ class HloModuleConfig {
   int64 replica_count() const { return replica_count_; }
 
   // Sets/returns settings that affect compilation of the module.
-  const CompilationOptions& compilation_options() const {
-    return compilation_options_;
+  const ExecutionOptions& execution_options() const {
+    return execution_options_;
   }
-  void set_compilation_options(CompilationOptions options) {
-    compilation_options_.Swap(&options);
+  void set_execution_options(ExecutionOptions options) {
+    execution_options_.Swap(&options);
   }
 
   // Return a string which unambiguously represents all the fields of this data
@@ -95,7 +95,7 @@ class HloModuleConfig {
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
 
-  CompilationOptions compilation_options_;
+  ExecutionOptions execution_options_;
 };
 
 }  // namespace xla
