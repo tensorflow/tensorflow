@@ -90,6 +90,7 @@ class RichLine(object):
     ret = RichLine()
     if isinstance(other, str):
       ret.text = self.text + other
+      ret.font_attr_segs = self.font_attr_segs[:]
       return ret
     elif isinstance(other, RichLine):
       ret.text = self.text + other.text
