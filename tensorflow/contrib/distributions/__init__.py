@@ -42,6 +42,7 @@ initialized with parameters that define the distributions.
 @@InverseGammaWithSoftplusConcentrationRate
 @@Laplace
 @@LaplaceWithSoftplusScale
+@@Logistic
 @@Normal
 @@NormalWithSoftplusScale
 @@Poisson
@@ -99,6 +100,12 @@ representing the posterior or posterior predictive.
 
 @@softplus_inverse
 
+## Relaxed Discrete Distributions
+
+@@ExpRelaxedOneHotCategorical
+@@OneHotCategorical
+@@RelaxedBernoulli
+@@RelaxedOneHotCategorical
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -125,13 +132,17 @@ from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.laplace import *
+from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.multinomial import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
+from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.poisson import *
 from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
+from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
+from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
