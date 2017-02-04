@@ -332,7 +332,6 @@ def scalar_summary(tags, values, collections=None, name=None):
   return val
 
 
-ops.NotDifferentiable("HistogramAccumulatorSummary")
 ops.NotDifferentiable("HistogramSummary")
 ops.NotDifferentiable("ImageSummary")
 ops.NotDifferentiable("AudioSummary")
