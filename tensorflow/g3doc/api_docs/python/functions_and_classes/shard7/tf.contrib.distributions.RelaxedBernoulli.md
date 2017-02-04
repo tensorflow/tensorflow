@@ -1,165 +1,140 @@
-A Transformed Distribution.
+RelaxedBernoulli distribution with temperature and logits parameters.
 
-A `TransformedDistribution` models `p(y)` given a base distribution `p(x)`,
-and a deterministic, invertible, differentiable transform, `Y = g(X)`. The
-transform is typically an instance of the `Bijector` class and the base
-distribution is typically an instance of the `Distribution` class.
+The RelaxedBernoulli is a distribution over the unit interval (0,1), which
+continuously approximates a Bernoulli. The degree of approximation is
+controlled by a temperature: as the temperaturegoes to 0 the RelaxedBernoulli
+becomes discrete with a distribution described by the `logits` or `probs`
+parameters, as the temperature goes to infinity the RelaxedBernoulli
+becomes the constant distribution that is identically 0.5.
 
-A `Bijector` is expected to implement the following functions:
-- `forward`,
-- `inverse`,
-- `inverse_log_det_jacobian`.
-The semantics of these functions are outlined in the `Bijector` documentation.
+The RelaxedBernoulli distribution is a reparameterized continuous
+distribution that is the binary special case of the RelaxedOneHotCategorical
+distribution (Maddison et al., 2016; Jang et al., 2016). For details on the
+binary special case see the appendix of Maddison et al. (2016) where it is
+referred to as BinConcrete. If you use this distribution, please cite both
+papers.
 
-We now describe how a `TransformedDistribution` alters the input/outputs of a
-`Distribution` associated with a random variable (rv) `X`.
+Some care needs to be taken for loss functions that depend on the
+log-probability of RelaxedBernoullis, because computing log-probabilities of
+the RelaxedBernoulli can suffer from underflow issues. In many case loss
+functions such as these are invariant under invertible transformations of
+the random variables. The KL divergence, found in the variational autoencoder
+loss, is an example. Because RelaxedBernoullis are sampled by by a Logistic
+random variable followed by a `tf.sigmoid` op, one solution is to treat
+the Logistic as the random variable and `tf.sigmoid` as downstream. The
+KL divergences of two Logistics, which are always followed by a `tf.sigmoid`
+op, is equivalent to evaluating KL divergences of RelaxedBernoulli samples.
+See Maddison et al., 2016 for more details where this distribution is called
+the BinConcrete.
 
-Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
-of random variable `Y`; write the probability density function `pdf(Y=y) :=
-d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
-i.e., a non-random, continuous, differentiable, and invertible function.
-Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
-of `g` evaluated at `x`.
+An alternative approach is to evaluate Bernoulli log probability or KL
+directly on relaxed samples, as done in Jang et al., 2016. In this case,
+guarantees on the loss are usually violated. For instance, using a Bernoulli
+KL in a relaxed ELBO is no longer a lower bound on the log marginal
+probability of the observation. Thus care and early stopping are important.
 
-A `TransformedDistribution` implements the following operations:
+#### Examples
 
-  * `sample`:
-
-    Mathematically:
-
-    ```none
-    Y = g(X)
-    ```
-
-    Programmatically:
-
-    ```python
-    return bijector.forward(distribution.sample(...))
-    ```
-
-  * `log_prob`:
-
-    Mathematically:
-
-    ```none
-    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
-                         (log o abs o det o J o g^{-1})(y)
-    ```
-
-    Programmatically:
-
-    ```python
-    return (distribution.log_prob(bijector.inverse(y)) +
-            bijector.inverse_log_det_jacobian(y))
-    ```
-
-  * `log_cdf`:
-
-    Mathematically:
-
-    ```none
-    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
-    ```
-
-    Programmatically:
-
-    ```python
-    return distribution.log_cdf(bijector.inverse(x))
-    ```
-
-  * and similarly for: `cdf`, `prob`, `log_survival_function`,
-   `survival_function`.
-
-A simple example constructing a Log-Normal distribution from a Normal
-distribution:
+Creates three continuous distributions, which approximate 3 Bernoullis with
+probabilities (0.1, 0.5, 0.4). Samples from these distributions will be in
+the unit interval (0,1).
 
 ```python
-ds = tf.contrib.distributions
-log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
-  bijector=ds.bijector.Exp(),
-  name="LogNormalTransformedDistribution")
+temperature = 0.5
+p = [0.1, 0.5, 0.4]
+dist = RelaxedBernoulli(temperature, probs=p)
 ```
 
-A `LogNormal` made from callables:
+Creates three continuous distributions, which approximate 3 Bernoullis with
+logits (-2, 2, 0). Samples from these distributions will be in
+the unit interval (0,1).
 
 ```python
-ds = tf.contrib.distributions
-log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
-  bijector=ds.bijector.Inline(
-    forward_fn=tf.exp,
-    inverse_fn=tf.log,
-    inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
-  name="LogNormalTransformedDistribution")
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = RelaxedBernoulli(temperature, logits=logits)
 ```
 
-Another example constructing a Normal from a StandardNormal:
+Creates three continuous distributions, whose sigmoid approximate 3 Bernoullis
+with logits (-2, 2, 0).
 
 ```python
-ds = tf.contrib.distributions
-normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=0, sigma=1),
-  bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
-  name="NormalTransformedDistribution")
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = Logistic(logits/temperature, 1./temperature)
+samples = dist.sample()
+sigmoid_samples = tf.sigmoid(samples)
+# sigmoid_samples has the same distribution as samples from
+# RelaxedBernoulli(temperature, logits=logits)
 ```
 
-A `TransformedDistribution`'s batch- and event-shape are implied by the base
-distribution unless explicitly overridden by `batch_shape` or `event_shape`
-arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
-permitted only if the base distribution has scalar batch-shape (event-shape).
-The bijector is applied to the distribution as if the distribution possessed
-the overridden shape(s). The following example demonstrates how to construct a
-multivariate Normal as a `TransformedDistribution`.
+Creates three continuous distributions, which approximate 3 Bernoullis with
+logits (-2, 2, 0). Samples from these distributions will be in
+the unit interval (0,1). Because the temperature is very low, samples from
+these distributions are almost discrete, usually taking values very close to 0
+or 1.
 
 ```python
-bs = tf.contrib.distributions.bijector
-ds = tf.contrib.distributions
-# We will create two MVNs with batch_shape = event_shape = 2.
-mean = [[-1., 0],      # batch:0
-        [0., 1]]       # batch:1
-chol_cov = [[[1., 0],
-             [0, 1]],  # batch:0
-            [[1, 0],
-             [2, 2]]]  # batch:1
-mvn1 = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=0., sigma=1.),
-    bijector=bs.Affine(shift=mean, tril=chol_cov),
-    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
-    event_shape=[2])  # Valid because base_distribution.event_shape == [].
-mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
-# mvn1.log_prob(x) == mvn2.log_prob(x)
+temperature = 1e-5
+logits = [-2, 2, 0]
+dist = RelaxedBernoulli(temperature, logits=logits)
 ```
+
+Creates three continuous distributions, which approximate 3 Bernoullis with
+logits (-2, 2, 0). Samples from these distributions will be in
+the unit interval (0,1). Because the temperature is very high, samples from
+these distributions are usually close to the (0.5, 0.5, 0.5) vector.
+
+```python
+temperature = 100
+logits = [-2, 2, 0]
+dist = RelaxedBernoulli(temperature, logits=logits)
+```
+
+Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The Concrete Distribution:
+A Continuous Relaxation of Discrete Random Variables. 2016.
+
+Eric Jang, Shixiang Gu, and Ben Poole. Categorical Reparameterization with
+Gumbel-Softmax. 2016.
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.RelaxedBernoulli.__init__(temperature, logits=None, probs=None, validate_args=False, allow_nan_stats=True, name='RelaxedBernoulli')` {#RelaxedBernoulli.__init__}
 
-Construct a Transformed Distribution.
+Construct RelaxedBernoulli distributions.
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
-    instance of `Distribution`.
-*  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`. `None` means `Identity()`.
-*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
-*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `event_shape`; valid only if `distribution.is_scalar_event()`.
+*  <b>`temperature`</b>: An 0-D `Tensor`, representing the temperature
+    of a set of RelaxedBernoulli distributions. The temperature should be
+    positive.
+*  <b>`logits`</b>: An N-D `Tensor` representing the log-odds
+    of a positive event. Each entry in the `Tensor` parametrizes
+    an independent RelaxedBernoulli distribution where the probability of an
+    event is sigmoid(logits). Only one of `logits` or `probs` should be
+    passed in.
+*  <b>`probs`</b>: An N-D `Tensor` representing the probability of a positive event.
+    Each entry in the `Tensor` parameterizes an independent Bernoulli
+    distribution. Only one of `logits` or `probs` should be passed in.
 *  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
-    `bijector.name + distribution.name`.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both `probs` and `logits` are passed, or if neither.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
+#### `tf.contrib.distributions.RelaxedBernoulli.allow_nan_stats` {#RelaxedBernoulli.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -180,7 +155,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape` {#TransformedDistribution.batch_shape}
+#### `tf.contrib.distributions.RelaxedBernoulli.batch_shape` {#RelaxedBernoulli.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -197,7 +172,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape_tensor(name='batch_shape_tensor')` {#TransformedDistribution.batch_shape_tensor}
+#### `tf.contrib.distributions.RelaxedBernoulli.batch_shape_tensor(name='batch_shape_tensor')` {#RelaxedBernoulli.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -217,14 +192,14 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.bijector` {#TransformedDistribution.bijector}
+#### `tf.contrib.distributions.RelaxedBernoulli.bijector` {#RelaxedBernoulli.bijector}
 
 Function transforming x => y.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf')` {#TransformedDistribution.cdf}
+#### `tf.contrib.distributions.RelaxedBernoulli.cdf(value, name='cdf')` {#RelaxedBernoulli.cdf}
 
 Cumulative distribution function.
 
@@ -249,7 +224,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.copy(**override_parameters_kwargs)` {#TransformedDistribution.copy}
+#### `tf.contrib.distributions.RelaxedBernoulli.copy(**override_parameters_kwargs)` {#RelaxedBernoulli.copy}
 
 Creates a deep copy of the distribution.
 
@@ -272,7 +247,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.covariance(name='covariance')` {#TransformedDistribution.covariance}
+#### `tf.contrib.distributions.RelaxedBernoulli.covariance(name='covariance')` {#RelaxedBernoulli.covariance}
 
 Covariance.
 
@@ -316,28 +291,28 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.distribution` {#TransformedDistribution.distribution}
+#### `tf.contrib.distributions.RelaxedBernoulli.distribution` {#RelaxedBernoulli.distribution}
 
 Base distribution, p(x).
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.dtype` {#TransformedDistribution.dtype}
+#### `tf.contrib.distributions.RelaxedBernoulli.dtype` {#RelaxedBernoulli.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.entropy(name='entropy')` {#TransformedDistribution.entropy}
+#### `tf.contrib.distributions.RelaxedBernoulli.entropy(name='entropy')` {#RelaxedBernoulli.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape` {#TransformedDistribution.event_shape}
+#### `tf.contrib.distributions.RelaxedBernoulli.event_shape` {#RelaxedBernoulli.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -351,7 +326,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape_tensor(name='event_shape_tensor')` {#TransformedDistribution.event_shape_tensor}
+#### `tf.contrib.distributions.RelaxedBernoulli.event_shape_tensor(name='event_shape_tensor')` {#RelaxedBernoulli.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -368,14 +343,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_continuous` {#TransformedDistribution.is_continuous}
+#### `tf.contrib.distributions.RelaxedBernoulli.is_continuous` {#RelaxedBernoulli.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
+#### `tf.contrib.distributions.RelaxedBernoulli.is_scalar_batch(name='is_scalar_batch')` {#RelaxedBernoulli.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -392,7 +367,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
+#### `tf.contrib.distributions.RelaxedBernoulli.is_scalar_event(name='is_scalar_event')` {#RelaxedBernoulli.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -409,7 +384,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf')` {#TransformedDistribution.log_cdf}
+#### `tf.contrib.distributions.RelaxedBernoulli.log_cdf(value, name='log_cdf')` {#RelaxedBernoulli.log_cdf}
 
 Log cumulative distribution function.
 
@@ -438,7 +413,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
+#### `tf.contrib.distributions.RelaxedBernoulli.log_prob(value, name='log_prob')` {#RelaxedBernoulli.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -466,7 +441,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_survival_function(value, name='log_survival_function')` {#TransformedDistribution.log_survival_function}
+#### `tf.contrib.distributions.RelaxedBernoulli.log_survival_function(value, name='log_survival_function')` {#RelaxedBernoulli.log_survival_function}
 
 Log survival function.
 
@@ -495,28 +470,35 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.mean(name='mean')` {#TransformedDistribution.mean}
+#### `tf.contrib.distributions.RelaxedBernoulli.logits` {#RelaxedBernoulli.logits}
+
+Log-odds of `1`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.mean(name='mean')` {#RelaxedBernoulli.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.mode(name='mode')` {#TransformedDistribution.mode}
+#### `tf.contrib.distributions.RelaxedBernoulli.mode(name='mode')` {#RelaxedBernoulli.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.name` {#TransformedDistribution.name}
+#### `tf.contrib.distributions.RelaxedBernoulli.name` {#RelaxedBernoulli.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#TransformedDistribution.param_shapes}
+#### `tf.contrib.distributions.RelaxedBernoulli.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#RelaxedBernoulli.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -540,7 +522,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.param_static_shapes(cls, sample_shape)` {#TransformedDistribution.param_static_shapes}
+#### `tf.contrib.distributions.RelaxedBernoulli.param_static_shapes(cls, sample_shape)` {#RelaxedBernoulli.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -570,14 +552,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.parameters` {#TransformedDistribution.parameters}
+#### `tf.contrib.distributions.RelaxedBernoulli.parameters` {#RelaxedBernoulli.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
+#### `tf.contrib.distributions.RelaxedBernoulli.prob(value, name='prob')` {#RelaxedBernoulli.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -605,7 +587,14 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.reparameterization_type` {#TransformedDistribution.reparameterization_type}
+#### `tf.contrib.distributions.RelaxedBernoulli.probs` {#RelaxedBernoulli.probs}
+
+Probability of `1`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.reparameterization_type` {#RelaxedBernoulli.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -620,7 +609,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample(sample_shape=(), seed=None, name='sample')` {#TransformedDistribution.sample}
+#### `tf.contrib.distributions.RelaxedBernoulli.sample(sample_shape=(), seed=None, name='sample')` {#RelaxedBernoulli.sample}
 
 Generate samples of the specified shape.
 
@@ -642,7 +631,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.stddev(name='stddev')` {#TransformedDistribution.stddev}
+#### `tf.contrib.distributions.RelaxedBernoulli.stddev(name='stddev')` {#RelaxedBernoulli.stddev}
 
 Standard deviation.
 
@@ -669,7 +658,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.survival_function(value, name='survival_function')` {#TransformedDistribution.survival_function}
+#### `tf.contrib.distributions.RelaxedBernoulli.survival_function(value, name='survival_function')` {#RelaxedBernoulli.survival_function}
 
 Survival function.
 
@@ -695,14 +684,21 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
+#### `tf.contrib.distributions.RelaxedBernoulli.temperature` {#RelaxedBernoulli.temperature}
+
+Distribution parameter for the location.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.validate_args` {#RelaxedBernoulli.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.variance(name='variance')` {#TransformedDistribution.variance}
+#### `tf.contrib.distributions.RelaxedBernoulli.variance(name='variance')` {#RelaxedBernoulli.variance}
 
 Variance.
 

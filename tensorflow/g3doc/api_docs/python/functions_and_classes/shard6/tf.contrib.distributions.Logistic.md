@@ -1,165 +1,92 @@
-A Transformed Distribution.
+The Logistic distribution with location `loc` and `scale` parameters.
 
-A `TransformedDistribution` models `p(y)` given a base distribution `p(x)`,
-and a deterministic, invertible, differentiable transform, `Y = g(X)`. The
-transform is typically an instance of the `Bijector` class and the base
-distribution is typically an instance of the `Distribution` class.
+#### Mathematical details
 
-A `Bijector` is expected to implement the following functions:
-- `forward`,
-- `inverse`,
-- `inverse_log_det_jacobian`.
-The semantics of these functions are outlined in the `Bijector` documentation.
+The cumulative density function of this distribution is:
 
-We now describe how a `TransformedDistribution` alters the input/outputs of a
-`Distribution` associated with a random variable (rv) `X`.
-
-Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
-of random variable `Y`; write the probability density function `pdf(Y=y) :=
-d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
-i.e., a non-random, continuous, differentiable, and invertible function.
-Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
-of `g` evaluated at `x`.
-
-A `TransformedDistribution` implements the following operations:
-
-  * `sample`:
-
-    Mathematically:
-
-    ```none
-    Y = g(X)
-    ```
-
-    Programmatically:
-
-    ```python
-    return bijector.forward(distribution.sample(...))
-    ```
-
-  * `log_prob`:
-
-    Mathematically:
-
-    ```none
-    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
-                         (log o abs o det o J o g^{-1})(y)
-    ```
-
-    Programmatically:
-
-    ```python
-    return (distribution.log_prob(bijector.inverse(y)) +
-            bijector.inverse_log_det_jacobian(y))
-    ```
-
-  * `log_cdf`:
-
-    Mathematically:
-
-    ```none
-    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
-    ```
-
-    Programmatically:
-
-    ```python
-    return distribution.log_cdf(bijector.inverse(x))
-    ```
-
-  * and similarly for: `cdf`, `prob`, `log_survival_function`,
-   `survival_function`.
-
-A simple example constructing a Log-Normal distribution from a Normal
-distribution:
-
-```python
-ds = tf.contrib.distributions
-log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
-  bijector=ds.bijector.Exp(),
-  name="LogNormalTransformedDistribution")
+```none
+cdf(x; mu, sigma) = 1 / (1 + exp(-(x - mu) / sigma))
 ```
 
-A `LogNormal` made from callables:
+where `loc = mu` and `scale = sigma`.
 
-```python
-ds = tf.contrib.distributions
-log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
-  bijector=ds.bijector.Inline(
-    forward_fn=tf.exp,
-    inverse_fn=tf.log,
-    inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
-  name="LogNormalTransformedDistribution")
+The Logistic distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Logistic(loc=0, scale=1)
+Y = loc + scale * X
 ```
 
-Another example constructing a Normal from a StandardNormal:
+#### Examples
+
+Examples of initialization of one or a batch of distributions.
 
 ```python
-ds = tf.contrib.distributions
-normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=0, sigma=1),
-  bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
-  name="NormalTransformedDistribution")
+# Define a single scalar Logistic distribution.
+dist = tf.contrib.distributions.Logistic(loc=0., scale=3.)
+
+# Evaluate the cdf at 1, returning a scalar.
+dist.cdf(1.)
+
+# Define a batch of two scalar valued Logistics.
+# The first has mean 1 and scale 11, the second 2 and 22.
+dist = tf.contrib.distributions.Logistic(loc=[1, 2.], scale=[11, 22.])
+
+# Evaluate the pdf of the first distribution on 0, and the second on 1.5,
+# returning a length two tensor.
+dist.prob([0, 1.5])
+
+# Get 3 samples, returning a 3 x 2 tensor.
+dist.sample([3])
 ```
 
-A `TransformedDistribution`'s batch- and event-shape are implied by the base
-distribution unless explicitly overridden by `batch_shape` or `event_shape`
-arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
-permitted only if the base distribution has scalar batch-shape (event-shape).
-The bijector is applied to the distribution as if the distribution possessed
-the overridden shape(s). The following example demonstrates how to construct a
-multivariate Normal as a `TransformedDistribution`.
+Arguments are broadcast when possible.
 
 ```python
-bs = tf.contrib.distributions.bijector
-ds = tf.contrib.distributions
-# We will create two MVNs with batch_shape = event_shape = 2.
-mean = [[-1., 0],      # batch:0
-        [0., 1]]       # batch:1
-chol_cov = [[[1., 0],
-             [0, 1]],  # batch:0
-            [[1, 0],
-             [2, 2]]]  # batch:1
-mvn1 = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=0., sigma=1.),
-    bijector=bs.Affine(shift=mean, tril=chol_cov),
-    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
-    event_shape=[2])  # Valid because base_distribution.event_shape == [].
-mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
-# mvn1.log_prob(x) == mvn2.log_prob(x)
+# Define a batch of two scalar valued Logistics.
+# Both have mean 1, but different scales.
+dist = tf.contrib.distributions.Logistic(loc=1., scale=[11, 22.])
+
+# Evaluate the pdf of both distributions on the same point, 3.0,
+# returning a length 2 tensor.
+dist.prob(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.Logistic.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Logistic')` {#Logistic.__init__}
 
-Construct a Transformed Distribution.
+Construct Logistic distributions with mean and scale `loc` and `scale`.
+
+The parameters `loc` and `scale` must be shaped in a way that supports
+broadcasting (e.g. `loc + scale` is a valid operation).
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
-    instance of `Distribution`.
-*  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`. `None` means `Identity()`.
-*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
-*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `event_shape`; valid only if `distribution.is_scalar_event()`.
+*  <b>`loc`</b>: Floating point tensor, the means of the distribution(s).
+*  <b>`scale`</b>: Floating point tensor, the scales of the distribution(s). Must
+    contain only positive values.
 *  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
-    `bijector.name + distribution.name`.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: The name to give Ops created by the initializer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if loc and scale are different dtypes.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
+#### `tf.contrib.distributions.Logistic.allow_nan_stats` {#Logistic.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -180,7 +107,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape` {#TransformedDistribution.batch_shape}
+#### `tf.contrib.distributions.Logistic.batch_shape` {#Logistic.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -197,7 +124,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape_tensor(name='batch_shape_tensor')` {#TransformedDistribution.batch_shape_tensor}
+#### `tf.contrib.distributions.Logistic.batch_shape_tensor(name='batch_shape_tensor')` {#Logistic.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -217,14 +144,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.bijector` {#TransformedDistribution.bijector}
-
-Function transforming x => y.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf')` {#TransformedDistribution.cdf}
+#### `tf.contrib.distributions.Logistic.cdf(value, name='cdf')` {#Logistic.cdf}
 
 Cumulative distribution function.
 
@@ -249,7 +169,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.copy(**override_parameters_kwargs)` {#TransformedDistribution.copy}
+#### `tf.contrib.distributions.Logistic.copy(**override_parameters_kwargs)` {#Logistic.copy}
 
 Creates a deep copy of the distribution.
 
@@ -272,7 +192,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.covariance(name='covariance')` {#TransformedDistribution.covariance}
+#### `tf.contrib.distributions.Logistic.covariance(name='covariance')` {#Logistic.covariance}
 
 Covariance.
 
@@ -316,28 +236,21 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.distribution` {#TransformedDistribution.distribution}
-
-Base distribution, p(x).
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.dtype` {#TransformedDistribution.dtype}
+#### `tf.contrib.distributions.Logistic.dtype` {#Logistic.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.entropy(name='entropy')` {#TransformedDistribution.entropy}
+#### `tf.contrib.distributions.Logistic.entropy(name='entropy')` {#Logistic.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape` {#TransformedDistribution.event_shape}
+#### `tf.contrib.distributions.Logistic.event_shape` {#Logistic.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -351,7 +264,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape_tensor(name='event_shape_tensor')` {#TransformedDistribution.event_shape_tensor}
+#### `tf.contrib.distributions.Logistic.event_shape_tensor(name='event_shape_tensor')` {#Logistic.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -368,14 +281,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_continuous` {#TransformedDistribution.is_continuous}
+#### `tf.contrib.distributions.Logistic.is_continuous` {#Logistic.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
+#### `tf.contrib.distributions.Logistic.is_scalar_batch(name='is_scalar_batch')` {#Logistic.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -392,7 +305,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
+#### `tf.contrib.distributions.Logistic.is_scalar_event(name='is_scalar_event')` {#Logistic.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -409,7 +322,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf')` {#TransformedDistribution.log_cdf}
+#### `tf.contrib.distributions.Logistic.loc` {#Logistic.loc}
+
+Distribution parameter for the location.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.log_cdf(value, name='log_cdf')` {#Logistic.log_cdf}
 
 Log cumulative distribution function.
 
@@ -438,18 +358,9 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
+#### `tf.contrib.distributions.Logistic.log_prob(value, name='log_prob')` {#Logistic.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
-where `g^{-1}` is the inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -466,7 +377,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_survival_function(value, name='log_survival_function')` {#TransformedDistribution.log_survival_function}
+#### `tf.contrib.distributions.Logistic.log_survival_function(value, name='log_survival_function')` {#Logistic.log_survival_function}
 
 Log survival function.
 
@@ -495,28 +406,28 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.mean(name='mean')` {#TransformedDistribution.mean}
+#### `tf.contrib.distributions.Logistic.mean(name='mean')` {#Logistic.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.mode(name='mode')` {#TransformedDistribution.mode}
+#### `tf.contrib.distributions.Logistic.mode(name='mode')` {#Logistic.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.name` {#TransformedDistribution.name}
+#### `tf.contrib.distributions.Logistic.name` {#Logistic.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#TransformedDistribution.param_shapes}
+#### `tf.contrib.distributions.Logistic.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#Logistic.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -540,7 +451,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.param_static_shapes(cls, sample_shape)` {#TransformedDistribution.param_static_shapes}
+#### `tf.contrib.distributions.Logistic.param_static_shapes(cls, sample_shape)` {#Logistic.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -570,25 +481,16 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.parameters` {#TransformedDistribution.parameters}
+#### `tf.contrib.distributions.Logistic.parameters` {#Logistic.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
+#### `tf.contrib.distributions.Logistic.prob(value, name='prob')` {#Logistic.prob}
 
 Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
-inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -605,7 +507,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.reparameterization_type` {#TransformedDistribution.reparameterization_type}
+#### `tf.contrib.distributions.Logistic.reparameterization_type` {#Logistic.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -620,7 +522,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample(sample_shape=(), seed=None, name='sample')` {#TransformedDistribution.sample}
+#### `tf.contrib.distributions.Logistic.sample(sample_shape=(), seed=None, name='sample')` {#Logistic.sample}
 
 Generate samples of the specified shape.
 
@@ -642,7 +544,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.stddev(name='stddev')` {#TransformedDistribution.stddev}
+#### `tf.contrib.distributions.Logistic.scale` {#Logistic.scale}
+
+Distribution parameter for scale.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.stddev(name='stddev')` {#Logistic.stddev}
 
 Standard deviation.
 
@@ -669,7 +578,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.survival_function(value, name='survival_function')` {#TransformedDistribution.survival_function}
+#### `tf.contrib.distributions.Logistic.survival_function(value, name='survival_function')` {#Logistic.survival_function}
 
 Survival function.
 
@@ -695,14 +604,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
+#### `tf.contrib.distributions.Logistic.validate_args` {#Logistic.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.variance(name='variance')` {#TransformedDistribution.variance}
+#### `tf.contrib.distributions.Logistic.variance(name='variance')` {#Logistic.variance}
 
 Variance.
 

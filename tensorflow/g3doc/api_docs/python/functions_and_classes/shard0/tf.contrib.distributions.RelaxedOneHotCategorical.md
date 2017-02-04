@@ -1,165 +1,105 @@
-A Transformed Distribution.
+RelaxedOneHotCategorical distribution with temperature and logits.
 
-A `TransformedDistribution` models `p(y)` given a base distribution `p(x)`,
-and a deterministic, invertible, differentiable transform, `Y = g(X)`. The
-transform is typically an instance of the `Bijector` class and the base
-distribution is typically an instance of the `Distribution` class.
+The RelaxedOneHotCategorical is a distribution over random probability
+vectors, vectors of positive real values that sum to one, which continuously
+approximates a OneHotCategorical. The degree of approximation is controlled by
+a temperature: as the temperaturegoes to 0 the RelaxedOneHotCategorical
+becomes discrete with a distribution described by the `logits` or `probs`
+parameters, as the temperature goes to infinity the RelaxedOneHotCategorical
+becomes the constant distribution that is identically the constant vector of
+(1/event_size, ..., 1/event_size).
 
-A `Bijector` is expected to implement the following functions:
-- `forward`,
-- `inverse`,
-- `inverse_log_det_jacobian`.
-The semantics of these functions are outlined in the `Bijector` documentation.
+The RelaxedOneHotCategorical distribution was concurrently introduced as the
+Gumbel-Softmax (Jang et al., 2016) and Concrete (Maddison et al., 2016)
+distributions for use as a reparameterized continuous approximation to the
+`Categorical` one-hot distribution. If you use this distribution, please cite
+both papers.
 
-We now describe how a `TransformedDistribution` alters the input/outputs of a
-`Distribution` associated with a random variable (rv) `X`.
+#### Examples
 
-Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
-of random variable `Y`; write the probability density function `pdf(Y=y) :=
-d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
-i.e., a non-random, continuous, differentiable, and invertible function.
-Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
-of `g` evaluated at `x`.
-
-A `TransformedDistribution` implements the following operations:
-
-  * `sample`:
-
-    Mathematically:
-
-    ```none
-    Y = g(X)
-    ```
-
-    Programmatically:
-
-    ```python
-    return bijector.forward(distribution.sample(...))
-    ```
-
-  * `log_prob`:
-
-    Mathematically:
-
-    ```none
-    (log o pdf)(Y=y) = (log o pdf o g^{-1})(y) +
-                         (log o abs o det o J o g^{-1})(y)
-    ```
-
-    Programmatically:
-
-    ```python
-    return (distribution.log_prob(bijector.inverse(y)) +
-            bijector.inverse_log_det_jacobian(y))
-    ```
-
-  * `log_cdf`:
-
-    Mathematically:
-
-    ```none
-    (log o cdf)(Y=y) = (log o cdf o g^{-1})(y)
-    ```
-
-    Programmatically:
-
-    ```python
-    return distribution.log_cdf(bijector.inverse(x))
-    ```
-
-  * and similarly for: `cdf`, `prob`, `log_survival_function`,
-   `survival_function`.
-
-A simple example constructing a Log-Normal distribution from a Normal
-distribution:
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. The 2nd class is the most likely to be the
+largest component in samples drawn from this distribution.
 
 ```python
-ds = tf.contrib.distributions
-log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
-  bijector=ds.bijector.Exp(),
-  name="LogNormalTransformedDistribution")
+temperature = 0.5
+p = [0.1, 0.5, 0.4]
+dist = RelaxedOneHotCategorical(temperature, probs=p)
 ```
 
-A `LogNormal` made from callables:
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. The 2nd class is the most likely to be the
+largest component in samples drawn from this distribution.
 
 ```python
-ds = tf.contrib.distributions
-log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
-  bijector=ds.bijector.Inline(
-    forward_fn=tf.exp,
-    inverse_fn=tf.log,
-    inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
-  name="LogNormalTransformedDistribution")
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = RelaxedOneHotCategorical(temperature, logits=logits)
 ```
 
-Another example constructing a Normal from a StandardNormal:
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. Because the temperature is very low, samples from
+this distribution are almost discrete, with one component almost 1 and the
+others nearly 0. The 2nd class is the most likely to be the largest component
+in samples drawn from this distribution.
 
 ```python
-ds = tf.contrib.distributions
-normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=0, sigma=1),
-  bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
-  name="NormalTransformedDistribution")
+temperature = 1e-5
+logits = [-2, 2, 0]
+dist = RelaxedOneHotCategorical(temperature, logits=logits)
 ```
 
-A `TransformedDistribution`'s batch- and event-shape are implied by the base
-distribution unless explicitly overridden by `batch_shape` or `event_shape`
-arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
-permitted only if the base distribution has scalar batch-shape (event-shape).
-The bijector is applied to the distribution as if the distribution possessed
-the overridden shape(s). The following example demonstrates how to construct a
-multivariate Normal as a `TransformedDistribution`.
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. Because the temperature is very high, samples from
+this distribution are usually close to the (1/3, 1/3, 1/3) vector. The 2nd
+class is still the most likely to be the largest component
+in samples drawn from this distribution.
 
 ```python
-bs = tf.contrib.distributions.bijector
-ds = tf.contrib.distributions
-# We will create two MVNs with batch_shape = event_shape = 2.
-mean = [[-1., 0],      # batch:0
-        [0., 1]]       # batch:1
-chol_cov = [[[1., 0],
-             [0, 1]],  # batch:0
-            [[1, 0],
-             [2, 2]]]  # batch:1
-mvn1 = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=0., sigma=1.),
-    bijector=bs.Affine(shift=mean, tril=chol_cov),
-    batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
-    event_shape=[2])  # Valid because base_distribution.event_shape == [].
-mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
-# mvn1.log_prob(x) == mvn2.log_prob(x)
+temperature = 10
+logits = [-2, 2, 0]
+dist = RelaxedOneHotCategorical(temperature, logits=logits)
 ```
+
+Eric Jang, Shixiang Gu, and Ben Poole. Categorical Reparameterization with
+Gumbel-Softmax. 2016.
+
+Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The Concrete Distribution:
+A Continuous Relaxation of Discrete Random Variables. 2016.
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(distribution, bijector=None, batch_shape=None, event_shape=None, validate_args=False, name=None)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.__init__(temperature, logits=None, probs=None, dtype=tf.float32, validate_args=False, allow_nan_stats=True, name='RelaxedOneHotCategorical')` {#RelaxedOneHotCategorical.__init__}
 
-Construct a Transformed Distribution.
+Initialize RelaxedOneHotCategorical using class log-probabilities.
 
 ##### Args:
 
 
-*  <b>`distribution`</b>: The base distribution instance to transform. Typically an
-    instance of `Distribution`.
-*  <b>`bijector`</b>: The object responsible for calculating the transformation.
-    Typically an instance of `Bijector`. `None` means `Identity()`.
-*  <b>`batch_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `batch_shape`; valid only if `distribution.is_scalar_batch()`.
-*  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
-    `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
-    parameters are checked for validity despite possibly degrading runtime
-    performance. When `False` invalid inputs may silently render incorrect
-    outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
-    `bijector.name + distribution.name`.
+*  <b>`temperature`</b>: An 0-D `Tensor`, representing the temperature
+    of a set of RelaxedOneHotCategorical distributions. The temperature
+    should be positive.
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+    of a set of RelaxedOneHotCategorical distributions. The first
+    `N - 1` dimensions index into a batch of independent distributions and
+    the last dimension represents a vector of logits for each class. Only
+    one of `logits` or `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
+    of a set of RelaxedOneHotCategorical distributions. The first `N - 1`
+    dimensions index into a batch of independent distributions and the last
+    dimension represents a vector of probabilities for each class. Only one
+    of `logits` or `probs` should be passed in.
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
+*  <b>`validate_args`</b>: Unused in this distribution.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
+*  <b>`name`</b>: A name for this distribution (optional).
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.allow_nan_stats` {#RelaxedOneHotCategorical.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -180,7 +120,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape` {#TransformedDistribution.batch_shape}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.batch_shape` {#RelaxedOneHotCategorical.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -197,7 +137,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.batch_shape_tensor(name='batch_shape_tensor')` {#TransformedDistribution.batch_shape_tensor}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.batch_shape_tensor(name='batch_shape_tensor')` {#RelaxedOneHotCategorical.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -217,14 +157,14 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.bijector` {#TransformedDistribution.bijector}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.bijector` {#RelaxedOneHotCategorical.bijector}
 
 Function transforming x => y.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf')` {#TransformedDistribution.cdf}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.cdf(value, name='cdf')` {#RelaxedOneHotCategorical.cdf}
 
 Cumulative distribution function.
 
@@ -249,7 +189,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.copy(**override_parameters_kwargs)` {#TransformedDistribution.copy}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.copy(**override_parameters_kwargs)` {#RelaxedOneHotCategorical.copy}
 
 Creates a deep copy of the distribution.
 
@@ -272,7 +212,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.covariance(name='covariance')` {#TransformedDistribution.covariance}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.covariance(name='covariance')` {#RelaxedOneHotCategorical.covariance}
 
 Covariance.
 
@@ -316,28 +256,28 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.distribution` {#TransformedDistribution.distribution}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.distribution` {#RelaxedOneHotCategorical.distribution}
 
 Base distribution, p(x).
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.dtype` {#TransformedDistribution.dtype}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.dtype` {#RelaxedOneHotCategorical.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.entropy(name='entropy')` {#TransformedDistribution.entropy}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.entropy(name='entropy')` {#RelaxedOneHotCategorical.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape` {#TransformedDistribution.event_shape}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.event_shape` {#RelaxedOneHotCategorical.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -351,7 +291,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.event_shape_tensor(name='event_shape_tensor')` {#TransformedDistribution.event_shape_tensor}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.event_shape_tensor(name='event_shape_tensor')` {#RelaxedOneHotCategorical.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -368,14 +308,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_continuous` {#TransformedDistribution.is_continuous}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.is_continuous` {#RelaxedOneHotCategorical.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_batch(name='is_scalar_batch')` {#TransformedDistribution.is_scalar_batch}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.is_scalar_batch(name='is_scalar_batch')` {#RelaxedOneHotCategorical.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -392,7 +332,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.is_scalar_event(name='is_scalar_event')` {#TransformedDistribution.is_scalar_event}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.is_scalar_event(name='is_scalar_event')` {#RelaxedOneHotCategorical.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -409,7 +349,7 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf')` {#TransformedDistribution.log_cdf}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.log_cdf(value, name='log_cdf')` {#RelaxedOneHotCategorical.log_cdf}
 
 Log cumulative distribution function.
 
@@ -438,7 +378,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.log_prob(value, name='log_prob')` {#RelaxedOneHotCategorical.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -466,7 +406,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.log_survival_function(value, name='log_survival_function')` {#TransformedDistribution.log_survival_function}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.log_survival_function(value, name='log_survival_function')` {#RelaxedOneHotCategorical.log_survival_function}
 
 Log survival function.
 
@@ -495,28 +435,28 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.mean(name='mean')` {#TransformedDistribution.mean}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.mean(name='mean')` {#RelaxedOneHotCategorical.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.mode(name='mode')` {#TransformedDistribution.mode}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.mode(name='mode')` {#RelaxedOneHotCategorical.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.name` {#TransformedDistribution.name}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.name` {#RelaxedOneHotCategorical.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#TransformedDistribution.param_shapes}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#RelaxedOneHotCategorical.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -540,7 +480,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.param_static_shapes(cls, sample_shape)` {#TransformedDistribution.param_static_shapes}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.param_static_shapes(cls, sample_shape)` {#RelaxedOneHotCategorical.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -570,14 +510,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.parameters` {#TransformedDistribution.parameters}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.parameters` {#RelaxedOneHotCategorical.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.prob(value, name='prob')` {#RelaxedOneHotCategorical.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -605,7 +545,7 @@ distribution and `y` was not returned from `sample`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.reparameterization_type` {#TransformedDistribution.reparameterization_type}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.reparameterization_type` {#RelaxedOneHotCategorical.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -620,7 +560,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample(sample_shape=(), seed=None, name='sample')` {#TransformedDistribution.sample}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.sample(sample_shape=(), seed=None, name='sample')` {#RelaxedOneHotCategorical.sample}
 
 Generate samples of the specified shape.
 
@@ -642,7 +582,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.stddev(name='stddev')` {#TransformedDistribution.stddev}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.stddev(name='stddev')` {#RelaxedOneHotCategorical.stddev}
 
 Standard deviation.
 
@@ -669,7 +609,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.survival_function(value, name='survival_function')` {#TransformedDistribution.survival_function}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.survival_function(value, name='survival_function')` {#RelaxedOneHotCategorical.survival_function}
 
 Survival function.
 
@@ -695,14 +635,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.validate_args` {#RelaxedOneHotCategorical.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.variance(name='variance')` {#TransformedDistribution.variance}
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.variance(name='variance')` {#RelaxedOneHotCategorical.variance}
 
 Variance.
 
