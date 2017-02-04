@@ -74,10 +74,8 @@ def main(unused_args):
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())
 
-  serialized_test_results = text_format.MessageToString(test_results)
-
   if not FLAGS.test_log_output_dir:
-    print(serialized_test_results)
+    print(text_format.MessageToString(test_results))
     return
 
   if FLAGS.test_log_output_filename:
@@ -91,7 +89,6 @@ def main(unused_args):
   else:
     output_path = os.path.join(
         os.path.abspath(FLAGS.test_log_output_dir), file_name)
-  gfile.GFile(output_path, "w").write(serialized_test_results)
   json_test_results = json_format.MessageToJson(test_results)
   gfile.GFile(output_path + ".json", "w").write(json_test_results)
   tf_logging.info("Test results written to: %s" % output_path)
