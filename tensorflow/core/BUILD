@@ -1823,6 +1823,18 @@ tf_cc_tests_gpu(
 )
 
 tf_cc_test_gpu(
+    name = "cuda_kernel_helper_test",
+    size = "small",
+    srcs = ["util/cuda_kernel_helper_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test_gpu(
     name = "cuda_libdevice_path_test",
     size = "small",
     srcs = ["platform/cuda_libdevice_path_test.cc"],
