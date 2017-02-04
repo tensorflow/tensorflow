@@ -531,6 +531,62 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "logistic_test",
+    size = "small",
+    srcs = ["python/kernel_tests/logistic_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "relaxed_bernoulli_test",
+    size = "small",
+    srcs = ["python/kernel_tests/relaxed_bernoulli_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "onehot_categorical_test",
+    size = "small",
+    srcs = ["python/kernel_tests/onehot_categorical_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "relaxed_onehot_categorical_test",
+    size = "small",
+    srcs = ["python/kernel_tests/relaxed_onehot_categorical_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "transformed_distribution_test",
     size = "medium",
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],

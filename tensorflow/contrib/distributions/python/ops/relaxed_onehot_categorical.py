@@ -33,7 +33,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 
 
-class _ExpRelaxedOneHotCategorical(distribution.Distribution):
+class ExpRelaxedOneHotCategorical(distribution.Distribution):
   """ExpRelaxedOneHotCategorical distribution with temperature and logits.
 
   An ExpRelaxedOneHotCategorical distribution is a log-transformed
@@ -166,6 +166,8 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
+        self._temperature_2d = array_ops.reshape(temperature, [-1, 1],
+                                                 name="temperature_2d")
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,
           multidimensional=True)
@@ -183,7 +185,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
       with ops.name_scope(name="event_size"):
         self._event_size = array_ops.shape(self._logits)[-1]
 
-    super(_ExpRelaxedOneHotCategorical, self).__init__(
+    super(ExpRelaxedOneHotCategorical, self).__init__(
         dtype=dtype,
         is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
@@ -202,7 +204,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
 
   @property
   def temperature(self):
-    """A scalar representing the temperature."""
+    """Batchwise temperature tensor of a RelaxedCategorical."""
     return self._temperature
 
   @property
@@ -230,19 +232,25 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     sample_shape = array_ops.concat(([n], array_ops.shape(self.logits)), 0)
     logits = self.logits * array_ops.ones(sample_shape)
-    if logits.get_shape().ndims == 2:
-      logits_2d = logits
-    else:
-      logits_2d = array_ops.reshape(logits, [-1, self.event_size])
-    np_dtype = self.dtype.as_numpy_dtype()
-    minval = np.nextafter(np_dtype(0), np_dtype(1))
+    logits_2d = array_ops.reshape(logits, [-1, self.event_size])
+    np_dtype = self.dtype.as_numpy_dtype
+
+    # Uniform variates must be sampled from the interval (0,1] rather than
+    # [0,1], as they are passed through log() to compute Gumbel variates.
+    # We need to use np.finfo(np_dtype).tiny because it is the smallest,
+    # positive, "normal" number.  A "normal" number is such that the mantissa
+    # has an implicit leading 1.  Normal, positive numbers x, y have the
+    # reasonable property that: x + y >= max(x, y).
+    # minval=np.nextafter(np.float32(0),1)) can cause
+    # tf.random_uniform(dtype=tf.float32) to sample 0.
+
     uniform = random_ops.random_uniform(shape=array_ops.shape(logits_2d),
-                                        minval=minval,
+                                        minval=np.finfo(np_dtype).tiny,
                                         maxval=1,
                                         dtype=self.dtype,
                                         seed=seed)
-    gumbel = - math_ops.log(- math_ops.log(uniform))
-    noisy_logits = math_ops.div(gumbel + logits_2d, self.temperature)
+    gumbel = -math_ops.log(-math_ops.log(uniform))
+    noisy_logits = math_ops.div(gumbel + logits_2d, self._temperature_2d)
     samples = nn_ops.log_softmax(noisy_logits)
     ret = array_ops.reshape(samples, sample_shape)
     return ret
@@ -256,23 +264,20 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
         x.get_shape() != logits.get_shape()):
       logits = array_ops.ones_like(x, dtype=logits.dtype) * logits
       x = array_ops.ones_like(logits, dtype=x.dtype) * x
-
-    logits_shape = array_ops.shape(logits)
-    if logits.get_shape().ndims == 2:
-      logits_2d = logits
-      x_2d = x
-    else:
-      logits_2d = array_ops.reshape(logits, [-1, self.event_size])
-      x_2d = array_ops.reshape(x, [-1, self.event_size])
+    logits_shape = array_ops.shape(math_ops.reduce_sum(logits, axis=[-1]))
+    logits_2d = array_ops.reshape(logits, [-1, self.event_size])
+    x_2d = array_ops.reshape(x, [-1, self.event_size])
     # compute the normalization constant
-    log_norm_const = (math_ops.lgamma(self.event_size)
-                      + (self.event_size - 1)
+    k = math_ops.cast(self.event_size, x.dtype)
+    log_norm_const = (math_ops.lgamma(k)
+                      + (k - 1.)
                       * math_ops.log(self.temperature))
     # compute the unnormalized density
-    log_softmax = nn_ops.log_softmax(logits_2d - x_2d * self.temperature)
+    log_softmax = nn_ops.log_softmax(logits_2d - x_2d * self._temperature_2d)
     log_unnorm_prob = math_ops.reduce_sum(log_softmax, [-1], keep_dims=False)
     # combine unnormalized density with normalization constant
     log_prob = log_norm_const + log_unnorm_prob
+    # Reshapes log_prob to be consistent with shape of user-supplied logits
     ret = array_ops.reshape(log_prob, logits_shape)
     return ret
 
@@ -290,7 +295,7 @@ class _ExpRelaxedOneHotCategorical(distribution.Distribution):
     ], x)
 
 
-class _RelaxedOneHotCategorical(
+class RelaxedOneHotCategorical(
     transformed_distribution.TransformedDistribution):
   """RelaxedOneHotCategorical distribution with temperature and logits.
 
@@ -395,12 +400,12 @@ class _RelaxedOneHotCategorical(
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
-    dist = _ExpRelaxedOneHotCategorical(temperature,
-                                        logits=logits,
-                                        probs=probs,
-                                        dtype=dtype,
-                                        validate_args=validate_args,
-                                        allow_nan_stats=allow_nan_stats)
-    super(_RelaxedOneHotCategorical, self).__init__(dist,
-                                                    bijector.Exp(),
-                                                    name=name)
+    dist = ExpRelaxedOneHotCategorical(temperature,
+                                       logits=logits,
+                                       probs=probs,
+                                       dtype=dtype,
+                                       validate_args=validate_args,
+                                       allow_nan_stats=allow_nan_stats)
+    super(RelaxedOneHotCategorical, self).__init__(dist,
+                                                   bijector.Exp(event_ndims=1),
+                                                   name=name)
