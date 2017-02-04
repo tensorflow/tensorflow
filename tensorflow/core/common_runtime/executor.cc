@@ -185,7 +185,9 @@ class GraphView;
 
 struct EdgeInfo {
   int dst_id;
-  int output_slot;
+  int16 output_slot;
+  // true if this is the last info for output_slot in the EdgeInfo list.
+  bool is_last;
   int input_slot;
 };
 
@@ -469,12 +471,27 @@ void GraphView::InitializeNode(const Node* n) {
   item->num_output_edges = num_output_edges;
 
   // Fill output edges.
+  // Keep track of the last EdgeInfo in the EdngeInfo array that references
+  // a given output slot.  For all but the last, we need to do a copy of the
+  // Tensor when propagating results downstream in the graph, but for the
+  // last one, we can just do a move of the Tensor object to propagate it.
+  gtl::InlinedVector<EdgeInfo*, 4> last_indices(num_outputs, nullptr);
   EdgeInfo* dst_edge = item->output_edge_base();
   for (auto e : n->out_edges()) {
     dst_edge->dst_id = e->dst()->id();
+    CHECK_LT(e->src_output(), 32768);  // Must fit in int16
     dst_edge->output_slot = e->src_output();
+    dst_edge->is_last = false;
+    if (dst_edge->output_slot >= 0) {
+      last_indices[dst_edge->output_slot] = dst_edge;
+    }
     dst_edge->input_slot = e->dst_input();
     dst_edge++;
+  }
+  for (EdgeInfo* edge_info : last_indices) {
+    if (edge_info != nullptr) {
+      edge_info->is_last = true;
+    }
   }
 
   AllocatorAttributes* output_attrs = item->output_attr_base();
@@ -723,6 +740,22 @@ class ExecutorState {
       device_context = other.device_context;
       if (val_field_is_set) {
         val.Init(*other.val);
+      }
+      return *this;
+    }
+
+    Entry& operator=(Entry&& other) {
+      if (val_field_is_set) {
+        val.Destroy();
+      }
+      ref = other.ref;
+      ref_mu = other.ref_mu;
+      has_value = other.has_value;
+      val_field_is_set = other.val_field_is_set;
+      alloc_attr = other.alloc_attr;
+      device_context = other.device_context;
+      if (val_field_is_set) {
+        val.Init(std::move(*other.val));
       }
       return *this;
     }
@@ -976,9 +1009,10 @@ class ExecutorState {
     void AddLoopInv(const NodeItem* item, const Entry& value,
                     TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
-    // Activate the successors of a node.
+    // Activate the successors of a node. Contents of *outputs are left in an
+    // indeterminate state after returning from this method.
     void ActivateNodes(const NodeItem* item, const bool is_dead, int64 iter,
-                       const EntryVector& outputs, TaggedNodeSeq* ready)
+                       EntryVector* outputs, TaggedNodeSeq* ready)
         EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Cleanup iterations of this frame starting from iteration iter.
@@ -1126,8 +1160,10 @@ class ExecutorState {
                         EntryVector* outputs, NodeExecStats* stats);
 
   // After processing the outputs, propagates the outputs to their dsts.
+  // Contents of *outputs are left in an indeterminate state after
+  // returning from this method.
   void PropagateOutputs(const TaggedNode& tagged_node, const NodeItem* item,
-                        const EntryVector& outputs, TaggedNodeSeq* ready);
+                        EntryVector* outputs, TaggedNodeSeq* ready);
 
   // "node" just finishes. Takes ownership of "stats". Returns true if
   // execution has completed.
@@ -1521,7 +1557,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           MaybeMarkCompleted(input_frame, input_iter, id);
           TaggedNodeSeq ready;
           if (s.ok()) {
-            PropagateOutputs(state->tagged_node, state->item, outputs, &ready);
+            PropagateOutputs(state->tagged_node, state->item, &outputs, &ready);
           }
           outputs.clear();
           if (s.ok() && impl_->device_record_tensor_accesses_) {
@@ -1566,7 +1602,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       MaybeMarkCompleted(input_frame, input_iter, id);
       // Propagates outputs.
       if (s.ok()) {
-        PropagateOutputs(tagged_node, &item, outputs, &ready);
+        PropagateOutputs(tagged_node, &item, &outputs, &ready);
       }
       outputs.clear();
       if (!accessed_tensors.empty()) {
@@ -1775,8 +1811,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 }
 
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
-                                     const NodeItem* item,
-                                     const EntryVector& outputs,
+                                     const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
@@ -1809,7 +1844,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
       mutex_lock l(output_frame->mu);
       if (is_constant) {
         // Propagate to all active iterations if this is a loop invariant.
-        output_frame->AddLoopInv(item, outputs[0], ready);
+        output_frame->AddLoopInv(item, (*outputs)[0], ready);
       } else {
         output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
       }
@@ -1847,7 +1882,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
           input_frame->num_outstanding_iterations ==
               input_frame->max_parallel_iterations) {
         // Reached the maximum for parallel iterations.
-        input_frame->next_iter_roots.push_back({node, outputs[0]});
+        input_frame->next_iter_roots.push_back({node, (*outputs)[0]});
         output_frame = nullptr;
       } else {
         // If this is a new iteration, start it.
@@ -2257,7 +2292,7 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
 
 void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
                                               const bool is_dead, int64 iter,
-                                              const EntryVector& outputs,
+                                              EntryVector* outputs,
                                               TaggedNodeSeq* ready) {
   const GraphView& gview = executor->gview_;
   const int* pending_ids = executor->frame_local_ids_;
@@ -2293,7 +2328,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
         dst_dead = (dead_cnt == dst_item->num_inputs);
         dst_ready = (count == 0) || ((count == 1) && dst_dead);
       } else {
-        if (outputs[src_slot].has_value) {
+        if ((*outputs)[src_slot].has_value) {
           // This is a live data input.
           int count = iter_state->pending(dst_pending_id);
           iter_state->mark_live(dst_pending_id);
@@ -2322,7 +2357,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
       // A non-merge node is ready if all its inputs are ready. We wait
       // for all inputs to come in even if we know the node is dead. This
       // ensures that all input tensors get cleaned up.
-      if (is_dead || (!is_control_edge && !outputs[src_slot].has_value)) {
+      if (is_dead || (!is_control_edge && !(*outputs)[src_slot].has_value)) {
         iter_state->increment_dead_count(dst_pending_id);
       }
       dst_dead = iter_state->dead_count(dst_pending_id) > 0;
@@ -2333,7 +2368,11 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
       const int dst_slot = e.input_slot;
       Entry* input_tensors = iter_state->input_tensors;
       int dst_loc = dst_item->input_start + dst_slot;
-      input_tensors[dst_loc] = outputs[src_slot];
+      if (e.is_last) {
+        input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
+      } else {
+        input_tensors[dst_loc] = (*outputs)[src_slot];
+      }
     }
 
     // Add dst to the ready queue if it's ready
@@ -2354,7 +2393,8 @@ void ExecutorState::FrameState::ActivateNexts(const GraphView* gview,
     const Entry& entry = node_entry.second;
     const bool is_dead = !entry.has_value;
     const NodeItem* item = gview->node(node->id());
-    ActivateNodes(item, is_dead, iter, {entry}, ready);
+    EntryVector outputs{entry};
+    ActivateNodes(item, is_dead, iter, &outputs, ready);
   }
   next_iter_roots.clear();
 }
@@ -2368,7 +2408,8 @@ void ExecutorState::FrameState::ActivateLoopInvs(const GraphView* gview,
     const Entry& entry = node_entry.second;
     const bool is_dead = !entry.has_value;
     const NodeItem* item = gview->node(node->id());
-    ActivateNodes(item, is_dead, iter, {entry}, ready);
+    EntryVector outputs{entry};
+    ActivateNodes(item, is_dead, iter, &outputs, ready);
   }
 }
 
@@ -2381,7 +2422,8 @@ void ExecutorState::FrameState::AddLoopInv(const NodeItem* item,
   // Make this value available to all iterations.
   bool is_dead = !entry.has_value;
   for (int i = 0; i <= iteration_count; ++i) {
-    ActivateNodes(item, is_dead, i, {entry}, ready);
+    EntryVector outputs{entry};
+    ActivateNodes(item, is_dead, i, &outputs, ready);
   }
 }
 
