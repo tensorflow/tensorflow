@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -355,16 +354,24 @@ class ScheduledEmbeddingTrainingSampler(BasicTrainingSampler):
               name=name))
 
       def maybe_sample():
-        where_sampling = math_ops.cast(sample_ids > -1, dtypes.int32)
-        _, sample_ids_sampling = data_flow_ops.dynamic_partition(
-            sample_ids, where_sampling, 2)
-        inputs_not_sampling, _ = data_flow_ops.dynamic_partition(
-            base_next_inputs, where_sampling, 2)
-        partitioned_indices = data_flow_ops.dynamic_partition(
-            math_ops.range(array_ops.size(where_sampling)), where_sampling, 2)
+        """Perform scheduled sampling."""
+        where_sampling = math_ops.cast(
+            array_ops.where(sample_ids > -1), dtypes.int32)
+        where_not_sampling = math_ops.cast(
+            array_ops.where(sample_ids <= -1), dtypes.int32)
+        where_sampling_flat = array_ops.reshape(where_sampling, [-1])
+        where_not_sampling_flat = array_ops.reshape(where_not_sampling, [-1])
+        sample_ids_sampling = array_ops.gather(sample_ids, where_sampling_flat)
+        inputs_not_sampling = array_ops.gather(
+            base_next_inputs, where_not_sampling_flat)
         sampled_next_inputs = self._embedding_fn(sample_ids_sampling)
-        return data_flow_ops.dynamic_stitch(
-            partitioned_indices, (inputs_not_sampling, sampled_next_inputs))
+        base_shape = array_ops.shape(base_next_inputs)
+        return (array_ops.scatter_nd(indices=where_sampling,
+                                     updates=sampled_next_inputs,
+                                     shape=base_shape)
+                + array_ops.scatter_nd(indices=where_not_sampling,
+                                       updates=inputs_not_sampling,
+                                       shape=base_shape))
 
       all_finished = math_ops.reduce_all(finished)
       next_inputs = control_flow_ops.cond(

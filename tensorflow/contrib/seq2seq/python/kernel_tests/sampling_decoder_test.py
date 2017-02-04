@@ -230,6 +230,8 @@ class BasicSamplingDecoderTest(test.TestCase):
                        step_state[0].get_shape())
       self.assertEqual((batch_size, vocabulary_size),
                        step_state[1].get_shape())
+      self.assertEqual((batch_size, input_depth),
+                       step_next_inputs.get_shape())
 
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
@@ -250,10 +252,10 @@ class BasicSamplingDecoderTest(test.TestCase):
       sample_ids = sess_results["step_outputs"].sample_id
       batch_where_not_sampling = np.where(sample_ids == -1)
       batch_where_sampling = np.where(sample_ids > -1)
-      self.assertAllEqual(
+      self.assertAllClose(
           sess_results["step_next_inputs"][batch_where_sampling],
           embeddings[sample_ids[batch_where_sampling]])
-      self.assertAllEqual(
+      self.assertAllClose(
           sess_results["step_next_inputs"][batch_where_not_sampling],
           np.squeeze(inputs[batch_where_not_sampling, 1]))
 
