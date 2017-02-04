@@ -77,4 +77,4 @@ with bazel and the app doesn't come up, then the easiest thing to do is try
 installing with adb.
 
 Once the app is installed it will be named "TensorFlow Demo" and have the orange
-TensorFlow logo as its icon.
+TensorFlow logo (<img src="res/drawable-mdpi/ic_launcher.png" width="20">) as its icon.
