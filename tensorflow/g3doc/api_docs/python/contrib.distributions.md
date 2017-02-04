@@ -10574,6 +10574,649 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 - - -
 
+### `class tf.contrib.distributions.Logistic` {#Logistic}
+
+The Logistic distribution with location `loc` and `scale` parameters.
+
+#### Mathematical details
+
+The cumulative density function of this distribution is:
+
+```none
+cdf(x; mu, sigma) = 1 / (1 + exp(-(x - mu) / sigma))
+```
+
+where `loc = mu` and `scale = sigma`.
+
+The Logistic distribution is a member of the [location-scale family](
+https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ Logistic(loc=0, scale=1)
+Y = loc + scale * X
+```
+
+#### Examples
+
+Examples of initialization of one or a batch of distributions.
+
+```python
+# Define a single scalar Logistic distribution.
+dist = tf.contrib.distributions.Logistic(loc=0., scale=3.)
+
+# Evaluate the cdf at 1, returning a scalar.
+dist.cdf(1.)
+
+# Define a batch of two scalar valued Logistics.
+# The first has mean 1 and scale 11, the second 2 and 22.
+dist = tf.contrib.distributions.Logistic(loc=[1, 2.], scale=[11, 22.])
+
+# Evaluate the pdf of the first distribution on 0, and the second on 1.5,
+# returning a length two tensor.
+dist.prob([0, 1.5])
+
+# Get 3 samples, returning a 3 x 2 tensor.
+dist.sample([3])
+```
+
+Arguments are broadcast when possible.
+
+```python
+# Define a batch of two scalar valued Logistics.
+# Both have mean 1, but different scales.
+dist = tf.contrib.distributions.Logistic(loc=1., scale=[11, 22.])
+
+# Evaluate the pdf of both distributions on the same point, 3.0,
+# returning a length 2 tensor.
+dist.prob(3.0)
+```
+- - -
+
+#### `tf.contrib.distributions.Logistic.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Logistic')` {#Logistic.__init__}
+
+Construct Logistic distributions with mean and scale `loc` and `scale`.
+
+The parameters `loc` and `scale` must be shaped in a way that supports
+broadcasting (e.g. `loc + scale` is a valid operation).
+
+##### Args:
+
+
+*  <b>`loc`</b>: Floating point tensor, the means of the distribution(s).
+*  <b>`scale`</b>: Floating point tensor, the scales of the distribution(s). Must
+    contain only positive values.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: The name to give Ops created by the initializer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if loc and scale are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.allow_nan_stats` {#Logistic.allow_nan_stats}
+
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.batch_shape` {#Logistic.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.batch_shape_tensor(name='batch_shape_tensor')` {#Logistic.batch_shape_tensor}
+
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.cdf(value, name='cdf')` {#Logistic.cdf}
+
+Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.copy(**override_parameters_kwargs)` {#Logistic.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.covariance(name='covariance')` {#Logistic.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.dtype` {#Logistic.dtype}
+
+The `DType` of `Tensor`s handled by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.entropy(name='entropy')` {#Logistic.entropy}
+
+Shannon entropy in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.event_shape` {#Logistic.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.event_shape_tensor(name='event_shape_tensor')` {#Logistic.event_shape_tensor}
+
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.is_continuous` {#Logistic.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.is_scalar_batch(name='is_scalar_batch')` {#Logistic.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.is_scalar_event(name='is_scalar_event')` {#Logistic.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.loc` {#Logistic.loc}
+
+Distribution parameter for the location.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.log_cdf(value, name='log_cdf')` {#Logistic.log_cdf}
+
+Log cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.log_prob(value, name='log_prob')` {#Logistic.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.log_survival_function(value, name='log_survival_function')` {#Logistic.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.mean(name='mean')` {#Logistic.mean}
+
+Mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.mode(name='mode')` {#Logistic.mode}
+
+Mode.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.name` {#Logistic.name}
+
+Name prepended to all ops created by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#Logistic.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.param_static_shapes(cls, sample_shape)` {#Logistic.param_static_shapes}
+
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.parameters` {#Logistic.parameters}
+
+Dictionary of parameters used to instantiate this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.prob(value, name='prob')` {#Logistic.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.reparameterization_type` {#Logistic.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.sample(sample_shape=(), seed=None, name='sample')` {#Logistic.sample}
+
+Generate samples of the specified shape.
+
+Note that a call to `sample()` without arguments will generate a single
+sample.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.scale` {#Logistic.scale}
+
+Distribution parameter for scale.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.stddev(name='stddev')` {#Logistic.stddev}
+
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.survival_function(value, name='survival_function')` {#Logistic.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.validate_args` {#Logistic.validate_args}
+
+Python boolean indicated possibly expensive checks are enabled.
+
+
+- - -
+
+#### `tf.contrib.distributions.Logistic.variance(name='variance')` {#Logistic.variance}
+
+Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.Normal` {#Normal}
 
 The Normal distribution with location `loc` and `scale` parameters.
@@ -21265,8 +21908,8 @@ A `TransformedDistribution` implements the following operations:
     Programmatically:
 
     ```python
-    return (distribution.log_prob(bijector.inverse(x)) +
-            bijector.inverse_log_det_jacobian(x))
+    return (distribution.log_prob(bijector.inverse(y)) +
+            bijector.inverse_log_det_jacobian(y))
     ```
 
   * `log_cdf`:
@@ -23589,6 +24232,2750 @@ softplus_inverse = log(exp(x) - 1.)
 ##### Returns:
 
   `Tensor`. Has the same type/shape as input `x`.
+
+
+
+## Relaxed Discrete Distributions
+
+- - -
+
+### `class tf.contrib.distributions.ExpRelaxedOneHotCategorical` {#ExpRelaxedOneHotCategorical}
+
+ExpRelaxedOneHotCategorical distribution with temperature and logits.
+
+An ExpRelaxedOneHotCategorical distribution is a log-transformed
+RelaxedOneHotCategorical distribution. The RelaxedOneHotCategorical is a
+distribution over random probability vectors, vectors of positive real
+values that sum to one, which continuously approximates a OneHotCategorical.
+The degree of approximation is controlled by a temperature: as the temperature
+goes to 0 the RelaxedOneHotCategorical becomes discrete with a distribution
+described by the logits, as the temperature goes to infinity the
+RelaxedOneHotCategorical becomes the constant distribution that is identically
+the constant vector of (1/event_size, ..., 1/event_size).
+
+Because computing log-probabilities of the RelaxedOneHotCategorical can
+suffer from underflow issues, this class is one solution for loss
+functions that depend on log-probabilities, such as the KL Divergence found
+in the variational autoencoder loss. The KL divergence between two
+distributions is invariant under invertible transformations, so evaluating
+KL divergences of ExpRelaxedOneHotCategorical samples, which are always
+followed by a `tf.exp` op, is equivalent to evaluating KL divergences of
+RelaxedOneHotCategorical samples. See the appendix of Maddison et al., 2016
+for more mathematical details, where this distribution is called the
+ExpConcrete.
+
+#### Examples
+
+Creates a continuous distribution, whoe exp approximates a 3-class one-hot
+categorical distiribution. The 2nd class is the most likely to be the
+largest component in samples drawn from this distribution. If those samples
+are followed by a `tf.exp` op, then they are distributed as a relaxed onehot
+categorical.
+
+```python
+temperature = 0.5
+p = [0.1, 0.5, 0.4]
+dist = ExpRelaxedOneHotCategorical(temperature, probs=p)
+samples = dist.sample()
+exp_samples = tf.exp(samples)
+# exp_samples has the same distribution as samples from
+# RelaxedOneHotCategorical(temperature, probs=p)
+```
+
+Creates a continuous distribution, whose exp approximates a 3-class one-hot
+categorical distiribution. The 2nd class is the most likely to be the
+largest component in samples drawn from this distribution.
+
+```python
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = ExpRelaxedOneHotCategorical(temperature, logits=logits)
+samples = dist.sample()
+exp_samples = tf.exp(samples)
+# exp_samples has the same distribution as samples from
+# RelaxedOneHotCategorical(temperature, probs=p)
+```
+
+Creates a continuous distribution, whose exp approximates a 3-class one-hot
+categorical distiribution. Because the temperature is very low, samples from
+this distribution are almost discrete, with one component almost 0 and the
+others very negative. The 2nd class is the most likely to be the largest
+component in samples drawn from this distribution.
+
+```python
+temperature = 1e-5
+logits = [-2, 2, 0]
+dist = ExpRelaxedOneHotCategorical(temperature, logits=logits)
+samples = dist.sample()
+exp_samples = tf.exp(samples)
+# exp_samples has the same distribution as samples from
+# RelaxedOneHotCategorical(temperature, probs=p)
+```
+
+Creates a continuous distribution, whose exp approximates a 3-class one-hot
+categorical distiribution. Because the temperature is very high, samples from
+this distribution are usually close to the (-log(3), -log(3), -log(3)) vector.
+The 2nd class is still the most likely to be the largest component
+in samples drawn from this distribution.
+
+```python
+temperature = 10
+logits = [-2, 2, 0]
+dist = ExpRelaxedOneHotCategorical(temperature, logits=logits)
+samples = dist.sample()
+exp_samples = tf.exp(samples)
+# exp_samples has the same distribution as samples from
+# RelaxedOneHotCategorical(temperature, probs=p)
+```
+
+Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The Concrete Distribution:
+A Continuous Relaxation of Discrete Random Variables. 2016.
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.__init__(temperature, logits=None, probs=None, dtype=tf.float32, validate_args=False, allow_nan_stats=True, name='ExpRelaxedOneHotCategorical')` {#ExpRelaxedOneHotCategorical.__init__}
+
+Initialize ExpRelaxedOneHotCategorical using class log-probabilities.
+
+##### Args:
+
+
+*  <b>`temperature`</b>: An 0-D `Tensor`, representing the temperature
+    of a set of ExpRelaxedCategorical distributions. The temperature should
+    be positive.
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+    of a set of ExpRelaxedCategorical distributions. The first
+    `N - 1` dimensions index into a batch of independent distributions and
+    the last dimension represents a vector of logits for each class. Only
+    one of `logits` or `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
+    of a set of ExpRelaxedCategorical distributions. The first
+    `N - 1` dimensions index into a batch of independent distributions and
+    the last dimension represents a vector of probabilities for each
+    class. Only one of `logits` or `probs` should be passed in.
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.allow_nan_stats` {#ExpRelaxedOneHotCategorical.allow_nan_stats}
+
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.batch_shape` {#ExpRelaxedOneHotCategorical.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.batch_shape_tensor(name='batch_shape_tensor')` {#ExpRelaxedOneHotCategorical.batch_shape_tensor}
+
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.cdf(value, name='cdf')` {#ExpRelaxedOneHotCategorical.cdf}
+
+Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.copy(**override_parameters_kwargs)` {#ExpRelaxedOneHotCategorical.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.covariance(name='covariance')` {#ExpRelaxedOneHotCategorical.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.dtype` {#ExpRelaxedOneHotCategorical.dtype}
+
+The `DType` of `Tensor`s handled by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.entropy(name='entropy')` {#ExpRelaxedOneHotCategorical.entropy}
+
+Shannon entropy in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.event_shape` {#ExpRelaxedOneHotCategorical.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.event_shape_tensor(name='event_shape_tensor')` {#ExpRelaxedOneHotCategorical.event_shape_tensor}
+
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.event_size` {#ExpRelaxedOneHotCategorical.event_size}
+
+Scalar `int32` tensor: the number of classes.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.is_continuous` {#ExpRelaxedOneHotCategorical.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.is_scalar_batch(name='is_scalar_batch')` {#ExpRelaxedOneHotCategorical.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.is_scalar_event(name='is_scalar_event')` {#ExpRelaxedOneHotCategorical.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.log_cdf(value, name='log_cdf')` {#ExpRelaxedOneHotCategorical.log_cdf}
+
+Log cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.log_prob(value, name='log_prob')` {#ExpRelaxedOneHotCategorical.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.log_survival_function(value, name='log_survival_function')` {#ExpRelaxedOneHotCategorical.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.logits` {#ExpRelaxedOneHotCategorical.logits}
+
+Vector of coordinatewise logits.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.mean(name='mean')` {#ExpRelaxedOneHotCategorical.mean}
+
+Mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.mode(name='mode')` {#ExpRelaxedOneHotCategorical.mode}
+
+Mode.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.name` {#ExpRelaxedOneHotCategorical.name}
+
+Name prepended to all ops created by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#ExpRelaxedOneHotCategorical.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.param_static_shapes(cls, sample_shape)` {#ExpRelaxedOneHotCategorical.param_static_shapes}
+
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.parameters` {#ExpRelaxedOneHotCategorical.parameters}
+
+Dictionary of parameters used to instantiate this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.prob(value, name='prob')` {#ExpRelaxedOneHotCategorical.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.probs` {#ExpRelaxedOneHotCategorical.probs}
+
+Vector of probabilities summing to one.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.reparameterization_type` {#ExpRelaxedOneHotCategorical.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.sample(sample_shape=(), seed=None, name='sample')` {#ExpRelaxedOneHotCategorical.sample}
+
+Generate samples of the specified shape.
+
+Note that a call to `sample()` without arguments will generate a single
+sample.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.stddev(name='stddev')` {#ExpRelaxedOneHotCategorical.stddev}
+
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.survival_function(value, name='survival_function')` {#ExpRelaxedOneHotCategorical.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.temperature` {#ExpRelaxedOneHotCategorical.temperature}
+
+Batchwise temperature tensor of a RelaxedCategorical.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.validate_args` {#ExpRelaxedOneHotCategorical.validate_args}
+
+Python boolean indicated possibly expensive checks are enabled.
+
+
+- - -
+
+#### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.variance(name='variance')` {#ExpRelaxedOneHotCategorical.variance}
+
+Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.OneHotCategorical` {#OneHotCategorical}
+
+OneHotCategorical distribution.
+
+The categorical distribution is parameterized by the log-probabilities
+of a set of classes. The difference between OneHotCategorical and Categorical
+distributions is that OneHotCategorical is a discrete distribution over
+one-hot bit vectors whereas Categorical is a discrete distribution over
+positive integers. OneHotCategorical is equivalent to Categorical except
+Categorical has event_dim=() while OneHotCategorical has event_dim=K, where
+K is the number of classes.
+
+This class provides methods to create indexed batches of OneHotCategorical
+distributions.  If the provided `logits` or `probs` is rank 2 or higher, for
+every fixed set of leading dimensions, the last dimension represents one
+single OneHotCategorical distribution.  When calling distribution
+functions (e.g. `dist.prob(x)`), `logits` and `x` are broadcast to the
+same shape (if possible).  In all cases, the last dimension of `logits,x`
+represents single OneHotCategorical distributions.
+
+#### Examples
+
+Creates a 3-class distiribution, with the 2nd class, the most likely to be
+drawn from.
+
+```python
+p = [0.1, 0.5, 0.4]
+dist = OneHotCategorical(probs=p)
+```
+
+Creates a 3-class distiribution, with the 2nd class the most likely to be
+drawn from, using logits.
+
+```python
+logits = [-2, 2, 0]
+dist = OneHotCategorical(logits=logits)
+```
+
+Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+
+```python
+# counts is a scalar.
+p = [0.1, 0.4, 0.5]
+dist = OneHotCategorical(probs=p)
+dist.prob([0,1,0])  # Shape []
+
+# p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match.
+samples = [[0,1,0], [1,0,0]]
+dist.prob(samples)  # Shape [2]
+```
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.__init__(logits=None, probs=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='OneHotCategorical')` {#OneHotCategorical.__init__}
+
+Initialize OneHotCategorical distributions using class log-probabilities.
+
+##### Args:
+
+
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities of a
+    set of Categorical distributions. The first `N - 1` dimensions index
+    into a batch of independent distributions and the last dimension
+    represents a vector of logits for each class. Only one of `logits` or
+    `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities of a set
+    of Categorical distributions. The first `N - 1` dimensions index into a
+    batch of independent distributions and the last dimension represents a
+    vector of probabilities for each class. Only one of `logits` or `probs`
+    should be passed in.
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.allow_nan_stats` {#OneHotCategorical.allow_nan_stats}
+
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.batch_shape` {#OneHotCategorical.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.batch_shape_tensor(name='batch_shape_tensor')` {#OneHotCategorical.batch_shape_tensor}
+
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.cdf(value, name='cdf')` {#OneHotCategorical.cdf}
+
+Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.copy(**override_parameters_kwargs)` {#OneHotCategorical.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.covariance(name='covariance')` {#OneHotCategorical.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.dtype` {#OneHotCategorical.dtype}
+
+The `DType` of `Tensor`s handled by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.entropy(name='entropy')` {#OneHotCategorical.entropy}
+
+Shannon entropy in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.event_shape` {#OneHotCategorical.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.event_shape_tensor(name='event_shape_tensor')` {#OneHotCategorical.event_shape_tensor}
+
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.event_size` {#OneHotCategorical.event_size}
+
+Scalar `int32` tensor: the number of classes.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.is_continuous` {#OneHotCategorical.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.is_scalar_batch(name='is_scalar_batch')` {#OneHotCategorical.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.is_scalar_event(name='is_scalar_event')` {#OneHotCategorical.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.log_cdf(value, name='log_cdf')` {#OneHotCategorical.log_cdf}
+
+Log cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.log_prob(value, name='log_prob')` {#OneHotCategorical.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.log_survival_function(value, name='log_survival_function')` {#OneHotCategorical.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.logits` {#OneHotCategorical.logits}
+
+Vector of coordinatewise logits.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.mean(name='mean')` {#OneHotCategorical.mean}
+
+Mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.mode(name='mode')` {#OneHotCategorical.mode}
+
+Mode.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.name` {#OneHotCategorical.name}
+
+Name prepended to all ops created by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#OneHotCategorical.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.param_static_shapes(cls, sample_shape)` {#OneHotCategorical.param_static_shapes}
+
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.parameters` {#OneHotCategorical.parameters}
+
+Dictionary of parameters used to instantiate this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.prob(value, name='prob')` {#OneHotCategorical.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.probs` {#OneHotCategorical.probs}
+
+Vector of coordinatewise probabilities.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.reparameterization_type` {#OneHotCategorical.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.sample(sample_shape=(), seed=None, name='sample')` {#OneHotCategorical.sample}
+
+Generate samples of the specified shape.
+
+Note that a call to `sample()` without arguments will generate a single
+sample.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.stddev(name='stddev')` {#OneHotCategorical.stddev}
+
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.survival_function(value, name='survival_function')` {#OneHotCategorical.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.validate_args` {#OneHotCategorical.validate_args}
+
+Python boolean indicated possibly expensive checks are enabled.
+
+
+- - -
+
+#### `tf.contrib.distributions.OneHotCategorical.variance(name='variance')` {#OneHotCategorical.variance}
+
+Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.RelaxedBernoulli` {#RelaxedBernoulli}
+
+RelaxedBernoulli distribution with temperature and logits parameters.
+
+The RelaxedBernoulli is a distribution over the unit interval (0,1), which
+continuously approximates a Bernoulli. The degree of approximation is
+controlled by a temperature: as the temperaturegoes to 0 the RelaxedBernoulli
+becomes discrete with a distribution described by the `logits` or `probs`
+parameters, as the temperature goes to infinity the RelaxedBernoulli
+becomes the constant distribution that is identically 0.5.
+
+The RelaxedBernoulli distribution is a reparameterized continuous
+distribution that is the binary special case of the RelaxedOneHotCategorical
+distribution (Maddison et al., 2016; Jang et al., 2016). For details on the
+binary special case see the appendix of Maddison et al. (2016) where it is
+referred to as BinConcrete. If you use this distribution, please cite both
+papers.
+
+Some care needs to be taken for loss functions that depend on the
+log-probability of RelaxedBernoullis, because computing log-probabilities of
+the RelaxedBernoulli can suffer from underflow issues. In many case loss
+functions such as these are invariant under invertible transformations of
+the random variables. The KL divergence, found in the variational autoencoder
+loss, is an example. Because RelaxedBernoullis are sampled by by a Logistic
+random variable followed by a `tf.sigmoid` op, one solution is to treat
+the Logistic as the random variable and `tf.sigmoid` as downstream. The
+KL divergences of two Logistics, which are always followed by a `tf.sigmoid`
+op, is equivalent to evaluating KL divergences of RelaxedBernoulli samples.
+See Maddison et al., 2016 for more details where this distribution is called
+the BinConcrete.
+
+An alternative approach is to evaluate Bernoulli log probability or KL
+directly on relaxed samples, as done in Jang et al., 2016. In this case,
+guarantees on the loss are usually violated. For instance, using a Bernoulli
+KL in a relaxed ELBO is no longer a lower bound on the log marginal
+probability of the observation. Thus care and early stopping are important.
+
+#### Examples
+
+Creates three continuous distributions, which approximate 3 Bernoullis with
+probabilities (0.1, 0.5, 0.4). Samples from these distributions will be in
+the unit interval (0,1).
+
+```python
+temperature = 0.5
+p = [0.1, 0.5, 0.4]
+dist = RelaxedBernoulli(temperature, probs=p)
+```
+
+Creates three continuous distributions, which approximate 3 Bernoullis with
+logits (-2, 2, 0). Samples from these distributions will be in
+the unit interval (0,1).
+
+```python
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = RelaxedBernoulli(temperature, logits=logits)
+```
+
+Creates three continuous distributions, whose sigmoid approximate 3 Bernoullis
+with logits (-2, 2, 0).
+
+```python
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = Logistic(logits/temperature, 1./temperature)
+samples = dist.sample()
+sigmoid_samples = tf.sigmoid(samples)
+# sigmoid_samples has the same distribution as samples from
+# RelaxedBernoulli(temperature, logits=logits)
+```
+
+Creates three continuous distributions, which approximate 3 Bernoullis with
+logits (-2, 2, 0). Samples from these distributions will be in
+the unit interval (0,1). Because the temperature is very low, samples from
+these distributions are almost discrete, usually taking values very close to 0
+or 1.
+
+```python
+temperature = 1e-5
+logits = [-2, 2, 0]
+dist = RelaxedBernoulli(temperature, logits=logits)
+```
+
+Creates three continuous distributions, which approximate 3 Bernoullis with
+logits (-2, 2, 0). Samples from these distributions will be in
+the unit interval (0,1). Because the temperature is very high, samples from
+these distributions are usually close to the (0.5, 0.5, 0.5) vector.
+
+```python
+temperature = 100
+logits = [-2, 2, 0]
+dist = RelaxedBernoulli(temperature, logits=logits)
+```
+
+Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The Concrete Distribution:
+A Continuous Relaxation of Discrete Random Variables. 2016.
+
+Eric Jang, Shixiang Gu, and Ben Poole. Categorical Reparameterization with
+Gumbel-Softmax. 2016.
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.__init__(temperature, logits=None, probs=None, validate_args=False, allow_nan_stats=True, name='RelaxedBernoulli')` {#RelaxedBernoulli.__init__}
+
+Construct RelaxedBernoulli distributions.
+
+##### Args:
+
+
+*  <b>`temperature`</b>: An 0-D `Tensor`, representing the temperature
+    of a set of RelaxedBernoulli distributions. The temperature should be
+    positive.
+*  <b>`logits`</b>: An N-D `Tensor` representing the log-odds
+    of a positive event. Each entry in the `Tensor` parametrizes
+    an independent RelaxedBernoulli distribution where the probability of an
+    event is sigmoid(logits). Only one of `logits` or `probs` should be
+    passed in.
+*  <b>`probs`</b>: An N-D `Tensor` representing the probability of a positive event.
+    Each entry in the `Tensor` parameterizes an independent Bernoulli
+    distribution. Only one of `logits` or `probs` should be passed in.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both `probs` and `logits` are passed, or if neither.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.allow_nan_stats` {#RelaxedBernoulli.allow_nan_stats}
+
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.batch_shape` {#RelaxedBernoulli.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.batch_shape_tensor(name='batch_shape_tensor')` {#RelaxedBernoulli.batch_shape_tensor}
+
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.bijector` {#RelaxedBernoulli.bijector}
+
+Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.cdf(value, name='cdf')` {#RelaxedBernoulli.cdf}
+
+Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.copy(**override_parameters_kwargs)` {#RelaxedBernoulli.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.covariance(name='covariance')` {#RelaxedBernoulli.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.distribution` {#RelaxedBernoulli.distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.dtype` {#RelaxedBernoulli.dtype}
+
+The `DType` of `Tensor`s handled by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.entropy(name='entropy')` {#RelaxedBernoulli.entropy}
+
+Shannon entropy in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.event_shape` {#RelaxedBernoulli.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.event_shape_tensor(name='event_shape_tensor')` {#RelaxedBernoulli.event_shape_tensor}
+
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.is_continuous` {#RelaxedBernoulli.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.is_scalar_batch(name='is_scalar_batch')` {#RelaxedBernoulli.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.is_scalar_event(name='is_scalar_event')` {#RelaxedBernoulli.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.log_cdf(value, name='log_cdf')` {#RelaxedBernoulli.log_cdf}
+
+Log cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.log_prob(value, name='log_prob')` {#RelaxedBernoulli.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
+where `g^{-1}` is the inverse of `transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.log_survival_function(value, name='log_survival_function')` {#RelaxedBernoulli.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.logits` {#RelaxedBernoulli.logits}
+
+Log-odds of `1`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.mean(name='mean')` {#RelaxedBernoulli.mean}
+
+Mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.mode(name='mode')` {#RelaxedBernoulli.mode}
+
+Mode.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.name` {#RelaxedBernoulli.name}
+
+Name prepended to all ops created by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#RelaxedBernoulli.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.param_static_shapes(cls, sample_shape)` {#RelaxedBernoulli.param_static_shapes}
+
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.parameters` {#RelaxedBernoulli.parameters}
+
+Dictionary of parameters used to instantiate this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.prob(value, name='prob')` {#RelaxedBernoulli.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
+inverse of `transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.probs` {#RelaxedBernoulli.probs}
+
+Probability of `1`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.reparameterization_type` {#RelaxedBernoulli.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.sample(sample_shape=(), seed=None, name='sample')` {#RelaxedBernoulli.sample}
+
+Generate samples of the specified shape.
+
+Note that a call to `sample()` without arguments will generate a single
+sample.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.stddev(name='stddev')` {#RelaxedBernoulli.stddev}
+
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.survival_function(value, name='survival_function')` {#RelaxedBernoulli.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.temperature` {#RelaxedBernoulli.temperature}
+
+Distribution parameter for the location.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.validate_args` {#RelaxedBernoulli.validate_args}
+
+Python boolean indicated possibly expensive checks are enabled.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedBernoulli.variance(name='variance')` {#RelaxedBernoulli.variance}
+
+Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.RelaxedOneHotCategorical` {#RelaxedOneHotCategorical}
+
+RelaxedOneHotCategorical distribution with temperature and logits.
+
+The RelaxedOneHotCategorical is a distribution over random probability
+vectors, vectors of positive real values that sum to one, which continuously
+approximates a OneHotCategorical. The degree of approximation is controlled by
+a temperature: as the temperaturegoes to 0 the RelaxedOneHotCategorical
+becomes discrete with a distribution described by the `logits` or `probs`
+parameters, as the temperature goes to infinity the RelaxedOneHotCategorical
+becomes the constant distribution that is identically the constant vector of
+(1/event_size, ..., 1/event_size).
+
+The RelaxedOneHotCategorical distribution was concurrently introduced as the
+Gumbel-Softmax (Jang et al., 2016) and Concrete (Maddison et al., 2016)
+distributions for use as a reparameterized continuous approximation to the
+`Categorical` one-hot distribution. If you use this distribution, please cite
+both papers.
+
+#### Examples
+
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. The 2nd class is the most likely to be the
+largest component in samples drawn from this distribution.
+
+```python
+temperature = 0.5
+p = [0.1, 0.5, 0.4]
+dist = RelaxedOneHotCategorical(temperature, probs=p)
+```
+
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. The 2nd class is the most likely to be the
+largest component in samples drawn from this distribution.
+
+```python
+temperature = 0.5
+logits = [-2, 2, 0]
+dist = RelaxedOneHotCategorical(temperature, logits=logits)
+```
+
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. Because the temperature is very low, samples from
+this distribution are almost discrete, with one component almost 1 and the
+others nearly 0. The 2nd class is the most likely to be the largest component
+in samples drawn from this distribution.
+
+```python
+temperature = 1e-5
+logits = [-2, 2, 0]
+dist = RelaxedOneHotCategorical(temperature, logits=logits)
+```
+
+Creates a continuous distribution, which approximates a 3-class one-hot
+categorical distiribution. Because the temperature is very high, samples from
+this distribution are usually close to the (1/3, 1/3, 1/3) vector. The 2nd
+class is still the most likely to be the largest component
+in samples drawn from this distribution.
+
+```python
+temperature = 10
+logits = [-2, 2, 0]
+dist = RelaxedOneHotCategorical(temperature, logits=logits)
+```
+
+Eric Jang, Shixiang Gu, and Ben Poole. Categorical Reparameterization with
+Gumbel-Softmax. 2016.
+
+Chris J. Maddison, Andriy Mnih, and Yee Whye Teh. The Concrete Distribution:
+A Continuous Relaxation of Discrete Random Variables. 2016.
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.__init__(temperature, logits=None, probs=None, dtype=tf.float32, validate_args=False, allow_nan_stats=True, name='RelaxedOneHotCategorical')` {#RelaxedOneHotCategorical.__init__}
+
+Initialize RelaxedOneHotCategorical using class log-probabilities.
+
+##### Args:
+
+
+*  <b>`temperature`</b>: An 0-D `Tensor`, representing the temperature
+    of a set of RelaxedOneHotCategorical distributions. The temperature
+    should be positive.
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+    of a set of RelaxedOneHotCategorical distributions. The first
+    `N - 1` dimensions index into a batch of independent distributions and
+    the last dimension represents a vector of logits for each class. Only
+    one of `logits` or `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
+    of a set of RelaxedOneHotCategorical distributions. The first `N - 1`
+    dimensions index into a batch of independent distributions and the last
+    dimension represents a vector of probabilities for each class. Only one
+    of `logits` or `probs` should be passed in.
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
+*  <b>`validate_args`</b>: Unused in this distribution.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
+*  <b>`name`</b>: A name for this distribution (optional).
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.allow_nan_stats` {#RelaxedOneHotCategorical.allow_nan_stats}
+
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.batch_shape` {#RelaxedOneHotCategorical.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.batch_shape_tensor(name='batch_shape_tensor')` {#RelaxedOneHotCategorical.batch_shape_tensor}
+
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.bijector` {#RelaxedOneHotCategorical.bijector}
+
+Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.cdf(value, name='cdf')` {#RelaxedOneHotCategorical.cdf}
+
+Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.copy(**override_parameters_kwargs)` {#RelaxedOneHotCategorical.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.covariance(name='covariance')` {#RelaxedOneHotCategorical.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.distribution` {#RelaxedOneHotCategorical.distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.dtype` {#RelaxedOneHotCategorical.dtype}
+
+The `DType` of `Tensor`s handled by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.entropy(name='entropy')` {#RelaxedOneHotCategorical.entropy}
+
+Shannon entropy in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.event_shape` {#RelaxedOneHotCategorical.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.event_shape_tensor(name='event_shape_tensor')` {#RelaxedOneHotCategorical.event_shape_tensor}
+
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.is_continuous` {#RelaxedOneHotCategorical.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.is_scalar_batch(name='is_scalar_batch')` {#RelaxedOneHotCategorical.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.is_scalar_event(name='is_scalar_event')` {#RelaxedOneHotCategorical.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.log_cdf(value, name='log_cdf')` {#RelaxedOneHotCategorical.log_cdf}
+
+Log cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.log_prob(value, name='log_prob')` {#RelaxedOneHotCategorical.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
+where `g^{-1}` is the inverse of `transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.log_survival_function(value, name='log_survival_function')` {#RelaxedOneHotCategorical.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.mean(name='mean')` {#RelaxedOneHotCategorical.mean}
+
+Mean.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.mode(name='mode')` {#RelaxedOneHotCategorical.mode}
+
+Mode.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.name` {#RelaxedOneHotCategorical.name}
+
+Name prepended to all ops created by this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#RelaxedOneHotCategorical.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.param_static_shapes(cls, sample_shape)` {#RelaxedOneHotCategorical.param_static_shapes}
+
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.parameters` {#RelaxedOneHotCategorical.parameters}
+
+Dictionary of parameters used to instantiate this `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.prob(value, name='prob')` {#RelaxedOneHotCategorical.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
+inverse of `transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.reparameterization_type` {#RelaxedOneHotCategorical.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.sample(sample_shape=(), seed=None, name='sample')` {#RelaxedOneHotCategorical.sample}
+
+Generate samples of the specified shape.
+
+Note that a call to `sample()` without arguments will generate a single
+sample.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.stddev(name='stddev')` {#RelaxedOneHotCategorical.stddev}
+
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.survival_function(value, name='survival_function')` {#RelaxedOneHotCategorical.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.validate_args` {#RelaxedOneHotCategorical.validate_args}
+
+Python boolean indicated possibly expensive checks are enabled.
+
+
+- - -
+
+#### `tf.contrib.distributions.RelaxedOneHotCategorical.variance(name='variance')` {#RelaxedOneHotCategorical.variance}
+
+Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
+
 
 
 
