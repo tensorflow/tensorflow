@@ -70,8 +70,6 @@ Status Get3dOutputSize(const std::array<int64, 3>& input,
 
 namespace shape_inference {
 
-namespace {
-
 Status GetWindowedOutputSizeFromDims(
     shape_inference::InferenceContext* c,
     shape_inference::DimensionHandle input_size,
@@ -97,7 +95,6 @@ Status GetWindowedOutputSizeFromDims(
   }
   return Status::OK();
 }
-}  // namespace
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->input(0));
@@ -457,7 +454,7 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 4) {
     return errors::InvalidArgument(
-        "AvgPool requires the stride attribute to contain 4 values, but "
+        "MaxPool requires the stride attribute to contain 4 values, but "
         "got: ",
         strides.size());
   }
@@ -466,7 +463,7 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
   if (kernel_sizes.size() != 4) {
     return errors::InvalidArgument(
-        "AvgPool requires the ksize attribute to contain 4 values, but got: ",
+        "MaxPool requires the ksize attribute to contain 4 values, but got: ",
         kernel_sizes.size());
   }
 
@@ -560,17 +557,6 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
   DimensionHandle output_depth_dim = c->Dim(input_shape, 4);
 
-  // At the moment we need to know the values of several fields.
-  if (!c->ValueKnown(in_planes_dim) || !c->ValueKnown(in_rows_dim) ||
-      !c->ValueKnown(in_cols_dim)) {
-    ShapeHandle output_shape =
-        c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
-                      InferenceContext::kUnknownDim,
-                      InferenceContext::kUnknownDim, output_depth_dim});
-    c->set_output(0, output_shape);
-    return Status::OK();
-  }
-
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
@@ -657,79 +643,18 @@ Status ReductionShape(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ReductionShapeForReduceJoin(InferenceContext* c) {
-  ShapeHandle input = c->input(0);
-
-  ShapeHandle indices;
-  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
-
-  bool keep_dims;
-  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
-
-  const Tensor* reduction_indices_t = c->input_tensor(1);
-  if (reduction_indices_t == nullptr || !c->RankKnown(input)) {
-    // If we do not have the reduction values at runtime, or the
-    // rank of the input, we don't know the output shape.
-    return shape_inference::UnknownShape(c);
-  }
-
-  const int32 input_rank = c->Rank(input);
-  std::set<int32> true_indices;
-  auto reduction_indices = reduction_indices_t->flat<int32>();
-  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
-    int32 reduction_index = reduction_indices(i);
-    if (reduction_index < -input_rank || reduction_index >= input_rank) {
-      return errors::InvalidArgument("Invalid reduction dimension ",
-                                     reduction_index, " for input with ",
-                                     input_rank, " dimensions.");
-    }
-
-    int32 wrapped_index = reduction_index;
-    if (wrapped_index < 0) {
-      wrapped_index += input_rank;
-    }
-
-    if (!true_indices.insert(wrapped_index).second) {
-      return errors::InvalidArgument("Duplicate reduction index ",
-                                     wrapped_index);
-    }
-  }
-
-  std::vector<DimensionHandle> dims;
-  bool reduce_all = (reduction_indices_t->NumElements() == 0);
-  for (int i = 0; i < input_rank; ++i) {
-    if (reduce_all || true_indices.count(i) > 0) {
-      if (true_indices.count(i) > 0) {
-        if (c->Value(c->Dim(input, i)) == 0) {
-          return errors::InvalidArgument("Cannot reduce dimension ", i,
-                                         " with size 0");
-        }
-      }
-
-      if (keep_dims) {
-        dims.emplace_back(c->MakeDim(1));
-      }
-    } else {
-      dims.emplace_back(c->Dim(input, i));
-    }
-  }
-
-  c->set_output(0, c->MakeShape(dims));
-  return Status::OK();
-}
-
-Status ConcatShape(InferenceContext* c) {
+Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
+                         int end_value_index, int dim_index) {
   ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-
-  const Tensor* concat_dim_t = c->input_tensor(0);
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(dim_index), 0, &unused));
+  const Tensor* concat_dim_t = c->input_tensor(dim_index);
   if (concat_dim_t == nullptr) {
     // Return an unknown shape with same rank as inputs, or an unknown rank
     // if no input's rank is known.
 
     // Find rank.
     int32 rank = InferenceContext::kUnknownRank;
-    for (int i = 1; i < c->num_inputs(); ++i) {
+    for (int i = start_value_index; i < end_value_index; ++i) {
       if (rank == InferenceContext::kUnknownRank) rank = c->Rank(c->input(i));
       if (rank != InferenceContext::kUnknownRank) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
@@ -741,7 +666,7 @@ Status ConcatShape(InferenceContext* c) {
     }
     if (rank == 0) {
       return errors::InvalidArgument(
-          "Can't concatenate scalars (use tf.pack instead)");
+          "Can't concatenate scalars (use tf.stack instead)");
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;
@@ -753,28 +678,35 @@ Status ConcatShape(InferenceContext* c) {
   // Merge all the non-concat dims, and sum the concat dim to make an output
   // shape.
   const int32 concat_dim = concat_dim_t->scalar<int32>()();
-  if (concat_dim < 0) {
-    return errors::InvalidArgument("Expected concat_dim >= 0, but got ",
-                                   concat_dim);
-  }
+
+  // Minimum required number of dimensions.
+  const int min_rank = concat_dim < 0 ? -concat_dim : concat_dim + 1;
 
   ShapeHandle output_before;
   ShapeHandle output_after;
 
-  ShapeHandle input = c->input(c->num_inputs() - 1);
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+  ShapeHandle input = c->input(end_value_index - 1);
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, min_rank, &input));
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
   DimensionHandle output_middle = c->Dim(input, concat_dim);
-  TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+  if (concat_dim == -1) {
+    output_after = c->Scalar();  // no dimensions.
+  } else {
+    TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+  }
 
-  for (int i = c->num_inputs() - 2; i > 0; --i) {
+  for (int i = end_value_index - 2; i >= start_value_index; --i) {
     ShapeHandle before;
     ShapeHandle after;
     input = c->input(i);
-    TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, min_rank, &input));
     TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
     DimensionHandle middle = c->Dim(input, concat_dim);
-    TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+    if (concat_dim == -1) {
+      after = c->Scalar();
+    } else {
+      TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+    }
 
     TF_RETURN_IF_ERROR(c->Merge(before, output_before, &output_before));
     TF_RETURN_IF_ERROR(c->Add(output_middle, middle, &output_middle));
@@ -787,6 +719,18 @@ Status ConcatShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(s, output_after, &s));
   c->set_output(0, s);
   return Status::OK();
+}
+
+Status ConcatShape(InferenceContext* c, int num_inputs_to_concat) {
+  return ConcatShapeHelper(c, 1 /* start_value_index */,
+                           1 + num_inputs_to_concat /* end_value_index */,
+                           0 /* dim_index */);
+}
+
+Status ConcatV2Shape(InferenceContext* c) {
+  return ConcatShapeHelper(c, 0 /* start_value_index */,
+                           c->num_inputs() - 1 /* end_value_index */,
+                           c->num_inputs() - 1 /* dim_index */);
 }
 
 Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
@@ -850,6 +794,47 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle values_shape, ShapeHandle shape_shape) {
+  // Validate ranks.
+  ShapeHandle unused_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(indices_shape, 2, &unused_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(values_shape, 1, &unused_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(shape_shape, 1, &unused_shape));
+
+  // Number of elements in indices and values must match.
+  DimensionHandle num_index_elements_dim = c->Dim(indices_shape, 0);
+  if (c->ValueKnown(num_index_elements_dim)) {
+    DimensionHandle num_values_elements_dim = c->Dim(values_shape, 0);
+    if (c->ValueKnown(num_values_elements_dim)) {
+      int64 num_index_elements = c->Value(num_index_elements_dim);
+      int64 num_values_elements = c->Value(num_values_elements_dim);
+      if (num_index_elements != num_values_elements) {
+        return errors::InvalidArgument("Number of elements in index (",
+                                       num_index_elements, ") and values (",
+                                       num_values_elements, ") do not match.");
+      }
+    }
+  }
+
+  // Rank embedded in indices must match shape.
+  DimensionHandle index_rank_dim = c->Dim(indices_shape, 1);
+  if (c->ValueKnown(index_rank_dim)) {
+    DimensionHandle shape_rank_dim = c->Dim(shape_shape, 0);
+    if (c->ValueKnown(shape_rank_dim)) {
+      int64 index_rank = c->Value(index_rank_dim);
+      int32 shape_rank = c->Value(shape_rank_dim);
+      if (index_rank != shape_rank) {
+        return errors::InvalidArgument("Index rank (", index_rank,
+                                       ") and shape rank (", shape_rank,
+                                       ") do not match.");
+      }
+    }
+  }
+
   return Status::OK();
 }
 

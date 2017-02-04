@@ -18,13 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -38,14 +36,46 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 
+__all__ = [
+    "StudentT",
+    "StudentTWithAbsDfSoftplusScale",
+]
+
+
 class StudentT(distribution.Distribution):
-  """Student's t distribution with degree-of-freedom parameter df.
+  # pylint: disable=line-too-long
+  """Student's t-distribution with degree of freedom `df`, location `loc`, and `scale` parameters.
 
   #### Mathematical details
 
-  The PDF of this distribution is:
+  The probability density function (pdf) is,
 
-  `f(t) = gamma((df+1)/2)/sqrt(df*pi)/gamma(df/2)*(1+t^2/df)^(-(df+1)/2)`
+  ```none
+  pdf(x; df, mu, sigma) = (1 + y**2 / df)**(-0.5 (df + 1)) / Z
+  where,
+  y = (x - mu) / sigma
+  Z = abs(sigma) sqrt(df pi) Gamma(0.5 df) / Gamma(0.5 (df + 1))
+  ```
+
+  where:
+  * `loc = mu`,
+  * `scale = sigma`, and,
+  * `Z` is the normalization constant, and,
+  * `Gamma` is the [gamma function](
+    https://en.wikipedia.org/wiki/Gamma_function).
+
+  The StudentT distribution is a member of the [location-scale family](
+  https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+  constructed as,
+
+  ```none
+  X ~ StudentT(df, loc=0, scale=1)
+  Y = loc + scale * X
+  ```
+
+  Notice that `scale` has semantics more similar to standard deviation than
+  variance.  However it is not actually the std. deviation; the Student's
+  t-distribution std. dev. is `scale sqrt(df / (df - 2))` when `df > 2`.
 
   #### Examples
 
@@ -56,18 +86,18 @@ class StudentT(distribution.Distribution):
   single_dist = tf.contrib.distributions.StudentT(df=3)
 
   # Evaluate the pdf at 1, returning a scalar Tensor.
-  single_dist.pdf(1.)
+  single_dist.prob(1.)
 
   # Define a batch of two scalar valued Student t's.
   # The first has degrees of freedom 2, mean 1, and scale 11.
   # The second 3, 2 and 22.
   multi_dist = tf.contrib.distributions.StudentT(df=[2, 3],
-                                                 mu=[1, 2.],
-                                                 sigma=[11, 22.])
+                                                 loc=[1, 2.],
+                                                 scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
-  multi_dist.pdf([0, 1.5])
+  multi_dist.prob([0, 1.5])
 
   # Get 3 samples, returning a 3 x 2 tensor.
   multi_dist.sample(3)
@@ -78,72 +108,77 @@ class StudentT(distribution.Distribution):
   ```python
   # Define a batch of two Student's t distributions.
   # Both have df 2 and mean 1, but different scales.
-  dist = tf.contrib.distributions.StudentT(df=2, mu=1, sigma=[11, 22.])
+  dist = tf.contrib.distributions.StudentT(df=2, loc=1, scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
-  dist.pdf(3.0)
+  dist.prob(3.0)
   ```
 
   """
+  # pylint: enable=line-too-long
 
   def __init__(self,
                df,
-               mu,
-               sigma,
+               loc,
+               scale,
                validate_args=False,
                allow_nan_stats=True,
                name="StudentT"):
     """Construct Student's t distributions.
 
-    The distributions have degree of freedom `df`, mean `mu`, and scale `sigma`.
+    The distributions have degree of freedom `df`, mean `loc`, and scale
+    `scale`.
 
-    The parameters `df`, `mu`, and `sigma` must be shaped in a way that supports
-    broadcasting (e.g. `df + mu + sigma` is a valid operation).
+    The parameters `df`, `loc`, and `scale` must be shaped in a way that
+    supports broadcasting (e.g. `df + loc + scale` is a valid operation).
 
     Args:
-      df: Floating point tensor, the degrees of freedom of the
-        distribution(s). `df` must contain only positive values.
-      mu: Floating point tensor, the means of the distribution(s).
-      sigma: Floating point tensor, the scaling factor for the
-        distribution(s). `sigma` must contain only positive values.
-        Note that `sigma` is not the standard deviation of this distribution.
-      validate_args: `Boolean`, default `False`.  Whether to assert that
-        `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
-        invalid, correct behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: The name to give Ops created by the initializer.
+      df: Numeric `Tensor`. The degrees of freedom of the distribution(s).
+        `df` must contain only positive values.
+      loc: Numeric `Tensor`. The mean(s) of the distribution(s).
+      scale: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
+        Note that `scale` is not technically the standard deviation of this
+        distribution but has semantics more similar to standard deviation than
+        variance.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined.  When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
 
     Raises:
-      TypeError: if mu and sigma are different dtypes.
+      TypeError: if loc and scale are different dtypes.
     """
-    with ops.name_scope(name, values=[df, mu, sigma]) as ns:
-      with ops.control_dependencies([
-          check_ops.assert_positive(df),
-          check_ops.assert_positive(sigma),
-      ] if validate_args else []):
+    parameters = locals()
+    with ops.name_scope(name, values=[df, loc, scale]) as ns:
+      with ops.control_dependencies([check_ops.assert_positive(df)]
+                                    if validate_args else []):
         self._df = array_ops.identity(df, name="df")
-        self._mu = array_ops.identity(mu, name="mu")
-        self._sigma = array_ops.identity(sigma, name="sigma")
+        self._loc = array_ops.identity(loc, name="loc")
+        self._scale = array_ops.identity(scale, name="scale")
         contrib_tensor_util.assert_same_float_dtype(
-            (self._df, self._mu, self._sigma))
-        super(StudentT, self).__init__(
-            dtype=self._sigma.dtype,
-            parameters={"df": self._df, "mu": self._mu, "sigma": self._sigma},
-            is_continuous=True,
-            is_reparameterized=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+            (self._df, self._loc, self._scale))
+    super(StudentT, self).__init__(
+        dtype=self._scale.dtype,
+        is_continuous=True,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._df, self._loc, self._scale],
+        name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("df", "mu", "sigma"), ([ops.convert_to_tensor(
-            sample_shape, dtype=dtypes.int32)] * 3)))
+        zip(("df", "loc", "scale"), (
+            [ops.convert_to_tensor(
+                sample_shape, dtype=dtypes.int32)] * 3)))
 
   @property
   def df(self):
@@ -151,99 +186,113 @@ class StudentT(distribution.Distribution):
     return self._df
 
   @property
-  def mu(self):
+  def loc(self):
     """Locations of these Student's t distribution(s)."""
-    return self._mu
+    return self._loc
 
   @property
-  def sigma(self):
+  def scale(self):
     """Scaling factors of these Student's t distribution(s)."""
-    return self._sigma
+    return self._scale
+
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.df),
+        array_ops.broadcast_dynamic_shape(
+            array_ops.shape(self.loc), array_ops.shape(self.scale)))
 
   def _batch_shape(self):
-    return array_ops.shape(self.df + self.mu + self.sigma)
+    return array_ops.broadcast_static_shape(
+        array_ops.broadcast_static_shape(self.df.get_shape(),
+                                         self.loc.get_shape()),
+        self.scale.get_shape())
 
-  def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(
-        self.sigma.get_shape(),
-        common_shapes.broadcast_shape(
-            self.df.get_shape(),
-            self.mu.get_shape()))
-
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=math_ops.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    # We use 2 uniform random floats to generate polar random variates.
-    # http://dl.acm.org/citation.cfm?id=179631
-    # Theorem 2. Let G, H be iid variates, uniformly distributed on [0,1].
-    # Let theta = 2*pi*H, let R = sqrt(df*(G^(-2/df) - 1)) for df > 0.
-    # Let X = R*cos(theta), and let Y = R*sin(theta).
-    # Then X ~ t_df and Y ~ t_df.
-    # The variates X and Y are not independent.
-    shape = array_ops.concat(0, ([2, n], self.batch_shape()))
-    uniform = random_ops.random_uniform(shape=shape,
-                                        dtype=self.dtype,
-                                        seed=seed)
-    samples_g, samples_h = array_ops.unpack(uniform, num=2)
-    theta = (2. * math.pi) * samples_h
-    r = math_ops.sqrt(self.df *
-                      (math_ops.pow(samples_g, -2 / self.df) - 1))
-    samples = r * math_ops.cos(theta)
-    return samples * self.sigma + self.mu
+    # The sampling method comes from the fact that if:
+    #   X ~ Normal(0, 1)
+    #   Z ~ Chi2(df)
+    #   Y = X / sqrt(Z / df)
+    # then:
+    #   Y ~ StudentT(df).
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
+    normal_sample = random_ops.random_normal(shape, dtype=self.dtype, seed=seed)
+    df = self.df * array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
+    gamma_sample = random_ops.random_gamma(
+        [n],
+        0.5 * df,
+        beta=0.5,
+        dtype=self.dtype,
+        seed=distribution_util.gen_new_seed(seed, salt="student_t"))
+    samples = normal_sample * math_ops.rsqrt(gamma_sample / df)
+    return samples * self.scale + self.loc  # Abs(scale) not wanted.
 
   def _log_prob(self, x):
-    y = (x - self.mu) / self.sigma
-    half_df = 0.5 * self.df
-    return (math_ops.lgamma(0.5 + half_df) -
-            math_ops.lgamma(half_df) -
-            0.5 * math_ops.log(self.df) -
-            0.5 * math.log(math.pi) -
-            math_ops.log(self.sigma) -
-            (0.5 + half_df) * math_ops.log(1. + math_ops.square(y) / self.df))
+    return self._log_unnormalized_prob(x) - self._log_normalization()
+
+  def _log_unnormalized_prob(self, x):
+    y = (x - self.loc) / self.scale  # Abs(scale) superfluous.
+    return -0.5 * (self.df + 1.) * math_ops.log1p(y**2. / self.df)
+
+  def _log_normalization(self):
+    return (math_ops.log(math_ops.abs(self.scale)) +
+            0.5 * math_ops.log(self.df) +
+            0.5 * np.log(np.pi) +
+            math_ops.lgamma(0.5 * self.df) -
+            math_ops.lgamma(0.5 * (self.df + 1.)))
 
   def _prob(self, x):
-    y = (x - self.mu) / self.sigma
-    half_df = 0.5 * self.df
-    return (math_ops.exp(math_ops.lgamma(0.5 + half_df) -
-                         math_ops.lgamma(half_df)) /
-            (math_ops.sqrt(self.df) * math.sqrt(math.pi) * self.sigma) *
-            math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
+    return math_ops.exp(self._log_prob(x))
+
+  def _cdf(self, x):
+    # Take Abs(scale) to make subsequent where work correctly.
+    y = (x - self.loc) / math_ops.abs(self.scale)
+    x_t = self.df / (y**2. + self.df)
+    neg_cdf = 0.5 * math_ops.betainc(0.5 * self.df, 0.5, x_t)
+    return array_ops.where(math_ops.less(y, 0.), neg_cdf, 1. - neg_cdf)
 
   def _entropy(self):
-    u = array_ops.expand_dims(self.df * self._ones(), -1)
-    v = array_ops.expand_dims(self._ones(), -1)
-    beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
-    half_df = 0.5 * self.df
-    return ((0.5 + half_df) * (math_ops.digamma(0.5 + half_df) -
-                               math_ops.digamma(half_df)) +
+    v = array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)[..., None]
+    u = v * self.df[..., None]
+    beta_arg = array_ops.concat([u, v], -1) / 2.
+    return (math_ops.log(math_ops.abs(self.scale)) +
             0.5 * math_ops.log(self.df) +
             special_math_ops.lbeta(beta_arg) +
-            math_ops.log(self.sigma))
+            0.5 * (self.df + 1.) *
+            (math_ops.digamma(0.5 * (self.df + 1.)) -
+             math_ops.digamma(0.5 * self.df)))
 
   @distribution_util.AppendDocstring(
-      """The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
-      If `self.allow_nan_stats=True`, then an exception will be raised rather
-      than returning `NaN`.""")
+      """The mean of Student's T equals `loc` if `df > 1`, otherwise it is
+      `NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+      rather than returning `NaN`.""")
   def _mean(self):
-    mean = self.mu * self._ones()
+    mean = self.loc * array_ops.ones(self.batch_shape_tensor(),
+                                     dtype=self.dtype)
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
-          math_ops.greater(self.df, self._ones()), mean,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+      return array_ops.where(
+          math_ops.greater(
+              self.df,
+              array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)),
+          mean,
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
-      return control_flow_ops.with_dependencies([
-          check_ops.assert_less(
-              array_ops.ones((), dtype=self.dtype), self.df,
-              message="mean not defined for components of df <= 1"),
-      ], mean)
+      return control_flow_ops.with_dependencies(
+          [
+              check_ops.assert_less(
+                  array_ops.ones((), dtype=self.dtype),
+                  self.df,
+                  message="mean not defined for components of df <= 1"),
+          ],
+          mean)
 
-  @distribution_util.AppendDocstring(
-      """
+  @distribution_util.AppendDocstring("""
       The variance for Student's T equals
 
       ```
@@ -253,53 +302,60 @@ class StudentT(distribution.Distribution):
       ```
       """)
   def _variance(self):
-    var = (self._ones() *
-           math_ops.square(self.sigma) * self.df / (self.df - 2))
+    # We need to put the tf.where inside the outer tf.where to ensure we never
+    # hit a NaN in the gradient.
+    denom = array_ops.where(math_ops.greater(self.df, 2.),
+                            self.df - 2.,
+                            array_ops.ones_like(self.df))
+    # Abs(scale) superfluous.
+    var = (array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype) *
+           math_ops.square(self.scale) * self.df / denom)
     # When 1 < df <= 2, variance is infinite.
     inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
-    result_where_defined = math_ops.select(
-        math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
+    result_where_defined = array_ops.where(
+        self.df > array_ops.fill(self.batch_shape_tensor(), 2.),
         var,
-        array_ops.fill(self.batch_shape(), inf, name="inf"))
+        array_ops.fill(self.batch_shape_tensor(), inf, name="inf"))
 
     if self.allow_nan_stats:
       nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
-      return math_ops.select(
-          math_ops.greater(self.df, self._ones()),
+      return array_ops.where(
+          math_ops.greater(
+              self.df,
+              array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)),
           result_where_defined,
-          array_ops.fill(self.batch_shape(), nan, name="nan"))
+          array_ops.fill(self.batch_shape_tensor(), nan, name="nan"))
     else:
-      return control_flow_ops.with_dependencies([
-          check_ops.assert_less(
-              array_ops.ones((), dtype=self.dtype), self.df,
-              message="variance not defined for components of df <= 1"),
-      ], result_where_defined)
-
-  def _std(self):
-    return math_ops.sqrt(self.variance())
+      return control_flow_ops.with_dependencies(
+          [
+              check_ops.assert_less(
+                  array_ops.ones((), dtype=self.dtype),
+                  self.df,
+                  message="variance not defined for components of df <= 1"),
+          ],
+          result_where_defined)
 
   def _mode(self):
-    return array_ops.identity(self.mu)
-
-  def _ones(self):
-    return array_ops.ones(self.batch_shape(), dtype=self.dtype)
+    return array_ops.identity(self.loc)
 
 
-class StudentTWithAbsDfSoftplusSigma(StudentT):
-  """StudentT with `df = floor(abs(df))` and `sigma = softplus(sigma)`."""
+class StudentTWithAbsDfSoftplusScale(StudentT):
+  """StudentT with `df = floor(abs(df))` and `scale = softplus(scale)`."""
 
   def __init__(self,
                df,
-               mu,
-               sigma,
+               loc,
+               scale,
                validate_args=False,
                allow_nan_stats=True,
-               name="StudentTWithAbsDfSoftplusSigma"):
-    with ops.name_scope(name, values=[df, mu, sigma]) as ns:
-      super(StudentTWithAbsDfSoftplusSigma, self).__init__(
+               name="StudentTWithAbsDfSoftplusScale"):
+    parameters = locals()
+    with ops.name_scope(name, values=[df, scale]) as ns:
+      super(StudentTWithAbsDfSoftplusScale, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
-          mu=mu,
-          sigma=nn.softplus(sigma),
+          loc=loc,
+          scale=nn.softplus(scale, name="softplus_scale"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

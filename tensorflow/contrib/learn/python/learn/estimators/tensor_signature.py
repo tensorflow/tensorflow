@@ -22,7 +22,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -35,13 +35,24 @@ class TensorSignature(collections.namedtuple(
 
   Useful to check compatibility of tensors.
 
+  Example:
+
+  ```python
+  examples = tf.placeholder(...)
+  inputs = {'a': var_a, 'b': var_b}
+  signatures = tensor_signature.create_signatures(inputs)
+  result = tensor_signature.create_example_parser_from_signatures(
+      signatures, examples)
+  self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+  ```
+
   Attributes:
     dtype: `DType` object.
     shape: `TensorShape` object.
   """
 
   def __new__(cls, tensor):
-    if isinstance(tensor, ops.SparseTensor):
+    if isinstance(tensor, sparse_tensor.SparseTensor):
       return super(TensorSignature, cls).__new__(
           cls, dtype=tensor.values.dtype, shape=None, is_sparse=True)
     return super(TensorSignature, cls).__new__(

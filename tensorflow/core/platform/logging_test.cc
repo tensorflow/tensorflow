@@ -88,4 +88,10 @@ TEST(LoggingDeathTest, FailedChecks) {
 #endif
 }
 
+TEST(InternalLogString, Basic) {
+  // Just make sure that this code compiles (we don't actually verify
+  // the output)
+  internal::LogString(__FILE__, __LINE__, INFO, "Hello there");
+}
+
 }  // namespace tensorflow

@@ -12,23 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for session_bundle.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os.path
 import shutil
-import numpy as np
-import tensorflow as tf
-from tensorflow.contrib.session_bundle import constants
 
+import numpy as np
+
+from tensorflow.contrib.session_bundle import constants
 from tensorflow.contrib.session_bundle import manifest_pb2
 from tensorflow.contrib.session_bundle import session_bundle
 from tensorflow.core.example.example_pb2 import Example
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
+import tensorflow.python.ops.parsing_ops  # pylint: disable=unused-import
+from tensorflow.python.platform import test
+from tensorflow.python.training import saver
 from tensorflow.python.util import compat
+
+SAVED_MODEL_PATH = (
+    "python/saved_model/example/saved_model_half_plus_two/00000123")
+SESSION_BUNDLE_PATH = "contrib/session_bundle/testdata/half_plus_two/00000123"
 
 
 def _make_serialized_example(x):
@@ -37,7 +50,7 @@ def _make_serialized_example(x):
   return example.SerializeToString()
 
 
-class SessionBundleLoadTest(tf.test.TestCase):
+class SessionBundleLoadTest(test.TestCase):
 
   def _checkRegressionSignature(self, signatures, sess):
     default_signature = signatures.default_signature
@@ -51,7 +64,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
     self.assertEqual(y[0][2], 3)
     self.assertEqual(y[0][3], 3.5)
 
-  def _checkNamedSigantures(self, signatures, sess):
+  def _checkNamedSignatures(self, signatures, sess):
     named_signatures = signatures.named_signatures
     input_name = (named_signatures["inputs"].generic_signature.map["x"]
                   .tensor_name)
@@ -64,12 +77,21 @@ class SessionBundleLoadTest(tf.test.TestCase):
     self.assertEqual(y[0][2], 3)
     self.assertEqual(y[0][3], 3.5)
 
+  def testMaybeSessionBundleDir(self):
+    base_path = test.test_src_dir_path(SESSION_BUNDLE_PATH)
+    self.assertTrue(session_bundle.maybe_session_bundle_dir(base_path))
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.assertFalse(session_bundle.maybe_session_bundle_dir(base_path))
+    base_path = "complete_garbage"
+    self.assertFalse(session_bundle.maybe_session_bundle_dir(base_path))
+
   def testBasic(self):
-    base_path = tf.test.test_src_dir_path(
-        "contrib/session_bundle/example/half_plus_two/00000123")
-    tf.reset_default_graph()
+    base_path = test.test_src_dir_path(SESSION_BUNDLE_PATH)
+    ops.reset_default_graph()
     sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
-        base_path, target="", config=tf.ConfigProto(device_count={"CPU": 2}))
+        base_path,
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2}))
 
     self.assertTrue(sess)
     asset_path = os.path.join(base_path, constants.ASSETS_DIRECTORY)
@@ -88,41 +110,70 @@ class SessionBundleLoadTest(tf.test.TestCase):
       signatures = manifest_pb2.Signatures()
       signatures_any[0].Unpack(signatures)
       self._checkRegressionSignature(signatures, sess)
-      self._checkNamedSigantures(signatures, sess)
+      self._checkNamedSignatures(signatures, sess)
 
   def testBadPath(self):
-    base_path = tf.test.test_src_dir_path("/no/such/a/dir")
-    tf.reset_default_graph()
+    base_path = test.test_src_dir_path("/no/such/a/dir")
+    ops.reset_default_graph()
     with self.assertRaises(RuntimeError) as cm:
       _, _ = session_bundle.load_session_bundle_from_path(
-          base_path, target="local",
-          config=tf.ConfigProto(device_count={"CPU": 2}))
+          base_path,
+          target="local",
+          config=config_pb2.ConfigProto(device_count={"CPU": 2}))
     self.assertTrue("Expected meta graph file missing" in str(cm.exception))
 
+  def testVarCheckpointV2(self):
+    base_path = test.test_src_dir_path(
+        "contrib/session_bundle/testdata/half_plus_two_ckpt_v2/00000123")
+    ops.reset_default_graph()
+    sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
+        base_path,
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2}))
 
-class SessionBundleLoadNoVarsTest(tf.test.TestCase):
+    self.assertTrue(sess)
+    asset_path = os.path.join(base_path, constants.ASSETS_DIRECTORY)
+    with sess.as_default():
+      path1, path2 = sess.run(["filename1:0", "filename2:0"])
+      self.assertEqual(
+          compat.as_bytes(os.path.join(asset_path, "hello1.txt")), path1)
+      self.assertEqual(
+          compat.as_bytes(os.path.join(asset_path, "hello2.txt")), path2)
+
+      collection_def = meta_graph_def.collection_def
+
+      signatures_any = collection_def[constants.SIGNATURES_KEY].any_list.value
+      self.assertEquals(len(signatures_any), 1)
+
+      signatures = manifest_pb2.Signatures()
+      signatures_any[0].Unpack(signatures)
+      self._checkRegressionSignature(signatures, sess)
+      self._checkNamedSignatures(signatures, sess)
+
+
+class SessionBundleLoadNoVarsTest(test.TestCase):
   """Test the case where there are no variables in the graph."""
 
   def setUp(self):
-    self.base_path = os.path.join(tf.test.get_temp_dir(), "no_vars")
+    self.base_path = os.path.join(test.get_temp_dir(), "no_vars")
     if not os.path.exists(self.base_path):
       os.mkdir(self.base_path)
 
     # Create a simple graph with a variable, then convert variables to
     # constants and export the graph.
-    with tf.Graph().as_default() as g:
-      x = tf.placeholder(tf.float32, name="x")
-      w = tf.Variable(3.0)
-      y = tf.sub(w * x, 7.0, name="y")  # pylint: disable=unused-variable
-      tf.add_to_collection("meta", "this is meta")
+    with ops.Graph().as_default() as g:
+      x = array_ops.placeholder(dtypes.float32, name="x")
+      w = variables.Variable(3.0)
+      y = math_ops.subtract(w * x, 7.0, name="y")  # pylint: disable=unused-variable
+      ops.add_to_collection("meta", "this is meta")
 
       with self.test_session(graph=g) as session:
-        tf.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
         new_graph_def = graph_util.convert_variables_to_constants(
             session, g.as_graph_def(), ["y"])
 
       filename = os.path.join(self.base_path, constants.META_GRAPH_DEF_FILENAME)
-      tf.train.export_meta_graph(
+      saver.export_meta_graph(
           filename, graph_def=new_graph_def, collection_list=["meta"])
 
   def tearDown(self):
@@ -132,8 +183,8 @@ class SessionBundleLoadNoVarsTest(tf.test.TestCase):
     session, _ = session_bundle.load_session_bundle_from_path(self.base_path)
     got = session.run(["y:0"], {"x:0": 5.0})[0]
     self.assertEquals(got, 5.0 * 3.0 - 7.0)
-    self.assertEquals(tf.get_collection("meta"), [b"this is meta"])
+    self.assertEquals(ops.get_collection("meta"), [b"this is meta"])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

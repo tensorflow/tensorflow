@@ -67,8 +67,6 @@ contains popular network definitions such as
 and
 [AlexNet](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/nets/alexnet.py)
 models.
-* [preprocess](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/preprocess.py):
-is a module with various preprocessing utilities.
 * [queues](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/queues.py):
 provides a context manager for easily and safely starting and closing
 QueueRunners.
@@ -101,7 +99,7 @@ normal distribution, regularize it with an `l2_loss` and place it on the `CPU`,
 one need only declare the following:
 
 ```python
-weights = variables.variable('weights',
+weights = slim.variable('weights',
                              shape=[10, 10, 3 , 3],
                              initializer=tf.truncated_normal_initializer(stddev=0.1),
                              regularizer=slim.l2_regularizer(0.05),
@@ -111,7 +109,7 @@ weights = variables.variable('weights',
 Note that in native TensorFlow, there are two types of variables: regular
 variables and local (transient) variables. The vast majority of variables are
 regular variables: once created, they can be saved to disk using a
-[saver](https://www.tensorflow.org/versions/r0.9/api_docs/python/state_ops.html#Saver).
+[saver](https://www.tensorflow.org/versions/r0.11/api_docs/python/state_ops.html#Saver).
 Local variables are those variables that only exist for the duration of a
 session and are not saved to disk.
 
@@ -141,7 +139,7 @@ model_variables = slim.get_model_variables()
 # Regular variables
 my_var = slim.variable('my_var',
                        shape=[20, 1],
-                       initializer=tf.zeros_initializer)
+                       initializer=tf.zeros_initializer())
 regular_variables_and_model_variables = slim.get_variables()
 ```
 
@@ -217,7 +215,7 @@ Dropout| [slim.dropout](https://www.tensorflow.org/code/tensorflow/contrib/layer
 Flatten | [slim.flatten](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 MaxPool2D | [slim.max_pool2d](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 OneHotEncoding | [slim.one_hot_encoding](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
-SeperableConv2 | [slim.seperable_conv2d](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
+SeparableConv2 | [slim.separable_conv2d](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 UnitNorm | [slim.unit_norm](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/layers.py)
 
 TF-Slim also provides two meta-operations called `repeat` and `stack` that
@@ -363,11 +361,11 @@ One can also nest `arg_scopes` and use multiple operations in the same scope.
 For example:
 
 ```python
-  with slim.arg_scope([slim.conv2d, slim.fully_connected],
+with slim.arg_scope([slim.conv2d, slim.fully_connected],
                       activation_fn=tf.nn.relu,
                       weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                       weights_regularizer=slim.l2_regularizer(0.0005)):
-  with arg_scope([slim.conv2d], stride=1, padding='SAME'):
+  with slim.arg_scope([slim.conv2d], stride=1, padding='SAME'):
     net = slim.conv2d(inputs, 64, [11, 11], 4, padding='VALID', scope='conv1')
     net = slim.conv2d(net, 256, [5, 5],
                       weights_initializer=tf.truncated_normal_initializer(stddev=0.03),
@@ -452,7 +450,7 @@ images, labels = ...
 predictions = vgg.vgg16(images)
 
 # Define the loss functions and get the total loss.
-loss = losses.softmax_cross_entropy(predictions, labels)
+loss = slim.losses.softmax_cross_entropy(predictions, labels)
 ```
 
 In this example, we start by creating the model (using TF-Slim's VGG
@@ -479,7 +477,7 @@ total_loss = slim.losses.get_total_loss(add_regularization_losses=False)
 In this example, we have two losses which we add by calling
 `slim.losses.softmax_cross_entropy` and `slim.losses.sum_of_squares`. We can
 obtain the total loss by adding them together (`total_loss`) or by calling
-`slim.losses.GetTotalLoss()`. How did this work?
+`slim.losses.get_total_loss()`. How did this work?
 When you create a loss function via TF-Slim, TF-Slim adds the loss to a
 special TensorFlow collection of loss functions. This enables you to either
 manage the total loss manually, or allow TF-Slim to manage them for you.
@@ -568,11 +566,10 @@ vgg = tf.contrib.slim.nets.vgg
 ...
 
 train_log_dir = ...
-if not gfile.Exists(train_log_dir):
-  gfile.MakeDirs(train_log_dir)
+if not tf.gfile.Exists(train_log_dir):
+  tf.gfile.MakeDirs(train_log_dir)
 
-g = tf.Graph()
-with g.as_default():
+with tf.Graph().as_default():
   # Set up the data loading:
   images, labels = ...
 
@@ -583,7 +580,7 @@ with g.as_default():
   slim.losses.softmax_cross_entropy(predictions, labels)
 
   total_loss = slim.losses.get_total_loss()
-  tf.scalar_summary('losses/total loss', total_loss)
+  tf.summary.scalar('losses/total_loss', total_loss)
 
   # Specify the optimization scheme:
   optimizer = tf.train.GradientDescentOptimizer(learning_rate=.001)
@@ -640,8 +637,8 @@ helper functions to select a subset of variables to restore:
 
 ```python
 # Create some variables.
-v1 = slim.variables.variable(name="v1", ...)
-v2 = slim.variables.variable(name="nested/v2", ...)
+v1 = slim.variable(name="v1", ...)
+v2 = slim.variable(name="nested/v2", ...)
 ...
 
 # Get list of variables to restore (which contains only 'v2'). These are all
@@ -750,7 +747,7 @@ We define a metric to be a performance measure that is not a loss function
 (losses are directly optimized during training), but which we are still
 interested in for the purpose of evaluating our model.
 For example, we might want to minimize log loss, but our metrics of interest
-might be F1 score, or Intersection Over Union score (which are not
+might be F1 score (test accuracy), or Intersection Over Union score (which are not
 differentiable, and therefore cannot be used as losses).
 
 TF-Slim provides a set of metric operations that makes evaluating models
@@ -777,8 +774,8 @@ set (upon which the loss is computed), we'll assume we're using test data:
 images, labels = LoadTestData(...)
 predictions = MyModel(images)
 
-mae_value_op, mae_update_op = slim.metrics.mean_absolute_error(predictions, labels)
-mre_value_op, mre_update_op = slim.metrics.mean_relative_error(predictions, labels, labels)
+mae_value_op, mae_update_op = slim.metrics.streaming_mean_absolute_error(predictions, labels)
+mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels, labels)
 pl_value_op, pl_update_op = slim.metrics.percentage_less(mean_relative_errors, 0.3)
 ```
 
@@ -795,13 +792,13 @@ this, TF-Slim provides two convenience functions:
 
 # Aggregates the value and update ops in two lists:
 value_ops, update_ops = slim.metrics.aggregate_metrics(
-    slim.metrics.mean_absolute_error(predictions, labels),
-    slim.metrics.mean_squared_error(predictions, labels))
+    slim.metrics.streaming_mean_absolute_error(predictions, labels),
+    slim.metrics.streaming_mean_squared_error(predictions, labels))
 
 # Aggregates the value and update ops in two dictionaries:
 names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
-    "eval/mean_absolute_error": slim.metrics.mean_absolute_error(predictions, labels),
-    "eval/mean_squared_error": slim.metrics.mean_squared_error(predictions, labels),
+    "eval/mean_absolute_error": slim.metrics.streaming_mean_absolute_error(predictions, labels),
+    "eval/mean_squared_error": slim.metrics.streaming_mean_squared_error(predictions, labels),
 })
 
 ```
@@ -825,16 +822,16 @@ predictions = vgg.vgg_16(images)
 
 # Choose the metrics to compute:
 names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
-    "eval/mean_absolute_error": slim.metrics.mean_absolute_error(predictions, labels),
-    "eval/mean_squared_error": slim.metrics.mean_squared_error(predictions, labels),
+    "eval/mean_absolute_error": slim.metrics.streaming_mean_absolute_error(predictions, labels),
+    "eval/mean_squared_error": slim.metrics.streaming_mean_squared_error(predictions, labels),
 })
 
 # Evaluate the model using 1000 batches of data:
 num_batches = 1000
 
 with tf.Session() as sess:
-  sess.run(tf.initialize_all_variables())
-  sess.run(tf.initialize_local_variables())
+  sess.run(tf.global_variables_initializer())
+  sess.run(tf.local_variables_initializer())
 
   for batch_id in range(num_batches):
     sess.run(names_to_updates.values())
@@ -884,7 +881,7 @@ names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
 # Create the summary ops such that they also print out to std output:
 summary_ops = []
 for metric_name, metric_value in metrics_to_values.iteritems():
-  op = tf.scalar_summary(metric_name, metric_value)
+  op = tf.summary.scalar(metric_name, metric_value)
   op = tf.Print(op, [metric_value], metric_name)
   summary_ops.append(op)
 
@@ -903,7 +900,7 @@ slim.evaluation.evaluation_loop(
     log_dir,
     num_evals=num_batches,
     eval_op=names_to_updates.values(),
-    summary_op=tf.merge_summary(summary_ops),
+    summary_op=tf.summary.merge(summary_ops),
     eval_interval_secs=eval_interval_secs)
 ```
 

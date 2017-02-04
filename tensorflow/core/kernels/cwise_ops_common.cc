@@ -35,7 +35,7 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   // ops that have compute errors are integer division and mod, and the only
   // error they produce is zero division.
   const string& op = ctx->op_kernel().type_string();
-  if ((op == "Div" || op == "Mod") &&
+  if ((op == "Div" || op == "Mod" || op == "FloorMod" || op == "FloorDiv") &&
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
     ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
   } else {

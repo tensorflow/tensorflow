@@ -19,7 +19,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include <tuple>
+#include <unordered_map>
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -88,30 +90,39 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
   std::vector<Tensor> allocated_tensors_;
 };
 
-struct ConvParameters {
-  int64 batch;
-  int64 in_depths;
-  int64 in_rows;
-  int64 in_cols;
-  int64 out_depths;
-  int64 filter_rows;
-  int64 filter_cols;
-  int64 stride_rows;
-  int64 stride_cols;
-  int64 padding_rows;
-  int64 padding_cols;
-  int device_id;
-
-  typedef std::tuple<int64, int64, int64, int64, int64, int64, int64, int64,
-                     int64, int64, int64, int>
-      DataType;
-
-  DataType get_data_as_tuple() const {
-    return std::make_tuple(batch, in_depths, in_rows, in_cols, out_depths,
-                           filter_rows, filter_cols, stride_rows, stride_cols,
-                           padding_rows, padding_cols, device_id);
+// Encapsulate all the shape information that is used in both forward and
+// backward conv operations.
+class ConvParameters {
+ public:
+  ConvParameters(int64 batch, int64 in_depths, int64 in_rows, int64 in_cols,
+                 int64 out_depths, int64 filter_rows, int64 filter_cols,
+                 int64 stride_rows, int64 stride_cols, int64 padding_rows,
+                 int64 padding_cols, int device_id)
+      : batch_(batch),
+        in_depths_(in_depths),
+        in_rows_(in_rows),
+        in_cols_(in_cols),
+        out_depths_(out_depths),
+        filter_rows_(filter_rows),
+        filter_cols_(filter_cols),
+        stride_rows_(stride_rows),
+        stride_cols_(stride_cols),
+        padding_rows_(padding_rows),
+        padding_cols_(padding_cols),
+        device_id_(device_id) {
+    hash_code_ = batch;
+    hash_code_ = Hash64Combine(hash_code_, in_depths);
+    hash_code_ = Hash64Combine(hash_code_, in_rows);
+    hash_code_ = Hash64Combine(hash_code_, in_cols);
+    hash_code_ = Hash64Combine(hash_code_, out_depths);
+    hash_code_ = Hash64Combine(hash_code_, filter_rows);
+    hash_code_ = Hash64Combine(hash_code_, filter_cols);
+    hash_code_ = Hash64Combine(hash_code_, stride_rows);
+    hash_code_ = Hash64Combine(hash_code_, stride_cols);
+    hash_code_ = Hash64Combine(hash_code_, padding_rows);
+    hash_code_ = Hash64Combine(hash_code_, padding_cols);
+    hash_code_ = Hash64Combine(hash_code_, device_id);
   }
-
   bool operator==(const ConvParameters& other) const {
     return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
@@ -119,50 +130,85 @@ struct ConvParameters {
   bool operator!=(const ConvParameters& other) const {
     return !(*this == other);
   }
+  uint64 hash() const { return hash_code_; }
 
-  bool operator<(const ConvParameters& other) const {
-    return this->get_data_as_tuple() < other.get_data_as_tuple();
+ private:
+  typedef std::tuple<int64, int64, int64, int64, int64, int64, int64, int64,
+                     int64, int64, int64, int>
+      DataType;
+
+  DataType get_data_as_tuple() const {
+    return std::make_tuple(batch_, in_depths_, in_rows_, in_cols_, out_depths_,
+                           filter_rows_, filter_cols_, stride_rows_,
+                           stride_cols_, padding_rows_, padding_cols_,
+                           device_id_);
   }
+
+  int64 batch_;
+  int64 in_depths_;
+  int64 in_rows_;
+  int64 in_cols_;
+  int64 out_depths_;
+  int64 filter_rows_;
+  int64 filter_cols_;
+  int64 stride_rows_;
+  int64 stride_cols_;
+  int64 padding_rows_;
+  int64 padding_cols_;
+  int device_id_;
+  uint64 hash_code_;
 };
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// A helper class that looks up the best autotuned config from parameters. It
-// is heavily biased toward the last-seen parameters.
+// A helper class that looks up the best autotuned config from parameters.
 template <typename Parameters, typename Config>
 class AutoTuneMap {
  public:
-  AutoTuneMap() {}
   bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
-    if (params_config_map_.empty()) {
+    auto iter = params_config_map_.find(params);
+    if (iter == params_config_map_.end()) {
       return false;
     }
-    if (params != last_params_) {
-      auto iter = params_config_map_.find(params);
-      if (iter == params_config_map_.end()) {
-        return false;
-      }
-      last_params_ = params;
-      last_config_ = iter->second;
-    }
-    *config = last_config_;
+    *config = iter->second;
     return true;
   }
   void Insert(const ConvParameters& params, const Config& config) {
     mutex_lock lock(mu_);
-    last_params_ = params;
-    last_config_ = config;
     params_config_map_[params] = config;
   }
 
  private:
+  AutoTuneMap() {}
+
+  template <class Group, class Params, class Cfg>
+  friend class AutoTuneSingleton;
+
+  struct Hasher {
+    std::size_t operator()(const Parameters& parameter) const {
+      return parameter.hash();
+    }
+  };
   mutable mutex mu_;
-  std::map<Parameters, Config> params_config_map_ GUARDED_BY(mu_);
-  mutable Parameters last_params_ GUARDED_BY(mu_);
-  mutable Config last_config_ GUARDED_BY(mu_);
+  std::unordered_map<Parameters, Config, Hasher> params_config_map_
+      GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(AutoTuneMap);
+};
+
+// A Singleton helper that manages the global autotune results by groups.
+// The caller specified arbitrary Group type that can distinguish between
+// different autotune results, even if their Parameters and Configs are the
+// same.
+template <class Group, typename Parameters, typename Config>
+class AutoTuneSingleton {
+ public:
+  typedef AutoTuneMap<Parameters, Config> AutoTuneType;
+  static AutoTuneType* GetInstance() {
+    static AutoTuneType* instance = new AutoTuneType;
+    return instance;
+  }
 };
 
 }  // namespace tensorflow

@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
@@ -25,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -90,7 +92,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 
  private:
   // Maps step_id to rendezvous.
-  typedef std::unordered_map<int64, BaseRemoteRendezvous*> Table;
+  typedef gtl::FlatMap<int64, BaseRemoteRendezvous*> Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
@@ -170,7 +172,7 @@ class BaseRemoteRendezvous : public Rendezvous {
   Status status_ GUARDED_BY(mu_);
 
   // Active outstanding RecvTensor calls.
-  std::unordered_set<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
+  gtl::FlatSet<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
 
   // If "is_src" is true, checks that the rendezvous key "parsed"'s
   // source is in this process. If "is_src" is false, checks that the

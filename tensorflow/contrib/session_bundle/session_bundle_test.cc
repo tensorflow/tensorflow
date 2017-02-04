@@ -40,7 +40,9 @@ namespace serving {
 namespace {
 
 // Constants for the export path and file-names.
-const char kExportPath[] = "session_bundle/example/half_plus_two/00000123";
+const char kExportPath[] = "session_bundle/testdata/half_plus_two/00000123";
+const char kExportCheckpointV2Path[] =
+    "session_bundle/testdata/half_plus_two_ckpt_v2/00000123";
 const char kMetaGraphDefFilename[] = "export.meta";
 const char kVariablesFilename[] = "export-00000-of-00001";
 
@@ -250,6 +252,16 @@ TEST(LoadSessionBundleFromPath, BadExportPath) {
   ASSERT_FALSE(status.ok());
   const string msg = status.ToString();
   EXPECT_TRUE(msg.find("Not found") != std::string::npos) << msg;
+}
+
+TEST(CheckpointV2Test, LoadSessionBundleFromPath) {
+  const string export_path = test_util::TestSrcDirPath(kExportCheckpointV2Path);
+  BasicTest(export_path);
+}
+
+TEST(CheckpointV2Test, IsPossibleExportDirectory) {
+  const string export_path = test_util::TestSrcDirPath(kExportCheckpointV2Path);
+  EXPECT_TRUE(IsPossibleExportDirectory(export_path));
 }
 
 class SessionBundleTest : public ::testing::Test {

@@ -127,6 +127,11 @@ class OpDefBuilder {
   OpDefBuilder& Doc(StringPiece text) { return *this; }
 #endif
 
+  // Sets the shape function to be used for shape inference.
+  //
+  // Note that currently (October 2016), python code still requires a
+  // RegisterShape call to invoke this; see call_cpp_shape_fn in
+  // python/framework/common_shapes.py
   OpDefBuilder& SetShapeFn(Status (*fn)(shape_inference::InferenceContext*));
 
   // Sets op_reg_data->op_def to the requested OpDef and

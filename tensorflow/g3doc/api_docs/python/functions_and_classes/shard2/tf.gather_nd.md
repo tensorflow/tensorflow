@@ -2,18 +2,20 @@
 
 Gather values or slices from `params` according to `indices`.
 
-`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.
+`params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `params`.
-It must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
-The innermost dimension of `indices` (with length `R`) corresponds to
-indices into elements (if `R = M`) or slices (if `R < M`) along the `N`th
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
 dimension of `params`.
 
 Produces an output tensor with shape
 
-    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].
+```
+[d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].
+```
 
 Some examples below.
 
@@ -95,14 +97,14 @@ Batched indexing into a 3-tensor:
 ##### Args:
 
 
-*  <b>`params`</b>: A `Tensor`. `M-D`.  The tensor from which to gather values.
+*  <b>`params`</b>: A `Tensor`. `P-D`.  The tensor from which to gather values.
 *  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    `(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`.
+    `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `params`.
-  `(N+M-R)-D`.  Values from `params` gathered from indices given by
+  `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
   `indices`.
 

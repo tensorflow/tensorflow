@@ -12,6 +12,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/contrib/tfprof/python/tools/tfprof:model_analyzer",
         "//tensorflow/contrib/tfprof/python/tools/tfprof:tfprof_logger",
+        "//tensorflow/python:util",
     ],
 )

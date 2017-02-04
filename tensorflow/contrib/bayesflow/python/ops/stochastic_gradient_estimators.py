@@ -56,6 +56,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -64,7 +66,7 @@ from tensorflow.python.training import training
 from tensorflow.python.util.all_util import make_all
 
 
-def score_function(dist_tensor, value, loss, baseline=None,
+def score_function(stochastic_tensor, value, loss, baseline=None,
                    name="ScoreFunction"):
   """Score function estimator.
 
@@ -74,7 +76,7 @@ def score_function(dist_tensor, value, loss, baseline=None,
   It will add a `stop_gradient` to the advantage `(loss - baseline)`.
 
   Args:
-    dist_tensor: `DistributionTensor` p(x).
+    stochastic_tensor: `StochasticTensor` p(x).
     value: `Tensor` x. Samples from p(x).
     loss: `Tensor`.
     baseline: `Tensor` broadcastable to `loss`.
@@ -94,7 +96,7 @@ def score_function(dist_tensor, value, loss, baseline=None,
       advantage = loss
 
     advantage = array_ops.stop_gradient(advantage)
-    return dist_tensor.distribution.log_prob(value) * advantage
+    return stochastic_tensor.distribution.log_prob(value) * advantage
 
 
 def get_score_function_with_advantage(advantage_fn=None,
@@ -102,21 +104,21 @@ def get_score_function_with_advantage(advantage_fn=None,
   """Score function estimator with advantage function.
 
   Args:
-    advantage_fn: callable that takes the `DistributionTensor` and the
+    advantage_fn: callable that takes the `StochasticTensor` and the
       downstream `loss` and returns a `Tensor` advantage
       (e.g. `loss - baseline`).
     name: name to prepend ops with.
 
   Returns:
-    Callable score function estimator that takes the `DistributionTensor`, the
+    Callable score function estimator that takes the `StochasticTensor`, the
     sampled `value`, and the downstream `loss`, and uses the provided advantage.
   """
 
-  def score_function_with_advantage(dist_tensor, value, loss):
+  def score_function_with_advantage(stochastic_tensor, value, loss):
     with ops.name_scope(name, values=[value, loss]):
-      advantage = advantage_fn(dist_tensor, loss)
+      advantage = advantage_fn(stochastic_tensor, loss)
       advantage = array_ops.stop_gradient(advantage)
-      return dist_tensor.distribution.log_prob(value) * advantage
+      return stochastic_tensor.distribution.log_prob(value) * advantage
 
   return score_function_with_advantage
 
@@ -129,13 +131,13 @@ def get_score_function_with_constant_baseline(baseline, name="ScoreFunction"):
     name: name to prepend ops with.
 
   Returns:
-    Callable score function estimator that takes the `DistributionTensor`, the
+    Callable score function estimator that takes the `StochasticTensor`, the
     sampled `value`, and the downstream `loss`, and subtracts the provided
     `baseline` from the `loss`.
   """
 
-  def score_function_with_constant_baseline(dist_tensor, value, loss):
-    return score_function(dist_tensor, value, loss, baseline, name)
+  def score_function_with_constant_baseline(stochastic_tensor, value, loss):
+    return score_function(stochastic_tensor, value, loss, baseline, name)
 
   return score_function_with_constant_baseline
 
@@ -144,23 +146,23 @@ def get_score_function_with_baseline(baseline_fn=None, name="ScoreFunction"):
   """Score function estimator with baseline function.
 
   Args:
-    baseline_fn: callable that takes the `DistributionTensor` and the downstream
+    baseline_fn: callable that takes the `StochasticTensor` and the downstream
       `loss` and returns a `Tensor` baseline to be subtracted from the `loss`.
       If None, defaults to `get_mean_baseline`, which is an EMA of the loss.
     name: name to prepend ops with.
 
   Returns:
-    Callable score function estimator that takes the `DistributionTensor`, the
+    Callable score function estimator that takes the `StochasticTensor`, the
     sampled `value`, and the downstream `loss`, and subtracts the provided
     `baseline` from the `loss`.
   """
   if baseline_fn is None:
     baseline_fn = get_mean_baseline()
 
-  def score_function_with_baseline(dist_tensor, value, loss):
+  def score_function_with_baseline(stochastic_tensor, value, loss):
     with ops.name_scope(name):
-      b = baseline_fn(dist_tensor, loss)
-      return score_function(dist_tensor, value, loss, b)
+      b = baseline_fn(stochastic_tensor, loss)
+      return score_function(stochastic_tensor, value, loss, b)
 
   return score_function_with_baseline
 
@@ -168,17 +170,12 @@ def get_score_function_with_baseline(baseline_fn=None, name="ScoreFunction"):
 def get_mean_baseline(ema_decay=0.99, name=None):
   """ExponentialMovingAverage baseline.
 
-  EMA initializes to 0, which introduces a bias. This baseline implements the
-  bias correction term from Adam (section 3 of
-  https://arxiv.org/pdf/1412.6980v8.pdf), dividing by `1 - ema_decay^t`, where
-  `t` is the step count.
-
   Args:
     ema_decay: decay rate for the ExponentialMovingAverage.
     name: name for variable scope of the ExponentialMovingAverage.
 
   Returns:
-    Callable baseline function that takes the `DistributionTensor` (unused) and
+    Callable baseline function that takes the `StochasticTensor` (unused) and
     the downstream `loss`, and returns an EMA of the loss.
   """
 
@@ -186,28 +183,135 @@ def get_mean_baseline(ema_decay=0.99, name=None):
     with vs.variable_scope(name, default_name="MeanBaseline"):
       reduced_loss = math_ops.reduce_mean(loss)
 
-      ema = training.ExponentialMovingAverage(decay=ema_decay)
+      ema = training.ExponentialMovingAverage(decay=ema_decay, zero_debias=True)
       update_op = ema.apply([reduced_loss])
 
-      # The bias correction term requires keeping track of how many times the
-      # EMA has been updated. Creating a variable here to do so. The global step
-      # is not used because it may or may not track exactly the number of times
-      # the EMA is updated.
-      ema_var = ema.average(reduced_loss)
-      assert ema_var is not None
-      with ops.colocate_with(ema_var):
-        num_updates = vs.get_variable(
-            "local_ema_step", initializer=0, trainable=False)
-      num_updates = num_updates.assign_add(1)
-      bias_correction = 1. - math_ops.pow(ema_decay, math_ops.cast(
-          num_updates, reduced_loss.dtype))
-
       with ops.control_dependencies([update_op]):
-        baseline = ema.average(reduced_loss) / bias_correction
+        # Using `identity` causes an op to be added in this context, which
+        # triggers the update. Removing the `identity` means nothing is updated.
+        baseline = array_ops.identity(ema.average(reduced_loss))
 
       return baseline
 
   return mean_baseline
+
+
+def get_vimco_advantage_fn(have_log_loss=False):
+  """VIMCO (Variational Inference for Monte Carlo Objectives) baseline.
+
+  Implements VIMCO baseline from the article of the same name:
+
+  https://arxiv.org/pdf/1602.06725v2.pdf
+
+  Given a `loss` tensor (containing non-negative probabilities or ratios),
+  calculates the advantage VIMCO advantage via Eq. 9 of the above paper.
+
+  The tensor `loss` should be shaped `[n, ...]`, with rank at least 1.  Here,
+  the first axis is considered the single sampling dimension and `n` must
+  be at least 2.  Specifically, the `StochasticTensor` is assumed to have
+  used the `SampleValue(n)` value type with `n > 1`.
+
+  Args:
+    have_log_loss: Python `Boolean`.  If `True`, the loss is assumed to be the
+      log loss.  If `False` (the default), it is assumed to be a nonnegative
+      probability or probability ratio.
+
+  Returns:
+    Callable baseline function that takes the `StochasticTensor` (unused) and
+    the downstream `loss`, and returns the VIMCO baseline for the loss.
+  """
+  def vimco_advantage_fn(_, loss, name=None):
+    """Internal VIMCO function.
+
+    Args:
+      _: ignored `StochasticTensor`.
+      loss: The loss `Tensor`.
+      name: Python string, the name scope to use.
+
+    Returns:
+      The advantage `Tensor`.
+    """
+    with ops.name_scope(name, "VIMCOAdvantage", values=[loss]):
+      loss = ops.convert_to_tensor(loss)
+      loss_shape = loss.get_shape()
+      loss_num_elements = loss_shape[0].value
+      n = math_ops.cast(
+          loss_num_elements or array_ops.shape(loss)[0], dtype=loss.dtype)
+
+      if have_log_loss:
+        log_loss = loss
+      else:
+        log_loss = math_ops.log(loss)
+
+      # Calculate L_hat, Eq. (4) -- stably
+      log_mean = math_ops.reduce_logsumexp(log_loss, [0]) - math_ops.log(n)
+
+      # expand_dims: Expand shape [a, b, c] to [a, 1, b, c]
+      log_loss_expanded = array_ops.expand_dims(log_loss, [1])
+
+      # divide: log_loss_sub with shape [a, a, b, c], where
+      #
+      #  log_loss_sub[i] = log_loss - log_loss[i]
+      #
+      #       = [ log_loss[j] - log_loss[i] for rows j = 0 ... i - 1     ]
+      #         [ zeros                                                  ]
+      #         [ log_loss[j] - log_loss[i] for rows j = i + 1 ... a - 1 ]
+      #
+      log_loss_sub = log_loss - log_loss_expanded
+
+      # reduce_sum: Sums each row across all the sub[i]'s; result is:
+      #   reduce_sum[j] = (n - 1) * log_loss[j] - (sum_{i != j} loss[i])
+      # divide by (n - 1) to get:
+      #   geometric_reduction[j] =
+      #     log_loss[j] - (sum_{i != j} log_loss[i]) / (n - 1)
+      geometric_reduction = math_ops.reduce_sum(log_loss_sub, [0]) / (n - 1)
+
+      # subtract this from the original log_loss to get the baseline:
+      #   geometric_mean[j] = exp((sum_{i != j} log_loss[i]) / (n - 1))
+      log_geometric_mean = log_loss - geometric_reduction
+
+      ## Equation (9)
+
+      # Calculate sum_{i != j} loss[i] -- via exp(reduce_logsumexp(.))
+      # reduce_logsumexp: log-sum-exp each row across all the
+      # -sub[i]'s, result is:
+      #
+      #  exp(reduce_logsumexp[j]) =
+      #    1 + sum_{i != j} exp(log_loss[i] - log_loss[j])
+      log_local_learning_reduction = math_ops.reduce_logsumexp(
+          -log_loss_sub, [0])
+
+      # convert local_learning_reduction to the sum-exp of the log-sum-exp
+      #  (local_learning_reduction[j] - 1) * exp(log_loss[j])
+      #    = sum_{i != j} exp(log_loss[i])
+      local_learning_log_sum = (
+          _logexpm1(log_local_learning_reduction) + log_loss)
+
+      # Add (logaddexp) the local learning signals (Eq. 9)
+      local_learning_signal = (
+          math_ops.reduce_logsumexp(
+              array_ops.stack((local_learning_log_sum, log_geometric_mean)),
+              [0])
+          - math_ops.log(n))
+
+      advantage = log_mean - local_learning_signal
+
+      return advantage
+
+  return vimco_advantage_fn
+
+
+def _logexpm1(x):
+  """Stably calculate log(exp(x)-1)."""
+  with ops.name_scope("logsumexp1"):
+    eps = np.finfo(x.dtype.as_numpy_dtype).eps
+    # Choose a small offset that makes gradient calculations stable for
+    # float16, float32, and float64.
+    safe_log = lambda y: math_ops.log(y + eps / 1e8)  # For gradient stability
+    return array_ops.where(
+        math_ops.abs(x) < eps,
+        safe_log(x) + x/2 + x*x/24,  # small x approximation to log(expm1(x))
+        safe_log(math_ops.exp(x) - 1))
 
 
 __all__ = make_all(__name__)

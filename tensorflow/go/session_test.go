@@ -119,6 +119,46 @@ func TestSessionRunConcat(t *testing.T) {
 	}
 }
 
+func TestSessionWithStringTensors(t *testing.T) {
+	// Construct the graph:
+	// AsString(StringToHashBucketFast("PleaseHashMe")) Will be much
+	// prettier if using the ops package, but in this package graphs are
+	// constructed from first principles.
+	var (
+		g       = NewGraph()
+		feed, _ = Const(g, "input", "PleaseHashMe")
+		hash, _ = g.AddOperation(OpSpec{
+			Type:  "StringToHashBucketFast",
+			Input: []Input{feed},
+			Attrs: map[string]interface{}{
+				"num_buckets": int64(1 << 32),
+			},
+		})
+		str, _ = g.AddOperation(OpSpec{
+			Type:  "AsString",
+			Input: []Input{hash.Output(0)},
+		})
+	)
+	s, err := NewSession(g, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := s.Run(nil, []Output{str.Output(0)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output) != 1 {
+		t.Fatal(len(output))
+	}
+	got, ok := output[0].Value().(string)
+	if !ok {
+		t.Fatalf("Got %T, wanted string", output[0].Value())
+	}
+	if want := "1027741475"; got != want {
+		t.Fatalf("Got %q, want %q", got, want)
+	}
+}
+
 func TestConcurrency(t *testing.T) {
 	tensor, err := NewTensor(int64(1))
 	if err != nil {

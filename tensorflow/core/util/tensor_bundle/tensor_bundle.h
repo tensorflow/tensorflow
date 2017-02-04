@@ -78,6 +78,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
 
 namespace tensorflow {
@@ -137,6 +138,8 @@ class BundleWriter {
  private:
   Env* const env_;  // Not owned.
   const string prefix_;
+  const string tmp_metadata_path_;
+  const string tmp_data_path_;
   std::unique_ptr<FileOutputBuffer> out_;
   int64 size_;  // Number of bytes written into out_.
   std::map<string, BundleEntryProto> entries_;
@@ -294,8 +297,8 @@ class FileOutputBuffer {
   Status Close();
 
  private:
-  // Appends the buffered data and flushes.
-  Status Flush();
+  // Appends the buffered data to the underlying file. Does NOT flush the file.
+  Status FlushBuffer();
 
   WritableFile* file_;  // Owned.
 
@@ -308,11 +311,6 @@ class FileOutputBuffer {
   // Checksum of all appended bytes since construction or last clear_crc32c().
   uint32 crc32c_ = 0;
 };
-
-// Pattern: "<prefix>.data-<padded shard_id>-of-<padded num_shards>".
-string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards);
-// Pattern: "<prefix>.index."
-string MetaFilename(StringPiece prefix);
 
 }  // namespace tensorflow
 

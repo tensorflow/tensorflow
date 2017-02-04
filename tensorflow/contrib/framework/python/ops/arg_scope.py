@@ -33,7 +33,7 @@
   The first call to conv2d will use predefined args:
     layers.conv2d(inputs, 64, [11, 11], 4, padding='VALID', ..., scope='conv1')
 
-  The second call to Conv will overwrite padding:
+  The second call to conv2d will overwrite padding:
     layers.conv2d(inputs, 256, [5, 5], padding='SAME', ..., scope='conv2')
 
   Example of how to reuse an arg_scope:

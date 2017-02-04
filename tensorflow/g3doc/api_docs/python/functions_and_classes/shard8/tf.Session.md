@@ -87,8 +87,8 @@ and evaluate every `Tensor` in `fetches`, substituting the values in
 `feed_dict` for the corresponding input values.
 
 The `fetches` argument may be a single graph element, or an arbitrarily
-nested list, tuple, namedtuple, or dict containing graph elements at its
-leaves.  A graph element can be one of the following types:
+nested list, tuple, namedtuple, dict, or OrderedDict containing graph
+elements at its leaves.  A graph element can be one of the following types:
 
 * An [`Operation`](../../api_docs/python/framework.md#Operation).
   The corresponding fetched value will be `None`.

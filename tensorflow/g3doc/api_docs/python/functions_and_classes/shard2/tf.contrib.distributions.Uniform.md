@@ -1,58 +1,68 @@
-Uniform distribution with `a` and `b` parameters.
+Uniform distribution with `low` and `high` parameters.
 
-The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
+### Mathematical Details
+
+The probability density function (pdf) is,
+
+```none
+pdf(x; a, b) = I[a <= x < b] / Z
+Z = b - a
+```
+
+where:
+* `low = a`,
+* `high = b`,
+* `Z` is the normalizing constant, and,
+* `I[predicate]` is the [indicator function](
+  https://en.wikipedia.org/wiki/Indicator_function) for `predicate`.
+
+The parameters `low` and `high` must be shaped in a way that supports
+broadcasting (e.g., `high - low` is a valid operation).
+
+### Examples
+
+```python
+# Without broadcasting:
+u1 = Uniform(low=3.0, high=4.0)  # a single uniform distribution [3, 4]
+u2 = Uniform(low=[1.0, 2.0],
+             high=[3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
+u3 = Uniform(low=[[1.0, 2.0],
+                  [3.0, 4.0]],
+             high=[[1.5, 2.5],
+                   [3.5, 4.5]])  # 4 distributions
+```
+
+```python
+# With broadcasting:
+u1 = Uniform(low=3.0, high=[5.0, 6.0, 7.0])  # 3 distributions
+```
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(low=0.0, high=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
 
-Construct Uniform distributions with `a` and `b`.
-
-The parameters `a` and `b` must be shaped in a way that supports
-broadcasting (e.g. `b - a` is a valid operation).
-
-Here are examples without broadcasting:
-
-```python
-# Without broadcasting
-u1 = Uniform(3.0, 4.0)  # a single uniform distribution [3, 4]
-u2 = Uniform([1.0, 2.0], [3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
-u3 = Uniform([[1.0, 2.0],
-              [3.0, 4.0]],
-             [[1.5, 2.5],
-              [3.5, 4.5]])  # 4 distributions
-```
-
-And with broadcasting:
-
-```python
-u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
-```
+Initialize a batch of Uniform distributions.
 
 ##### Args:
 
 
-*  <b>`a`</b>: Floating point tensor, the minimum endpoint.
-*  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+*  <b>`low`</b>: Floating point tensor, lower boundary of the output interval. Must
+    have `low < high`.
+*  <b>`high`</b>: Floating point tensor, upper boundary of the output interval. Must
+    have `low < high`.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=False`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.a` {#Uniform.a}
-
-
+*  <b>`InvalidArgumentError`</b>: if `low >= high` and `validate_args=False`.
 
 
 - - -
@@ -78,19 +88,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.b` {#Uniform.b}
+#### `tf.contrib.distributions.Uniform.batch_shape` {#Uniform.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
 
 
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.batch_shape(name='batch_shape')` {#Uniform.batch_shape}
+#### `tf.contrib.distributions.Uniform.batch_shape_tensor(name='batch_shape_tensor')` {#Uniform.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -130,6 +150,73 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.copy(**override_parameters_kwargs)` {#Uniform.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.covariance(name='covariance')` {#Uniform.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.dtype` {#Uniform.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -139,12 +226,26 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.Uniform.entropy(name='entropy')` {#Uniform.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.event_shape(name='event_shape')` {#Uniform.event_shape}
+#### `tf.contrib.distributions.Uniform.event_shape` {#Uniform.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.event_shape_tensor(name='event_shape_tensor')` {#Uniform.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -161,30 +262,9 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.get_batch_shape()` {#Uniform.get_batch_shape}
+#### `tf.contrib.distributions.Uniform.high` {#Uniform.high}
 
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.get_event_shape()` {#Uniform.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+Upper boundary of the output interval.
 
 
 - - -
@@ -196,9 +276,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
+#### `tf.contrib.distributions.Uniform.is_scalar_batch(name='is_scalar_batch')` {#Uniform.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.is_scalar_event(name='is_scalar_event')` {#Uniform.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -228,54 +335,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.log_pdf(value, name='log_pdf')` {#Uniform.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.log_pmf(value, name='log_pmf')` {#Uniform.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -328,6 +387,13 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.low` {#Uniform.low}
+
+Lower boundary of the output interval.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.mean(name='mean')` {#Uniform.mean}
 
 Mean.
@@ -353,7 +419,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -371,7 +441,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Uniform.param_static_shapes(cls, sample_shape)` {#Uniform.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -393,55 +471,7 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.Uniform.parameters` {#Uniform.parameters}
 
-Dictionary of parameters used by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.pdf(value, name='pdf')` {#Uniform.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.pmf(value, name='pmf')` {#Uniform.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
@@ -467,7 +497,22 @@ Probability density/mass function (depending on `is_continuous`).
 
 #### `tf.contrib.distributions.Uniform.range(name='range')` {#Uniform.range}
 
-`b - a`.
+`high - low`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.reparameterization_type` {#Uniform.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
 
 
 - - -
@@ -494,34 +539,29 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.sample_n(n, seed=None, name='sample_n')` {#Uniform.sample_n}
+#### `tf.contrib.distributions.Uniform.stddev(name='stddev')` {#Uniform.stddev}
 
-Generate `n` samples.
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.std(name='std')` {#Uniform.std}
-
-Standard deviation.
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
@@ -546,7 +586,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -562,5 +602,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Uniform.variance(name='variance')` {#Uniform.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

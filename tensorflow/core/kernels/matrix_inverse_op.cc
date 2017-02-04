@@ -52,7 +52,7 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
     Eigen::PartialPivLU<Matrix> lu_decomposition;
     if (adjoint_) {
       // TODO(rmlarsen): For Eigen 3.2, this creates a temporary copy.
-      // Make sure to backport: https://bitbucket.org/eigen/eigen/commits/ \
+      // Make sure to backport: https://bitbucket.org/eigen/eigen/commits/
       // bd2219a74c96dfe3f6bc2c23588749e36d2d8173
       lu_decomposition.compute(input.adjoint());
     } else {

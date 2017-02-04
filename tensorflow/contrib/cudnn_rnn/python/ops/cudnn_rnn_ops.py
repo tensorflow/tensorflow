@@ -16,24 +16,112 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import itertools
 
 from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.training import saver
 
-_cudnn_rnn_ops_so = load_library.load_op_library(
+
+_cudnn_rnn_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
-assert _cudnn_rnn_ops_so, "Could not load _cudnn_rnn_ops.so."
+
+
+# TODO(yaozhang): make sure we only save the canonical version of params and
+# don't save the platform-specific version to avoid potential race
+# conditions where params is updated by both versions when being restored.
+# Currently, checkpointing will function properly, despite that we save both
+# versions, because Saver restores customized savables after Variables.
+# However, it is good to not rely on this restoring order of Saver and to
+# avoid unnecessary storage. Add a test to check only the canonical version is
+# saved.
+class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
+  """SaveableObject implementation that handles the RNN params variable."""
+
+  def __init__(self,
+               params_to_canonical,
+               canonical_to_params,
+               name="params_canonical",
+               *param_variables):
+    """Creates a RNNParamsSaveable object.
+
+       RNNParamsSaveable is saveable/restorable in a checkpoint file and is used
+       to save/restore the weights and biases parameters in a canonical
+       format, where parameters are saved as tensors layer by layer. For each
+       layer, the bias tensors are saved following the weight tensors. When
+       restoring, a user could name param_variables as desired, and restore
+       weight and bias tensors to these variables.
+
+       For CudnnRNNRelu or CudnnRNNTanh, there are 2 tensors per weight and per
+       bias for each layer: tensor 0 is applied to the input from the previous
+       layer and tensor 1 to the recurrent input.
+
+       For CudnnLSTM, there are 8 tensors per weight and per bias for each
+       layer: tensor 0-3 are applied to the input from the previous layer and
+       tensor 4-7 to the recurrent input. Tensor 0 and 4 are for the input gate;
+       tensor 1 and 5 the forget gate; tensor 2 and 6 the new memory gate;
+       tensor 3 and 7 the output gate.
+
+       For CudnnGRU, there are 6 tensors per weight and per bias for each layer:
+       tensor 0-2 are applied to the input from the previous layer and
+       tensor 3-5 to the recurrent input. Tensor 0 and 3 are for the reset gate;
+       tensor 1 and 4 the update gate; tensor 2 and 5 the new memory gate.
+
+    Args:
+      params_to_canonical: a function to convert params from a specific format
+          for cuDNN or other RNN ops to the canonical format.
+          _CudnnRNN.params_to_canonical() should be provided here.
+      canonical_to_params: a function to convert params from the canonical
+          format to a specific format for cuDNN or other RNN ops. The function
+          must return a scalar (e.g. in the case of cuDNN) or a tuple. This
+          function could be _CudnnRNN.canonical_to_params() or a
+          user-defined function.
+      name: the name of the RNNParamsSaveable object.
+      *param_variables: a list of Variables for parameters in a specific form.
+          For cuDNN RNN ops, this is a single merged variable for both weights
+          and biases; for other RNN ops, this might be multiple unmerged or
+          partially merged variables respectively for weights and biases.
+    """
+    # There is only a single merged parameter variable for cuDNN when saving.
+    weights, biases = params_to_canonical(param_variables[0])
+    self._canonical_to_params = canonical_to_params
+    self._variables = param_variables
+    # We currently don't use slice_spec. It might be useful in a distributed
+    # setting where each parameter server node stores a slice of variable,
+    # instead of having the master pull all slices and then save them.
+    slice_spec = ""
+    specs = [
+        saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param.name)
+        for param in itertools.chain(weights, biases)
+    ]
+    super(RNNParamsSaveable, self).__init__(None, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    weights = restored_tensors[:len(restored_tensors) // 2]
+    biases = restored_tensors[len(restored_tensors) // 2:]
+    params = self._canonical_to_params(weights, biases)
+    if not isinstance(params, tuple):
+      params = (params,)
+    assign_ops = [
+        state_ops.assign(
+            variable, param, validate_shape=False)
+        for variable, param in zip(self._variables, params)
+    ]
+    return control_flow_ops.group(*assign_ops)
 
 _cudnn_rnn_common_doc_string = """
   Cudnn RNN has an opaque parameter buffer that can be used for inference and
   training. But it is possible that the layout of the parameter buffers
-  changes between generations. So it is highly recommended to use the canonical
-  weights and biases to for saving and restoring a model.
+  changes between generations. So it is highly recommended to use
+  RNNParamsSaveable to save and restore weights and biases in a canonical
+  format.
 
   This is a typical use case:
     * The user creates a CudnnRNN model.
@@ -44,13 +132,26 @@ _cudnn_rnn_common_doc_string = """
         weights into the parameter buffer.
     * The user calls the model with the parameter buffer for inference, or
         training.
-    * Once a while, the user extracts the canonical weights from the parameter
-        buffer and saves them into model checkpoints.
+    * If training, the user creates a Saver object.
+    * If training, the user creates a RNNParamsSaveable object from the
+        parameter buffer for it to be later saved in the canonical format. When
+        creating a RNNParamsSaveable object, a name could be provided, which is
+        useful in distinguishing the names of multiple RNNParamsSaveable
+        objects (e.g. for an encoder-decoder model).
+    * Once a while, the user saves the parameter buffer into model checkpoints
+        with Saver.save().
+    * When restoring, the user creates a RNNParamsSaveable object and uses
+      Saver.restore() to restore the paramter buffer from the canonical format
+      to a user-defined format, as well as to restore other savable objects
+      in the checkpoint file.
 """
 
 
 class _CudnnRNN(object):
-  """Create an RNN model using the underlying Cudnn implementation.
+  """Creates an RNN model using the underlying Cudnn implementation.
+
+  Note that self._NUM_PARAMS_PER_LAYER is the number of parameter sets of
+  weight and bias per layer. It needs to be defined in subclasses.
   """
   __doc__ += _cudnn_rnn_common_doc_string
 
@@ -64,7 +165,7 @@ class _CudnnRNN(object):
                dropout=0.,
                seed=0,
                seed2=0):
-    """Create a CudnnRNN model from model spec.
+    """Creates a CudnnRNN model from model spec.
 
     Args:
       rnn_mode: a string specifies the mode, under which this RNN model runs.
@@ -96,7 +197,7 @@ class _CudnnRNN(object):
     self._seed2 = seed2
 
   def params_size(self):
-    """Calculate the size of the opaque parameter buffer needed for this model.
+    """Calculates the size of the opaque parameter buffer needed for this model.
 
     Returns:
       The calculated parameter buffer size.
@@ -112,7 +213,7 @@ class _CudnnRNN(object):
         direction=self._direction)[0]
 
   def __call__(self, input_data, input_h, input_c, params, is_training=True):
-    """Run the forward step for the RNN model.
+    """Runs the forward step for the RNN model.
 
     Args:
       input_data: the input sequence to the RNN model.
@@ -143,13 +244,53 @@ class _CudnnRNN(object):
         is_training=is_training)
     return (output, output_h, output_c)
 
-  # TODO(zhengxq): add reading and writing canonical weights.
+  def params_to_canonical(self, params):
+    """Converts params from a specific format of cuDNN to the canonical format.
+
+    Args:
+      params: a Variable for weight and bias parameters.
+
+    Returns:
+      A function for the specific-to-canonical conversion.
+    """
+    weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
+        num_layers=self._num_layers,
+        num_units=self._num_units,
+        input_size=self._input_size,
+        params=params,
+        num_params=self._num_layers * self._NUM_PARAMS_PER_LAYER,
+        rnn_mode=self._rnn_mode,
+        input_mode=self._input_mode,
+        direction=self._direction)
+    return weights, biases
+
+  def canonical_to_params(self, weights, biases):
+    """Converts params from the canonical format to a specific format of cuDNN.
+
+    Args:
+      weights: a Tensor for weight parameters.
+      biases: a Tensor for bias parameters.
+
+    Returns:
+      A function for the canonical-to-params-to-specific conversion..
+    """
+    return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
+        num_layers=self._num_layers,
+        num_units=self._num_units,
+        input_size=self._input_size,
+        weights=weights,
+        biases=biases,
+        rnn_mode=self._rnn_mode,
+        input_mode=self._input_mode,
+        direction=self._direction)
 
 
 class CudnnLSTM(_CudnnRNN):
-  """Cudnn implementation of the LSTM model.
-  """
+  """Cudnn implementation of the LSTM model."""
   __doc__ += _cudnn_rnn_common_doc_string
+  # 4 sets of weight and bias parameters for the recurrent input, and 4 for the
+  # previous layer input.
+  _NUM_PARAMS_PER_LAYER = 8
 
   def __init__(self,
                num_layers,
@@ -160,7 +301,7 @@ class CudnnLSTM(_CudnnRNN):
                dropout=0.,
                seed=0,
                seed2=0):
-    """Create a Cudnn LSTM model from model spec.
+    """Creates a Cudnn LSTM model from model spec.
 
     Args:
       num_layers: the number of layers for the RNN model.
@@ -191,7 +332,7 @@ class CudnnLSTM(_CudnnRNN):
         seed2=seed2)
 
   def __call__(self, input_data, input_h, input_c, params, is_training=True):
-    """Run the forward step for the Cudnn LSTM model.
+    """Runs the forward step for the Cudnn LSTM model.
 
     Args:
       input_data: the input sequence to the LSTM model.
@@ -214,8 +355,7 @@ class CudnnLSTM(_CudnnRNN):
 
 
 class _CudnnRNNNoInputC(_CudnnRNN):
-  """Simple CudnnRNN models without input_c.
-  """
+  """Simple CudnnRNN models without input_c."""
   __doc__ += _cudnn_rnn_common_doc_string
 
   def __init__(self,
@@ -227,7 +367,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
                dropout=0.,
                seed=0,
                seed2=0):
-    """Create a Cudnn RNN model from model without hidden-state C.
+    """Creates a Cudnn RNN model from model without hidden-state C.
 
     Args:
       num_layers: the number of layers for the RNN model.
@@ -258,7 +398,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
         seed2=seed2)
 
   def __call__(self, input_data, input_h, params, is_training=True):
-    """Run the forward step for the Cudnn LSTM model.
+    """Runs the forward step for the Cudnn LSTM model.
 
     Args:
       input_data: the input sequence to the LSTM model.
@@ -276,24 +416,30 @@ class _CudnnRNNNoInputC(_CudnnRNN):
 
 
 class CudnnGRU(_CudnnRNNNoInputC):
-  """Cudnn implementation of the GRU model.
-  """
+  """Cudnn implementation of the GRU model."""
   __doc__ += _cudnn_rnn_common_doc_string
   _rnn_mode = "gru"
+  # 3 sets of weight and bias parameters for the recurrent input, and 3 for the
+  # previous layer input.
+  _NUM_PARAMS_PER_LAYER = 6
 
 
 class CudnnRNNTanh(_CudnnRNNNoInputC):
-  """Cudnn implementation of the RNN-tanh model.
-  """
+  """Cudnn implementation of the RNN-tanh model."""
   __doc__ += _cudnn_rnn_common_doc_string
   _rnn_mode = "rnn_tanh"
+  # 1 set of weight and bias parameters for the recurrent input, and 1 for the
+  # previous layer input.
+  _NUM_PARAMS_PER_LAYER = 2
 
 
 class CudnnRNNRelu(_CudnnRNNNoInputC):
-  """Cudnn implementation of the RNN-relu model.
-  """
+  """Cudnn implementation of the RNN-relu model."""
   __doc__ += _cudnn_rnn_common_doc_string
   _rnn_mode = "rnn_relu"
+  # 1 set of weight and bias parameters for the recurrent input, and 1 for the
+  # previous layer input.
+  _NUM_PARAMS_PER_LAYER = 2
 
 
 @ops.RegisterGradient("CudnnRNN")
@@ -319,5 +465,7 @@ def _cudnn_rnn_backward(op, *grad):
 
 
 ops.RegisterShape("CudnnRNNParamsSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("CudnnRNNParamsToCanonical")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("CudnnRNNCanonicalToParams")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)

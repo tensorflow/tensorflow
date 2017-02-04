@@ -63,8 +63,8 @@ import tempfile
 import urllib
 train_file = tempfile.NamedTemporaryFile()
 test_file = tempfile.NamedTemporaryFile()
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 ```
 
 Once the CSV files are downloaded, let's read them into
@@ -173,7 +173,7 @@ construct an [Input Reader](https://www.tensorflow.org/versions/r0.9/api_docs/py
 that represents a file or other data source, and iterates through the file as
 TensorFlow runs the graph. Each continuous column in the train or test dataframe
 will be converted into a `Tensor`, which in general is a good format to
-represent dense data. For cateogorical data, we must represent the data as a
+represent dense data. For categorical data, we must represent the data as a
 `SparseTensor`. This data format is good for representing sparse data.
 
 ```python
@@ -222,12 +222,12 @@ To define a feature column for a categorical feature, we can create a
 feature values of a column and there are only a few of them, you can use
 `sparse_column_with_keys`. Each key in the list will get assigned an
 auto-incremental ID starting from 0. For example, for the `gender` column we can
-assign the feature string "female" to an integer ID of 0 and "male" to 1 by
+assign the feature string "Female" to an integer ID of 0 and "Male" to 1 by
 doing:
 
 ```python
 gender = tf.contrib.layers.sparse_column_with_keys(
-  column_name="gender", keys=["female", "male"])
+  column_name="gender", keys=["Female", "Male"])
 ```
 
 What if we don't know the set of possible values in advance? Not a problem. We
@@ -430,35 +430,35 @@ you a desirable model size.
 
 Finally, let's take a minute to talk about what the Logistic Regression model
 actually looks like in case you're not already familiar with it. We'll denote
-the label as $$Y$$, and the set of observed features as a feature vector
-$$\mathbf{x}=[x_1, x_2, ..., x_d]$$. We define $$Y=1$$ if an individual earned >
-50,000 dollars and $$Y=0$$ otherwise. In Logistic Regression, the probability of
-the label being positive ($$Y=1$$) given the features $$\mathbf{x}$$ is given
+the label as \\(Y\\), and the set of observed features as a feature vector
+\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). We define \\(Y=1\\) if an individual earned >
+50,000 dollars and \\(Y=0\\) otherwise. In Logistic Regression, the probability of
+the label being positive (\\(Y=1\\)) given the features \\(\mathbf{x}\\) is given
 as:
 
 $$ P(Y=1|\mathbf{x}) = \frac{1}{1+\exp(-(\mathbf{w}^T\mathbf{x}+b))}$$
 
-where $$\mathbf{w}=[w_1, w_2, ..., w_d]$$ are the model weights for the features
-$$\mathbf{x}=[x_1, x_2, ..., x_d]$$. $$b$$ is a constant that is often called
+where \\(\mathbf{w}=[w_1, w_2, ..., w_d]\\) are the model weights for the features
+\\(\mathbf{x}=[x_1, x_2, ..., x_d]\\). \\(b\\) is a constant that is often called
 the **bias** of the model. The equation consists of two parts—A linear model and
 a logistic function:
 
-*   **Linear Model**: First, we can see that $$\mathbf{w}^T\mathbf{x}+b = b +
-    w_1x_1 + ... +w_dx_d$$ is a linear model where the output is a linear
-    function of the input features $$\mathbf{x}$$. The bias $$b$$ is the
+*   **Linear Model**: First, we can see that \\(\mathbf{w}^T\mathbf{x}+b = b +
+    w_1x_1 + ... +w_dx_d\\) is a linear model where the output is a linear
+    function of the input features \\(\mathbf{x}\\). The bias \\(b\\) is the
     prediction one would make without observing any features. The model weight
-    $$w_i$$ reflects how the feature $$x_i$$ is correlated with the positive
-    label. If $$x_i$$ is positively correlated with the positive label, the
-    weight $$w_i$$ increases, and the probability $$P(Y=1|\mathbf{x})$$ will be
-    closer to 1. On the other hand, if $$x_i$$ is negatively correlated with the
-    positive label, then the weight $$w_i$$ decreases and the probability
-    $$P(Y=1|\mathbf{x})$$ will be closer to 0.
+    \\(w_i\\) reflects how the feature \\(x_i\\) is correlated with the positive
+    label. If \\(x_i\\) is positively correlated with the positive label, the
+    weight \\(w_i\\) increases, and the probability \\(P(Y=1|\mathbf{x})\\) will be
+    closer to 1. On the other hand, if \\(x_i\\) is negatively correlated with the
+    positive label, then the weight \\(w_i\\) decreases and the probability
+    \\(P(Y=1|\mathbf{x})\\) will be closer to 0.
 
 *   **Logistic Function**: Second, we can see that there's a logistic function
-    (also known as the sigmoid function) $$S(t) = 1/(1+\exp(-t))$$ being applied
+    (also known as the sigmoid function) \\(S(t) = 1/(1+\exp(-t))\\) being applied
     to the linear model. The logistic function is used to convert the output of
-    the linear model $$\mathbf{w}^T\mathbf{x}+b$$ from any real number into the
-    range of $$[0, 1]$$, which can be interpreted as a probability.
+    the linear model \\(\mathbf{w}^T\mathbf{x}+b\\) from any real number into the
+    range of \\([0, 1]\\), which can be interpreted as a probability.
 
 Model training is an optimization problem: The goal is to find a set of model
 weights (i.e. model parameters) to minimize a **loss function** defined over the

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.framework.importer."""
 
 from __future__ import absolute_import
@@ -20,14 +19,52 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from google.protobuf import text_format
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import versions
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
+
+def _unknown_shape(op):
+  return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+# NOTE(cwhipkey): Dummy shape registration for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape("If")(_unknown_shape)
+ops.RegisterShape("Iff")(_unknown_shape)
+ops.RegisterShape("Ii")(_unknown_shape)
+ops.RegisterShape("Iif")(_unknown_shape)
+ops.RegisterShape("Iii")(_unknown_shape)
+ops.RegisterShape("In")(_unknown_shape)
+ops.RegisterShape("Iri")(_unknown_shape)
+ops.RegisterShape("None")(_unknown_shape)
+ops.RegisterShape("Of")(_unknown_shape)
+ops.RegisterShape("Oi")(_unknown_shape)
+ops.RegisterShape("Oif")(_unknown_shape)
+ops.RegisterShape("Oii")(_unknown_shape)
+ops.RegisterShape("OpWithDefaultAttr")(_unknown_shape)
+ops.RegisterShape("OpWithFutureDefaultAttr")(_unknown_shape)
+ops.RegisterShape("Or")(_unknown_shape)
+ops.RegisterShape("Otl")(_unknown_shape)
+ops.RegisterShape("Unary")(_unknown_shape)
 
 _op_list = op_def_pb2.OpList()
 text_format.Merge("""
@@ -113,22 +150,25 @@ text_format.Merge("""
 op_def_registry.register_op_list(_op_list)
 # NOTE(mrry): Dummy shape registrations for ops used in the tests.
 for op_def in _op_list.op:
-  tf.RegisterShape(op_def.name)(None)
+  ops.RegisterShape(op_def.name)(None)
 
 
-class ImportGraphDefTest(tf.test.TestCase):
+class ImportGraphDefTest(test.TestCase):
 
-  def _MakeGraphDef(self, text, producer=tf.GRAPH_DEF_VERSION,
-                    min_consumer=tf.GRAPH_DEF_VERSION_MIN_CONSUMER):
-    text = "versions: { producer: %d min_consumer: %d };\n%s" % (
-        producer, min_consumer, text)
-    ret = tf.GraphDef()
+  def _MakeGraphDef(self,
+                    text,
+                    producer=versions.GRAPH_DEF_VERSION,
+                    min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER):
+    text = "versions: { producer: %d min_consumer: %d };\n%s" % (producer,
+                                                                 min_consumer,
+                                                                 text)
+    ret = graph_pb2.GraphDef()
     text_format.Merge(text, ret)
     return ret
 
   def testBasic(self):
-    with tf.Graph().as_default():
-      a, b, c, d = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oif' }
           node { name: 'B' op: 'Otl'
@@ -165,10 +205,10 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.type, "Otl")
       self.assertEqual(c.type, "In")
       self.assertEqual(d.type, "In")
-      self.assertEqual(a.outputs[0].dtype, tf.int32)
-      self.assertEqual(a.outputs[1].dtype, tf.float32)
-      self.assertEqual(b.outputs[0].dtype, tf.int32)
-      self.assertEqual(b.outputs[1].dtype, tf.float32)
+      self.assertEqual(a.outputs[0].dtype, dtypes.int32)
+      self.assertEqual(a.outputs[1].dtype, dtypes.float32)
+      self.assertEqual(b.outputs[0].dtype, dtypes.int32)
+      self.assertEqual(b.outputs[1].dtype, dtypes.float32)
 
       # Check the names of the returned ops.
       self.assertEqual(a.name, "import/A")
@@ -180,11 +220,11 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertNotEqual(None, a.op_def)
 
   def testInputMap(self):
-    with tf.Graph().as_default():
-      feed_a_0 = tf.constant(0, dtype=tf.int32)
-      feed_b_1 = tf.constant(1, dtype=tf.int32)
+    with ops.Graph().as_default():
+      feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
+      feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
 
-      a, b, c, d = tf.import_graph_def(
+      a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oii' }
           node { name: 'B' op: 'Oii' }
@@ -197,7 +237,8 @@ class ImportGraphDefTest(tf.test.TestCase):
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:1' input: 'B:1' }
           """),
-          input_map={"A:0": feed_a_0, "B:1": feed_b_1},
+          input_map={"A:0": feed_a_0,
+                     "B:1": feed_b_1},
           return_elements=["A", "B", "C", "D"])
 
       self.assertEqual(c.inputs[0], feed_a_0)
@@ -206,11 +247,11 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testInputMapBytes(self):
-    with tf.Graph().as_default():
-      feed_a_0 = tf.constant(0, dtype=tf.int32)
-      feed_b_1 = tf.constant(1, dtype=tf.int32)
+    with ops.Graph().as_default():
+      feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
+      feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
 
-      a, b, c, d = tf.import_graph_def(
+      a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oii' }
           node { name: 'B' op: 'Oii' }
@@ -223,7 +264,8 @@ class ImportGraphDefTest(tf.test.TestCase):
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:1' input: 'B:1' }
           """),
-          input_map={b"A:0": feed_a_0, b"B:1": feed_b_1},
+          input_map={b"A:0": feed_a_0,
+                     b"B:1": feed_b_1},
           return_elements=[b"A", b"B", b"C", b"D"])
 
       self.assertEqual(c.inputs[0], feed_a_0)
@@ -232,11 +274,11 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testInputMapUnicode(self):
-    with tf.Graph().as_default():
-      feed_a_0 = tf.constant(0, dtype=tf.int32)
-      feed_b_1 = tf.constant(1, dtype=tf.int32)
+    with ops.Graph().as_default():
+      feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
+      feed_b_1 = constant_op.constant(1, dtype=dtypes.int32)
 
-      a, b, c, d = tf.import_graph_def(
+      a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oii' }
           node { name: 'B' op: 'Oii' }
@@ -249,7 +291,8 @@ class ImportGraphDefTest(tf.test.TestCase):
                  attr { key: 'T' value { type: DT_INT32 } }
                  input: 'A:1' input: 'B:1' }
           """),
-          input_map={u"A:0": feed_a_0, u"B:1": feed_b_1},
+          input_map={u"A:0": feed_a_0,
+                     u"B:1": feed_b_1},
           return_elements=[u"A", u"B", u"C", u"D"])
 
       self.assertEqual(c.inputs[0], feed_a_0)
@@ -258,8 +301,8 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[1], feed_b_1)
 
   def testImplicitZerothOutput(self):
-    with tf.Graph().as_default():
-      a, b = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oii' }
           node { name: 'B' op: 'Ii' input: 'A' }
@@ -269,9 +312,9 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.inputs[0], a.outputs[0])
 
   def testInputMapImplicitZerothOutput(self):
-    with tf.Graph().as_default():
-      feed_a_0 = tf.constant(0, dtype=tf.int32)
-      b, = tf.import_graph_def(
+    with ops.Graph().as_default():
+      feed_a_0 = constant_op.constant(0, dtype=dtypes.int32)
+      b, = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Oii' }
           node { name: 'B' op: 'Ii' input: 'A:0' }
@@ -282,8 +325,8 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.inputs[0], feed_a_0)
 
   def testWithControlDependency(self):
-    with tf.Graph().as_default():
-      a, b = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
           node { name: 'B' op: 'None' input: '^A' }
@@ -293,8 +336,8 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.control_inputs, [a])
 
   def testWithRefs(self):
-    with tf.Graph().as_default():
-      a, b, c, d = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a, b, c, d = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Or' }
           node { name: 'B' op: 'Oi' }
@@ -308,16 +351,15 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(d.inputs[0], a.outputs[0])
       self.assertEqual(d.inputs[1], b.outputs[0])
 
-      self.assertEqual(a.outputs[0].dtype, tf.int32_ref)
-      self.assertEqual(c._input_dtypes, [tf.int32, tf.int32])
+      self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
+      self.assertEqual(c._input_dtypes, [dtypes.int32, dtypes.int32])
       self.assertEqual(c.outputs, [])
-      self.assertEqual(d._input_dtypes,
-                       [tf.int32_ref, tf.int32])
+      self.assertEqual(d._input_dtypes, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
 
   def testCyclic(self):
-    with tf.Graph().as_default():
-      a, b = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a, b = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Unary'
                  attr { key: 'T' value { type: DT_INT32 } } input: 'B:0' }
@@ -330,9 +372,9 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.inputs[0], a.outputs[0])
 
   def testTypeMismatchInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             node { name: 'B' op: 'If' input: 'A:0' }
@@ -344,8 +386,8 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testShapeWhitelist(self):
     # Barrier's shape is an output vector of 2, but the
     # graph says it's a scalar.  This is currently whitelisted.
-    with tf.Graph().as_default():
-      _ = tf.import_graph_def(
+    with ops.Graph().as_default():
+      _ = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'Barrier'
                  attr { key: '_output_shapes'
@@ -357,9 +399,9 @@ class ImportGraphDefTest(tf.test.TestCase):
   def testShapeWhitelistViolation(self):
     # L2 loss produces a scalar shape, but the graph
     # has the wrong shape, so raise an error.
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        _ = tf.import_graph_def(
+        _ = importer.import_graph_def(
             self._MakeGraphDef("""
               node { name: 'A' op: 'Of' }
               node { name: 'B' op: 'L2Loss'
@@ -374,9 +416,9 @@ class ImportGraphDefTest(tf.test.TestCase):
             "Shapes () and (43,) are not compatible" in str(e.exception))
 
   def testInvalidSignatureTooManyInputsInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             node { name: 'B' op: 'None' input: 'A:0' }
@@ -385,9 +427,9 @@ class ImportGraphDefTest(tf.test.TestCase):
                       str(e.exception))
 
   def testInvalidSignatureNotEnoughInputsInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             node { name: 'B' op: 'Iif' input: 'A:0' }
@@ -396,18 +438,18 @@ class ImportGraphDefTest(tf.test.TestCase):
                       "got 'int32')" in str(e.exception))
 
   def testMissingInputOpInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'If' input: 'A:0' }
             """))
       self.assertTrue("Input tensor 'A:0' not found" in str(e.exception))
 
   def testMissingInputOpInGraphDefButAppearsInInputMap(self):
-    with tf.Graph().as_default():
-      feed_a_0 = tf.constant(5.0)
-      b, = tf.import_graph_def(
+    with ops.Graph().as_default():
+      feed_a_0 = constant_op.constant(5.0)
+      b, = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'B' op: 'If' input: 'A:0' }
           """),
@@ -416,9 +458,9 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.inputs[0], feed_a_0)
 
   def testMissingInputTensorInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Of' }
             node { name: 'B' op: 'If' input: 'A:1' }
@@ -426,18 +468,18 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertTrue("Input tensor 'A:1' not found" in str(e.exception))
 
   def testMissingControlInputInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: '^A' }
             """))
       self.assertTrue("Control input '^A' not found" in str(e.exception))
 
   def testInvalidTensorNameOutputIndexInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: 'A:B' }
             """))
@@ -445,9 +487,9 @@ class ImportGraphDefTest(tf.test.TestCase):
                        str(e.exception))
 
   def testInvalidTensorNameInGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: 'A:B:0' }
             """))
@@ -455,71 +497,71 @@ class ImportGraphDefTest(tf.test.TestCase):
                        str(e.exception))
 
   def testMissingReturnOperation(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'None' }
             """),
             return_elements=["B"])
-      self.assertTrue("return_element 'B' not found in graph_def." in
-                      str(e.exception))
+      self.assertTrue(
+          "return_element 'B' not found in graph_def." in str(e.exception))
 
   def testMissingReturnTensor(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             """),
             return_elements=["A:1"])
-      self.assertTrue("return_element 'A:1' not found in graph_def." in
-                      str(e.exception))
+      self.assertTrue(
+          "return_element 'A:1' not found in graph_def." in str(e.exception))
 
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             """),
             return_elements=["B:0"])
-      self.assertTrue("return_element 'B:0' not found in graph_def." in
-                      str(e.exception))
+      self.assertTrue(
+          "return_element 'B:0' not found in graph_def." in str(e.exception))
 
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             """),
             return_elements=["A:B:0"])
-      self.assertTrue("return_element 'A:B:0' not found in graph_def." in
-                      str(e.exception))
+      self.assertTrue(
+          "return_element 'A:B:0' not found in graph_def." in str(e.exception))
 
   def testMissingInputMap(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'None' }
             """),
-            input_map={"B:0": tf.constant(5.0)})
+            input_map={"B:0": constant_op.constant(5.0)})
       self.assertTrue("not found in graph_def: [B:0]" in str(e.exception))
 
   def testInputMapTypeMismatch(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(
+        importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'Oi' }
             node { name: 'B' op: 'Ii' input: 'A:0' }
             """),
-            input_map={"A:0": tf.constant(5.0)})
+            input_map={"A:0": constant_op.constant(5.0)})
       self.assertTrue(
           "Cannot convert a tensor of type float32 to an input of type int32."
           in str(e.exception))
 
   def testNoReturns(self):
-    with tf.Graph().as_default() as g:
-      ret = tf.import_graph_def(
+    with ops.Graph().as_default() as g:
+      ret = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
           """))
@@ -529,12 +571,13 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(a.type, "None")
 
   def testOverrideNamePrefix(self):
-    with tf.Graph().as_default():
-      a, = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a, = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
           """),
-          return_elements=["A"], name="imported_graph")
+          return_elements=["A"],
+          name="imported_graph")
       self.assertEqual(a.name, "imported_graph/A")
 
   def testNamePrefixColocationAttrs(self):
@@ -545,9 +588,9 @@ class ImportGraphDefTest(tf.test.TestCase):
             value { list { s: 'loc:@A' } }
           } }""")
 
-    with tf.Graph().as_default():
-      b, = tf.import_graph_def(original_graph_def,
-                               return_elements=["B"], name="imported_graph")
+    with ops.Graph().as_default():
+      b, = importer.import_graph_def(
+          original_graph_def, return_elements=["B"], name="imported_graph")
       self.assertProtoEqualsVersion("""
           node { name: 'imported_graph/A' op: 'None' }
           node { name: 'imported_graph/B' op: 'None'  attr {
@@ -563,11 +606,11 @@ class ImportGraphDefTest(tf.test.TestCase):
             value { list { s: 'loc:@A' } }
           } }""")
 
-    with tf.Graph().as_default():
-      b, = tf.import_graph_def(original_graph_def,
-                               return_elements=["B"], name="")
-      _, = tf.import_graph_def(original_graph_def,
-                               return_elements=["B"], name="")
+    with ops.Graph().as_default():
+      b, = importer.import_graph_def(
+          original_graph_def, return_elements=["B"], name="")
+      _, = importer.import_graph_def(
+          original_graph_def, return_elements=["B"], name="")
       self.assertProtoEqualsVersion("""
           node { name: 'A' op: 'None' }
           node { name: 'B' op: 'None'  attr {
@@ -586,102 +629,102 @@ class ImportGraphDefTest(tf.test.TestCase):
             key: '_class'
             value { list { s: 'loc:@A' } }
           } }""")
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "does not exist during import"):
-        tf.import_graph_def(original_graph_def,
-                            return_elements=["B"], name="imported_graph")
+        importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
 
   def testEmptyGraph(self):
-    with tf.Graph().as_default() as g:
+    with ops.Graph().as_default() as g:
       init_version = g.version
-      tf.import_graph_def(self._MakeGraphDef(""))
+      importer.import_graph_def(self._MakeGraphDef(""))
       self.assertEqual(init_version, g.version)
 
   def testInvalidInputForGraphDef(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(TypeError) as e:
-        tf.import_graph_def("")
-      self.assertEqual(
-          "graph_def must be a GraphDef proto.", str(e.exception))
+        importer.import_graph_def("")
+      self.assertEqual("graph_def must be a GraphDef proto.", str(e.exception))
 
   def testInvalidInputForInputMap(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(TypeError) as e:
-        tf.import_graph_def(self._MakeGraphDef(""),
-                            input_map=[tf.constant(5.0)])
+        importer.import_graph_def(
+            self._MakeGraphDef(""), input_map=[constant_op.constant(5.0)])
       self.assertEqual("input_map must be a dictionary mapping strings to "
                        "Tensor objects.", str(e.exception))
       with self.assertRaises(ValueError) as e:
-        tf.import_graph_def(self._MakeGraphDef(""),
-                            input_map={"a:0": tf.constant(5.0)},
-                            name="")
+        importer.import_graph_def(
+            self._MakeGraphDef(""),
+            input_map={"a:0": constant_op.constant(5.0)},
+            name="")
       self.assertEqual("tf.import_graph_def() requires a non-empty `name` "
                        "if `input_map` is used.", str(e.exception))
 
   def testInvalidInputForReturnOperations(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       with self.assertRaises(TypeError) as e:
-        tf.import_graph_def(self._MakeGraphDef(""), return_elements=[7])
-      self.assertEqual(
-          "return_elements must be a list of strings.", str(e.exception))
+        importer.import_graph_def(self._MakeGraphDef(""), return_elements=[7])
+      self.assertEqual("return_elements must be a list of strings.",
+                       str(e.exception))
 
   def testWithExtensionAndAttr(self):
-    with tf.Graph().as_default() as g:
-      c = tf.constant(5.0, dtype=tf.float32, name="c")
-      tf.pack([c, c], name="pack")
+    with ops.Graph().as_default() as g:
+      c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")
+      array_ops.stack([c, c], name="pack")
     gdef = g.as_graph_def()
 
     with self.test_session():
-      pack, = tf.import_graph_def(gdef, return_elements=["pack"])
+      pack, = importer.import_graph_def(gdef, return_elements=["pack"])
       self.assertAllEqual(pack.outputs[0].eval(), [5.0, 5.0])
 
   def testWithDevice(self):
-    with tf.Graph().as_default() as g:
+    with ops.Graph().as_default() as g:
       # No device.
-      a = tf.constant(3.0, name="a")
+      a = constant_op.constant(3.0, name="a")
 
-      with tf.device("/cpu:0"):
-        b = tf.constant(4.0, name="b")
-      with tf.device("/job:worker"):
-        c = tf.constant(5.0, name="c")
+      with ops.device("/cpu:0"):
+        b = constant_op.constant(4.0, name="b")
+      with ops.device("/job:worker"):
+        c = constant_op.constant(5.0, name="c")
 
     gdef = g.as_graph_def()
 
-    with tf.Graph().as_default():
-      a2, b2, c2 = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a2, b2, c2 = importer.import_graph_def(
           gdef, return_elements=["a", "b", "c"])
       self.assertEqual(a.device, a2.device)
       self.assertEqual(b.device, b2.device)
       self.assertEqual(c.device, c2.device)
 
-    with tf.Graph().as_default():
-      with tf.device(device.merge_device("/task:0")):
-        a3, b3, c3 = tf.import_graph_def(
+    with ops.Graph().as_default():
+      with ops.device(device.merge_device("/task:0")):
+        a3, b3, c3 = importer.import_graph_def(
             gdef, return_elements=["a", "b", "c"])
         self.assertEqual("/task:0", a3.device)
         self.assertEqual("/task:0/device:CPU:0", b3.device)  # canonicalized.
         self.assertEqual(c.device + "/task:0", c3.device)
 
-    with tf.Graph().as_default():
-      with tf.device(device.merge_device("/job:ps")):
-        a4, b4, c4 = tf.import_graph_def(
+    with ops.Graph().as_default():
+      with ops.device(device.merge_device("/job:ps")):
+        a4, b4, c4 = importer.import_graph_def(
             gdef, return_elements=["a", "b", "c"])
         self.assertEqual("/job:ps", a4.device)
         self.assertEqual("/job:ps/device:CPU:0", b4.device)  # canonicalized.
         self.assertEqual(c.device, c4.device)  # worker overrides ps.
 
-    with tf.Graph().as_default():
-      with tf.device(device.merge_device("/gpu:0")):
-        a5, b5, c5 = tf.import_graph_def(
+    with ops.Graph().as_default():
+      with ops.device(device.merge_device("/gpu:0")):
+        a5, b5, c5 = importer.import_graph_def(
             gdef, return_elements=["a", "b", "c"])
         self.assertEqual("/device:GPU:0", a5.device)
         self.assertEqual("/device:CPU:0", b5.device)  # cpu overrides gpu.
         self.assertEqual(c.device + "/device:GPU:0", c5.device)
 
   def testWithDeviceFunctionDependingOnInputs(self):
-    with tf.Graph().as_default() as g:
-      with tf.device("/job:ps"):
-        v = tf.Variable(1.0)
+    with ops.Graph().as_default() as g:
+      with ops.device("/job:ps"):
+        v = variables.Variable(1.0)
       unused_assign_op = v.assign(2.0)
       unused_assign_2_op = v.assign(3.0)
       unused_add_t = v + v
@@ -689,41 +732,48 @@ class ImportGraphDefTest(tf.test.TestCase):
 
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
+
     def input_counter(op):
-      if any(in_t.dtype.is_ref_dtype for in_t in op.inputs):
+      if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
         ops_with_two_inputs.append(op)
       return ""
 
-    with tf.Graph().as_default() as g:
-      with tf.device(input_counter):
-        tf.import_graph_def(gdef)
+    with ops.Graph().as_default() as g:
+      with ops.device(input_counter):
+        importer.import_graph_def(gdef)
 
     # We expect to see the initializer, two assign operations, and the add op.
     self.assertEqual(4, len(ops_with_two_inputs))
 
   def testGradient(self):
-    with tf.Graph().as_default() as g:
-      inputs = tf.placeholder(tf.float32, shape=[None, 100], name="input")
-      weights = tf.placeholder(tf.float32, shape=[100, 10], name="weights")
-      biases = tf.placeholder(tf.float32, shape=[10], name="biases")
-      activations = tf.nn.relu(tf.matmul(inputs, weights) + biases,
-                               name="activations")
-      loss = tf.reduce_mean(activations, name="loss")
+    with ops.Graph().as_default() as g:
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=[None, 100], name="input")
+      weights = array_ops.placeholder(
+          dtypes.float32, shape=[100, 10], name="weights")
+      biases = array_ops.placeholder(dtypes.float32, shape=[10], name="biases")
+      activations = nn_ops.relu(
+          math_ops.matmul(inputs, weights) + biases, name="activations")
+      loss = math_ops.reduce_mean(activations, name="loss")
     gdef = g.as_graph_def()
 
-    with tf.Graph().as_default() as g:
-      input_placeholder = tf.placeholder(tf.float32, shape=[32, 100])
-      weights_var = tf.Variable(tf.truncated_normal([100, 10]), name="weights")
-      biases_var = tf.Variable(tf.zeros([10]), name="biases")
-      activations, loss = tf.import_graph_def(
+    with ops.Graph().as_default() as g:
+      input_placeholder = array_ops.placeholder(dtypes.float32, shape=[32, 100])
+      weights_var = variables.Variable(
+          random_ops.truncated_normal([100, 10]), name="weights")
+      biases_var = variables.Variable(array_ops.zeros([10]), name="biases")
+      activations, loss = importer.import_graph_def(
           gdef,
-          input_map={"input:0": input_placeholder,
-                     "weights:0": weights_var,
-                     "biases:0": biases_var},
+          input_map={
+              "input:0": input_placeholder,
+              "weights:0": weights_var,
+              "biases:0": biases_var
+          },
           return_elements=["activations:0", "loss:0"])
       self.assertEqual([32, 10], activations.get_shape())
       self.assertEqual([], loss.get_shape())
-      weights_grad, biases_grad = tf.gradients(loss, [weights_var, biases_var])
+      weights_grad, biases_grad = gradients_impl.gradients(
+          loss, [weights_var, biases_var])
       self.assertEqual([100, 10], weights_grad.get_shape())
       self.assertEqual([10], biases_grad.get_shape())
 
@@ -734,50 +784,54 @@ class ImportGraphDefTest(tf.test.TestCase):
       # the hard limit.
       input_shape = [130, 1000, 1000]
       tensor_input = np.ones(input_shape, dtype=np.float32)
-      t = tf.constant(tensor_input, shape=input_shape)
-      g = tf.identity(t)
+      t = constant_op.constant(tensor_input, shape=input_shape)
+      g = array_ops.identity(t)
       g.eval()
 
   def testVersion(self):
-    v0 = tf.GRAPH_DEF_VERSION_MIN_CONSUMER
-    v2 = tf.GRAPH_DEF_VERSION
+    v0 = versions.GRAPH_DEF_VERSION_MIN_CONSUMER
+    v2 = versions.GRAPH_DEF_VERSION
     v1 = (v0 + v2) // 2
     for producer in v0, v1, v2:
       for min_consumer in v0, v1, v2:
-        with tf.Graph().as_default():
-          a, = tf.import_graph_def(
-              self._MakeGraphDef("node { name: 'A' op: 'Oii' }",
-                                 producer=producer, min_consumer=min_consumer),
+        with ops.Graph().as_default():
+          a, = importer.import_graph_def(
+              self._MakeGraphDef(
+                  "node { name: 'A' op: 'Oii' }",
+                  producer=producer,
+                  min_consumer=min_consumer),
               return_elements=["A"])
           self.assertEqual(a.graph.graph_def_versions.producer, producer)
           self.assertEqual(a.graph.graph_def_versions.min_consumer,
                            min_consumer)
 
   def testVersionLow(self):
-    with tf.Graph().as_default() as g:
+    with ops.Graph().as_default() as g:
       pat = (r"GraphDef producer version -1 below min producer %d supported "
              r"by TensorFlow \S+\.  Please regenerate your graph.$" %
-             tf.GRAPH_DEF_VERSION_MIN_PRODUCER)
-      tf.import_graph_def(self._MakeGraphDef("", producer=-1))
-      x = tf.constant(7)  # Need at least one op to get a C++ graph generated
+             versions.GRAPH_DEF_VERSION_MIN_PRODUCER)
+      importer.import_graph_def(self._MakeGraphDef("", producer=-1))
+      x = constant_op.constant(
+          7)  # Need at least one op to get a C++ graph generated
       with self.test_session(graph=g) as sess:
         with self.assertRaisesRegexp(Exception, pat):
           sess.run(x)
 
   def testVersionHigh(self):
-    with tf.Graph().as_default() as g:
+    with ops.Graph().as_default() as g:
       pat = (r"GraphDef min consumer version %d above current version %d "
              r"for TensorFlow \S+\.  Please upgrade TensorFlow\.$" %
-             (1 << 30, tf.GRAPH_DEF_VERSION))
-      tf.import_graph_def(self._MakeGraphDef("", min_consumer=1 << 30))
-      x = tf.constant(7)  # Need at least one op to get a C++ graph generated
+             (1 << 30, versions.GRAPH_DEF_VERSION))
+      importer.import_graph_def(self._MakeGraphDef("", min_consumer=1 << 30))
+      x = constant_op.constant(
+          7)  # Need at least one op to get a C++ graph generated
       with self.test_session(graph=g) as sess:
         with self.assertRaisesRegexp(Exception, pat):
           sess.run(x)
 
   def testDefaultAttrsAdded(self):
-    with tf.Graph().as_default():
-      a = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'OpWithDefaultAttr' }
           """),
@@ -793,25 +847,28 @@ class ImportGraphDefTest(tf.test.TestCase):
       }
     """, producer_op_list)
     # Attr only in producer_op_list with default value gets removed.
-    with tf.Graph().as_default():
-      a = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'OpWithFutureDefaultAttr'
                  attr { key: 'default_int' value { i: 456 } } }
           """),
-          return_elements=["A"], producer_op_list=producer_op_list)
+          return_elements=["A"],
+          producer_op_list=producer_op_list)
       with self.assertRaisesRegexp(ValueError, "No attr named 'default_int'"):
         a[0].get_attr("default_int")
 
     # Attr only in producer_op_list with non-default value is preserved.
-    with tf.Graph().as_default():
-      a = tf.import_graph_def(
+    with ops.Graph().as_default():
+      a = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A' op: 'OpWithFutureDefaultAttr'
                  attr { key: 'default_int' value { i: 987 } } }
           """),
-          return_elements=["A"], producer_op_list=producer_op_list)
+          return_elements=["A"],
+          producer_op_list=producer_op_list)
       self.assertEqual(987, a[0].get_attr("default_int"))
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

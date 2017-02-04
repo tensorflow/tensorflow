@@ -67,4 +67,8 @@ template class InvVarianceToVariance<float>;
 }  // namespace functor
 }  // namespace tensorflow
 
+#else
+
+#include "tensorflow/core/kernels/fused_batch_norm_op.h"
+
 #endif  // GOOGLE_CUDA

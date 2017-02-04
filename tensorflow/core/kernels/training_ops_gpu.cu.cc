@@ -64,7 +64,7 @@ struct ApplyAdadelta<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
 
-    accum.device(d) = accum_update * rho.reshape(single).broadcast(bcast) +
+    accum.device(d) = accum * rho.reshape(single).broadcast(bcast) +
                       grad.square() * (grad.constant(T(1)) -
                                        rho.reshape(single).broadcast(bcast));
     const auto update =
@@ -172,8 +172,7 @@ struct ApplyCenteredRMSProp<GPUDevice, T> {
         (rho.constant(one) - rho).reshape(single).broadcast(bcast);
     ms.device(d) = ms + one_minus_rho * (grad.square() - ms);
     mg.device(d) = mg + one_minus_rho * (grad - mg);
-    auto denom =
-        epsilon.reshape(single).broadcast(bcast) + ms - mg.square().sqrt();
+    auto denom = (ms - mg.square()) + epsilon.reshape(single).broadcast(bcast);
     mom.device(d) = mom * momentum.reshape(single).broadcast(bcast) +
                     lr.reshape(single).broadcast(bcast) * grad / denom.sqrt();
     var.device(d) -= mom;

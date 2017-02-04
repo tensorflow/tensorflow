@@ -39,7 +39,7 @@ def get_seed(op_seed):
   graph, or for only specific operations.
 
   For details on how the graph-level seed interacts with op seeds, see
-  [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed).
+  @{set_random_seed}.
 
   Args:
     op_seed: integer.
@@ -136,7 +136,7 @@ def set_random_seed(seed):
   a = tf.random_uniform([1])
   b = tf.random_normal([1])
 
-  # Repeatedly running this block with the same graph will generate different
+  # Repeatedly running this block with the same graph will generate the same
   # sequences of 'a' and 'b'.
   print("Session 1")
   with tf.Session() as sess1:

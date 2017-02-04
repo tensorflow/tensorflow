@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+from collections import OrderedDict
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +32,7 @@ __all__ = ['collect_named_outputs',
            'smart_cond',
            'get_variable_collections',
            'two_element_tuple',
+           'n_positive_integers',
            'last_dimension',
            'first_dimension']
 
@@ -43,71 +45,93 @@ def collect_named_outputs(collections, alias, outputs):
   It is useful to collect end-points or tags for summaries. Example of usage:
 
   logits = collect_named_outputs('end_points', 'inception_v3/logits', logits)
-  assert logits.alias == 'inception_v3/logits'
+  assert 'inception_v3/logits' in logits.aliases
 
   Args:
     collections: A collection or list of collections. If None skip collection.
-    alias: String, alias to name the outputs, ex. 'inception_v3/conv1'
+    alias: String to append to the list of aliases of outputs, for example,
+           'inception_v3/conv1'.
     outputs: Tensor, an output tensor to collect
 
   Returns:
     The outputs Tensor to allow inline call.
   """
-  # Remove ending '/' if present.
-  if alias[-1] == '/':
-    alias = alias[:-1]
-  outputs.alias = alias
   if collections:
+    append_tensor_alias(outputs, alias)
     ops.add_to_collections(collections, outputs)
   return outputs
 
 
-def gather_tensors_alias(tensors):
-  """Given a list of tensors, gather their aliases.
+def append_tensor_alias(tensor, alias):
+  """Append an alias to the list of aliases of the tensor.
 
-  If the tensor does not have an alias it would default to its name.
+  Args:
+    tensor: A `Tensor`.
+    alias: String, to add to the list of aliases of the tensor.
+
+  Returns:
+    The tensor with a new alias appended to its list of aliases.
+  """
+  # Remove ending '/' if present.
+  if alias[-1] == '/':
+    alias = alias[:-1]
+  if hasattr(tensor, 'aliases'):
+    tensor.aliases.append(alias)
+  else:
+    tensor.aliases = [alias]
+  return tensor
+
+
+def gather_tensors_aliases(tensors):
+  """Given a list of tensors, gather their aliases.
 
   Args:
     tensors: A list of `Tensors`.
 
   Returns:
-    A list of strings with the alias of each tensor.
+    A list of strings with the aliases of all tensors.
   """
-  return [get_tensor_alias(tensor) for tensor in tensors]
+  aliases = []
+  for tensor in tensors:
+    aliases += get_tensor_aliases(tensor)
+  return aliases
 
 
-def get_tensor_alias(tensor):
-  """Given a tensor gather its alias, its op.name or its name.
+def get_tensor_aliases(tensor):
+  """Get a list with the aliases of the input tensor.
 
-  If the tensor does not have an alias it would default to its name.
+  If the tensor does not have any alias, it would default to its its op.name or
+  its name.
 
   Args:
     tensor: A `Tensor`.
 
   Returns:
-    A string with the alias of the tensor.
+    A list of strings with the aliases of the tensor.
   """
-  if hasattr(tensor, 'alias'):
-    alias = tensor.alias
+  if hasattr(tensor, 'aliases'):
+    aliases = tensor.aliases
   else:
     if tensor.name[-2:] == ':0':
       # Use op.name for tensor ending in :0
-      alias = tensor.op.name
+      aliases = [tensor.op.name]
     else:
-      alias = tensor.name
-  return alias
+      aliases = [tensor.name]
+  return aliases
 
 
 def convert_collection_to_dict(collection):
-  """Returns a dict of Tensors using get_tensor_alias as key.
+  """Returns an OrderedDict of Tensors with their aliases as keys.
 
   Args:
     collection: A collection.
 
   Returns:
-    A dictionary of {get_tensor_alias(tensor): tensor}
+    An OrderedDict of {alias: tensor}
   """
-  return {get_tensor_alias(t): t for t in ops.get_collection(collection)}
+  return OrderedDict((alias, tensor)
+                     for tensor in ops.get_collection(collection)
+                     for alias in get_tensor_aliases(tensor))
 
 
 def constant_value(value_or_tensor_or_var, dtype=None):
@@ -277,3 +301,52 @@ def two_element_tuple(int_or_tuple):
       return int_or_tuple[0], int_or_tuple[1]
   raise ValueError('Must be an int, a list with 2 elements or a TensorShape of '
                    'length 2')
+
+
+def n_positive_integers(n, value):
+  """Converts `value` to a sequence of `n` positive integers.
+
+  `value` may be either be a sequence of values convertible to `int`, or a
+  single value convertible to `int`, in which case the resulting integer is
+  duplicated `n` times.  It may also be a TensorShape of rank `n`.
+
+  Args:
+    n: Length of sequence to return.
+    value: Either a single value convertible to a positive `int` or an
+      `n`-element sequence of values convertible to a positive `int`.
+
+  Returns:
+    A tuple of `n` positive integers.
+
+  Raises:
+    TypeError: If `n` is not convertible to an integer.
+    ValueError: If `n` or `value` are invalid.
+  """
+
+  n_orig = n
+  n = int(n)
+  if n < 1 or n != n_orig:
+    raise ValueError('n must be a positive integer')
+
+  try:
+    value = int(value)
+  except (TypeError, ValueError):
+    sequence_len = len(value)
+    if sequence_len != n:
+      raise ValueError(
+          'Expected sequence of %d positive integers, but received %r' %
+          (n, value))
+    try:
+      values = tuple(int(x) for x in value)
+    except:
+      raise ValueError(
+          'Expected sequence of %d positive integers, but received %r' %
+          (n, value))
+    for x in values:
+      if x < 1:
+        raise ValueError('expected positive integer, but received %d' % x)
+    return values
+
+  if value < 1:
+    raise ValueError('expected positive integer, but received %d' % value)
+  return (value,) * n

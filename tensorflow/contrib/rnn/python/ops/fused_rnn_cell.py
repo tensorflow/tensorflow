@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.contrib.rnn.python.ops import core_rnn as contrib_rnn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import rnn
 
@@ -100,7 +101,7 @@ class FusedRNNCellAdaptor(FusedRNNCell):
     is_list = isinstance(inputs, list)
     if self._use_dynamic_rnn:
       if is_list:
-        inputs = array_ops.pack(inputs)
+        inputs = array_ops.stack(inputs)
       outputs, state = rnn.dynamic_rnn(
           self._cell,
           inputs,
@@ -111,19 +112,19 @@ class FusedRNNCellAdaptor(FusedRNNCell):
           scope=scope)
       if is_list:
         # Convert outputs back to list
-        outputs = array_ops.unpack(outputs)
+        outputs = array_ops.unstack(outputs)
     else:  # non-dynamic rnn
       if not is_list:
-        inputs = array_ops.unpack(inputs)
-      outputs, state = rnn.rnn(self._cell,
-                               inputs,
-                               initial_state=initial_state,
-                               dtype=dtype,
-                               sequence_length=sequence_length,
-                               scope=scope)
+        inputs = array_ops.unstack(inputs)
+      outputs, state = contrib_rnn.static_rnn(self._cell,
+                                              inputs,
+                                              initial_state=initial_state,
+                                              dtype=dtype,
+                                              sequence_length=sequence_length,
+                                              scope=scope)
       if not is_list:
         # Convert outputs back to tensor
-        outputs = array_ops.pack(outputs)
+        outputs = array_ops.stack(outputs)
 
     return outputs, state
 
@@ -134,7 +135,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
   For example,
 
   ```python
-  cell = tf.nn.rnn_cell.BasicRNNCell(10)
+  cell = tf.contrib.rnn.BasicRNNCell(10)
   fw_lstm = tf.contrib.rnn.FusedRNNCellAdaptor(cell, use_dynamic_rnn=True)
   bw_lstm = tf.contrib.rnn.TimeReversedFusedRNN(fw_lstm)
   fw_out, fw_state = fw_lstm(inputs)
@@ -161,7 +162,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
       return list(reversed(t))
     else:
       if lengths is None:
-        return array_ops.reverse(t, [True, False, False])
+        return array_ops.reverse_v2(t, [0])
       else:
         return array_ops.reverse_sequence(t, lengths, 0, 1)
 

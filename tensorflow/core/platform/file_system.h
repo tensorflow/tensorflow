@@ -61,7 +61,7 @@ class FileSystem {
   virtual Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
-  virtual bool FileExists(const string& fname) = 0;
+  virtual Status FileExists(const string& fname) = 0;
 
   /// \brief Returns the immediate children in the given directory.
   ///
@@ -87,7 +87,7 @@ class FileSystem {
   //   '\\' c: matches character c
   //   lo '-' hi: matches character c for lo <= c <= hi
   //
-  // Typical return codes
+  // Typical return codes:
   //  * OK - no errors
   //  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   //                    implemented
@@ -100,10 +100,16 @@ class FileSystem {
 
   virtual Status DeleteFile(const string& fname) = 0;
 
+  // \brief Creates the specified directory.
+  // Typical return codes:
+  //  * OK - successfully created the directory.
+  //  * ALREADY_EXISTS - directory with name dirname already exists.
+  //  * PERMISSION_DENIED - dirname is not writable.
   virtual Status CreateDir(const string& dirname) = 0;
 
   // \brief Creates the specified directory and all the necessary
-  // subdirectories. Typical return codes.
+  // subdirectories.
+  // Typical return codes:
   //  * OK - successfully created the directory and sub directories, even if
   //         they were already created.
   //  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
@@ -116,7 +122,7 @@ class FileSystem {
   // files and directories that weren't deleted (unspecified if the return
   // status is not OK).
   // REQUIRES: undeleted_files, undeleted_dirs to be not null.
-  // Typical return codes
+  // Typical return codes:
   //  * OK - dirname exists and we were able to delete everything underneath.
   //  * NOT_FOUND - dirname doesn't exist
   //  * PERMISSION_DENIED - dirname or some descendant is not writable
@@ -145,6 +151,8 @@ class FileSystem {
   //  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual Status IsDirectory(const string& fname);
 };
+
+// START_SKIP_DOXYGEN
 
 #ifndef SWIG
 // Degenerate file system that provides no implementations.
@@ -176,7 +184,9 @@ class NullFileSystem : public FileSystem {
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
 
-  bool FileExists(const string& fname) override { return false; }
+  Status FileExists(const string& fname) override {
+    return errors::Unimplemented("FileExists unimplemented");
+  }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return errors::Unimplemented("GetChildren unimplemented");
@@ -207,6 +217,8 @@ class NullFileSystem : public FileSystem {
   }
 };
 #endif
+
+// END_SKIP_DOXYGEN
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
@@ -282,19 +294,6 @@ class FileSystemRegistry {
   virtual Status GetRegisteredFileSystemSchemes(
       std::vector<string>* schemes) = 0;
 };
-
-// Populates the scheme, host, and path from a URI.
-//
-// Corner cases:
-// - If the URI is invalid, scheme and host are set to empty strings and the
-//   passed string is assumed to be a path
-// - If the URI omits the path (e.g. file://host), then the path is left empty.
-void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
-              StringPiece* path);
-
-// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
-// return the path.
-string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
 
 }  // namespace tensorflow
 

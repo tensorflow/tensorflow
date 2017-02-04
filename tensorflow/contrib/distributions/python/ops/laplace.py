@@ -23,8 +23,8 @@ import math
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import special_math
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,17 +36,38 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "Laplace",
+    "LaplaceWithSoftplusScale",
+]
+
+
 class Laplace(distribution.Distribution):
-  """The Laplace distribution with location and scale > 0 parameters.
+  """The Laplace distribution with location `loc` and `scale` parameters.
 
   #### Mathematical details
 
-  The PDF of this distribution is:
+  The probability density function (pdf) of this distribution is,
 
-  ```f(x | mu, b, b > 0) = 0.5 / b exp(-|x - mu| / b)```
+  ```none
+  pdf(x; mu, sigma) = exp(-|x - mu| / sigma) / Z
+  Z = 2 sigma
+  ```
+
+  where `loc = mu`, `scale = sigma`, and `Z` is the normalization constant.
 
   Note that the Laplace distribution can be thought of two exponential
   distributions spliced together "back-to-back."
+
+  The Lpalce distribution is a member of the [location-scale family](
+  https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+  constructed as,
+
+  ```none
+  X ~ Laplace(loc=0, scale=1)
+  Y = loc + scale * X
+  ```
+
   """
 
   def __init__(self,
@@ -65,32 +86,35 @@ class Laplace(distribution.Distribution):
         of the distribution.
       scale: Positive floating point tensor which characterizes the spread of
         the distribution.
-      validate_args: `Boolean`, default `False`.  Whether to validate input
-        with asserts.  If `validate_args` is `False`, and the inputs are
-        invalid, correct behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: The name to give Ops created by the initializer.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined.  When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if `loc` and `scale` are of different dtype.
     """
+    parameters = locals()
     with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
         contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
-        super(Laplace, self).__init__(
-            dtype=self._loc.dtype,
-            parameters={"loc": self._loc, "scale": self._scale},
-            is_continuous=True,
-            is_reparameterized=True,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=ns)
+      super(Laplace, self).__init__(
+          dtype=self._loc.dtype,
+          is_continuous=True,
+          reparameterization_type=distribution.FULLY_REPARAMETERIZED,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          parameters=parameters,
+          graph_parents=[self._loc, self._scale],
+          name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -108,21 +132,22 @@ class Laplace(distribution.Distribution):
     """Distribution parameter for scale."""
     return self._scale
 
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.loc), array_ops.shape(self.scale))
+
   def _batch_shape(self):
-    return array_ops.shape(self.loc + self.scale)
+    return array_ops.broadcast_static_shape(
+        self.loc.get_shape(), self.scale.get_shape())
 
-  def _get_batch_shape(self):
-    return common_shapes.broadcast_shape(self.loc.get_shape(),
-                                         self.scale.get_shape())
-
-  def _event_shape(self):
+  def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
 
-  def _get_event_shape(self):
+  def _event_shape(self):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
     # Sample uniformly-at-random from the open-interval (-1, 1).
     uniform_samples = random_ops.random_uniform(
         shape=shape,
@@ -135,20 +160,27 @@ class Laplace(distribution.Distribution):
             math_ops.log(1. - math_ops.abs(uniform_samples)))
 
   def _log_prob(self, x):
-    return (-math.log(2.) - math_ops.log(self.scale) -
-            math_ops.abs(x - self.loc) / self.scale)
+    return self._log_unnormalized_prob(x) - self._log_normalization()
 
   def _prob(self, x):
-    return 0.5 / self.scale * math_ops.exp(
-        -math_ops.abs(x - self.loc) / self.scale)
+    return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
-    return math_ops.log(self.cdf(x))
+    return special_math.log_cdf_laplace(self._z(x))
+
+  def _log_survival_function(self, x):
+    return special_math.log_cdf_laplace(-self._z(x))
 
   def _cdf(self, x):
-    y = x - self.loc
-    return (0.5 + 0.5 * math_ops.sign(y) *
-            (1. - math_ops.exp(-math_ops.abs(y) / self.scale)))
+    z = self._z(x)
+    return (0.5 + 0.5 * math_ops.sign(z) *
+            (1. - math_ops.exp(-math_ops.abs(z))))
+
+  def _log_unnormalized_prob(self, x):
+    return -math_ops.abs(self._z(x))
+
+  def _log_normalization(self):
+    return math.log(2.) + math_ops.log(self.scale)
 
   def _entropy(self):
     # Use broadcasting rules to calculate the full broadcast scale.
@@ -158,10 +190,7 @@ class Laplace(distribution.Distribution):
   def _mean(self):
     return self.loc + array_ops.zeros_like(self.scale)
 
-  def _variance(self):
-    return math_ops.square(self._std())
-
-  def _std(self):
+  def _stddev(self):
     return math.sqrt(2.) * self.scale + array_ops.zeros_like(self.loc)
 
   def _median(self):
@@ -169,6 +198,9 @@ class Laplace(distribution.Distribution):
 
   def _mode(self):
     return self._mean()
+
+  def _z(self, x):
+    return (x - self.loc) / self.scale
 
 
 class LaplaceWithSoftplusScale(Laplace):
@@ -180,10 +212,12 @@ class LaplaceWithSoftplusScale(Laplace):
                validate_args=False,
                allow_nan_stats=True,
                name="LaplaceWithSoftplusScale"):
+    parameters = locals()
     with ops.name_scope(name, values=[loc, scale]) as ns:
       super(LaplaceWithSoftplusScale, self).__init__(
           loc=loc,
-          scale=nn.softplus(scale),
+          scale=nn.softplus(scale, name="softplus_scale"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

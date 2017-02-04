@@ -1,0 +1,305 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/compiler/xla/service/session.proto";
+
+package xla;
+
+// These settings control how XLA compiles and/or runs code.  Not all settings
+// will have an effect on every platform.
+//
+// When adding new fields, keep in mind that boolean fields default to false.
+message ExecutionOptions {
+  // When false, "unsafe" mathematical optimizations are enabled.  These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool disable_fast_math = 1;
+
+  // This optional field's layout is used as a hint when storing the output of
+  // this computation.  Subsequent transfers of this output array to the client
+  // may be faster when using this layout.
+  //
+  // We use a Shape here to accommodate computations that return a tuple.
+  Shape shape_with_output_layout = 2;
+
+  // Used to seed random-number generators used in this computation.  If this is
+  // 0, we generate a seed ourselves.
+  //
+  // TODO(b/32083678): Changing the seed unnecessarily forces a recompilation.
+  uint64 seed = 3;
+}
+
+message SnapshotComputationRequest {
+  ComputationHandle computation = 1;
+}
+
+message SnapshotComputationResponse {
+  SessionModule module = 1;
+}
+
+message LoadComputationSnapshotRequest {
+  SessionModule module = 1;
+}
+
+message LoadComputationSnapshotResponse {
+  ComputationHandle computation = 1;
+}
+
+message GetDeviceHandlesRequest {
+  int64 device_count = 1;
+}
+
+message GetDeviceHandlesResponse {
+  repeated DeviceHandle device_handles = 1;
+}
+
+message TransferToClientRequest {
+  GlobalDataHandle data = 1;
+
+  // This optional field directs the service to return the literal in this
+  // layout. A shape is used to hold the layout to accomodate tuples.
+  Shape shape_with_layout = 2;
+}
+
+message TransferToClientResponse {
+  Literal literal = 1;
+}
+
+message TransferToServerRequest {
+  Literal literal = 1;
+  DeviceHandle device_handle = 2;
+}
+
+message TransferToServerResponse {
+  GlobalDataHandle data = 1;
+}
+
+message TransferToServerInProcessRequest {
+  uint64 buffer = 1;
+  Shape shape = 2;
+}
+
+message TransferToServerInProcessResponse {
+  GlobalDataHandle data = 1;
+}
+
+message TransferToClientInProcessRequest {
+  GlobalDataHandle data = 1;
+  uint64 buffer = 2;
+}
+
+message TransferToClientInProcessResponse {
+}
+
+message TransferToInfeedRequest {
+  Literal literal = 1;
+  int64 replica_id = 2;
+  DeviceHandle device_handle = 3;
+}
+
+message TransferToInfeedResponse {
+}
+
+message ResetDeviceRequest {
+  DeviceHandle device_handle = 1;
+}
+
+message ResetDeviceResponse {
+}
+
+message ComputationStatsRequest {
+  ComputationHandle computation = 1;
+}
+
+message ComputationStatsResponse {
+  ComputationStats stats = 1;
+}
+
+message ComputationRequest {
+  string name = 1;
+}
+
+message ComputationResponse {
+  ComputationHandle computation = 1;
+}
+
+message CreateChannelHandleRequest {
+}
+
+message CreateChannelHandleResponse {
+  ChannelHandle channel = 1;
+}
+
+message UnregisterRequest {
+  GlobalDataHandle data = 1;
+}
+
+message UnregisterResponse {
+}
+
+message SetReturnValueRequest {
+  ComputationHandle computation = 1;
+  ComputationDataHandle operand = 2;
+}
+
+message SetReturnValueResponse {
+}
+
+message ExecuteRequest {
+  reserved 3, 4;
+
+  ComputationHandle computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // This optional field specifies a particular device to run the computation.
+  // If not provided, the default device will be chosen.
+  DeviceHandle device_handle = 5;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 6;
+}
+
+message ExecuteParallelRequest {
+  repeated ExecuteRequest requests = 1;
+}
+
+message ExecuteResponse {
+  GlobalDataHandle output = 1;
+  ExecutionProfile profile = 2;
+}
+
+message ExecuteParallelResponse {
+  repeated ExecuteResponse responses = 1;
+}
+
+message ExecuteAsyncRequest {
+  reserved 3, 4;
+
+  ComputationHandle computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 6;
+}
+
+message ExecuteAsyncResponse {
+  // A handle to the execution launched asynchronously.
+  ExecutionHandle execution = 1;
+}
+
+message WaitForExecutionRequest {
+  ExecutionHandle execution = 1;
+}
+
+message WaitForExecutionResponse {
+  GlobalDataHandle output = 1;
+  ExecutionProfile profile = 2;
+}
+
+message IsConstantRequest {
+  ComputationHandle computation = 1;
+  ComputationDataHandle operand = 2;
+}
+
+message IsConstantResponse {
+  bool is_constant = 1;
+}
+
+message ComputeConstantRequest {
+  ComputationHandle computation = 1;
+  ComputationDataHandle operand = 2;
+  Layout output_layout = 3;
+}
+
+message ComputeConstantResponse {
+  GlobalDataHandle output = 1;
+}
+
+message DeconstructTupleRequest {
+  GlobalDataHandle tuple_handle = 2;
+}
+
+message DeconstructTupleResponse {
+  repeated GlobalDataHandle element_handles = 1;
+}
+
+message LoadDataRequest {
+  // Describes the path of the ColumnIO tablet to load.
+  string columnio_tablet_path = 1;
+
+  // Describes the field to load within the ColumnIO tablet.
+  string columnio_field = 2;
+
+  // Individual element shape, excluding rows.
+  Shape element_shape = 3;
+
+  // Warning: ColumnIO does not support random-access, so use offset with
+  // caution in performance-critical scenarios.
+  int64 offset = 4;
+
+  // Maximum number of elements (with shape element_shape) to load.
+  int64 limit = 5;
+
+  // If more than one item is requested (via limit > 1), then this request
+  // attribute zips together the produced vectors.
+  bool zip = 6;
+}
+
+message LoadDataResponse {
+  GlobalDataHandle data = 1;
+  Shape data_shape = 2;
+  int64 available_rows = 3;
+  int64 rows_loaded = 4;
+  int64 nanoseconds = 5;
+}
+
+message SpecializeRequest {
+  ComputationHandle computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+}
+
+message SpecializeResponse {
+}
+
+message GetShapeRequest {
+  GlobalDataHandle data = 1;
+}
+
+message GetShapeResponse {
+  Shape shape = 1;
+}
+
+message GetComputationShapeRequest {
+  ComputationHandle computation = 1;
+}
+
+message GetComputationShapeResponse {
+  ProgramShape program_shape = 1;
+}
+
+message UnpackRequest {
+  GlobalDataHandle data = 1;
+}
+
+message UnpackResponse {
+  repeated GlobalDataHandle tied_data = 1;
+}

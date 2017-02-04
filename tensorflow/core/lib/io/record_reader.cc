@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -37,7 +38,7 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 #else
     options.zlib_options = io::ZlibCompressionOptions::DEFAULT();
 #endif  // IS_SLIM_BUILD
-  } else if (compression_type == "GZIP") {
+  } else if (compression_type == compression::kGzip) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
 #if defined(IS_SLIM_BUILD)
     LOG(ERROR) << "Compression is not supported but compression_type is set."
@@ -45,7 +46,7 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 #else
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
 #endif  // IS_SLIM_BUILD
-  } else if (compression_type != "") {
+  } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No comprression will be used.";
   }

@@ -46,6 +46,7 @@ typedef struct Packet4q32i {
   Packet4q32i(__m128i val) : val(val) {}
 } Packet4q32i;
 
+#ifndef EIGEN_VECTORIZE_AVX512
 template <>
 struct packet_traits<QInt8> : default_packet_traits {
   typedef Packet32q8i type;
@@ -112,6 +113,7 @@ struct packet_traits<QInt32> : default_packet_traits {
     HasSetLinear = 0
   };
 };
+#endif
 
 template <>
 struct unpacket_traits<Packet32q8i> {

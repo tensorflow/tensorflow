@@ -1,4 +1,4 @@
-### `tf.nn.separable_conv2d(input, depthwise_filter, pointwise_filter, strides, padding, name=None)` {#separable_conv2d}
+### `tf.nn.separable_conv2d(input, depthwise_filter, pointwise_filter, strides, padding, rate=None, name=None)` {#separable_conv2d}
 
 2-D convolution with separable filters.
 
@@ -18,6 +18,9 @@ In detail,
 the pointwise convolution has implicit strides of `[1, 1, 1, 1]`.  Must have
 `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+If any value in `rate` is greater than 1, we perform atrous depthwise
+convolution, in which case all values in the `strides` tensor must be equal
+to 1.
 
 ##### Args:
 
@@ -34,6 +37,9 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
     See the [comment
       here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`rate`</b>: 1-D of size 2. The dilation rate in which we sample input values
+    across the `height` and `width` dimensions in atrous convolution. If it is
+    greater than 1, then all values of strides must be 1.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:

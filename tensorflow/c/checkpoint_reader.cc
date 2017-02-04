@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/checkpoint_reader.h"
+
+#include <unordered_set>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
 
@@ -98,15 +102,34 @@ void CheckpointReader::GetTensor(
 TensorSliceReader::VarToShapeMap* CheckpointReader::BuildV2VarToShapeMap() {
   CHECK(v2_reader_ != nullptr);
   CHECK(v2_reader_->status().ok());
-  v2_reader_->Seek(kHeaderEntryKey);
 
-  TensorSliceReader::VarToShapeMap* var_to_shape_map =
-      new TensorSliceReader::VarToShapeMap;
+  // First pass: filters out the entries of the slices.
+  std::unordered_set<string> filtered_keys;
   BundleEntryProto entry;
+  v2_reader_->Seek(kHeaderEntryKey);
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
     CHECK(entry.ParseFromArray(v2_reader_->value().data(),
-                               v2_reader_->value().size()));
-    if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
+                               v2_reader_->value().size()))
+        << entry.InitializationErrorString();
+    for (int i = 0; i < entry.slices_size(); ++i) {
+      const auto& slice_proto = entry.slices(i);
+      CHECK(filtered_keys
+                .insert(EncodeTensorNameSlice(
+                    v2_reader_->key().ToString() /* full var's name */,
+                    TensorSlice(slice_proto)))
+                .second);
+    }
+  }
+
+  // Second pass: adds the entries, ignoring the filtered keys.
+  TensorSliceReader::VarToShapeMap* var_to_shape_map =
+      new TensorSliceReader::VarToShapeMap;
+  v2_reader_->Seek(kHeaderEntryKey);
+  for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
+    if (filtered_keys.count(v2_reader_->key().ToString()) > 0) continue;
+    CHECK(entry.ParseFromArray(v2_reader_->value().data(),
+                               v2_reader_->value().size()))
+        << entry.InitializationErrorString();
     (*var_to_shape_map)[v2_reader_->key().ToString()] =
         TensorShape(entry.shape());
   }

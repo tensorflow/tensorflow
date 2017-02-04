@@ -60,7 +60,7 @@ def _ArgToTypesNoRef(node_def, arg_def):
 def _SingleArgToTypes(node_def, arg_def):
   types = _ArgToTypesNoRef(node_def, arg_def)
   if arg_def.is_ref:
-    return [dtypes.as_dtype(dt).as_ref.as_datatype_enum for dt in types]
+    return [dtypes.as_dtype(dt)._as_ref.as_datatype_enum for dt in types]  # pylint: disable=protected-access
   return types
 
 
@@ -255,6 +255,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # 1. Add operations without their inputs.
     for node in graph_def.node:
       # Set any default attr values that aren't present.
+      if node.op not in op_dict:
+        raise ValueError('No op named %s in defined operations.' % node.op)
       op_def = op_dict[node.op]
       for attr_def in op_def.attr:
         key = attr_def.name
@@ -400,18 +402,26 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             # would cause graphs to fail if imported after correcting.
             #
             # This can be removed after 2017/03/08.
-            if op.type not in ['RandomShuffleQueue', 'PaddingFIFOQueue',
-                               'FIFOQueue', 'PriorityQueue', 'QueueSize',
-                               'Stack', 'Barrier', 'BarrierReadySize',
-                               'BarrierIncompleteSize', 'HashTable',
-                               'MutableHashTable',
-                               'MutableHashTableOfTensors', 'Mutex',
-                               'CuckooTable', 'IndexTable',
-                               'WholeFileReader', 'TextLineReader',
-                               'FixedLengthRecordReader',
-                               'TFRecordReader', 'IdentityReader',
-                               'RefSwitch', 'RefEnter', 'RefNextIteration',
-                               'RefMerge', 'RefIdentity']:
+            if op.type in ['RandomShuffleQueue', 'PaddingFIFOQueue',
+                           'FIFOQueue', 'PriorityQueue', 'QueueSize',
+                           'Stack', 'Barrier', 'BarrierReadySize',
+                           'BarrierIncompleteSize', 'HashTable',
+                           'MutableHashTable',
+                           'MutableHashTableOfTensors', 'Mutex',
+                           'CuckooTable', 'IndexTable',
+                           'WholeFileReader', 'TextLineReader',
+                           'FixedLengthRecordReader',
+                           'TFRecordReader', 'IdentityReader',
+                           'RefSwitch', 'RefEnter', 'RefNextIteration',
+                           'RefMerge', 'RefIdentity']:
+              pass
+            elif op.type in [
+                'ConditionalAccumulator', 'SparseConditionalAccumulator',
+                'Table'
+            ]:
+              # This can be removed after 2017/04/24.
+              pass
+            else:
               raise e
 
         del op.node_def.attr['_output_shapes']

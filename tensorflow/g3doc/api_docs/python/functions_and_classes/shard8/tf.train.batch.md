@@ -46,6 +46,9 @@ In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
 
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
+
 ##### Args:
 
 
@@ -67,7 +70,8 @@ operations that depend on fixed batch_size would fail.
 
 ##### Returns:
 
-  A list or dictionary of tensors with the same types as `tensors`.
+  A list or dictionary of tensors with the same types as `tensors` (except if
+  the input is a list of one element, then it returns a tensor, not a list).
 
 ##### Raises:
 

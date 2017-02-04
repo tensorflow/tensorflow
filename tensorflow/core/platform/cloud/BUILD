@@ -48,15 +48,13 @@ cc_library(
 
 cc_library(
     name = "http_request",
-    srcs = [
-        "http_request.cc",
-    ],
-    hdrs = [
-        "http_request.h",
-    ],
+    srcs = ["http_request.cc"],
+    hdrs = ["http_request.h"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "@curl//:curl",
     ],
 )
 
@@ -66,11 +64,13 @@ cc_library(
     hdrs = [
         "http_request_fake.h",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":http_request",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
+        "@curl//:curl",
     ],
 )
 
@@ -83,6 +83,7 @@ cc_library(
         "auth_provider.h",
         "google_auth_provider.h",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":http_request",
         ":oauth_client",

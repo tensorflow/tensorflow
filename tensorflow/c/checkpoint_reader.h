@@ -43,6 +43,8 @@ class CheckpointReader {
   bool HasTensor(const string& name) const;
   const string DebugString() const;
 
+  // Returns a map from variable names to its shape.  Slices of a partitioned
+  // tensor are combined into a single entry.
   const TensorSliceReader::VarToShapeMap& GetVariableToShapeMap() const;
 
   // Attempts to look up the tensor named "name" and stores the found result in

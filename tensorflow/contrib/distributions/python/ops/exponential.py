@@ -29,63 +29,94 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "Exponential",
+    "ExponentialWithSoftplusRate",
+]
+
+
 class Exponential(gamma.Gamma):
-  """The Exponential distribution with rate parameter lam.
+  """Exponential distribution.
 
-  The PDF of this distribution is:
+  The Exponential distribution is parameterized by an event `rate` parameter.
 
-  ```prob(x) = (lam * e^(-lam * x)), x > 0```
+  #### Mathematical Details
 
-  Note that the Exponential distribution is a special case of the Gamma
-  distribution, with Exponential(lam) = Gamma(1, lam).
+  The probability density function (pdf) is,
+
+  ```none
+  pdf(x; lambda, x > 0) = exp(-lambda x) / Z
+  Z = 1 / lambda
+  ```
+
+  where `rate = lambda` and `Z` is the normalizaing constant.
+
+  The Exponential distribution is a special case of the Gamma distribution,
+  i.e.,
+
+  ```python
+  Exponential(rate) = Gamma(concentration=1., rate)
+  ```
+
+  The Exponential distribution uses a `rate` parameter, or "inverse scale",
+  which can be intuited as,
+
+  ```none
+  X ~ Exponential(rate=1)
+  Y = X / rate
+  ```
+
   """
 
   def __init__(self,
-               lam,
+               rate,
                validate_args=False,
                allow_nan_stats=True,
                name="Exponential"):
-    """Construct Exponential distribution with parameter `lam`.
+    """Construct Exponential distribution with parameter `rate`.
 
     Args:
-      lam: Floating point tensor, the rate of the distribution(s).
-        `lam` must contain only positive values.
-      validate_args: `Boolean`, default `False`.  Whether to assert that
-        `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
-        If `validate_args` is `False` and the inputs are invalid, correct
-        behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
-        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member. If `True`, batch members with valid parameters leading to
-        undefined statistics will return NaN for this statistic.
-      name: The name to prepend to all ops created by this distribution.
+      rate: Floating point tensor, equivalent to `1 / mean`. Must contain only
+        positive values.
+      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined.  When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: `String` name prefixed to Ops created by this class.
     """
+    parameters = locals()
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[lam]) as ns:
-      self._lam = ops.convert_to_tensor(lam, name="lam")
-      super(Exponential, self).__init__(
-          alpha=array_ops.ones((), dtype=self._lam.dtype),
-          beta=self._lam,
-          allow_nan_stats=allow_nan_stats,
-          validate_args=validate_args,
-          name=ns)
-      # While the Gamma distribution is not reparameterizeable, the
-      # exponential distribution is.
-      self._is_reparameterized = True
+    with ops.name_scope(name, values=[rate]) as ns:
+      self._rate = ops.convert_to_tensor(rate, name="rate")
+    super(Exponential, self).__init__(
+        concentration=array_ops.ones((), dtype=self._rate.dtype),
+        rate=self._rate,
+        allow_nan_stats=allow_nan_stats,
+        validate_args=validate_args,
+        name=ns)
+    # While the Gamma distribution is not reparameterizable, the exponential
+    # distribution is.
+    self._reparameterization_type = True
+    self._parameters = parameters
+    self._graph_parents += [self._rate]
 
   @staticmethod
   def _param_shapes(sample_shape):
-    return {"lam": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
+    return {"rate": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
-  def lam(self):
-    return self._lam
+  def rate(self):
+    return self._rate
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
+    shape = array_ops.concat(([n], array_ops.shape(self._rate)), 0)
     # Sample uniformly-at-random from the open-interval (0, 1).
     sampled = random_ops.random_uniform(
         shape,
@@ -94,20 +125,22 @@ class Exponential(gamma.Gamma):
         maxval=array_ops.ones((), dtype=self.dtype),
         seed=seed,
         dtype=self.dtype)
-    return -math_ops.log(sampled) / self._lam
+    return -math_ops.log(sampled) / self._rate
 
 
-class ExponentialWithSoftplusLam(Exponential):
-  """Exponential with softplus transform on `lam`."""
+class ExponentialWithSoftplusRate(Exponential):
+  """Exponential with softplus transform on `rate`."""
 
   def __init__(self,
-               lam,
+               rate,
                validate_args=False,
                allow_nan_stats=True,
-               name="ExponentialWithSoftplusLam"):
-    with ops.name_scope(name, values=[lam]) as ns:
-      super(ExponentialWithSoftplusLam, self).__init__(
-          lam=nn.softplus(lam),
+               name="ExponentialWithSoftplusRate"):
+    parameters = locals()
+    with ops.name_scope(name, values=[rate]) as ns:
+      super(ExponentialWithSoftplusRate, self).__init__(
+          rate=nn.softplus(rate, name="softplus_rate"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+    self._parameters = parameters

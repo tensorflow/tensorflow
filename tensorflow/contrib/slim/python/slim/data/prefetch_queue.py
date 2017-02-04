@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,13 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 
 def prefetch_queue(tensors,
                    capacity=8,
+                   num_threads=1,
                    shared_name=None,
                    name=None):
   """Creates a queue to prefetech tensors from `tensors`.
@@ -48,6 +49,7 @@ def prefetch_queue(tensors,
   Args:
     tensors: A list or dictionary of `Tensors` to enqueue in the buffer.
     capacity: An integer. The maximum number of elements in the queue.
+    num_threads: An integer.  Number of threads running the enqueue op.
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -68,15 +70,15 @@ def prefetch_queue(tensors,
   with ops.name_scope(name, "prefetch_queue", tensor_list) as name:
     dtypes = [t.dtype for t in tensor_list]
     shapes = [t.get_shape() for t in tensor_list]
-    queue = data_flow_ops.FIFOQueue(capacity=capacity,
-                                    dtypes=dtypes,
-                                    shapes=shapes,
-                                    names=names,
-                                    shared_name=shared_name)
-    enqueue_op = queue.enqueue(tensors, name=name)
+    queue = data_flow_ops.FIFOQueue(
+        capacity=capacity,
+        dtypes=dtypes,
+        shapes=shapes,
+        names=names,
+        shared_name=shared_name)
+    enqueue_op = queue.enqueue(tensors)
     queue_runner.add_queue_runner(
-        queue_runner.QueueRunner(queue, [enqueue_op]))
-    logging_ops.scalar_summary(
-        "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
-        math_ops.to_float(queue.size()) * (1. / capacity))
+        queue_runner.QueueRunner(queue, [enqueue_op] * num_threads))
+    summary.scalar("fraction_of_%d_full" % capacity,
+                   math_ops.to_float(queue.size()) * (1. / capacity))
     return queue
