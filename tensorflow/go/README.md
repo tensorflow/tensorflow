@@ -59,12 +59,6 @@ Construct and execute TensorFlow graphs in Go.
     `LD_LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow`
     environment variable (`DYLD_LIBRARY_PATH` on Mac OS X).
 
-4.  Generate wrapper functions for TensorFlow ops:
-
-    ```sh
-    go generate github.com/tensorflow/tensorflow/tensorflow/go/op
-    ```
-
 After this, the `go` tool should be usable as normal. For example:
 
 ```sh
