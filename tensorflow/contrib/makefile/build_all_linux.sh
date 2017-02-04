@@ -22,6 +22,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd ${SCRIPT_DIR}/../../../
 
+source "${SCRIPT_DIR}/build_helper.subr"
+JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
+
 # Remove any old files first.
 make -f tensorflow/contrib/makefile/Makefile clean
 rm -rf tensorflow/contrib/makefile/downloads
@@ -33,4 +36,4 @@ tensorflow/contrib/makefile/download_dependencies.sh
 tensorflow/contrib/makefile/compile_linux_protobuf.sh
 
 # Build TensorFlow.
-make -f tensorflow/contrib/makefile/Makefile OPTFLAGS="-O3" -j 8
+make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile OPTFLAGS="-O3"

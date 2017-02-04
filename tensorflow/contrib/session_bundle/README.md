@@ -34,12 +34,10 @@ definition that's needed for serving.
 *   `assets` -- Asset file directory
     *   Holds auxiliary files for the graph (e.g., vocabularies)
 *   `export.meta` -- MetaGraph Definition
-    *   Binary [`tensorflow::MetaGraphDef`]
-        (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/protobuf/meta_graph.proto)
+    *   Binary [`tensorflow::MetaGraphDef`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/protobuf/meta_graph.proto)
 *   `export-?????-of-?????`
     *   A checkpoint of the Graph Variables
-    *   Outputs from Python [`Saver`]
-        (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py)
+    *   Outputs from Python [`Saver`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py)
         with `sharded=True`.
 
 ## Exporting (Python code)

@@ -66,6 +66,14 @@ void AddNodeAttr(StringPiece name, std::initializer_list<T> value,
       AttrValueMap::value_type(name.ToString(), attr_value));
 }
 
+// Adds an attr to an attr value map.
+template <class T>
+void AddAttr(StringPiece name, T&& value, AttrValueMap* map) {
+  AttrValue attr_value;
+  SetAttrValue(value, &attr_value);
+  map->insert(AttrValueMap::value_type(name.ToString(), attr_value));
+}
+
 class AttrSlice {
  public:
   AttrSlice(const NodeDef& node_def);  // NOLINT(runtime/explicit)
@@ -141,6 +149,9 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
+
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<NameAttrList>* value);  // type: "list(func)"
 
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()

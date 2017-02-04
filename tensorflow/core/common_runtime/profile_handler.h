@@ -73,6 +73,9 @@ class ProfileHandler {
   virtual void StepDone(Microseconds start_time, Microseconds finish_time,
                         Microseconds cleanup_time, int total_runops,
                         Status final_status) = 0;
+
+  // Returns true if the caller should collect rpc activity.
+  virtual bool should_collect_rpcs() = 0;
 };
 
 }  // namespace tensorflow

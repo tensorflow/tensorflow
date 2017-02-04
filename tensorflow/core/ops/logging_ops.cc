@@ -69,23 +69,17 @@ REGISTER_OP("TensorSummary")
     .Input("tensor: T")
     .Output("summary: string")
     .Attr("T: type")
-    .Attr("display_name: string")
     .Attr("description: string = ''")
     .Attr("labels: list(string) = []")
+    .Attr("display_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with a tensor.
 
 tensor: A tensor to serialize.
-display_name: A name to associate with the data series.
-description: An optional long description of the data being output.
-labels: a list of strings used to specify how the data can be interpreted, e.g.
-  a string tensor containing jpg images should have 'encoding:image/jpg'; a
-  string tensor with foo protos should have 'encoding:proto/X/Y/foo.proto';
-  a numeric tensor containing bounding boxes may have
-  'bounding_box:x1,y1,x2,y2,'. If the tensor is a part of a group of related
-  outputs, that can be encoded through a 'group:$groupName/$roleInGroup' label.
-  Labels may be formatted as 'prefix:value'. The prefix may be re-used.
+description: A json-encoded SummaryDescription proto.
+labels: An unused list of strings.
+display_name: An unused string.
 )doc");
 
 REGISTER_OP("ScalarSummary")

@@ -59,6 +59,9 @@ py_library(
     deps = [
         ":zero_out_op_2",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_ops",
     ],
 )
 
@@ -70,6 +73,7 @@ py_test(
     deps = [
         ":zero_out_op_1",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -93,6 +97,7 @@ py_test(
     deps = [
         ":zero_out_op_3",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 

@@ -15,9 +15,18 @@
 # ==============================================================================
 
 set -e
+ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
+  awk -F'.' '{print $1}')
 
 # Install dependencies from ubuntu deb repository.
 apt-get update
+
+if [[ "$ubuntu_version" == "14" ]]; then
+  # specifically for trusty linked from ffmpeg.org
+  add-apt-repository -y ppa:mc3man/trusty-media
+  apt-get update
+  apt-get dist-upgrade -y
+fi
 
 apt-get install -y --no-install-recommends \
     autoconf \
@@ -44,5 +53,10 @@ apt-get install -y --no-install-recommends \
     wget \
     zip \
     zlib1g-dev
+
+# Install ca-certificates, and update the certificate store.
+apt-get install -y ca-certificates-java
+update-ca-certificates -f
+
 apt-get clean
 rm -rf /var/lib/apt/lists/*

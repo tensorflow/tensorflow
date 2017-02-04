@@ -146,7 +146,7 @@ NOTE: This constructor validates the name of the `Operation` (passed
 as `node_def.name`). Valid `Operation` names match the following
 regular expression:
 
-    [A-Za-z0-9.][A-Za-z0-9_.\-/]*
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
 ##### Args:
 
@@ -181,6 +181,13 @@ regular expression:
     or if `inputs` are not tensors,
     or if `inputs` and `input_types` are incompatible.
 *  <b>`ValueError`</b>: if the `node_def` name is not valid.
+
+
+- - -
+
+#### `tf.Operation.__repr__()` {#Operation.__repr__}
+
+
 
 
 - - -

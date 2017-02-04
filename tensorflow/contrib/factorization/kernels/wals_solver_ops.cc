@@ -257,7 +257,7 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
       lhs_mat = lhs_symm;
       counter.DecrementCount();
     };
-    for (int i = 1; i < shards.size(); ++i) {
+    for (size_t i = 1; i < shards.size(); ++i) {
       worker_threads.workers->Schedule(std::bind(work, shards[i]));
     }
     // Inline execute the 1st shard.

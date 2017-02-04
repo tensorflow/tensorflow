@@ -57,6 +57,8 @@ public class TensorFlowImageClassifier implements Classifier {
 
   private TensorFlowInferenceInterface inferenceInterface;
 
+  private TensorFlowImageClassifier() {}
+
   /**
    * Initializes a native TensorFlow session for classifying images.
    *
@@ -69,10 +71,9 @@ public class TensorFlowImageClassifier implements Classifier {
    * @param imageStd The assumed std of the image values.
    * @param inputName The label of the image input node.
    * @param outputName The label of the output node.
-   * @return The native return value, 0 indicating success.
    * @throws IOException
    */
-  public int initializeTensorFlow(
+  public static Classifier create(
       AssetManager assetManager,
       String modelFilename,
       String labelFilename,
@@ -81,9 +82,11 @@ public class TensorFlowImageClassifier implements Classifier {
       int imageMean,
       float imageStd,
       String inputName,
-      String outputName) throws IOException {
-    this.inputName = inputName;
-    this.outputName = outputName;
+      String outputName)
+      throws IOException {
+    TensorFlowImageClassifier c = new TensorFlowImageClassifier();
+    c.inputName = inputName;
+    c.outputName = outputName;
 
     // Read the label names into memory.
     // TODO(andrewharp): make this handle non-assets.
@@ -93,24 +96,30 @@ public class TensorFlowImageClassifier implements Classifier {
     br = new BufferedReader(new InputStreamReader(assetManager.open(actualFilename)));
     String line;
     while ((line = br.readLine()) != null) {
-      labels.add(line);
+      c.labels.add(line);
     }
     br.close();
-    Log.i(TAG, "Read " + labels.size() + ", " + numClasses + " specified");
+    Log.i(TAG, "Read " + c.labels.size() + " labels, " + numClasses +
+        " output layer size specified");
 
-    this.inputSize = inputSize;
-    this.imageMean = imageMean;
-    this.imageStd = imageStd;
+    c.inputSize = inputSize;
+    c.imageMean = imageMean;
+    c.imageStd = imageStd;
 
     // Pre-allocate buffers.
-    outputNames = new String[] {outputName};
-    intValues = new int[inputSize * inputSize];
-    floatValues = new float[inputSize * inputSize * 3];
-    outputs = new float[numClasses];
+    c.outputNames = new String[] {outputName};
+    c.intValues = new int[inputSize * inputSize];
+    c.floatValues = new float[inputSize * inputSize * 3];
+    c.outputs = new float[numClasses];
 
-    inferenceInterface = new TensorFlowInferenceInterface();
+    c.inferenceInterface = new TensorFlowInferenceInterface();
 
-    return inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    final int status = c.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    if (status != 0) {
+      Log.e(TAG, "TF init status: " + status);
+      throw new RuntimeException("TF init status (" + status + ") != 0");
+    }
+    return c;
   }
 
   @Override
@@ -123,15 +132,17 @@ public class TensorFlowImageClassifier implements Classifier {
     // on the provided parameters.
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
     for (int i = 0; i < intValues.length; ++i) {
-      floatValues[i * 3 + 0] = ((intValues[i] & 0xFF) - imageMean) / imageStd;
-      floatValues[i * 3 + 1] = (((intValues[i] >> 8) & 0xFF) - imageMean) / imageStd;
-      floatValues[i * 3 + 2] = (((intValues[i] >> 16) & 0xFF) - imageMean) / imageStd;
+      final int val = intValues[i];
+      floatValues[i * 3 + 0] = (((val >> 16) & 0xFF) - imageMean) / imageStd;
+      floatValues[i * 3 + 1] = (((val >> 8) & 0xFF) - imageMean) / imageStd;
+      floatValues[i * 3 + 2] = ((val & 0xFF) - imageMean) / imageStd;
     }
     Trace.endSection();
 
     // Copy the input data into TensorFlow.
     Trace.beginSection("fillNodeFloat");
-    inferenceInterface.fillNodeFloat(inputName, 1, inputSize, inputSize, 3, floatValues);
+    inferenceInterface.fillNodeFloat(
+        inputName, new int[] {1, inputSize, inputSize, 3}, floatValues);
     Trace.endSection();
 
     // Run the inference call.
@@ -145,26 +156,39 @@ public class TensorFlowImageClassifier implements Classifier {
     Trace.endSection();
 
     // Find the best classifications.
-    PriorityQueue<Recognition> pq = new PriorityQueue<Recognition>(3,
-        new Comparator<Recognition>() {
-          @Override
-          public int compare(Recognition lhs, Recognition rhs) {
-            // Intentionally reversed to put high confidence at the head of the queue.
-            return Float.compare(rhs.getConfidence(), lhs.getConfidence());
-          }
-        });
+    PriorityQueue<Recognition> pq =
+        new PriorityQueue<Recognition>(
+            3,
+            new Comparator<Recognition>() {
+              @Override
+              public int compare(Recognition lhs, Recognition rhs) {
+                // Intentionally reversed to put high confidence at the head of the queue.
+                return Float.compare(rhs.getConfidence(), lhs.getConfidence());
+              }
+            });
     for (int i = 0; i < outputs.length; ++i) {
       if (outputs[i] > THRESHOLD) {
-        pq.add(new Recognition(
-            "" + i, labels.get(i), outputs[i], null));
+        pq.add(new Recognition("" + i,
+            labels.size() > i ? labels.get(i) : "unknown", outputs[i], null));
       }
     }
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();
-    for (int i = 0; i < Math.min(pq.size(), MAX_RESULTS); ++i) {
+    int recognitionsSize = Math.min(pq.size(), MAX_RESULTS);
+    for (int i = 0; i < recognitionsSize; ++i) {
       recognitions.add(pq.poll());
     }
     Trace.endSection(); // "recognizeImage"
     return recognitions;
+  }
+
+  @Override
+  public void enableStatLogging(boolean debug) {
+    inferenceInterface.enableStatLogging(debug);
+  }
+
+  @Override
+  public String getStatString() {
+    return inferenceInterface.getStatString();
   }
 
   @Override

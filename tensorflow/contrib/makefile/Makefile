@@ -21,7 +21,7 @@ echo "false")
 
 # Hexagon integration
 ifdef HEXAGON_LIBS
-	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libgemm_wrapper.so
+	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libhexagon_controller.so
 	ifeq ($(shell test -f $(LIBGEMM_WRAPPER) 2> /dev/null; echo $$?), 0)
     $(info "Use hexagon libs at " $(LIBGEMM_WRAPPER))
 	else
@@ -73,6 +73,7 @@ HOST_INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+  -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -136,7 +137,12 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
-OPTFLAGS := -O0
+OPTFLAGS := -O2
+
+ifneq ($(TARGET),ANDROID)
+  OPTFLAGS += -march=native
+endif
+
 CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
@@ -146,6 +152,7 @@ INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -202,6 +209,7 @@ ifeq ($(TARGET),PI)
 endif
 
 # Set up Android building
+# LINT.IfChange
 ifeq ($(TARGET),ANDROID)
 # Override NDK_ROOT on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
@@ -229,6 +237,8 @@ ifeq ($(TARGET),ANDROID)
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
 -march=armv7-a \
+-mfloat-abi=softfp \
+-mfpu=neon \
 -fPIE
 
 	INCLUDES = \
@@ -238,6 +248,7 @@ ifeq ($(TARGET),ANDROID)
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
@@ -265,12 +276,13 @@ ifeq ($(TARGET),ANDROID)
 
 	ifdef HEXAGON_LIBS
 		INCLUDES += -I$(HEXAGON_INCLUDE)
-		LIBS += -lgemm_wrapper
+		LIBS += -lhexagon_controller
 		LDFLAGS += -L$(HEXAGON_LIBS)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
 endif  # ANDROID
+# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)
@@ -287,17 +299,18 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),ARMV7)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
+		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -310,17 +323,18 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),ARMV7S)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7s \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7s \
+		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -333,16 +347,17 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),ARM64)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch arm64 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch arm64 \
+		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -355,16 +370,17 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),I386)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch i386 \
+		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -377,16 +393,17 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),X86_64)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch x86_64 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
-		-DMIN_LOG_LEVEL=0 \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch x86_64 \
+		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -416,7 +433,6 @@ BENCHMARK_NAME := $(BINDIR)benchmark
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
-$(wildcard tensorflow/core/debug/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
 $(wildcard tensorflow/core/graph/*.cc) \
 $(wildcard tensorflow/core/lib/*/*.cc) \
@@ -437,6 +453,8 @@ $(wildcard tensorflow/core/*/*/*test.cc) \
 $(wildcard tensorflow/core/*/*/*testutil*) \
 $(wildcard tensorflow/core/*/*/*testlib*) \
 $(wildcard tensorflow/core/*/*/*main.cc) \
+$(wildcard tensorflow/core/debug/*.cc) \
+$(wildcard tensorflow/core/framework/op_gen_lib.cc) \
 $(wildcard tensorflow/core/graph/dot.*) \
 $(wildcard tensorflow/core/lib/gif/*) \
 $(wildcard tensorflow/core/lib/io/zlib*) \
@@ -445,9 +463,11 @@ $(wildcard tensorflow/core/lib/jpeg/*) \
 $(wildcard tensorflow/core/lib/png/*) \
 $(wildcard tensorflow/core/util/events_writer.*) \
 $(wildcard tensorflow/core/util/reporter.*) \
+$(wildcard tensorflow/core/platform/default/cuda_libdevice_path.*) \
 $(wildcard tensorflow/core/platform/default/stream_executor.*) \
 $(wildcard tensorflow/core/platform/default/test_benchmark.*) \
 $(wildcard tensorflow/core/platform/cuda.h) \
+$(wildcard tensorflow/core/platform/cuda_libdevice_path.*) \
 $(wildcard tensorflow/core/platform/cloud/*) \
 $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \

@@ -129,7 +129,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
 void NodeBuilder::AddIndexError(Node* node, int i) {
   if (node == nullptr) {
     errors_.emplace_back(
-        strings::StrCat("Attempt to add nullptr Node to node with type",
+        strings::StrCat("Attempt to add nullptr Node to node with type ",
                         def_builder_.op_def().name()));
   } else {
     errors_.emplace_back(

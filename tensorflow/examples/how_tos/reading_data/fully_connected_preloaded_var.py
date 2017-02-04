@@ -17,7 +17,7 @@
 
 Run using bazel:
 
-bazel run -c opt \
+bazel run --config opt \
     <...>/tensorflow/examples/how_tos/reading_data:fully_connected_preloaded_var
 
 or, if installed via pip:
@@ -29,26 +29,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import time
+
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.examples.tutorials.mnist import mnist
 
-
 # Basic model parameters as external flags.
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-flags.DEFINE_integer('num_epochs', 2, 'Number of epochs to run trainer.')
-flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
-flags.DEFINE_integer('batch_size', 100, 'Batch size.  '
-                     'Must divide evenly into the dataset sizes.')
-flags.DEFINE_string('train_dir', '/tmp/data',
-                    'Directory to put the training data.')
-flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
-                     'for unit testing.')
+FLAGS = None
 
 
 def run_training():
@@ -91,13 +82,13 @@ def run_training():
     eval_correct = mnist.evaluation(logits, labels)
 
     # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
 
     # Create a saver for writing training checkpoints.
     saver = tf.train.Saver()
 
     # Create the op for initializing variables.
-    init_op = tf.initialize_all_variables()
+    init_op = tf.global_variables_initializer()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
@@ -110,7 +101,7 @@ def run_training():
              feed_dict={labels_initializer: data_sets.train.labels})
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
     # Start input enqueue threads.
     coord = tf.train.Coordinator()
@@ -161,4 +152,48 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--learning_rate',
+      type=float,
+      default=0.01,
+      help='Initial learning rate.'
+  )
+  parser.add_argument(
+      '--num_epochs',
+      type=int,
+      default=2,
+      help='Number of epochs to run trainer.'
+  )
+  parser.add_argument(
+      '--hidden1',
+      type=int,
+      default=128,
+      help='Number of units in hidden layer 1.'
+  )
+  parser.add_argument(
+      '--hidden2',
+      type=int,
+      default=32,
+      help='Number of units in hidden layer 2.'
+  )
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=100,
+      help='Batch size.  Must divide evenly into the dataset sizes.'
+  )
+  parser.add_argument(
+      '--train_dir',
+      type=str,
+      default='/tmp/data',
+      help='Directory to put the training data.'
+  )
+  parser.add_argument(
+      '--fake_data',
+      default=False,
+      help='If true, uses fake data for unit testing.',
+      action='store_true'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

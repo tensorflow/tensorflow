@@ -1,4 +1,4 @@
-### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div')` {#safe_embedding_lookup_sparse}
+### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div', max_norm=None)` {#safe_embedding_lookup_sparse}
 
 Lookup embedding results, accounting for invalid IDs and empty features.
 
@@ -35,6 +35,8 @@ along the last dimension.
 *  <b>`name`</b>: A name for this operation (optional).
 *  <b>`partition_strategy`</b>: A string specifying the partitioning strategy.
       Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+*  <b>`max_norm`</b>: If not None, all embeddings are l2-normalized to max_norm before
+      combining.
 
 
 ##### Returns:

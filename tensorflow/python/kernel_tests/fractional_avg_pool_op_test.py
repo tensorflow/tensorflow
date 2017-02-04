@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for fractional average pool operation."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,12 +21,16 @@ from __future__ import print_function
 import math
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import nn_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
-class FractionalAvgTest(tf.test.TestCase):
+class FractionalAvgTest(test.TestCase):
 
   # Random number generate with seed.
   _PRNG = np.random.RandomState(341261000)
@@ -52,9 +56,8 @@ class FractionalAvgTest(tf.test.TestCase):
       row_start = row_seq[i]
       row_end = row_seq[i + 1] + 1 if overlapping else row_seq[i + 1]
       row_end = min(row_end, row_max)
-      output_image = np.vstack((output_image,
-                                np.mean(input_matrix[row_start:row_end, :],
-                                        axis=0)))  # axis 0 is along row
+      output_image = np.vstack((output_image, np.mean(
+          input_matrix[row_start:row_end, :], axis=0)))  # axis 0 is along row
     # remove the sentinel row
     return output_image[1:, :]
 
@@ -123,13 +126,14 @@ class FractionalAvgTest(tf.test.TestCase):
       None
     """
     with self.test_session() as sess:
-      p, r, c = tf.nn.fractional_avg_pool(input_tensor,
-                                          pooling_ratio,
-                                          pseudo_random,
-                                          overlapping,
-                                          deterministic=True,
-                                          seed=self._SEED,
-                                          seed2=self._SEED2)
+      p, r, c = nn_ops.fractional_avg_pool(
+          input_tensor,
+          pooling_ratio,
+          pseudo_random,
+          overlapping,
+          deterministic=True,
+          seed=self._SEED,
+          seed2=self._SEED2)
       actual, row_seq, col_seq = sess.run([p, r, c])
       expected = self._GetExpectedFractionalAvgPoolResult(input_tensor, row_seq,
                                                           col_seq, overlapping)
@@ -155,7 +159,7 @@ class FractionalAvgTest(tf.test.TestCase):
       rand_mat = self._PRNG.randint(10, size=tensor_shape)
       pooling_ratio = [1, math.sqrt(2), math.sqrt(2), 1]
       with self.test_session() as sess:
-        p, r, c = tf.nn.fractional_avg_pool(
+        p, r, c = nn_ops.fractional_avg_pool(
             rand_mat.astype(np.float32),
             pooling_ratio,
             pseudo_random,
@@ -241,7 +245,7 @@ class FractionalAvgTest(tf.test.TestCase):
           [5, 4, 7, 5]
       ]).reshape((1, 3, 4, 1))
       # pyformat: enable
-      p, unused_r, unused_c = tf.nn.fractional_avg_pool(
+      p, unused_r, unused_c = nn_ops.fractional_avg_pool(
           mat.reshape(tensor_shape), [1, math.sqrt(3), math.sqrt(2), 1],
           pseudo_random,
           overlapping,
@@ -307,7 +311,7 @@ class FractionalAvgTest(tf.test.TestCase):
                                           overlapping)
 
 
-class FractionalAvgPoolGradTest(tf.test.TestCase):
+class FractionalAvgPoolGradTest(test.TestCase):
   """Tests for FractionalAvgPoolGrad.
 
   Two types of tests for FractionalAvgPoolGrad.
@@ -355,13 +359,14 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
           for num_channels in [1, 2]:
             input_shape = (num_batches, num_rows, num_cols, num_channels)
             with self.test_session() as _:
-              input_tensor = tf.constant(self._GenerateRandomInputTensor(
-                  input_shape).astype(np.float32))
+              input_tensor = constant_op.constant(
+                  self._GenerateRandomInputTensor(input_shape).astype(
+                      np.float32))
               window_size = [1, row_window_size, col_window_size, 1]
               stride_size = [1, row_window_size, col_window_size, 1]
               padding = "VALID"
-              output_tensor = tf.nn.avg_pool(input_tensor, window_size,
-                                             stride_size, padding)
+              output_tensor = nn_ops.avg_pool(input_tensor, window_size,
+                                              stride_size, padding)
               output_data = output_tensor.eval()
               num_elements = 1
               for dim_size in output_data.shape:
@@ -393,13 +398,14 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
           for num_channels in [1, 2]:
             input_shape = (num_batches, num_rows, num_cols, num_channels)
             with self.test_session() as _:
-              input_tensor = tf.constant(self._GenerateRandomInputTensor(
-                  input_shape).astype(np.float32))
+              input_tensor = constant_op.constant(
+                  self._GenerateRandomInputTensor(input_shape).astype(
+                      np.float32))
               window_size = [1, row_window_size, col_window_size, 1]
               stride_size = [1, row_window_size - 1, col_window_size - 1, 1]
               padding = "VALID"
-              output_tensor = tf.nn.avg_pool(input_tensor, window_size,
-                                             stride_size, padding)
+              output_tensor = nn_ops.avg_pool(input_tensor, window_size,
+                                              stride_size, padding)
               output_data = output_tensor.eval()
               num_elements = 1
               for dim_size in output_data.shape:
@@ -432,8 +438,8 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
     for pseudo_random in True, False:
       for overlapping in True, False:
         with self.test_session() as _:
-          input_tensor = tf.constant(input_data, shape=input_shape)
-          output_tensor, unused_a, unused_b = tf.nn.fractional_avg_pool(
+          input_tensor = constant_op.constant(input_data, shape=input_shape)
+          output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool(
               input_tensor,
               pooling_ratio,
               pseudo_random=pseudo_random,
@@ -445,7 +451,7 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
           output_shape = output_data.shape
           # error_margin and delta setting is similar to avg_pool_grad.
           error_margin = 1e-4
-          gradient_error = tf.test.compute_gradient_error(
+          gradient_error = gradient_checker.compute_gradient_error(
               input_tensor,
               input_shape,
               output_tensor,
@@ -465,8 +471,8 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
             input_shape = (num_batches, num_rows, num_cols, num_channels)
             input_data = self._GenerateRandomInputTensor(input_shape)
             with self.test_session() as _:
-              input_tensor = tf.constant(input_data, shape=input_shape)
-              output_tensor, unused_a, unused_b = tf.nn.fractional_avg_pool(
+              input_tensor = constant_op.constant(input_data, shape=input_shape)
+              output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool(
                   input_tensor,
                   pooling_ratio,
                   pseudo_random=pseudo_random,
@@ -478,7 +484,7 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
               output_shape = output_data.shape
               # error_margin and delta setting is similar to avg_pool_grad.
               error_margin = 1e-4
-              gradient_error = tf.test.compute_gradient_error(
+              gradient_error = gradient_checker.compute_gradient_error(
                   input_tensor,
                   input_shape,
                   output_tensor,
@@ -496,8 +502,8 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
     pseudo_random = False
 
     with self.test_session() as _:
-      input_tensor = tf.constant(input_data, shape=input_shape)
-      output_tensor, unused_a, unused_b = tf.nn.fractional_avg_pool(
+      input_tensor = constant_op.constant(input_data, shape=input_shape)
+      output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool(
           input_tensor,
           pooling_ratio,
           pseudo_random=pseudo_random,
@@ -507,7 +513,7 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
           seed2=self._SEED2)
       # error_margin and delta setting is similar to avg_pool_grad.
       error_margin = 1e-4
-      gradient_error = tf.test.compute_gradient_error(
+      gradient_error = gradient_checker.compute_gradient_error(
           input_tensor,
           input_shape,
           output_tensor,
@@ -518,4 +524,4 @@ class FractionalAvgPoolGradTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

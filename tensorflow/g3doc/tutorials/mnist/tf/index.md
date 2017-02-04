@@ -98,7 +98,7 @@ The `inference()` function builds the graph as far as needed to
 return the tensor that would contain the output predictions.
 
 It takes the images placeholder as input and builds on top
-of it a pair of fully connected layers with [ReLu](https://en.wikipedia.org/wiki/Rectifier_(neural_networks)) activation followed by a ten
+of it a pair of fully connected layers with [ReLU](https://en.wikipedia.org/wiki/Rectifier_(neural_networks)) activation followed by a ten
 node linear layer specifying the output logits.
 
 Each layer is created beneath a unique [`tf.name_scope`](../../../api_docs/python/framework.md#name_scope)
@@ -171,7 +171,7 @@ First, the values from the `labels_placeholder` are converted to 64-bit integers
 ```python
 labels = tf.to_int64(labels)
 cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    logits, labels, name='xentropy')
+    labels=labels, logits=logits, name='xentropy')
 ```
 
 It then uses [`tf.reduce_mean`](../../../api_docs/python/math_ops.md#reduce_mean)
@@ -269,7 +269,7 @@ instances are initialized by calling [`sess.run()`](../../../api_docs/python/cli
 on their initialization op.
 
 ```python
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 sess.run(init)
 ```
 

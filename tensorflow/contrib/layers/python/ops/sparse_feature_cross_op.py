@@ -17,20 +17,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
-_sparse_feature_cross_op = load_library.load_op_library(
+_sparse_feature_cross_op = loader.load_op_library(
     resource_loader.get_path_to_datafile("_sparse_feature_cross_op.so"))
-assert _sparse_feature_cross_op, "Could not load _sparse_feature_cross_op.so."
+
+# Default hash key for the FingerprintCat64.
+SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY = 0xDECAFCAFFE
 
 
+@deprecated_arg_values(
+    "2016-11-20",
+    "The default behavior of sparse_feature_cross is changing, the default\n"
+    "value for hash_key will change to SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY.\n"
+    "From that point on sparse_feature_cross will always use FingerprintCat64\n"
+    "to concatenate the feature fingerprints. And the underlying\n"
+    "_sparse_feature_cross_op.sparse_feature_cross operation will be marked\n"
+    "as deprecated.",
+    hash_key=None)
 def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
-                         name=None):
+                         name=None, hash_key=None):
   """Crosses a list of Tensor or SparseTensor objects.
 
   See sparse_feature_cross_kernel.cc for more details.
@@ -42,6 +56,10 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
     num_buckets: It is used if hashed_output is true.
       output = hashed_value%num_buckets if num_buckets > 0 else hashed_value.
     name: A name prefix for the returned tensors (optional).
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp.
+      The default value is None, but will become
+      SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY after 2016-11-20 (optional).
 
   Returns:
     A `SparseTensor` with the crossed features.
@@ -52,16 +70,18 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
   """
   if not isinstance(inputs, list):
     raise TypeError("Inputs must be a list")
-  if not all(isinstance(i, ops.SparseTensor) or
+  if not all(isinstance(i, sparse_tensor.SparseTensor) or
              isinstance(i, ops.Tensor) for i in inputs):
     raise TypeError("All inputs must be SparseTensors")
 
-  sparse_inputs = [i for i in inputs if isinstance(i, ops.SparseTensor)]
-  dense_inputs = [i for i in inputs if not isinstance(i, ops.SparseTensor)]
+  sparse_inputs = [i for i in inputs
+                   if isinstance(i, sparse_tensor.SparseTensor)]
+  dense_inputs = [i for i in inputs
+                  if not isinstance(i, sparse_tensor.SparseTensor)]
 
   indices = [sp_input.indices for sp_input in sparse_inputs]
   values = [sp_input.values for sp_input in sparse_inputs]
-  shapes = [sp_input.shape for sp_input in sparse_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
   out_type = dtypes.int64 if hashed_output else dtypes.string
 
   internal_type = dtypes.string
@@ -74,18 +94,36 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
       dense_inputs[i] = math_ops.to_int64(dense_inputs[i])
       internal_type = dtypes.int64
 
-  indices_out, values_out, shape_out = (
-      _sparse_feature_cross_op.sparse_feature_cross(indices,
-                                                    values,
-                                                    shapes,
-                                                    dense_inputs,
-                                                    hashed_output,
-                                                    num_buckets,
-                                                    out_type=out_type,
-                                                    internal_type=internal_type,
-                                                    name=name))
-  return ops.SparseTensor(indices_out, values_out, shape_out)
+  if hash_key:
+    indices_out, values_out, shape_out = (
+        _sparse_feature_cross_op.sparse_feature_cross_v2(
+            indices,
+            values,
+            shapes,
+            dense_inputs,
+            hashed_output,
+            num_buckets,
+            hash_key=hash_key,
+            out_type=out_type,
+            internal_type=internal_type,
+            name=name))
+  else:
+    indices_out, values_out, shape_out = (
+        _sparse_feature_cross_op.sparse_feature_cross(
+            indices,
+            values,
+            shapes,
+            dense_inputs,
+            hashed_output,
+            num_buckets,
+            out_type=out_type,
+            internal_type=internal_type,
+            name=name))
+
+  return sparse_tensor.SparseTensor(indices_out, values_out, shape_out)
 
 
-ops.RegisterShape("SparseFeatureCross")(common_shapes.call_cpp_shape_fn)
 ops.NotDifferentiable("SparseFeatureCross")
+
+
+ops.NotDifferentiable("SparseFeatureCrossV2")

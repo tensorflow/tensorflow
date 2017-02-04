@@ -142,6 +142,7 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
       progress = true;
     }
 
+    // Handle legacy naming convention for cpu and gpu.
     if (str_util::ConsumePrefix(&fullname, "/cpu:") ||
         str_util::ConsumePrefix(&fullname, "/CPU:")) {
       p->has_type = true;

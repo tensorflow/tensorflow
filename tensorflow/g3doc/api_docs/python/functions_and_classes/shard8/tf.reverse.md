@@ -1,15 +1,17 @@
-### `tf.reverse(tensor, dims, name=None)` {#reverse}
+### `tf.reverse(tensor, axis, name=None)` {#reverse}
 
 Reverses specific dimensions of a tensor.
 
-Given a `tensor`, and a `bool` tensor `dims` representing the dimensions
-of `tensor`, this operation reverses each dimension i of `tensor` where
-`dims[i]` is `True`.
+NOTE `tf.reverse` has now changed behavior in preparation for 1.0.
+`tf.reverse_v2` is currently an alias that will be deprecated before TF 1.0.
 
-`tensor` can have up to 8 dimensions. The number of dimensions
-of `tensor` must equal the number of elements in `dims`. In other words:
+Given a `tensor`, and a `int32` tensor `axis` representing the set of
+dimensions of `tensor` to reverse. This operation reverses each dimension
+`i` for which there exists `j` s.t. `axis[j] == i`.
 
-`rank(tensor) = size(dims)`
+`tensor` can have up to 8 dimensions. The number of dimensions specified
+in `axis` may be 0 or more entries. If an index is specified more than
+once, a InvalidArgument error is raised.
 
 For example:
 
@@ -22,7 +24,7 @@ For example:
 #                  [20, 21, 22, 23]]]]
 # tensor 't' shape is [1, 2, 3, 4]
 
-# 'dims' is [False, False, False, True]
+# 'dims' is [3] or 'dims' is -1
 reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
                         [ 7,  6,  5,  4],
                         [ 11, 10, 9, 8]],
@@ -30,7 +32,7 @@ reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
                         [19, 18, 17, 16],
                         [23, 22, 21, 20]]]]
 
-# 'dims' is [False, True, False, False]
+# 'dims' is '[1]' (or 'dims' is '[-3]')
 reverse(t, dims) ==> [[[[12, 13, 14, 15],
                         [16, 17, 18, 19],
                         [20, 21, 22, 23]
@@ -38,7 +40,7 @@ reverse(t, dims) ==> [[[[12, 13, 14, 15],
                         [ 4,  5,  6,  7],
                         [ 8,  9, 10, 11]]]]
 
-# 'dims' is [False, False, True, False]
+# 'dims' is '[2]' (or 'dims' is '[-2]')
 reverse(t, dims) ==> [[[[8, 9, 10, 11],
                         [4, 5, 6, 7],
                         [0, 1, 2, 3]]
@@ -52,7 +54,8 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 
 *  <b>`tensor`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int32`, `int64`, `bool`, `half`, `float32`, `float64`, `complex64`, `complex128`.
     Up to 8-D.
-*  <b>`dims`</b>: A `Tensor` of type `bool`. 1-D. The dimensions to reverse.
+*  <b>`axis`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    1-D. The indices of the dimensions to reverse.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

@@ -8,6 +8,13 @@ option java_package = "org.tensorflow.framework";
 
 import "tensorflow/core/framework/tensor.proto";
 
+// Metadata associated with a series of Summary data
+message SummaryDescription {
+  // Hint on how plugins should process the data in this series.
+  // Supported values include "scalar", "histogram", "image", "audio"
+  string type_hint = 1;
+}
+
 // Serialization format for histogram module in
 // core/lib/histogram/histogram.h
 message HistogramProto {

@@ -5,7 +5,10 @@
 The first step is getting a TensorBoard development environment set up. You
 should start by making sure you have [nodejs](https://nodejs.org/en/) and
 [npm](https://www.npmjs.com/). On Ubuntu, `sudo apt-get install -y nodejs
-nodejs-legacy npm`.
+nodejs-legacy npm`. Ensure your npm version is >=3.0 by running
+'npm --version'. If the version is <3.0, run 'sudo npm install npm -g' to
+update to the latest version. You may need to open a new terminal window after
+updating in order to make use of the newly-installed version.
 
 Next, you'll want to install [gulp](http://gulpjs.com/) and
 [bower](http://bower.io/), which are used for build tooling and dependency

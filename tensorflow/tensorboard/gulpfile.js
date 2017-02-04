@@ -16,6 +16,7 @@ limitations under the License.
 var gulp = require('gulp');
 var server = require('gulp-server-livereload');
 var minimist = require('minimist');
+var util = require('./gulp_tasks/util');
 
 var options = minimist(process.argv.slice(2), {
   default: {
@@ -30,21 +31,25 @@ function getTask(task) {
 
 
 gulp.task('compile', getTask('compile')(true));
-gulp.task('tslint', getTask('tslint')(true));
-// tslint.permissive warns without failing.
-gulp.task('tslint.permissive', getTask('tslint')(false));
 gulp.task('first-compile', getTask('compile')(true));
 gulp.task('compile-without-deps', getTask('compile')(false));
-gulp.task('test.onlytest', getTask('test')); // if you don't want to lint, etc
-gulp.task('test', ['tslint', 'compile'], getTask('test'));
+gulp.task('test.onlytest', getTask('test'));
+gulp.task('test', ['compile'], getTask('test'));
 
 gulp.task('watch', [], function() {
   // Avoid watching generated .d.ts in the build (aka output) directory.
   return gulp.watch(
-      ['components/tf-*/**/*.ts', 'components/vz-*/**/*.ts'],
-      {ignoreInitial: true}, ['compile', 'tslint.permissive']);
+      ['components/tf_*/**/*.ts', 'components/vz_*/**/*.ts'],
+      {ignoreInitial: true}, ['compile']);
 });
 
+var httpPrefix = 'http://' + options.h + ':' + options.p + '/components';
+var proxies = util.tbComponents.map(function(component) {
+  return {
+    source: '/components' + component.replace(/_/g, '-'),
+    target: httpPrefix + component
+  };
+});
 
 // Do first-compile before turning on server, to avoid spamming
 // livereload info
@@ -60,6 +65,7 @@ gulp.task('server', ['first-compile'], function() {
       filter: function(filePath, cb) { cb(!(/\.ts$/.test(filePath))); },
       port: 27729 + options.p
     },
+    proxies: proxies,
     directoryListing: true,
   }));
 });
@@ -67,11 +73,11 @@ gulp.task('server', ['first-compile'], function() {
 // TODO(danmane): When testing is nicer, integrate into vulcanize task
 // gulp vulcanize: Regenerate the tf-tensorboard.html.OPENSOURCE file for pre-release
 gulp.task(
-    'vulcanize', ['compile-without-deps', 'tslint.permissive'],
+    'vulcanize', ['compile-without-deps'],
     getTask('vulcanize')(false));
 // gulp regenerate: Regenerate the tf-tensorboard.html for interactive bazel development
 gulp.task(
-    'regenerate', ['compile-without-deps', 'tslint.permissive'],
+    'regenerate', ['compile-without-deps'],
     getTask('vulcanize')(true));
 
 // TODO(danmane): consider making bower install part of default task

@@ -22,14 +22,25 @@ Train and evaluate TensorFlow models.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
+@@KMeansClustering
 @@ModeKeys
+@@ModelFnOps
+@@MetricSpec
+@@PredictionKey
 @@DNNClassifier
 @@DNNRegressor
-@@TensorFlowEstimator
+@@DNNLinearCombinedRegressor
+@@DNNLinearCombinedClassifier
 @@LinearClassifier
 @@LinearRegressor
-@@TensorFlowRNNClassifier
-@@TensorFlowRNNRegressor
+@@LogisticRegressor
+
+## Distributed training utilities
+@@Experiment
+@@ExportStrategy
+@@TaskType
 
 ## Graph actions
 
@@ -52,10 +63,16 @@ Queue and read batched input data.
 @@extract_pandas_data
 @@extract_pandas_labels
 @@extract_pandas_matrix
+@@infer_real_valued_columns_from_input
+@@infer_real_valued_columns_from_input_fn
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features
 
+Export utilities
+
+@@build_parsing_serving_input_fn
+@@ProblemType
 """
 
 from __future__ import absolute_import
@@ -64,7 +81,12 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
-from tensorflow.python.util.all_util import make_all
+# pylint: enable=wildcard-import
 
-__all__ = make_all(__name__)
-__all__.append('datasets')
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['datasets', 'head', 'io', 'models',
+                    'monitors', 'NotFittedError', 'ops', 'preprocessing',
+                    'utils', 'graph_actions']
+
+remove_undocumented(__name__, _allowed_symbols)

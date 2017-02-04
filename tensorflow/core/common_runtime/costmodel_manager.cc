@@ -42,6 +42,17 @@ CostModel* CostModelManager::FindOrCreateCostModel(const Graph* graph) {
   return cost_model;
 }
 
+bool CostModelManager::RemoveCostModelForGraph(const Graph* graph) {
+  mutex_lock l(mu_);
+  auto itr = cost_models_.find(graph);
+  if (itr == cost_models_.end()) {
+    return false;
+  }
+  delete itr->second;
+  cost_models_.erase(graph);
+  return true;
+}
+
 Status CostModelManager::AddToCostGraphDef(const Graph* graph,
                                            CostGraphDef* cost_graph) {
   mutex_lock l(mu_);

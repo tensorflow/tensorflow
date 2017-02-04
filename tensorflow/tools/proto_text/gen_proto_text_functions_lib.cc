@@ -154,7 +154,7 @@ class Generator {
 string GetPackageReferencePrefix(const FileDescriptor* fd) {
   string result = "::";
   const string& package = fd->package();
-  for (int i = 0; i < package.size(); ++i) {
+  for (size_t i = 0; i < package.size(); ++i) {
     if (package[i] == '.') {
       result += "::";
     } else {
@@ -446,6 +446,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   Print("StringPiece identifier;");
   Print("if (!scanner->GetResult(nullptr, &identifier)) return false;");
   Print("bool parsed_colon = false;");
+  Print("(void)parsed_colon;"); // Avoid "set but not used" compiler warning
   Print("ProtoSpaceAndComments(scanner);");
   Print("if (scanner->Peek() == ':') {");
   Nest().Print("parsed_colon = true;");
@@ -675,7 +676,7 @@ void Generator::AppendMessageFunctions(const Descriptor& md) {
 void Generator::AddNamespaceToCurrentSection(const string& package, bool open) {
   Print();
   std::vector<string> parts = {""};
-  for (int i = 0; i < package.size(); ++i) {
+  for (size_t i = 0; i < package.size(); ++i) {
     if (package[i] == '.') {
       parts.resize(parts.size() + 1);
     } else {

@@ -12,22 +12,134 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functional tests for Split Op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class SplitOpTest(tf.test.TestCase):
+class SplitOpTest(test.TestCase):
+
+  def testExplicitNum(self):
+    size_splits = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
+
+    value = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    with self.test_session(use_gpu=False) as sess:
+      with self.assertRaises(ValueError) as context:
+        sess.run(array_ops.split(value, size_splits), {size_splits: [2, 2, 6]})
+
+      self.assertTrue("Cannot infer num from shape" in str(context.exception))
+
+      result = sess.run(array_ops.split(
+          value, size_splits, num=3), {size_splits: [2, 2, 6]})
+
+    self.assertAllEqual(result[0], value[0:2])
+    self.assertAllEqual(result[1], value[2:4])
+    self.assertAllEqual(result[2], value[4:])
+
+  def testListOfScalarTensors(self):
+    a = math_ops.to_int32(5)
+    b = math_ops.to_int32(6)
+
+    value = np.random.rand(11, 11)
+
+    with self.test_session(use_gpu=False) as sess:
+      result = sess.run(array_ops.split(value, [a, b]))
+
+    self.assertAllEqual(result[0], value[0:5, :])
+    self.assertAllEqual(result[1], value[5:, :])
+
+  def _RunAndVerifyVariable(self, use_gpu, large_num_splits=False):
+    # Random dims of rank 5
+    shape = np.random.randint(1, 5, size=5)
+    split_dim = np.random.randint(0, 5)
+    if large_num_splits:
+      num_split = np.random.randint(16, 25)
+    else:
+      num_split = np.random.randint(2, 8)
+    size_splits = np.random.randint(2, 8, num_split)
+    shape[split_dim] = np.sum(size_splits)
+    inp = np.random.rand(*shape).astype("f")
+    with self.test_session(use_gpu=use_gpu) as sess:
+      result = sess.run(array_ops.split(inp, size_splits, split_dim))
+    slices = [slice(0, x) for x in shape]
+    offset = 0
+    for i in range(num_split):
+      slices[split_dim] = slice(offset, offset + size_splits[i])
+      offset += size_splits[i]
+      self.assertAllEqual(result[i], inp[slices])
+
+  def _testSpecialCasesVariable(self, use_gpu):
+    inp = np.random.rand(4, 4).astype("f")
+
+    with self.test_session(use_gpu=use_gpu) as sess:
+      result = sess.run(array_ops.split(inp, [4], 0))
+      self.assertAllEqual(result[0], inp)
+
+      result = sess.run(array_ops.split(inp, [-1, 3], 0))
+      self.assertAllEqual(result[0], inp[0:1, :])
+      self.assertAllEqual(result[1], inp[1:4, :])
+
+  def _testHugeNumberOfTensorsVariable(self, use_gpu):
+    num_split = 10000
+    size_splits = np.random.randint(1, 3, num_split)
+    shape = [3, np.sum(size_splits)]
+    split_dim = 1
+    inp = np.random.rand(*shape).astype("f")
+    with self.test_session(use_gpu=use_gpu) as sess:
+      result = sess.run(array_ops.split(inp, size_splits, split_dim))
+    slices = [slice(0, x) for x in shape]
+    offset = 0
+    for i in range(num_split):
+      slices[split_dim] = slice(offset, offset + size_splits[i])
+      offset += size_splits[i]
+      self.assertAllEqual(result[i], inp[slices])
+
+  def testSpecialCasesVariable(self):
+    self._testSpecialCasesVariable(False)
+    self._testSpecialCasesVariable(True)
+    self._testHugeNumberOfTensorsVariable(False)
+    self._testHugeNumberOfTensorsVariable(True)
+
+  def _testGradientsSimpleVariable(self, use_gpu):
+    inp = np.random.rand(4, 4).astype("f")
+    with self.test_session(use_gpu=use_gpu):
+      inp_tensor = ops.convert_to_tensor(inp)
+      s = array_ops.split(inp_tensor, [1, 4], 1)
+      inp_grads = [
+          np.random.rand(4, 1).astype("f"), np.random.rand(4, 3).astype("f")
+      ]
+      grad_tensors = [constant_op.constant(x) for x in inp_grads]
+      grad = gradients_impl.gradients(s, [inp_tensor], grad_tensors)[-1]
+      result = grad.eval()
+
+    self.assertAllEqual(result[:, 0:1], inp_grads[0])
+    self.assertAllEqual(result[:, 1:4], inp_grads[1])
+
+  def testOutputShape(self):
+    with self.test_session(use_gpu=False):
+      tensor = array_ops.placeholder(dtypes.float32, shape=[None, 12])
+      size_splits = [3, 7, 2]
+      outputs = array_ops.split(tensor, size_splits, 1)
+      for i, output in enumerate(outputs):
+        self.assertEqual(output.get_shape().as_list(), [None, size_splits[i]])
 
   def _compare(self, x, dim, num, use_gpu):
     np_ans = np.split(x, num, dim)
     with self.test_session(use_gpu=use_gpu) as sess:
-      tf_ans = tf.split(dim, num, x)
+      tf_ans = array_ops.split(value=x, num_or_size_splits=num, axis=dim)
       out = sess.run(tf_ans)
     self.assertEqual(num, len(np_ans))
     self.assertEqual(num, len(np_ans))
@@ -54,7 +166,7 @@ class SplitOpTest(tf.test.TestCase):
 
   def _testEmpty(self, x, dim, num, expected_shape):
     with self.test_session() as sess:
-      tf_ans = tf.split(dim, num, x)
+      tf_ans = array_ops.split(value=x, num_or_size_splits=num, axis=dim)
       out = sess.run(tf_ans)
     self.assertEqual(x.size, 0)
     self.assertEqual(len(out), num)
@@ -96,7 +208,9 @@ class SplitOpTest(tf.test.TestCase):
     shape[split_dim] = np.random.randint(2, 5) * num_split
     inp = np.random.rand(*shape).astype("f")
     with self.test_session(use_gpu=use_gpu) as sess:
-      result = sess.run(tf.split(split_dim, num_split, inp))
+      result = sess.run(
+          array_ops.split(
+              value=inp, num_or_size_splits=num_split, axis=split_dim))
     slices = [slice(0, x) for x in shape]
     offset = 0
     length = shape[split_dim] // num_split
@@ -110,44 +224,53 @@ class SplitOpTest(tf.test.TestCase):
       self._RunAndVerify(use_gpu=False)
       self._RunAndVerify(use_gpu=True)
       self._RunAndVerify(use_gpu=True, large_num_splits=True)
+      self._RunAndVerifyVariable(use_gpu=False)
+      self._RunAndVerifyVariable(use_gpu=True)
+      self._RunAndVerifyVariable(use_gpu=True, large_num_splits=True)
 
   def _testGradientsSimple(self, use_gpu):
     inp = np.random.rand(4, 4).astype("f")
     with self.test_session(use_gpu=use_gpu):
-      inp_tensor = tf.convert_to_tensor(inp)
-      s = tf.split(1, 4, inp_tensor)
+      inp_tensor = ops.convert_to_tensor(inp)
+      s = array_ops.split(value=inp_tensor, num_or_size_splits=4, axis=1)
       inp_grads = [np.random.rand(4, 1).astype("f") for _ in range(4)]
-      grad_tensors = [tf.constant(x) for x in inp_grads]
-      grad = tf.gradients(s, [inp_tensor], grad_tensors)[0]
+      grad_tensors = [constant_op.constant(x) for x in inp_grads]
+      grad = gradients_impl.gradients(s, [inp_tensor], grad_tensors)[0]
       result = grad.eval()
     for i in range(4):
-      self.assertAllEqual(result[:, i:i+1], inp_grads[i])
+      self.assertAllEqual(result[:, i:i + 1], inp_grads[i])
 
   def testGradientsAll(self):
     self._testGradientsSimple(use_gpu=False)
     self._testGradientsSimple(use_gpu=True)
+    self._testGradientsSimpleVariable(use_gpu=False)
+    self._testGradientsSimpleVariable(use_gpu=True)
 
   def testShapeFunctionEdgeCases(self):
     # split_dim greater than rank of input.
     with self.assertRaises(ValueError):
-      tf.split(2, 4, [[0, 1], [2, 3]])
+      array_ops.split(value=[[0, 1], [2, 3]], num_or_size_splits=4, axis=2)
 
     # num_split does not evenly divide the size in split_dim.
     with self.assertRaisesRegexp(ValueError, "should evenly divide"):
-      tf.split(0, 3, [0, 1, 2, 3])
+      array_ops.split(value=[0, 1, 2, 3], num_or_size_splits=3, axis=0)
 
     # Unknown split_dim.
-    splits = tf.split(tf.placeholder(tf.int32),
-                             4, [[0, 1, 2, 3]])
+    splits = array_ops.split(
+        value=[[0, 1, 2, 3]],
+        num_or_size_splits=4,
+        axis=array_ops.placeholder(dtypes.int32))
     for s in splits:
       self.assertEqual([None, None], s.get_shape().as_list())
 
     # Unknown split_dim and input shape.
-    splits = tf.split(tf.placeholder(tf.int32),
-                             4, tf.placeholder(tf.float32))
+    splits = array_ops.split(
+        value=array_ops.placeholder(dtypes.float32),
+        num_or_size_splits=4,
+        axis=array_ops.placeholder(dtypes.int32))
     for s in splits:
       self.assertEqual(None, s.get_shape().ndims)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

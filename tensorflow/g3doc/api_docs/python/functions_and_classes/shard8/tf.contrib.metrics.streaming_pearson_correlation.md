@@ -25,8 +25,10 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 
 *  <b>`predictions`</b>: A `Tensor` of arbitrary size.
 *  <b>`labels`</b>: A `Tensor` of the same size as predictions.
-*  <b>`weights`</b>: An optional set of weights which indicates the frequency with which
-    an example is sampled. Must be broadcastable with `labels`.
+*  <b>`weights`</b>: Optional `Tensor` indicating the frequency with which an example is
+    sampled. Rank must be 0, or the same rank as `labels`, and must be
+    broadcastable to `labels` (i.e., all dimensions must be either `1`, or
+    the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
@@ -36,7 +38,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Returns:
 
 
-*  <b>`pearson_r`</b>: A tensor representing the current Pearson product-moment
+*  <b>`pearson_r`</b>: A `Tensor` representing the current Pearson product-moment
     correlation coefficient, the value of
     `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
 *  <b>`update_op`</b>: An operation that updates the underlying variables appropriately.

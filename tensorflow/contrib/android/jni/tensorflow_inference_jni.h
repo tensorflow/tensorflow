@@ -30,15 +30,25 @@ extern "C" {
 #define TENSORFLOW_METHOD(METHOD_NAME) \
   Java_org_tensorflow_contrib_android_TensorFlowInferenceInterface_##METHOD_NAME  // NOLINT
 
-#define FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE)                               \
-  JNIEXPORT void TENSORFLOW_METHOD(fillNode##DTYPE)(                         \
-      JNIEnv * env, jobject thiz, jstring node_name, jint x, jint y, jint z, \
-      jint d, j##JAVA_DTYPE##Array arr)
+#define FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE)                       \
+  JNIEXPORT void TENSORFLOW_METHOD(fillNode##DTYPE)(                 \
+      JNIEnv * env, jobject thiz, jstring node_name, jintArray dims, \
+      j##JAVA_DTYPE##Array src)
 
-#define READ_NODE_SIGNATURE(DTYPE, JAVA_DTYPE)               \
-  JNIEXPORT jint TENSORFLOW_METHOD(readNode##DTYPE)(         \
-      JNIEnv * env, jobject thiz, jstring node_name_jstring, \
-      j##JAVA_DTYPE##Array arr)
+#define FILL_NODE_NIO_BUFFER_SIGNATURE(DTYPE)                             \
+  JNIEXPORT void TENSORFLOW_METHOD(fillNodeFrom##DTYPE##Buffer)(          \
+      JNIEnv * env, jobject thiz, jstring node_name, jobject dims_buffer, \
+      jobject src_buffer)
+
+#define READ_NODE_SIGNATURE(DTYPE, JAVA_DTYPE)       \
+  JNIEXPORT jint TENSORFLOW_METHOD(readNode##DTYPE)( \
+      JNIEnv * env, jobject thiz, jstring node_name, j##JAVA_DTYPE##Array dst)
+
+#define READ_NODE_NIO_BUFFER_SIGNATURE(DTYPE)                    \
+  JNIEXPORT jint TENSORFLOW_METHOD(readNodeInto##DTYPE##Buffer)( \
+      JNIEnv * env, jobject thiz, jstring node_name, jobject dst_buffer)
+
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(testLoaded)(JNIEnv* env, jobject thiz);
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model);
@@ -46,15 +56,33 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
     JNIEnv* env, jobject thiz, jobjectArray output_name_strings);
 
+JNIEXPORT void JNICALL TENSORFLOW_METHOD(enableStatLogging)(
+    JNIEnv* env, jobject thiz, jboolean enableStatLogging);
+
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(getStatString)(JNIEnv* env,
+                                                           jobject thiz);
+
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz);
 
 FILL_NODE_SIGNATURE(Float, float);
 FILL_NODE_SIGNATURE(Int, int);
 FILL_NODE_SIGNATURE(Double, double);
+FILL_NODE_SIGNATURE(Byte, byte);
+
+FILL_NODE_NIO_BUFFER_SIGNATURE(Float);
+FILL_NODE_NIO_BUFFER_SIGNATURE(Int);
+FILL_NODE_NIO_BUFFER_SIGNATURE(Double);
+FILL_NODE_NIO_BUFFER_SIGNATURE(Byte);
 
 READ_NODE_SIGNATURE(Float, float);
 READ_NODE_SIGNATURE(Int, int);
 READ_NODE_SIGNATURE(Double, double);
+READ_NODE_SIGNATURE(Byte, byte);
+
+READ_NODE_NIO_BUFFER_SIGNATURE(Float);
+READ_NODE_NIO_BUFFER_SIGNATURE(Int);
+READ_NODE_NIO_BUFFER_SIGNATURE(Double);
+READ_NODE_NIO_BUFFER_SIGNATURE(Byte);
 
 #ifdef __cplusplus
 }  // extern "C"

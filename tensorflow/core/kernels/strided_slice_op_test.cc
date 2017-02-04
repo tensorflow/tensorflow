@@ -113,7 +113,7 @@ static void BM_ValidateStridedSliceOp(int iters) {
     ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
     ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     TF_CHECK_OK(ValidateStridedSliceOp(
-        begin, end, strides, ShapeReadWriteFromTensorShape(&input_shape),
+        &begin, &end, strides, ShapeReadWriteFromTensorShape(&input_shape),
         begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
         &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
         &is_simple_slice, &slice_dim0, &begin_out, &end_out, &strides_out));

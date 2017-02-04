@@ -72,8 +72,8 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
     Eigen::array<int64, IXDIM> batch_strides;
     Eigen::array<int64, IXDIM> batch_indices;
     if (IXDIM > 0) {
-      batch_strides[IXDIM - 1] = s_size;
-      batch_indices[IXDIM - 1] = Tparams.dimension(IXDIM - 1);
+      batch_strides[size_t(IXDIM - 1)] = s_size;
+      batch_indices[size_t(IXDIM - 1)] = Tparams.dimension(IXDIM - 1);
     }
     for (int i = IXDIM - 1; i > 0; --i) {
       batch_indices[i - 1] = Tparams.dimension(i - 1);

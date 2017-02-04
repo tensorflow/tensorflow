@@ -28,10 +28,10 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `sampling_dist_q.log_prob`.
 *  <b>`sampling_dist_q`</b>: The sampling distribution.
-    `tf.contrib.distributions.BaseDistribution`.
+    `tf.contrib.distributions.Distribution`.
     `float64` `dtype` recommended.
     `log_p` and `q` should be supported on the same set.
-*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`name`</b>: A name to give this `Op`.

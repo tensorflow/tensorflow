@@ -1,0 +1,739 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-menu/paper-menu.html">
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../paper-radio-group/paper-radio-group.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+
+<dom-module id="tf-graph-controls">
+<template>
+<style>
+:host {
+  font-size: 12px;
+  color: gray;
+  --paper-font-subhead: {
+    font-size: 14px;
+    color: gray;
+  };
+  --paper-dropdown-menu-icon: {
+    width: 15px;
+    height: 15px;
+  };
+  --paper-dropdown-menu-button: {
+    padding: 0;
+  };
+  --paper-dropdown-menu-input: {
+    padding: 0;
+  };
+  --paper-item-min-height: 30px;
+}
+
+paper-button[raised].keyboard-focus {
+  font-weight: normal;
+}
+
+.run-dropdown {
+  --paper-input-container: {
+    padding: 9px 0 0 25px;
+  };
+}
+
+.color-dropdown {
+  --paper-input-container: {
+    padding: 9px 0 0 13px;
+  };
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+table td {
+  padding: 0;
+  margin: 0;
+}
+
+.allcontrols {
+  width: 188px;
+  padding: 0 30px;
+}
+
+.legend-holder {
+  position: absolute;
+  bottom: 0;
+  padding-bottom: 10px;
+}
+
+paper-radio-button {
+  display: block;
+  padding: 5px;
+}
+svg.icon {
+  width: 60px;
+  height: 18px;
+}
+.icon ellipse {
+  rx: 10px;
+  ry: 5px;
+  stroke: #CCC;
+  stroke-width: 1px;
+  fill: #FFFFFF;
+  cy: 10px;
+}
+.icon rect {
+  height: 14px;
+  width: 35px;
+  rx: 5px;
+  ry: 5px;
+  stroke: #CCC;
+  stroke-width: 2px;
+  fill: #D9D9D9;
+}
+.domainValues {
+  margin-bottom: 10px;
+  width: 165px;
+}
+.domainStart {
+  float: left;
+}
+.domainEnd {
+  float: right;
+}
+.colorBox {
+  width: 20px;
+}
+
+.image-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.help-icon {
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
+.gray {
+  color: #666;
+}
+
+.title {
+  font-size: 16px;
+  margin: 8px 5px 8px 0;
+  color: black;
+}
+.title small {
+  font-weight: normal;
+}
+.deviceList {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+#file {
+  padding: 8px 0;
+}
+
+.color-legend-row {
+  clear: both;
+  height: 20px;
+  margin-top: 5px;
+  position: relative;
+}
+
+.color-legend-row svg {
+  position: absolute;
+  top: -1px;
+  width: 40px;
+}
+
+.color-legend-row span.color-legend-value {
+  margin-left: 60px;
+}
+
+#grey-rect {
+  fill: #eee;
+  stroke: #a6a6a6;
+}
+
+#faded-rect {
+  fill: url(#rectHatch);
+  stroke: var(--tb-graph-faded);
+}
+
+.button-text {
+  text-transform: none;
+  padding: 8px 18px 0 18px;
+  font-size: 14px
+}
+
+.upload-button {
+  width: 165px;
+  height: 25px;
+  text-transform: none;
+  margin-top: 4px;
+}
+
+.iconbutton {
+  padding: 2px;
+  width: 30px;
+  height: 30px;
+  color: var(--paper-orange-500);
+}
+
+.hidden-input {
+  height: 0px;
+  width: 0px;
+  overflow:hidden;
+}
+
+.allcontrols .control-holder {
+  display: flex;
+  clear: both;
+}
+
+.allcontrols .control-holder paper-radio-group {
+  margin-top: 5px;
+}
+
+span.counter {
+  font-size: 13px;
+  color: gray;
+}
+
+.runs paper-item {
+  --paper-item: {
+    white-space: nowrap;
+  }
+}
+</style>
+<svg width="0" height="0">
+  <defs>
+    <g id="legend-rect">
+      <rect x="1" y="1" stroke-width="2px" height="14" width="35" rx="5" ry="5"></rect>
+    </g>
+    <g id="grey-rect">
+       <use xmlns:xlink="http://www.w3.org/1999/xlink"
+            xlink:href="#legend-rect"/>
+     </g>
+     <g id="faded-rect">
+       <use xmlns:xlink="http://www.w3.org/1999/xlink"
+            xlink:href="#legend-rect"/>
+     </g>
+  </defs>
+</svg>
+<div class="allcontrols">
+  <div class="control-holder">
+    <paper-icon-button icon="aspect-ratio" class="iconbutton" on-click="fit" alt="Fit to screen">
+    </paper-icon-button>
+    <paper-button class="button-text" on-click="fit">Fit to screen
+    </paper-button>
+  </div>
+  <div class="control-holder">
+    <paper-icon-button icon="file-download" class="iconbutton" on-click="download" alt="Download PNG">
+    </paper-icon-button>
+    <paper-button class="button-text" on-click="download">Download PNG
+    </paper-button>
+    <a href="#" id="graphdownload" class="title" download="graph.png">
+    </a>
+  </div>
+  <div class="control-holder runs">
+    <div class="title">Run <span class="counter">([[datasets.length]])</span></div>
+    <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+      <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">
+        <template is="dom-repeat" items="[[datasets]]">
+          <paper-item>[[item.name]]</paper-item>
+        </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+  </div>
+  <template is="dom-if" if="[[showSessionRunsDropdown]]">
+    <div class="control-holder">
+      <div class="title">Session runs <span class="counter">([[_numSessionRuns(metadataTags)]])</span></div>
+      <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+        <paper-menu id="select" class="dropdown-content" selected="{{selectedMetadataTag}}">
+          <template is="dom-repeat" items="[[metadataTags]]">
+            <paper-item>[[item.tag]]</paper-item>
+          </template>
+          <paper-item>None</paper-item>
+        </paper-menu>
+      </paper-dropdown-menu>
+    </div>
+  </template>
+  <template is="dom-if" if="[[showUploadButton]]">
+    <div class="control-holder">
+      <div class="title">Upload</div>
+      <paper-button raised class="text-button upload-button"
+          on-click="_getFile">Choose File</paper-button>
+      <div class="hidden-input">
+        <input type="file" id="file" name="file" on-change="_updateFileInput" />
+      </div>
+    </div>
+  </template>
+  <div class="control-holder">
+    <div class="title">
+      Trace inputs
+    </div>
+    <paper-toggle-button id="trace-inputs">
+
+    </paper-toggle-button>
+  </div>
+  <div class="control-holder">
+    <div class="title">Color</div>
+    <paper-radio-group selected="{{colorBy}}">
+      <paper-radio-button name="structure">Structure</paper-radio-button>
+      <paper-radio-button name="device">Device</paper-radio-button>
+      <template is="dom-if" if="[[_statsNotNull(stats)]]">
+        <paper-radio-button name="compute_time">Compute time</paper-radio-button>
+        <paper-radio-button name="memory">Memory</paper-radio-button>
+      </template>
+    </paper-radio-group>
+  </div>
+  <div>
+    <template is="dom-if" if="[[_isGradientColoring(stats, colorBy)]]">
+      <svg width="140" height="20" style="margin: 0 5px" class="color-text">
+        <defs>
+          <linearGradient id="linearGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop class="start" offset="0%"
+                stop-color$="[[_currentGradientParams.startColor]]"/>
+            <stop class="end" offset="100%"
+                stop-color$="[[_currentGradientParams.endColor]]"/>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="135" height="20" fill="url(#linearGradient)"
+            stroke="black" />
+      </svg>
+      <div class="domainValues color-text">
+        <div class="domainStart">[[_currentGradientParams.minValue]]</div>
+        <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
+      </div>
+      <br style="clear: both">
+      <div>Devices included in stats:</div>
+      <div class="deviceList">
+        <table>
+        <template is="dom-repeat" items="[[_getDevices(devicesForStats)]]">
+          <tr>
+            <td>
+              <input type="checkbox" value$="[[item.device]]" checked$="[[item.used]]" on-click="_deviceCheckboxClicked"/>
+            </td>
+            <td>
+              <div>
+                <span>[[item.suffix]]</span>
+                <template is="dom-if" if="[[item.ignoredMsg]]">
+                  <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+                  <paper-tooltip position="right" animation-delay="0">[[item.ignoredMsg]]</paper-tooltip>
+                </template>
+              </div>
+            </td>
+          </tr>
+        </template>
+        </table>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
+      <div class="color-text">
+        <div class="color-legend-row">
+          <div style="position: absolute;">
+            colors
+          </div>
+          <span class="color-legend-value">same substructure</span>
+        </div>
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                 xlink:href="#grey-rect" x="0" y="0"/>
+          </svg>
+          <span class="color-legend-value">unique substructure</span>
+        </div>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_equals(colorBy, 'device')]]">
+      <div class="color-text">
+        <div class="deviceList">
+          <table>
+          <template is="dom-repeat" items="[[colorByParams.device]]">
+            <tr>
+              <td style$="[[_getBackgroundColor(item.color)]]">
+                <div class="colorBox"></div>
+              </td>
+              <td>
+                <div>[[item.device]]</div>
+              </td>
+            </tr>
+          </template>
+          </table>
+        </div>
+        <br/>
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                 xlink:href="#grey-rect" x="0" y="0"/>
+          </svg>
+          <span class="color-legend-value">unknown device</span>
+        </div>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_statsNotNull(stats)]]">
+      <div class="color-legend-row">
+        <svg>
+          <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                xlink:href="#faded-rect" x="0" y="0"/>
+        </svg>
+        <span class="color-legend-value">unused substructure</span>
+      </div>
+    </template>
+  </div>
+  <!--
+    Due to limited vertical space on the left sidebar, hide the legend whenever
+    we show a list of devices to include in stats.
+  -->
+  <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
+    <div class="legend-holder">
+      <table>
+        <tr>
+          <td><div class="title">Graph</div></td>
+          <td>(* = expandable)</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <rect transform="translate(3, 1)" height="14" width="35"
+                  rx="5" ry="5"/>
+            </svg>
+          </td>
+          <td>Namespace<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" preserveAspectRatio="xMinYMid meet"
+                viewBox="0 0 10 10">
+              <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5"
+                y="6" />
+            </svg>
+          </td>
+          <td>OpNode</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet"
+                viewBox="0 0 12 12">
+              <use xlink:href="#op-series-horizontal-stamp" fill="white"
+                  stroke="#ccc" x="2" y="2"/>
+            </svg>
+          </td>
+          <td>Unconnected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <use xlink:href="#op-series-vertical-stamp"
+                  fill="white" stroke="#ccc" x="2" y="2"/>
+            </svg>
+          </td>
+          <td>Connected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"/>
+            </svg>
+          </td>
+          <td>Constant</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
+              <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"/>
+            </svg>
+          </td>
+          <td>Summary</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <defs>
+                <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10"
+                    markerHeight="10" refX="1" refY="5" orient="auto">
+                  <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+                </marker>
+              </defs>
+              <path stroke="#bbb"
+                  d="M2 9 l 23 0" stroke-linecap="round" />
+            </svg>
+          </td>
+          <td>Dataflow edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path stroke="#bbb"
+                d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2" />
+            </svg>
+          </td>
+          <td>Control dependency edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path marker-start="url(#ref-arrowhead-legend)"
+                stroke="#bbb" d="M2 9 l 23 0"
+                stroke-linecap="round" />
+            </svg>
+          </td>
+          <td>Reference edge</td>
+        </tr>
+      </table>
+    </div>
+  </template>
+  </div>
+</template>
+<script>
+(function() { // Private scope.
+/**
+ * Stats from device names that match these regexes will be excluded by default.
+ * The user can still turn on a device by selecting the checkbox in the device list.
+ * See b/29089982 for context.
+ */
+var DEVICE_NAMES_EXCLUDE = [
+  {
+    regex: /gpu:[0-9]+$/,
+    msg: 'Excluded by default since this is a CPU thread setting up GPU kernels.'
+  }
+];
+
+Polymer({
+  is: 'tf-graph-controls',
+  properties: {
+    // Public API.
+    stats: {
+      value: null,
+      type: Object,
+      observer: '_statsChanged'
+    },
+    devicesForStats: {
+      value: null,
+      type: Object,
+      notify: true,
+      readonly: true,
+    },
+    colorBy: {
+      type: String,
+      value: 'structure',
+      notify: true,
+      readonly: true
+    },
+    colorByParams: Object,
+    datasets: {
+      type: Array,
+      observer: '_datasetsChanged'
+    },
+    renderHierarchy: {
+      type: Object,
+      notify: true,
+    },
+    metadataTags: {
+      type: Array,
+      computed: '_getMetadataTags(selectedDataset, datasets)'
+    },
+    selectedDataset: {
+      type: Number,
+      notify: true,
+      value: 0,
+      observer: '_selectedDatasetChanged'
+    },
+    selectedFile: {
+      type: Object,
+      notify: true
+    },
+    selectedMetadataTag: {
+      type: Number,
+      notify: true,
+      value: -1
+    },
+    _currentGradientParams: {
+      type: Object,
+      computed: '_getCurrentGradientParams(colorByParams, colorBy)'
+    },
+    showSessionRunsDropdown: {
+      type: Boolean,
+      value: true
+    },
+    showUploadButton: {
+      type: Boolean,
+      value: true
+    }
+  },
+  listeners: {
+    'trace-inputs.change': '_traceInputToggleChanged'
+  },
+  _traceInputToggleChanged: function(event) {
+    // Flip the state of the trace inputs flag.
+    this.renderHierarchy.traceInputs = event.target.active;
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
+  },
+  _statsNotNull: function(stats) {
+    return stats != null;
+  },
+  _statsChanged: function(stats) {
+    if (stats == null) {
+      return;
+    }
+    var devicesForStats = {};
+    var devices = _.each(stats.dev_stats, function(d) {
+      // Avoid device names that are ignored by default.
+      var exclude = _.some(DEVICE_NAMES_EXCLUDE, function(rule) {
+        return rule.regex.test(d.device);
+      });
+      if (!exclude) {
+        devicesForStats[d.device] = true;
+      }
+    });
+    this.set('devicesForStats', devicesForStats);
+  },
+  _getDevices: function(devicesForStats) {
+    var devices = _.map(this.stats.dev_stats, function(d) {
+      return d.device;
+    });
+    // Devices names can be long so we remove the longest common prefix
+    // before showing the devices in a list.
+    var suffixes = tf.graph.util.removeCommonPrefix(devices);
+    return _.map(devices, function(device, i) {
+      var ignoredMsg = null;
+      _.each(DEVICE_NAMES_EXCLUDE, function(rule) {
+        if (rule.regex.test(device)) {
+          ignoredMsg = rule.msg;
+        }
+      });
+      return {
+        device: device,
+        suffix: suffixes[i],
+        used: devicesForStats[device],
+        ignoredMsg: ignoredMsg
+      };
+    });
+  },
+  _deviceCheckboxClicked: function(checkbox) {
+    // Update the device map.
+    var devicesForStats = _.extend({}, this.devicesForStats);
+    var device = checkbox.target.value;
+    if (checkbox.target.checked) {
+      devicesForStats[device] = true;
+    } else {
+      delete devicesForStats[device];
+    }
+    this.set('devicesForStats', devicesForStats);
+  },
+  _numSessionRuns: function(metadataTags) {
+    return metadataTags != null ? metadataTags.length : 0;
+  },
+  _getBackgroundColor: function(color) {
+    return 'background-color:' + color;
+  },
+  fit: function() {
+    document.querySelector('#scene').fit();
+  },
+  _isGradientColoring: function(stats, colorBy) {
+    return ["compute_time", "memory"].indexOf(colorBy) !== -1
+        && stats != null;
+  },
+  _equals: function(a, b) {
+    return a === b;
+  },
+  _getCurrentGradientParams: function(colorByParams, colorBy) {
+    if (!this._isGradientColoring(this.stats, colorBy)) {
+      return;
+    }
+    var params = colorByParams[colorBy];
+    var minValue = params.minValue;
+    var maxValue = params.maxValue;
+    if (colorBy === 'memory') {
+      minValue = tf.graph.util.convertUnitsToHumanReadable(
+          minValue, tf.graph.util.MEMORY_UNITS);
+      maxValue = tf.graph.util.convertUnitsToHumanReadable(
+          maxValue, tf.graph.util.MEMORY_UNITS);
+    } else if (colorBy === 'compute_time') {
+      minValue = tf.graph.util.convertUnitsToHumanReadable(
+          minValue, tf.graph.util.TIME_UNITS);
+      maxValue = tf.graph.util.convertUnitsToHumanReadable(
+          maxValue, tf.graph.util.TIME_UNITS);
+    }
+    return {
+      minValue: minValue,
+      maxValue: maxValue,
+      startColor: params.startColor,
+      endColor: params.endColor
+    };
+  },
+  download: function() {
+    this.$.graphdownload.click();
+  },
+  _updateFileInput: function(e) {
+    var file = e.target.files[0];
+    if (!file) {
+      return;
+    }
+    this._setDownloadFilename(file.name);
+    this.set('selectedFile', e);
+  },
+  _datasetsChanged: function(newDatasets, oldDatasets) {
+    if (oldDatasets != null || this.selected == null) {
+      // Select the first dataset by default.
+      this.set('selectedDataset', 0);
+      this._setDownloadFilename(this.datasets[this.selectedDataset].path);
+    }
+  },
+  _getMetadataTags: function(selectedDataset, datasets) {
+    return this.datasets[selectedDataset].runMetadata;
+  },
+  _selectedDatasetChanged: function(newDataset, oldDataset) {
+    if (this.datasets) {
+      this.set('selectedMetadataTag', -1);
+      this.set('colorBy', 'structure');
+      this.$['trace-inputs'].active = false; // Set trace input to off-state.
+      this._setDownloadFilename(this.datasets[newDataset].path);
+    }
+  },
+  _getFile: function() {
+    this.$$("#file").click();
+  },
+  _setDownloadFilename: function(graphPath) {
+    // Strip off everything before the last "/" and strip off the file
+    // extension in order to get the name of the PNG for the graph.
+    var dotIndex = graphPath.lastIndexOf('.');
+    if (dotIndex) {
+      graphPath = graphPath.substring(0, dotIndex);
+    }
+    var slashIndex = graphPath.lastIndexOf('/');
+    if (slashIndex) {
+      graphPath = graphPath.substring(slashIndex + 1);
+    }
+    this.$.graphdownload.setAttribute('download', graphPath + '.png');
+  }
+});
+})(); // Closing private scope.
+</script>
+</dom-module>

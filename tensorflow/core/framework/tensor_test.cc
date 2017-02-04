@@ -29,6 +29,13 @@ class TensorTestHelper {
   static void set_shape(Tensor* t, const TensorShape& s) { t->set_shape(s); }
 };
 
+// To make TestCopies do the right thing.
+inline bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
+  return a.device() == b.device() && a.container() == b.container() &&
+         a.name() == b.name() && a.hash_code() == b.hash_code() &&
+         a.maybe_type_name() == b.maybe_type_name();
+}
+
 TEST(TensorTest, Default) {
   Tensor t;
   EXPECT_EQ(t.dtype(), DT_FLOAT);
@@ -141,6 +148,14 @@ TEST(Tensor_Float, Simple) {
     }
   }
   TestCopies<float>(t);
+}
+
+TEST(Tensor_ResourceHandle, Simple) {
+  Tensor t(DT_RESOURCE, TensorShape({}));
+  ResourceHandle tmp;
+  tmp.set_name("a");
+  t.flat<ResourceHandle>()(0) = tmp;
+  TestCopies<ResourceHandle>(t);
 }
 
 TEST(Tensor_UInt16, Simple) {
@@ -333,6 +348,15 @@ TEST(Tensor_Float, Reshape) {
 }
 
 TEST(Tensor_Scalar, Basics) {
+  {
+    Tensor t(DT_BOOL, TensorShape({}));
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<bool>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    t.scalar<bool>()() = true;
+    EXPECT_TRUE(Tt());
+  }
   {
     Tensor t(DT_FLOAT, TensorShape({}));
     EXPECT_EQ(1, t.NumElements());
@@ -705,7 +729,7 @@ TEST(Tensor, FailureToAllocate) {
 // On the alignment.
 //
 // As of 2015/8, tensorflow::Tensor allocates its buffer with 32-byte
-// alignment. Tensor::tensor/flat/vec/matrix methods requires the the
+// alignment. Tensor::tensor/flat/vec/matrix methods requires the
 // buffer satisfies Eigen::Aligned (e.g., 16-bytes aligned usually,
 // and 32-bytes for AVX). Tensor::Slice requires the caller to ensure
 // its result is aligned if the caller intends to use those methods.
@@ -810,20 +834,24 @@ TEST(SummarizeValue, INT32) {
   Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
   EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
   x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("[1 2][3 4]", x.SummarizeValue(16));
   x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
-  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+  EXPECT_EQ("[[[1]][[2]]][[[3]][[4]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1]][[2]]][[[3]]]...", x.SummarizeValue(3));
+  x = MkTensor<int>(DT_INT32, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
 }
 
 TEST(SummarizeValue, FLOAT) {
   Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
   EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
   x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("[1 2][3 4]", x.SummarizeValue(16));
   x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
-  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+  EXPECT_EQ("[[[1]][[2]]][[[3]][[4]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1]][[2]]][[[3]]]...", x.SummarizeValue(3));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
 }
 
 TEST(SummarizeValue, BOOL) {

@@ -61,7 +61,20 @@ def _construct_dask_df_with_divisions(df):
 
 
 def extract_dask_data(data):
-  """Extract data from dask.Series or dask.DataFrame for predictors."""
+  """Extract data from dask.Series or dask.DataFrame for predictors.
+
+  Given a distributed dask.DataFrame or dask.Series containing columns or names
+  for one or more predictors, this operation returns a single dask.DataFrame or
+  dask.Series that can be iterated over.
+
+  Args:
+    data: A distributed dask.DataFrame or dask.Series.
+
+  Returns:
+    A dask.DataFrame or dask.Series that can be iterated over.
+    If the supplied argument is neither a dask.DataFrame nor a dask.Series this
+    operation returns it without modification.
+  """
   if isinstance(data, allowed_classes):
     return _construct_dask_df_with_divisions(data)
   else:
@@ -69,7 +82,26 @@ def extract_dask_data(data):
 
 
 def extract_dask_labels(labels):
-  """Extract data from dask.Series for labels."""
+  """Extract data from dask.Series or dask.DataFrame for labels.
+
+  Given a distributed dask.DataFrame or dask.Series containing exactly one
+  column or name, this operation returns a single dask.DataFrame or dask.Series
+  that can be iterated over.
+
+  Args:
+    labels: A distributed dask.DataFrame or dask.Series with exactly one
+            column or name.
+
+  Returns:
+    A dask.DataFrame or dask.Series that can be iterated over.
+    If the supplied argument is neither a dask.DataFrame nor a dask.Series this
+    operation returns it without modification.
+
+  Raises:
+    ValueError: If the supplied dask.DataFrame contains more than one
+                column or the supplied dask.Series contains more than
+                one name.
+  """
   if isinstance(labels, dd.DataFrame):
     ncol = labels.columns
   elif isinstance(labels, dd.Series):

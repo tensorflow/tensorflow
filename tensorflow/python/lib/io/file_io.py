@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import uuid
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -33,7 +34,7 @@ class FileIO(object):
 
   The constructor takes the following arguments:
   name: name of the file
-  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'.
+  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'. Append 'b' for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
 
@@ -46,6 +47,8 @@ class FileIO(object):
     self.__mode = mode
     self._read_buf = None
     self._writable_file = None
+    self._binary_mode = "b" in mode
+    mode = mode.replace("b", "")
     if mode not in ("r", "w", "a", "r+", "w+", "a+"):
       raise errors.InvalidArgumentError(
           None, None, "mode is not 'r' or 'w' or 'a' or 'r+' or 'w+' or 'a+'")
@@ -80,6 +83,12 @@ class FileIO(object):
         self._writable_file = pywrap_tensorflow.CreateWritableFile(
             compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
 
+  def _prepare_value(self, val):
+    if self._binary_mode:
+      return compat.as_bytes(val)
+    else:
+      return compat.as_str_any(val)
+
   def size(self):
     """Returns the size of the file."""
     return stat(self.__name).length
@@ -100,7 +109,8 @@ class FileIO(object):
       n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
 
     Returns:
-      'n' bytes of the file (or whole file) requested as a string.
+      'n' bytes of the file (or whole file) in bytes mode or 'n' bytes of the
+      string if in string (regular) mode.
     """
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
@@ -108,18 +118,20 @@ class FileIO(object):
         length = self.size() - self.tell()
       else:
         length = n
-      return pywrap_tensorflow.ReadFromStream(self._read_buf, length, status)
+      return self._prepare_value(
+          pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
 
   def seek(self, position):
     """Seeks to the position in the file."""
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      return pywrap_tensorflow.SeekInStream(self._read_buf, position, status)
+      ret_status = self._read_buf.Seek(position)
+      pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
     self._preread_check()
-    return compat.as_str_any(self._read_buf.ReadLineAsString())
+    return self._prepare_value(self._read_buf.ReadLineAsString())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
@@ -168,12 +180,16 @@ class FileIO(object):
     """
     if self._writable_file:
       with errors.raise_exception_on_not_ok_status() as status:
-        pywrap_tensorflow.FlushWritableFile(self._writable_file, status)
+        ret_status = self._writable_file.Flush()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def close(self):
     """Closes FileIO. Should be called for the WritableFile to be flushed."""
     self._read_buf = None
-    self.flush()
+    if self._writable_file:
+      with errors.raise_exception_on_not_ok_status() as status:
+        ret_status = self._writable_file.Close()
+        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
     self._writable_file = None
 
 
@@ -185,8 +201,17 @@ def file_exists(filename):
 
   Returns:
     True if the path exists, whether its a file or a directory.
+    False if the path does not exist and there are no filesystem errors.
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.
   """
-  return pywrap_tensorflow.FileExists(compat.as_bytes(filename))
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.FileExists(compat.as_bytes(filename), status)
+  except errors.NotFoundError:
+    return False
+  return True
 
 
 def delete_file(filename):
@@ -203,20 +228,25 @@ def delete_file(filename):
     pywrap_tensorflow.DeleteFile(compat.as_bytes(filename), status)
 
 
-def read_file_to_string(filename):
+def read_file_to_string(filename, binary_mode=False):
   """Reads the entire contents of a file to a string.
 
   Args:
     filename: string, path to a file
+    binary_mode: whether to open the file in binary mode or not. This changes
+        the type of the object returned.
 
   Returns:
-    contents of the file as a string
+    contents of the file as a string or bytes.
 
   Raises:
     errors.OpError: Raises variety of errors that are subtypes e.g.
     NotFoundError etc.
   """
-  f = FileIO(filename, mode="r")
+  if binary_mode:
+    f = FileIO(filename, mode="rb")
+  else:
+    f = FileIO(filename, mode="r")
   return f.read()
 
 
@@ -272,7 +302,9 @@ def create_dir(dirname):
 
 
 def recursive_create_dir(dirname):
-  """Create a directory and all parent/intermediate directories.
+  """Creates a directory and all parent/intermediate directories.
+
+  It succeeds if dirname already exists and is writable.
 
   Args:
     dirname: string, name of the directory to be created
@@ -318,6 +350,24 @@ def rename(oldname, newname, overwrite=False):
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
 
 
+def atomic_write_string_to_file(filename, contents):
+  """Writes to `filename` atomically.
+
+  This means that when `filename` appears in the filesystem, it will contain
+  all of `contents`. With write_string_to_file, it is possible for the file
+  to appear in the filesystem with `contents` only partially written.
+
+  Accomplished by writing to a temp file and then renaming it.
+
+  Args:
+    filename: string, pathname for a file
+    contents: string, contents that need to be written to the file
+  """
+  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+  write_string_to_file(temp_pathname, contents)
+  rename(temp_pathname, filename, overwrite=True)
+
+
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.
 
@@ -339,12 +389,12 @@ def is_directory(dirname):
 
   Returns:
     True, if the path is a directory; False otherwise
-
-  Raises:
-    errors.OpError: If the path doesn't exist or other errors
   """
-  status = pywrap_tensorflow.TF_NewStatus()
-  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
+    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 def list_directory(dirname):
@@ -364,11 +414,14 @@ def list_directory(dirname):
   """
   if not is_directory(dirname):
     raise errors.NotFoundError(None, None, "Could not find directory")
-  file_list = get_matching_files(os.path.join(compat.as_str_any(dirname), "*"))
-  return [
-      compat.as_str_any(pywrap_tensorflow.Basename(compat.as_bytes(filename)))
-      for filename in file_list
-  ]
+  with errors.raise_exception_on_not_ok_status() as status:
+    # Convert each element to string, since the return values of the
+    # vector of string should be interpreted as strings, not bytes.
+    return [
+        compat.as_str_any(filename)
+        for filename in pywrap_tensorflow.GetChildren(
+            compat.as_bytes(dirname), status)
+    ]
 
 
 def walk(top, in_order=True):

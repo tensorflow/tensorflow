@@ -86,8 +86,16 @@ class ShapeReadWriteFromTensorShapeProto : public ShapeReadWriteInterface {
 // Note that when input_shape is not fully specified, only <final_shape> and
 // <processing_shape> are valid; <is_identity>, <is_simple_slice> and other
 // output parameters will not be accurate.
+//
+// If <begin_tensor> or <end_tensor> are nullptr, <begin> and <end> will not be
+// valid. In this case, <slice_dim0> and <is_identity> will be true only if a
+// determination can be made based on the information given. A best effort is
+// made to set <processing_shape> and <final_shape> based on <input_shape>, but
+// some dimensions of <processing_shape> and/or <final_shape> may be unknown
+// (-1). Any validation that can be done without complete information is
+// performed.
 Status ValidateStridedSliceOp(
-    const Tensor& begin_tensor, const Tensor& end_tensor,
+    const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const ShapeReadWriteInterface& input_shape,
     int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
     int32 new_axis_mask, int32 shrink_axis_mask,

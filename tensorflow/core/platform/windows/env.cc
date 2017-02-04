@@ -26,11 +26,14 @@ limitations under the License.
 
 #include <thread>
 #include <vector>
+#include <string>
 
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
+
+#pragma comment(lib, "Shlwapi.lib")
 
 namespace tensorflow {
 
@@ -50,21 +53,26 @@ class StdThread : public Thread {
 
 class WindowsEnv : public Env {
  public:
-  WindowsEnv() {}
+  WindowsEnv()
+      : GetSystemTimePreciseAsFileTime_(NULL) {
+    // GetSystemTimePreciseAsFileTime function is only available in the latest
+    // versions of Windows. For that reason, we try to look it up in
+    // kernel32.dll at runtime and use an alternative option if the function
+    // is not available.
+    HMODULE module = GetModuleHandle("kernel32.dll");
+    if (module != NULL) {
+      auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
+          module, "GetSystemTimePreciseAsFileTime");
+      GetSystemTimePreciseAsFileTime_ = func;
+    }
+  }
+
   ~WindowsEnv() override {
     LOG(FATAL) << "Env::Default() must not be destroyed";
   }
 
   bool MatchPath(const string& path, const string& pattern) override {
-    return PathMatchSpec(path.c_str(), pattern.c_str()) == S_OK;
-  }
-
-  uint64 NowMicros() override {
-    FILETIME temp;
-    GetSystemTimeAsFileTime(&temp);
-    uint64 now_ticks =
-        (uint64)temp.dwLowDateTime + ((uint64)(temp.dwHighDateTime) << 32LL);
-    return now_ticks / 10LL;
+    return PathMatchSpec(path.c_str(), pattern.c_str()) == TRUE;
   }
 
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
@@ -92,19 +100,53 @@ class WindowsEnv : public Env {
     });
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return errors::Unimplemented("WindowsEnv::LoadLibrary");
+  Status LoadLibrary(const char *library_filename, void** handle) override {
+    std::string file_name = library_filename;
+    std::replace(file_name.begin(), file_name.end(), '/', '\\');
+
+    HMODULE hModule = LoadLibraryEx(file_name.c_str(), NULL,
+      LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!hModule) {
+      return errors::NotFound(file_name + " not found");
+    }
+    *handle = hModule;
+    return Status::OK();
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                              void** symbol) override {
-    return errors::Unimplemented("WindowsEnv::GetSymbolFromLibrary");
+    void** symbol) override {
+    FARPROC found_symbol;
+
+    found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
+    if (found_symbol == NULL) {
+      return errors::NotFound(std::string(symbol_name) + " not found");
+    }
+    *symbol = (void **)found_symbol;
+    return Status::OK();
   }
+
+  string FormatLibraryFileName(const string& name, const string& version)
+    override {
+    string filename;
+    if (version.size() == 0) {
+      filename = name + ".dll";
+    }
+    else {
+      filename = name + version + ".dll";
+    }
+    return filename;
+  }
+
+ private:
+  typedef VOID(WINAPI * FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
+  FnGetSystemTimePreciseAsFileTime GetSystemTimePreciseAsFileTime_;
 };
 
 }  // namespace
 
 REGISTER_FILE_SYSTEM("", WindowsFileSystem);
+REGISTER_FILE_SYSTEM("file", LocalWinFileSystem);
+
 Env* Env::Default() {
   static Env* default_env = new WindowsEnv;
   return default_env;

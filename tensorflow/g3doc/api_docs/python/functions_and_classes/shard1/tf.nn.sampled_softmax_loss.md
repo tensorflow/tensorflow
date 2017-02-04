@@ -1,4 +1,4 @@
-### `tf.nn.sampled_softmax_loss(weights, biases, inputs, labels, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=True, partition_strategy='mod', name='sampled_softmax_loss')` {#sampled_softmax_loss}
+### `tf.nn.sampled_softmax_loss(weights, biases, labels, inputs, num_sampled, num_classes, num_true=1, sampled_values=None, remove_accidental_hits=True, partition_strategy='mod', name='sampled_softmax_loss')` {#sampled_softmax_loss}
 
 Computes and returns the sampled softmax training loss.
 
@@ -11,8 +11,8 @@ the full softmax loss.
 At inference time, you can compute full softmax probabilities with the
 expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
-See our
-[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
+See our [Candidate Sampling Algorithms Reference]
+(../../extras/candidate_sampling.pdf)
 
 Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
 ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
@@ -24,11 +24,11 @@ Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
       objects whose concatenation along dimension 0 has shape
       [num_classes, dim].  The (possibly-sharded) class embeddings.
 *  <b>`biases`</b>: A `Tensor` of shape `[num_classes]`.  The class biases.
-*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
-      activations of the input network.
 *  <b>`labels`</b>: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.  Note that this format differs from
       the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
+*  <b>`inputs`</b>: A `Tensor` of shape `[batch_size, dim]`.  The forward
+      activations of the input network.
 *  <b>`num_sampled`</b>: An `int`.  The number of classes to randomly sample per batch.
 *  <b>`num_classes`</b>: An `int`. The number of possible classes.
 *  <b>`num_true`</b>: An `int`.  The number of target classes per training example.

@@ -342,6 +342,12 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 #if GOOGLE_CUDA
 // The slow version (but compiles for GPU)
 
+// A dummy type to group forward backward filter autotune results together.
+struct ConvBackwardFilterAutoTuneGroup {};
+typedef AutoTuneSingleton<ConvBackwardFilterAutoTuneGroup, ConvParameters,
+                          perftools::gputools::dnn::AlgorithmConfig>
+    AutoTuneConvBwdFilter;
+
 // Backprop for filter.
 template <typename Device, class T>
 class Conv2DSlowBackpropFilterOp : public OpKernel {
@@ -453,6 +459,34 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
               ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
                              perftools::gputools::blas::Transpose::kTranspose,
                              n, m, k, 1.0f, a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+              .ok();
+      if (!blas_launch_status) {
+        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                            ", n=", n, ", k=", k));
+      }
+      return;
+    } else if (dims.rows.filter_size == dims.rows.input_size &&
+               dims.cols.filter_size == dims.cols.input_size &&
+               padding_ == VALID && data_format_ == FORMAT_NHWC) {
+      // The input data and filter have the same height/width, so call cublas
+      // directly.
+      const uint64 m =
+          dims.rows.input_size * dims.cols.input_size * dims.in_depth;
+      const uint64 k = dims.batch_size;
+      const uint64 n = dims.out_depth;
+
+      auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                  input.template flat<T>().size());
+      auto b_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                  out_backprop.template flat<T>().size());
+      auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
+                                  filter_backprop->template flat<T>().size());
+
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
+                             perftools::gputools::blas::Transpose::kTranspose,
+                             n, m, k, 1.0f, b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -604,7 +638,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     };
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ &&
-        !autotune_results_.Find(conv_parameters, &algorithm_config)) {
+        !AutoTuneConvBwdFilter::GetInstance()->Find(conv_parameters,
+                                                    &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
       ProfileResult best_result;
@@ -647,7 +682,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       algorithm_config.set_algorithm(best_result.algorithm());
       algorithm_config.set_algorithm_no_scratch(
           best_result_no_scratch.algorithm());
-      autotune_results_.Insert(conv_parameters, algorithm_config);
+      AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
+                                                   algorithm_config);
     }
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             context);
@@ -679,8 +715,6 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
-  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
-      autotune_results_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);

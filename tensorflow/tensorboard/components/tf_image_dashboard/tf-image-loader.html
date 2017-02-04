@@ -1,0 +1,230 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="../tf-imports/lodash.html">
+<link rel="import" href="../tf-imports/d3.html">
+
+<!--
+tf-image-loader loads an individual image from the TensorBoard backend.
+
+Right now it always loads the most recent image. We should add support in the
+future for loading older images.
+-->
+<dom-module id="tf-image-loader">
+  <template>
+    <div id="image-annotation">
+      <template is="dom-if" if="[[_hasAtLeastOneStep]]">
+        step
+        <span class="step-value">
+          [[_stepValue]]
+        </span>
+        <template is="dom-if" if="[[_currentWallTime]]">
+          ([[_currentWallTime]])
+        </template>
+        <paper-spinner-lite active hidden$=[[!_isImageLoading]]></paper-spinner-lite>
+      </template>
+      <template is="dom-if" if="[[_hasMultipleSteps]]">
+        <paper-slider
+          id="steps"
+          immediate-value="{{_stepIndex}}"
+          max="[[_maxStepIndex]]"
+          max-markers="[[_maxStepIndex]]"
+          snaps
+          step="1"
+          value="{{_stepIndex}}"></paper-slider>
+      </template>
+    </div>
+
+    <div id="main-image-container"></div>
+
+    <style>
+      :host {
+        display: block;
+        width: 100%;
+        height: auto;
+        position: relative;
+        --step-slider-knob-color: #424242;
+      }
+
+      #image-annotation {
+        border-left: 4px solid;
+        padding-left: 5px;
+        font-size: 12px;
+        margin: -10px 0 10px 0;
+      }
+
+      #image-annotation .step-value {
+        font-weight: bold;
+      }
+
+      #image-annotation paper-spinner-lite {
+        width: 14px;
+        height: 14px;
+        vertical-align: text-bottom;
+        --paper-spinner-color: var(--tb-orange-strong)
+      }
+
+      #steps {
+        height: 15px;
+        margin: 0 0 0 -15px;
+        /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+         * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+         * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2. */
+        width: calc(100% + 31px);
+        --paper-slider-active-color: var(--step-slider-knob-color);
+        --paper-slider-knob-color: var(--step-slider-knob-color);
+        --paper-slider-pin-color: var(--step-slider-knob-color);
+        --paper-slider-knob-start-color: var(--step-slider-knob-color);
+        --paper-slider-knob-start-border-color: var(--step-slider-knob-color);
+        --paper-slider-pin-start-color: var(--step-slider-knob-color);
+      }
+
+      #main-image-container img {
+        border: 1px solid #f5f5f5;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: pixelated;
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-image-loader",
+      properties: {
+        colorScale: Object,
+        run: String,
+        // This is an array of Tensorboard Image&Datum objects (See backend.ts for details). The
+        // properties of objects in this array are
+        // {
+        //   width: number,
+        //   height: number,
+        //   wall_time: Date,
+        //   step: number,
+        //   url: string,
+        // }
+        _steps: {
+          type: Array,
+          value: [],
+          notify: true,
+        },
+        _stepIndex: {
+          type: Number,
+          notify: true,
+        },
+        _hasAtLeastOneStep: {
+          type: Boolean,
+          computed: "_computeHasAtLeastOneStep(_steps)",
+        },
+        _hasMultipleSteps: {
+          type: Boolean,
+          computed: "_computeHasMultipleSteps(_steps)",
+        },
+        _stepValue: {
+          type: Number,
+          computed: "_computeStepValue(_stepIndex)",
+        },
+        _currentWallTime: {
+          type: Number,
+          computed: "_computeCurrentWallTime(_stepIndex)",
+        },
+        _maxStepIndex: {
+          type: Number,
+          computed: "_computeMaxStepIndex(_steps)",
+        },
+        // We use a strictly increasing index to make sure that we don't settle on a stale image.
+        _currentImageLoadIndex: {
+          type: Number,
+          value: 1,
+        },
+        _isImageLoading: {
+          type: Boolean,
+          value: false,
+        },
+      },
+      observers: [
+        "_updateImageUrl(_steps, _stepIndex)",
+      ],
+      redraw: function() {
+        // Other dashboards logic requires a redraw method to be defined. redraw is called at
+        // various places such as when the image is expanded.
+        this.setSeriesData(this.run, this._steps);
+      },
+      setVisibleSeries: function(runs) {
+        // Do nothing.
+      },
+      setSeriesData: function(run, steps) {
+        this.set("run", run);
+        this.set("_steps", steps);
+        this.set("_stepIndex", steps.length - 1);
+
+        // Update the border color based on the run.
+        var color = this.colorScale.scale(run);
+        this.$$("#image-annotation").style.borderColor = color;
+      },
+      _updateImageUrl: function(steps, stepIndex) {
+        // We manually change the image URL (instead of binding to the image's src attribute)
+        // because we would like to manage what happens when the image starts to / finishes loading.
+        if (!steps.length) {
+          return;
+        }
+
+        let img = new Image();
+
+        const loadIndex = ++this._currentImageLoadIndex;
+        img.onload = img.onerror = (function() {
+          if (loadIndex != this._currentImageLoadIndex) {
+            // This load is no longer relevant.
+            return;
+          }
+
+          // The new image has finished loading. Remove the old image. Add the new one.
+          let mainImageContainer = this.$$("#main-image-container");
+          mainImageContainer.innerHTML = "";
+          Polymer.dom(mainImageContainer).appendChild(img);
+
+          // The image has finished loading (or has erred and failed to load).
+          this.set("_isImageLoading", false);
+        }).bind(this);
+
+        // Load the new image.
+        this.set("_isImageLoading", true);
+        img.src = steps[stepIndex].url;
+      },
+      _computeHasAtLeastOneStep: function(steps) {
+        return !!steps && steps.length > 0;
+      },
+      _computeHasMultipleSteps: function(steps) {
+        return !!steps && steps.length > 1;
+      },
+      _computeStepValue: function(stepIndex) {
+        return this._steps[stepIndex].step;
+      },
+      _computeCurrentWallTime: function(stepIndex) {
+        return this._steps[stepIndex].wall_time.toString();
+      },
+      _computeMaxStepIndex: function(steps) {
+        return steps.length - 1;
+      },
+    });
+  </script>
+</dom-module>

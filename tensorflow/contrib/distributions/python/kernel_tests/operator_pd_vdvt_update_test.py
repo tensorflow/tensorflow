@@ -18,13 +18,17 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib.distributions.python.ops import operator_pd_full
 from tensorflow.contrib.distributions.python.ops import operator_pd_vdvt_update
 from tensorflow.contrib.distributions.python.ops import operator_test_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-distributions = tf.contrib.distributions
+distributions = distributions_lib
 
 
 class OperatorPDSqrtVDVTUpdateTest(
@@ -38,7 +42,7 @@ class OperatorPDSqrtVDVTUpdateTest(
   def _random_pd_matrix(self, shape):
     # With probability 1 this is positive definite.
     sqrt = self._rng.randn(*shape)
-    mat = tf.batch_matmul(sqrt, sqrt, adj_y=True)
+    mat = math_ops.matmul(sqrt, sqrt, adjoint_b=True)
     return mat.eval()
 
   def _random_v_and_diag(self, mat_shape, v_matrix_rank):
@@ -64,14 +68,14 @@ class OperatorPDSqrtVDVTUpdateTest(
 
     # If diag is None, then it defaults to the identity matrix, so DV^T = V^T
     if diag is None:
-      diag_vt = tf.matrix_transpose(v)
+      diag_vt = array_ops.matrix_transpose(v)
     else:
-      diag_mat = tf.matrix_diag(diag)
-      diag_vt = tf.batch_matmul(diag_mat, v, adj_y=True)
+      diag_mat = array_ops.matrix_diag(diag)
+      diag_vt = math_ops.matmul(diag_mat, v, adjoint_b=True)
 
-    v_diag_vt = tf.batch_matmul(v, diag_vt)
+    v_diag_vt = math_ops.matmul(v, diag_vt)
     sqrt = mat + v_diag_vt
-    a = tf.batch_matmul(sqrt, sqrt, adj_y=True)
+    a = math_ops.matmul(sqrt, sqrt, adjoint_b=True)
     return a.eval()
 
   def _build_operator_and_mat(self, batch_shape, k, dtype=np.float64):
@@ -107,8 +111,8 @@ class OperatorPDSqrtVDVTUpdateTest(
     # Represents the matrix: (mat + v*diag*v^T) * (mat + v*diag*v^T)^T,
     # achieved by updating the operator "o_made_with_mat".
     # This is the operator we're testing.
-    operator = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-        o_made_with_mat, v, diag)
+    operator = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(o_made_with_mat,
+                                                                v, diag)
 
     return operator, updated_mat
 
@@ -118,18 +122,18 @@ class OperatorPDSqrtVDVTUpdateTest(
     v_matrix_rank = 2
     with self.test_session():
       # Make an OperatorPDFull with a matrix placeholder.
-      mat_ph = tf.placeholder(tf.float64, name="mat_ph")
+      mat_ph = array_ops.placeholder(dtypes.float64, name="mat_ph")
       mat = self._random_pd_matrix(mat_shape)
       o_made_with_mat = operator_pd_full.OperatorPDFull(mat_ph)
 
       # Make the placeholders and arrays for the updated operator.
-      v_ph = tf.placeholder(tf.float64, name="v_ph")
+      v_ph = array_ops.placeholder(dtypes.float64, name="v_ph")
       v, diag = self._random_v_and_diag(mat_shape, v_matrix_rank)
       if self._diag_is_none:
         diag_ph = None
         feed_dict = {v_ph: v, mat_ph: mat}
       else:
-        diag_ph = tf.placeholder(tf.float64, name="diag_ph")
+        diag_ph = array_ops.placeholder(dtypes.float64, name="diag_ph")
         feed_dict = {v_ph: v, diag_ph: diag, mat_ph: mat}
 
       # Make the OperatorPDSqrtVDVTUpdate with v and diag placeholders.
@@ -161,8 +165,8 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag[0] = 0.0
 
       operator_m = operator_pd_full.OperatorPDFull(mat)
-      operator = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-          operator_m, v, diag)
+      operator = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m, v,
+                                                                  diag)
 
       with self.assertRaisesOpError("positive"):
         operator.to_dense().eval()
@@ -221,13 +225,13 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag = self._rng.rand(4, 1)  # Should be shape (4, 2,) to match v.
       mat = self._random_pd_matrix((4, 3, 3))  # mat and v match
 
-      v_ph = tf.placeholder(tf.float32, name="v_ph")
-      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
-      mat_ph = tf.placeholder(tf.float32, name="mat_ph")
+      v_ph = array_ops.placeholder(dtypes.float32, name="v_ph")
+      diag_ph = array_ops.placeholder(dtypes.float32, name="diag_ph")
+      mat_ph = array_ops.placeholder(dtypes.float32, name="mat_ph")
 
       operator_m = operator_pd_full.OperatorPDFull(mat_ph)
-      updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-          operator_m, v_ph, diag_ph)
+      updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m,
+                                                                 v_ph, diag_ph)
       with self.assertRaisesOpError("x == y"):
         updated.to_dense().eval(feed_dict={v_ph: v, diag_ph: diag, mat_ph: mat})
 
@@ -237,13 +241,13 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag = self._rng.rand(5, 1)  # Should be shape (4, 2,) to match v.
       mat = self._random_pd_matrix((4, 3, 3))  # mat and v match
 
-      v_ph = tf.placeholder(tf.float32, name="v_ph")
-      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
-      mat_ph = tf.placeholder(tf.float32, name="mat_ph")
+      v_ph = array_ops.placeholder(dtypes.float32, name="v_ph")
+      diag_ph = array_ops.placeholder(dtypes.float32, name="diag_ph")
+      mat_ph = array_ops.placeholder(dtypes.float32, name="mat_ph")
 
       operator_m = operator_pd_full.OperatorPDFull(mat_ph)
-      updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-          operator_m, v_ph, diag_ph)
+      updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m,
+                                                                 v_ph, diag_ph)
       with self.assertRaisesOpError("x == y"):
         updated.to_dense().eval(feed_dict={v_ph: v, diag_ph: diag, mat_ph: mat})
 
@@ -254,13 +258,13 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag = self._rng.rand(2, 2)  # Should have rank 1 less than v.
       mat = self._random_pd_matrix((2, 2, 2, 2))  # mat and v match
 
-      v_ph = tf.placeholder(tf.float32, name="v_ph")
-      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
-      mat_ph = tf.placeholder(tf.float32, name="mat_ph")
+      v_ph = array_ops.placeholder(dtypes.float32, name="v_ph")
+      diag_ph = array_ops.placeholder(dtypes.float32, name="diag_ph")
+      mat_ph = array_ops.placeholder(dtypes.float32, name="mat_ph")
 
       operator_m = operator_pd_full.OperatorPDFull(mat_ph)
-      updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
-          operator_m, v_ph, diag_ph)
+      updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m,
+                                                                 v_ph, diag_ph)
       with self.assertRaisesOpError("rank"):
         updated.to_dense().eval(feed_dict={v_ph: v, diag_ph: diag, mat_ph: mat})
 
@@ -270,4 +274,4 @@ class OperatorPDSqrtVDVTUpdateNoneDiagTest(OperatorPDSqrtVDVTUpdateTest):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

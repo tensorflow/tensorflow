@@ -20,6 +20,7 @@ from __future__ import print_function
 
 
 from tensorflow.contrib.distributions.python.ops import operator_pd
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 
 
 class OperatorPDIdentity(operator_pd.OperatorPDBase):
@@ -44,13 +46,17 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
   performance.
   """
 
-  def __init__(self, shape, dtype, verify_pd=True, name="OperatorPDIdentity"):
+  def __init__(self, shape, dtype, scale=None,
+               verify_pd=True, name="OperatorPDIdentity"):
     """Initialize an `OperatorPDIdentity`.
 
     Args:
       shape:  `int32` rank 1 `Tensor` of length at least 2, and with the last
         two entries equal (since this is a square matrix).
       dtype:  Data type of the matrix that this operator represents.
+      scale: floating point rank 0 `Tensor` representing a scalar to
+        multiply the identity matrix by. This will default to a scale of 1.
+        This will be converted to the dtype `dtype`.
       verify_pd:  `Boolean`, if `True`, asserts are added to the initialization
         args to ensure they define this operator as a square (batch) matrix.
       name:  Name to prepend to `Ops`.
@@ -58,7 +64,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
     # Grab static shape if available now.
     with ops.name_scope(name):
-      with ops.name_scope("init", values=[shape]):
+      with ops.name_scope("init", values=[shape, scale]):
         self._dtype = dtypes.as_dtype(dtype)
         self._verify_pd = verify_pd
         self._name = name
@@ -69,6 +75,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
         self._get_shape = tensor_shape.TensorShape(
             tensor_util.constant_value(shape))
         self._shape_arg = self._check_shape(shape)
+        self._scale = self._check_scale(scale, self._dtype)
 
   def _check_shape(self, shape):
     """Check that the init arg `shape` defines a valid operator."""
@@ -89,6 +96,21 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
       assert_square = check_ops.assert_equal(last_dim, second_to_last_dim)
       return control_flow_ops.with_dependencies([assert_matrix, assert_square],
                                                 shape)
+
+  def _check_scale(self, scale, dtype):
+    """Check that the init arg `scale` defines a valid operator."""
+    if scale is None:
+      return constant_op.constant(1.0, dtype=dtype)
+
+    scale = ops.convert_to_tensor(scale, dtype=dtype, name="scale")
+
+    if not self._verify_pd:
+      return scale
+
+    # Further check that this is a rank 0, positive tensor.
+    scale = contrib_tensor_util.assert_scalar(scale)
+    return control_flow_ops.with_dependencies(
+        [check_ops.assert_positive(scale)], scale)
 
   def _check_x(self, x):
     """Static check that the argument `x` is proper `shape`, `dtype`."""
@@ -138,7 +160,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
   def _add_to_tensor(self, mat):
     # Add to a tensor in O(k) time!
     mat_diag = array_ops.matrix_diag_part(mat)
-    new_diag = constant_op.constant(1, dtype=self.dtype) + mat_diag
+    new_diag = self._scale + mat_diag
     return array_ops.matrix_set_diag(mat, new_diag)
 
   def _inv_quadratic_form_on_vectors(self, x):
@@ -148,7 +170,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
   @property
   def inputs(self):
     """List of tensors that were provided as initialization inputs."""
-    return [self._shape]
+    return [self._shape_arg, self._scale]
 
   def get_shape(self):
     """Static `TensorShape` of entire operator.
@@ -166,42 +188,58 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
     return self._shape_arg
 
   def _det(self):
-    det = array_ops.ones(self.batch_shape(), dtype=self.dtype)
-    det.set_shape(self.get_batch_shape())
-    return det
+    return math_ops.exp(self._batch_log_det())
 
   def _batch_log_det(self):
-    log_det = array_ops.zeros(self.batch_shape(), dtype=self.dtype)
+    rank = array_ops.size(self._shape_arg)
+    last_dim = math_ops.cast(
+        array_ops.gather(self._shape_arg, rank - 1), dtype=self.dtype)
+    log_det = (last_dim * math_ops.log(math_ops.abs(self._scale)) *
+               array_ops.ones(self.batch_shape(), dtype=self.dtype))
     log_det.set_shape(self.get_batch_shape())
     return log_det
 
   def _batch_sqrt_log_det(self):
-    s_log_det = array_ops.zeros(self.batch_shape(), dtype=self.dtype)
-    s_log_det.set_shape(self.get_batch_shape())
-    return s_log_det
+    return 0.5 * self._batch_log_det()
+
+  def _batch_sqrt_log_abs_det(self):
+    rank = array_ops.size(self._shape_arg)
+    last_dim = math_ops.cast(
+        array_ops.gather(self._shape_arg, rank - 1), dtype=self.dtype)
+    sqrt_log_abs_det = 0.5 * last_dim * math_ops.log(
+        math_ops.abs(self._scale)) * array_ops.ones(
+            self.batch_shape(), dtype=self.dtype)
+    sqrt_log_abs_det.set_shape(self.get_batch_shape())
+    return sqrt_log_abs_det
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
       x = array_ops.matrix_transpose(x)
     self._check_x(x)
-    return x
+    return self._scale * x
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
-    return self._batch_matmul(x, transpose_x=transpose_x)
+    if transpose_x:
+      x = array_ops.matrix_transpose(x)
+    self._check_x(x)
+    return math_ops.sqrt(self._scale) * x
 
   def _batch_solve(self, rhs):
     self._check_x(rhs)
-    return rhs
+    return rhs / self._scale
 
   def _batch_sqrt_solve(self, rhs):
     self._check_x(rhs)
-    return rhs
+    return rhs / math_ops.sqrt(self._scale)
 
   def _to_dense(self):
     diag = array_ops.ones(self.vector_shape(), dtype=self.dtype)
     dense = array_ops.matrix_diag(diag)
     dense.set_shape(self.get_shape())
-    return dense
+    return self._scale * dense
 
   def _sqrt_to_dense(self):
-    return self.to_dense()
+    diag = array_ops.ones(self.vector_shape(), dtype=self.dtype)
+    dense = array_ops.matrix_diag(diag)
+    dense.set_shape(self.get_shape())
+    return math_ops.sqrt(self._scale) * dense

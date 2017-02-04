@@ -93,11 +93,13 @@ class ExampleParserOp : public OpKernel {
     for (int d = 0; d < static_cast<int>(attrs_.num_dense); ++d) {
       const Tensor& def_value = dense_defaults[d];
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(ctx, def_value.shape() == attrs_.dense_shapes[d],
+        OP_REQUIRES(ctx,
+                    attrs_.dense_shapes[d].IsCompatibleWith(def_value.shape()),
                     errors::InvalidArgument(
-                        "def_value[", d, "].shape() == ",
-                        def_value.shape().DebugString(), " != dense_shapes_[",
-                        d, "] == ", attrs_.dense_shapes[d].DebugString()));
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " is not compatible with dense_shapes_[", d,
+                        "] == ", attrs_.dense_shapes[d].DebugString()));
         OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
                     errors::InvalidArgument(
                         "dense_defaults[", d, "].dtype() == ",
@@ -111,7 +113,8 @@ class ExampleParserOp : public OpKernel {
     example::FastParseExampleConfig config;
     for (int d = 0; d < attrs_.num_dense; ++d) {
       config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
-                              attrs_.dense_shapes[d], dense_defaults[d]});
+                              attrs_.dense_shapes[d], dense_defaults[d],
+                              attrs_.elements_per_stride[d]});
     }
     for (int d = 0; d < attrs_.num_sparse; ++d) {
       config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
@@ -488,12 +491,13 @@ class SingleSequenceExampleParserOp : public OpKernel {
           const Feature& f = fl.feature(t);
           bool types_match;
           OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-          OP_REQUIRES(ctx, types_match,
-                      errors::InvalidArgument(
-                          "Name: ", name, ", Feature List: ", key, ", Index: ",
-                          t, ".  Data types don't match. ", "Expected type: ",
-                          DataTypeString(dtype), "  Feature is: ",
-                          ProtoDebugString(f)));
+          OP_REQUIRES(
+              ctx, f.kind_case() == Feature::KIND_NOT_SET || types_match,
+              errors::InvalidArgument("Name: ", name, ", Feature List: ", key,
+                                      ", Index: ", t,
+                                      ".  Data types don't match. ",
+                                      "Expected type: ", DataTypeString(dtype),
+                                      "  Feature is: ", ProtoDebugString(f)));
           sparse_values_tmp.push_back(FeatureSparseCopy(t, key, dtype, f));
         }
       } else {

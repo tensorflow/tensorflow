@@ -5,11 +5,11 @@ Copy a `tf.Operation`.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`op`</b>: the `tf.Operation` to be copied.
 *  <b>`copy_shape`</b>: also copy the shape of the tensor
 
 ##### Returns:
 
-  A copy of op.
+  A `(op, op_outputs)` tuple containgin the transformed op and its outputs.
 

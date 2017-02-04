@@ -13,7 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# This script exercises the examples of using SkFlow.
+# This script exercises the examples of using TF.Learn.
 
 DIR="$TEST_SRCDIR"
 
@@ -28,35 +28,34 @@ then
   DIR="$DIR"/"$TEST_WORKSPACE"
 fi
 
-SKFLOW_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/learn
+TFLEARN_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/learn
 
 
 function test() {
   echo "Test "$1":"
-  $SKFLOW_EXAMPLE_BASE_DIR/$1 $2
+  $TFLEARN_EXAMPLE_BASE_DIR/$1 $2
   if [ $? -eq 0 ]
   then
     echo "Test passed."
-    echo
     return 0
   else
     echo "Test failed."
-    echo
     exit 1
   fi
 }
 
 test boston
 test iris
-test iris_custom_model
 test iris_custom_decay_dnn
+test iris_custom_model
 test iris_run_config
 test iris_val_based_early_stopping
 test iris_with_pipeline
+test random_forest_mnist
+test resnet
 test text_classification --test_with_fake_data
 test text_classification_builtin_rnn_model --test_with_fake_data
-test text_classification_cnn --test_with_fake_data
 test text_classification_character_cnn --test_with_fake_data
 test text_classification_character_rnn --test_with_fake_data
-test random_forest_mnist
+test text_classification_cnn --test_with_fake_data
 test wide_n_deep_tutorial

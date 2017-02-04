@@ -160,8 +160,12 @@ with graph.as_default():
   # tf.nce_loss automatically draws a new sample of the negative labels each
   # time we evaluate the loss.
   loss = tf.reduce_mean(
-      tf.nn.nce_loss(nce_weights, nce_biases, embed, train_labels,
-                     num_sampled, vocabulary_size))
+      tf.nn.nce_loss(weights=nce_weights,
+                     biases=nce_biases,
+                     labels=train_labels,
+                     inputs=embed,
+                     num_sampled=num_sampled,
+                     num_classes=vocabulary_size))
 
   # Construct the SGD optimizer using a learning rate of 1.0.
   optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
@@ -175,7 +179,7 @@ with graph.as_default():
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
   # Add variable initializer.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
 
 # Step 5: Begin training.
 num_steps = 100001

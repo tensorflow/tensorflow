@@ -36,7 +36,7 @@ loss = -elbo
 
 # Minimize the loss
 train_op = tf.train.GradientDescentOptimizer(0.1).minimize(loss)
-tf.initialize_all_variables().run()
+tf.global_variables_initializer().run()
 for step in range(100):
   train_op.run()
 ```
@@ -93,8 +93,8 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 *  <b>`log_p`</b>: Callable mapping samples from `q` to `Tensors` with
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
-*  <b>`q`</b>: `tf.contrib.distributions.BaseDistribution`.
-*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`q`</b>: `tf.contrib.distributions.Distribution`.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample(n)` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`form`</b>: Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
@@ -134,8 +134,8 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 ##### Args:
 
 
-*  <b>`p`</b>: `tf.contrib.distributions.BaseDistribution`
-*  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample_n(n)` for some `n`.
+*  <b>`p`</b>: `tf.contrib.distributions.Distribution`
+*  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample(n)` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
 *  <b>`form`</b>: Either `ELBOForms.analytic_entropy` (use formula for entropy of `q`)
@@ -244,11 +244,11 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 *  <b>`log_p`</b>: Callable mapping samples from `q` to `Tensors` with
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
-*  <b>`q`</b>: `tf.contrib.distributions.BaseDistribution`.
+*  <b>`q`</b>: `tf.contrib.distributions.Distribution`.
      `float64` `dtype` recommended.
      `log_p` and `q` should be supported on the same set.
 *  <b>`alpha`</b>: `Tensor` with shape `q.batch_shape` and values not equal to 1.
-*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  The number of samples to use if `z` is not provided.
     Note that this can be highly biased for small `n`, see docstring.
 *  <b>`seed`</b>: Python integer to seed the random number generator.

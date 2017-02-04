@@ -63,6 +63,23 @@ class DefaultEnvTest : public ::testing::Test {
   Env* env_ = Env::Default();
 };
 
+TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
+  const string filename = io::JoinPath(BaseDir(), "out_of_range");
+  const string input = CreateTestFile(env_, filename, 2);
+  std::unique_ptr<RandomAccessFile> f;
+  TF_EXPECT_OK(env_->NewRandomAccessFile(filename, &f));
+
+  // Reading past EOF should give an OUT_OF_RANGE error
+  StringPiece result;
+  char scratch[3];
+  EXPECT_EQ(error::OUT_OF_RANGE, f->Read(0, 3, &result, scratch).code());
+  EXPECT_EQ(input, result);
+
+  // Exact read to EOF works.
+  TF_EXPECT_OK(f->Read(0, 2, &result, scratch));
+  EXPECT_EQ(input, result);
+}
+
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
@@ -161,10 +178,10 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(0, undeleted_dirs);
-  EXPECT_FALSE(env_->FileExists(root_file1));
-  EXPECT_FALSE(env_->FileExists(root_file2));
-  EXPECT_FALSE(env_->FileExists(root_file3));
-  EXPECT_FALSE(env_->FileExists(child1_file1));
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file1).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file2).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file3).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(child1_file1).code());
 }
 
 TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
@@ -174,7 +191,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
   int64 undeleted_files, undeleted_dirs;
   Status s =
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs);
-  EXPECT_EQ("Not found: Directory doesn't exist", s.ToString());
+  EXPECT_EQ(error::Code::NOT_FOUND, s.code());
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(1, undeleted_dirs);
 }
@@ -183,7 +200,7 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDir) {
   const string create_path = io::JoinPath(BaseDir(), "a//b/c/d");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env_->FileExists(create_path));
+  TF_EXPECT_OK(env_->FileExists(create_path));
 }
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirEmpty) {
@@ -195,14 +212,14 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
   const string subdir_path = io::JoinPath(BaseDir(), "a/b");
   TF_CHECK_OK(env_->CreateDir(io::JoinPath(BaseDir(), "a")));
   TF_CHECK_OK(env_->CreateDir(subdir_path));
-  EXPECT_TRUE(env_->FileExists(subdir_path));
+  TF_EXPECT_OK(env_->FileExists(subdir_path));
 
   // Now try to recursively create a/b/c/d/
   const string create_path = io::JoinPath(BaseDir(), "a/b/c/d/");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env_->FileExists(create_path));
-  EXPECT_TRUE(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
+  TF_EXPECT_OK(env_->FileExists(create_path));
+  TF_EXPECT_OK(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
 }
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
@@ -229,59 +246,30 @@ TEST_F(DefaultEnvTest, LocalFileSystem) {
   }
 }
 
-#define EXPECT_PARSE_URI(uri, scheme, host, path)  \
-  do {                                             \
-    StringPiece s, h, p;                           \
-    ParseURI(uri, &s, &h, &p);                     \
-    EXPECT_EQ(scheme, s.ToString());               \
-    EXPECT_EQ(host, h.ToString());                 \
-    EXPECT_EQ(path, p.ToString());                 \
-    EXPECT_EQ(uri, CreateURI(scheme, host, path)); \
-  } while (0)
-
-TEST_F(DefaultEnvTest, CreateParseURI) {
-  EXPECT_PARSE_URI("http://foo", "http", "foo", "");
-  EXPECT_PARSE_URI("/encrypted/://foo", "", "", "/encrypted/://foo");
-  EXPECT_PARSE_URI("/usr/local/foo", "", "", "/usr/local/foo");
-  EXPECT_PARSE_URI("file:///usr/local/foo", "file", "", "/usr/local/foo");
-  EXPECT_PARSE_URI("local.file:///usr/local/foo", "local.file", "",
-                   "/usr/local/foo");
-  EXPECT_PARSE_URI("a-b:///foo", "", "", "a-b:///foo");
-  EXPECT_PARSE_URI(":///foo", "", "", ":///foo");
-  EXPECT_PARSE_URI("9dfd:///foo", "", "", "9dfd:///foo");
-  EXPECT_PARSE_URI("file:", "", "", "file:");
-  EXPECT_PARSE_URI("file:/", "", "", "file:/");
-  EXPECT_PARSE_URI("hdfs://localhost:8020/path/to/file", "hdfs",
-                   "localhost:8020", "/path/to/file");
-  EXPECT_PARSE_URI("hdfs://localhost:8020", "hdfs", "localhost:8020", "");
-  EXPECT_PARSE_URI("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/");
-}
-#undef EXPECT_PARSE_URI
-
 TEST_F(DefaultEnvTest, SleepForMicroseconds) {
   const int64 start = env_->NowMicros();
   const int64 sleep_time = 1e6 + 5e5;
   env_->SleepForMicroseconds(sleep_time);
   const int64 delta = env_->NowMicros() - start;
 
-  // Subtract 10 from the sleep_time for this check because NowMicros can
+  // Subtract 50 from the sleep_time for this check because NowMicros can
   // sometimes give slightly inconsistent values between the start and the
   // finish (e.g. because the two calls run on different CPUs).
-  EXPECT_GE(delta, sleep_time - 10);
+  EXPECT_GE(delta, sleep_time - 50);
 }
 
 class TmpDirFileSystem : public NullFileSystem {
  public:
-  bool FileExists(const string& dir) override {
+  Status FileExists(const string& dir) override {
     StringPiece scheme, host, path;
-    ParseURI(dir, &scheme, &host, &path);
-    if (path.empty()) return false;
+    io::ParseURI(dir, &scheme, &host, &path);
+    if (path.empty()) return errors::NotFound(dir, " not found");
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
   Status CreateDir(const string& dir) override {
     StringPiece scheme, host, path;
-    ParseURI(dir, &scheme, &host, &path);
+    io::ParseURI(dir, &scheme, &host, &path);
     if (scheme != "tmpdirfs") {
       return errors::FailedPrecondition("scheme must be tmpdirfs");
     }
@@ -297,184 +285,15 @@ REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();
   const string create_path = "tmpdirfs://testhost/a/b/c/d";
-  EXPECT_FALSE(env->FileExists(create_path));
+  EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(create_path).code());
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env->FileExists(create_path));
+  TF_EXPECT_OK(env->FileExists(create_path));
 }
 
-// Creates a new TestEnv that uses Env::Default for all basic ops but
-// uses the default implementation for the GetMatchingFiles function instead.
-class TestEnv : public EnvWrapper {
- public:
-  explicit TestEnv(Env* env) : EnvWrapper(env) {}
-
-  ~TestEnv() override = default;
-};
-
-Env* GetTestEnv() {
-  static Env* default_env = new TestEnv(Env::Default());
-  return default_env;
-}
-
-class InterPlanetaryFileSystem : public NullFileSystem {
- public:
-  Status IsDirectory(const string& dirname) override {
-    if (dirname == "ipfs://solarsystem" ||
-        dirname == "ipfs://solarsystem/Earth" ||
-        dirname == "ipfs://solarsystem/Jupiter") {
-      return Status::OK();
-    }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
-  }
-
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
-    std::vector<string> celestial_bodies;
-    if (dir == "ipfs://solarsystem") {
-      celestial_bodies = {"Mercury",  "Venus",   "Earth",  "Mars",
-                          "Jupiter",  "Saturn",  "Uranus", "Neptune",
-                          ".PlanetX", "Planet0", "Planet1"};
-
-    } else if (dir == "ipfs://solarsystem/Earth") {
-      celestial_bodies = {"Moon"};
-    } else if (dir == "ipfs://solarsystem/Jupiter") {
-      celestial_bodies = {"Europa", "Io", "Ganymede"};
-    }
-    result->insert(result->end(), celestial_bodies.begin(),
-                   celestial_bodies.end());
-    return Status::OK();
-  }
-};
-
-REGISTER_FILE_SYSTEM_ENV(GetTestEnv(), "ipfs", InterPlanetaryFileSystem);
-
-class TestEnvTest : public ::testing::Test {
- protected:
-  void SetUp() override { env_->CreateDir(BaseDir()); }
-
-  void TearDown() override {
-    int64 undeleted_files, undeleted_dirs;
-    env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs);
-  }
-
-  // Returns all the matched entries as a comma separated string removing the
-  // common prefix of BaseDir().
-  string Match(const string& base_dir, const string& suffix_pattern) {
-    std::vector<string> results;
-    Status s = env_->GetMatchingPaths(io::JoinPath(base_dir, suffix_pattern),
-                                      &results);
-    if (!s.ok()) {
-      return s.ToString();
-    } else {
-      std::vector<StringPiece> trimmed_results;
-      std::sort(results.begin(), results.end());
-      for (const string& result : results) {
-        StringPiece trimmed_result(result);
-        EXPECT_TRUE(trimmed_result.Consume(base_dir + "/"));
-        trimmed_results.push_back(trimmed_result);
-      }
-      return str_util::Join(trimmed_results, ",");
-    }
-  }
-
-  Env* env_ = GetTestEnv();
-};
-
-TEST_F(TestEnvTest, IPFS) {
-  std::vector<string> matched_planets;
-  TF_EXPECT_OK(env_->GetChildren("ipfs://solarsystem", &matched_planets));
-  std::vector<string> planets = {"Mercury",  "Venus",   "Earth",  "Mars",
-                                 "Jupiter",  "Saturn",  "Uranus", "Neptune",
-                                 ".PlanetX", "Planet0", "Planet1"};
-  int c = 0;
-  for (auto p : matched_planets) {
-    EXPECT_EQ(p, planets[c++]);
-  }
-}
-
-TEST_F(TestEnvTest, MatchNonExistentFile) {
-  EXPECT_EQ(Match(BaseDir(), "thereisnosuchfile"), "");
-}
-
-TEST_F(TestEnvTest, MatchSimple) {
-  // Create a few files.
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-0a"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-aaa"), ""));
-
-  EXPECT_EQ(Match(BaseDir(), "match-*"),
-            "match-00,match-01,match-0a,match-aaa");
-  EXPECT_EQ(Match(BaseDir(), "match-0[0-9]"), "match-00,match-01");
-  EXPECT_EQ(Match(BaseDir(), "match-?[0-9]"), "match-00,match-01");
-  EXPECT_EQ(Match(BaseDir(), "match-?a*"), "match-0a,match-aaa");
-  EXPECT_EQ(Match(BaseDir(), "match-??"), "match-00,match-01,match-0a");
-}
-
-TEST_F(TestEnvTest, MatchDirectory) {
-  // Create some directories.
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-00/abc")));
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-0a/abc")));
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-01/abc")));
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-aaa/abc")));
-
-  // Create a few files.
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/x"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-0a/abc/x"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/x"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-aaa/abc/x"), ""));
-
-  EXPECT_EQ(Match(BaseDir(), "match-*/abc/x"),
-            "match-00/abc/x,match-01/abc/x,match-0a/abc/x,match-aaa/abc/x");
-  EXPECT_EQ(Match(BaseDir(), "match-0[0-9]/abc/x"),
-            "match-00/abc/x,match-01/abc/x");
-  EXPECT_EQ(Match(BaseDir(), "match-?[0-9]/abc/x"),
-            "match-00/abc/x,match-01/abc/x");
-  EXPECT_EQ(Match(BaseDir(), "match-?a*/abc/x"),
-            "match-0a/abc/x,match-aaa/abc/x");
-  EXPECT_EQ(Match(BaseDir(), "match-?[^a]/abc/x"),
-            "match-00/abc/x,match-01/abc/x");
-}
-
-TEST_F(TestEnvTest, MatchMultipleWildcards) {
-  // Create some directories.
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-00/abc")));
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-01/abc")));
-  TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-02/abc")));
-
-  // Create a few files.
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/00"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/01"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/09"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/00"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/04"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/10"), ""));
-  TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-02/abc/00"), ""));
-
-  EXPECT_EQ(Match(BaseDir(), "match-0[0-1]/abc/0[0-8]"),
-            "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
+TEST_F(DefaultEnvTest, GetExecutablePath) {
+  Env* env = Env::Default();
+  TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
 }
 
 }  // namespace tensorflow

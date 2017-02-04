@@ -11,6 +11,8 @@ Args:
       fetches = {'step': global_step_tensor,
                  'ops': [train_op, check_nan_op]}
   feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
+  options: Exactly like the `options` argument to `Session.run()`, i.e., a
+    config_pb2.RunOptions proto.
 - - -
 
 #### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
@@ -27,7 +29,7 @@ Exclude the OrderedDict from pickling
 
 - - -
 
-#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None)` {#SessionRunArgs.__new__}
+#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
 
 
 
@@ -51,5 +53,12 @@ Alias for field number 1
 #### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
 
 Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
+
+Alias for field number 2
 
 

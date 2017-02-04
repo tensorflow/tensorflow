@@ -39,7 +39,7 @@ class LibCurl;  // libcurl interface as a class, for dependency injection.
 /// For example:
 ///   HttpRequest request;
 ///   request.SetUri("http://www.google.com");
-///   request.SetResultsBuffer(scratch, 1000, &result);
+///   request.SetResultsBuffer(out_buffer);
 ///   request.Send();
 class HttpRequest {
  public:
@@ -92,9 +92,9 @@ class HttpRequest {
 
   /// \brief Specifies the buffer for receiving the response body.
   ///
-  /// The interface is made similar to RandomAccessFile::Read.
-  virtual Status SetResultBuffer(char* scratch, size_t size,
-                                 StringPiece* result);
+  /// Size of out_buffer after an access will be exactly the number of bytes
+  /// read. Existing content of the vector will be cleared.
+  virtual Status SetResultBuffer(std::vector<char>* out_buffer);
 
   /// \brief Returns the response headers of a completed request.
   ///
@@ -134,15 +134,12 @@ class HttpRequest {
   StringPiece post_body_buffer_;
   size_t post_body_read_ = 0;
 
-  char* response_buffer_ = nullptr;
+  std::vector<char>* response_buffer_ = nullptr;
   size_t response_buffer_size_ = 0;
-  size_t response_buffer_written_ = 0;
-  StringPiece* response_string_piece_ = nullptr;
   CURL* curl_ = nullptr;
   curl_slist* curl_headers_ = nullptr;
 
-  std::unique_ptr<char[]> default_response_buffer_;
-  StringPiece default_response_string_piece_;
+  std::vector<char> default_response_buffer_;
 
   std::unordered_map<string, string> response_headers_;
   uint64 response_code_ = 0;

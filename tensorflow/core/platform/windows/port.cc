@@ -19,7 +19,8 @@ limitations under the License.
 #ifdef SNAPPY
 #include <snappy.h>
 #endif
-#include <WinSock2.h>
+
+#include <Windows.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -36,10 +37,13 @@ namespace port {
 void InitMain(const char* usage, int* argc, char*** argv) {}
 
 string Hostname() {
-  char hostname[1024];
-  gethostname(hostname, sizeof hostname);
-  hostname[sizeof hostname - 1] = 0;
-  return string(hostname);
+  char name[1024];
+  DWORD name_size = sizeof(name);
+  name[0] = 0;
+  if (::GetComputerNameA(name, &name_size)) {
+    name[name_size] = 0;
+  }
+  return name;
 }
 
 int NumSchedulableCPUs() {
@@ -48,11 +52,17 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
-void* aligned_malloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, int minimum_alignment) {
   return _aligned_malloc(size, minimum_alignment);
 }
 
-void aligned_free(void* aligned_memory) { _aligned_free(aligned_memory); }
+void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
+
+void* Malloc(size_t size) { return ::malloc(size); }
+
+void* Realloc(void* ptr, size_t size) { return ::realloc(ptr, size); }
+
+void Free(void* ptr) { ::free(ptr); }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.

@@ -57,8 +57,8 @@ constexpr int32 kShrinkAxis = -1, kNewAxis = -2;
 struct StridedSliceSparseSpec {
   int64 dims;
   int32 num_add_axis_after_ellipsis;
-  const Tensor& begin_tensor;
-  const Tensor& end_tensor;
+  const Tensor* begin_tensor;
+  const Tensor* end_tensor;
   const Tensor& strides_tensor;
   const int32 begin_mask, end_mask;
   int32 ellipsis_mask;
@@ -74,6 +74,8 @@ struct StridedSliceDenseSpec {
   const int64 dims;
   int32 begin_mask;
   int32 end_mask;
+  bool begin_valid;
+  bool end_valid;
   gtl::InlinedVector<int64, 4>& begin;
   gtl::InlinedVector<int64, 4>& end;
   gtl::InlinedVector<int64, 4>& strides;
@@ -108,9 +110,9 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
   {
     int full_index = 0;
 
-    const auto& begin_flat = sparse.begin_tensor.flat<T>();
-    const auto& end_flat = sparse.end_tensor.flat<T>();
     const auto& strides_flat = sparse.strides_tensor.flat<T>();
+    dense->begin_valid = sparse.begin_tensor != nullptr;
+    dense->end_valid = sparse.end_tensor != nullptr;
 
     for (int i = 0; i < sparse.dims; i++) {
       if ((1 << i) & sparse.ellipsis_mask) {
@@ -137,8 +139,14 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
         }
 
         // Gather slicing spec into appropriate index
-        dense->begin[full_index] = internal::SubtleMustCopy<T>(begin_flat(i));
-        dense->end[full_index] = internal::SubtleMustCopy<T>(end_flat(i));
+        if (sparse.begin_tensor != nullptr) {
+          const auto& begin_flat = sparse.begin_tensor->flat<T>();
+          dense->begin[full_index] = internal::SubtleMustCopy<T>(begin_flat(i));
+        }
+        if (sparse.end_tensor != nullptr) {
+          const auto& end_flat = sparse.end_tensor->flat<T>();
+          dense->end[full_index] = internal::SubtleMustCopy<T>(end_flat(i));
+        }
         dense->strides[full_index] =
             internal::SubtleMustCopy<T>(strides_flat(i));
         if (sparse.begin_mask & (1 << i)) {
@@ -164,7 +172,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
 }
 
 Status ValidateStridedSliceOp(
-    const Tensor& begin_tensor, const Tensor& end_tensor,
+    const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const ShapeReadWriteInterface& input_shape,
     int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
     int32 new_axis_mask, int32 shrink_axis_mask,
@@ -173,20 +181,29 @@ Status ValidateStridedSliceOp(
     bool* is_simple_slice, bool* slice_dim0,
     gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
     gtl::InlinedVector<int64, 4>* strides) {
-  if (!(TensorShapeUtils::IsVector(begin_tensor.shape()) &&
-        TensorShapeUtils::IsVector(end_tensor.shape()) &&
-        TensorShapeUtils::IsVector(strides_tensor.shape()) &&
-        strides_tensor.dims() == 1 &&
-        strides_tensor.dims() == begin_tensor.dims() &&
-        strides_tensor.dims() == end_tensor.dims() &&
-        begin_tensor.dim_size(0) == end_tensor.dim_size(0) &&
-        begin_tensor.dim_size(0) == strides_tensor.dim_size(0) &&
-        begin_tensor.dim_size(0) < 32  /* using 32 bit masks */)) {
-    return errors::InvalidArgument(
-        "Expected begin, end, and strides to be 1D equal size tensors, ",
-        "but got shapes ", begin_tensor.shape().DebugString(), ", ",
-        end_tensor.shape().DebugString(), ", and ",
-        strides_tensor.shape().DebugString(), " instead.");
+  const bool begin_is_wrong =
+      begin_tensor != nullptr &&
+      !(TensorShapeUtils::IsVector(begin_tensor->shape()) &&
+        begin_tensor->NumElements() == strides_tensor.NumElements() &&
+        begin_tensor->NumElements() < 32 /* using 32 bit masks */);
+  const bool end_is_wrong =
+      end_tensor != nullptr &&
+      !(TensorShapeUtils::IsVector(end_tensor->shape()) &&
+        end_tensor->NumElements() == strides_tensor.NumElements());
+  if (begin_is_wrong || end_is_wrong ||
+      !TensorShapeUtils::IsVector(strides_tensor.shape())) {
+    if (begin_tensor != nullptr && end_tensor != nullptr) {
+      return errors::InvalidArgument(
+          "Expected begin, end, and strides to be 1D equal size tensors, ",
+          "but got shapes ", begin_tensor->shape().DebugString(), ", ",
+          end_tensor->shape().DebugString(), ", and ",
+          strides_tensor.shape().DebugString(), " instead.");
+    } else {
+      return errors::InvalidArgument(
+          "Expected begin, end, and strides to be 1D equal size tensors, ",
+          "but got shape ", strides_tensor.shape().DebugString(),
+          " for strides.");
+    }
   }
   // Use bit compares to ensure ellipsis_mask is 0 or a power of 2
   // i.e. there exists only no more than one ellipsis
@@ -202,7 +219,7 @@ Status ValidateStridedSliceOp(
   //               counting ones in next guys
   bool ellipsis_seen = false;
 
-  StridedSliceSparseSpec sparse_spec = {begin_tensor.NumElements(),
+  StridedSliceSparseSpec sparse_spec = {strides_tensor.NumElements(),
                                         0,
                                         begin_tensor,
                                         end_tensor,
@@ -233,15 +250,21 @@ Status ValidateStridedSliceOp(
   // Make a dense spec that corresponds to thte number of dimensions
   //
   // For example suppose foo[...,3:] on foo.shape=(2,2,3) then
-  // we need to produce the missing begin_mask for the the first two
+  // we need to produce the missing begin_mask for the first two
   // dimensions i.e. from begin_mask_spec=0, end_mask_spec=2
   // we achieve begin_mask=6, end_mask=7
-  StridedSliceDenseSpec dense_spec = {
-      input_shape.dims(), 0, 0, *begin, *end, *strides};
+  StridedSliceDenseSpec dense_spec = {input_shape.dims(),
+                                      0 /* begin_mask */,
+                                      0 /* end_mask */,
+                                      false /* begin_valid */,
+                                      false /* end_valid */,
+                                      *begin,
+                                      *end,
+                                      *strides};
 
-  if (begin_tensor.dtype() == DT_INT32) {
+  if (strides_tensor.dtype() == DT_INT32) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int32>(sparse_spec, &dense_spec));
-  } else if (begin_tensor.dtype() == DT_INT64) {
+  } else if (strides_tensor.dtype() == DT_INT64) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int64>(sparse_spec, &dense_spec));
   } else {
     LOG(FATAL) << "begin must be either int32 or int64";
@@ -252,7 +275,7 @@ Status ValidateStridedSliceOp(
   *is_identity = true;
   *slice_dim0 = true;
   *is_simple_slice = true;
-  for (int i = 0; i < dense_spec.dims; ++i) {
+  for (int i = 0; i < input_shape.dims(); ++i) {
     int64& begin_i = (*begin)[i];
     int64& end_i = (*end)[i];
     int64& stride_i = (*strides)[i];
@@ -281,43 +304,78 @@ Status ValidateStridedSliceOp(
                    : x_fwd > valid_range[1] ? valid_range[1] : x_fwd;
       }
     };
-    if (shrink_i) {
-      // If we are shrinking, the end index is now possibly incorrect. In
-      // particular foo[-1] produces sparse_begin = -1, sparse_end = 0.
-      // and canonical puts these to n-1 and 0, which implies a degenerate
-      // interval. Fortunately, it is now safe to re-create end as begin+1.
-      int64 x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
-      begin_i = x_fwd;
-      end_i = begin_i + 1;
-      if (stride_i <= 0) {
-        return errors::InvalidArgument(
-            "only stride 1 allowed on non-range indexing.");
-      }
-      if (x_fwd < 0 || x_fwd >= dim_i) {
-        return errors::InvalidArgument("slice index ", begin_i,
-                                       " of dimension ", i, " out of bounds.");
-      }
-    } else {
-      begin_i = canonical(begin_i, 0);
-      end_i = canonical(end_i, 1);
+    if (shrink_i && stride_i <= 0) {
+      return errors::InvalidArgument(
+          "only stride 1 allowed on non-range indexing.");
     }
-    // Update optimization values
     (*is_simple_slice) &= stride_i == 1;
-    bool take_all_in_dimension =
-        stride_i == 1 && begin_i == 0 && end_i == dim_i;
-    (*is_identity) &= take_all_in_dimension;
-    (*slice_dim0) &= (i == 0 && stride_i == 1) || take_all_in_dimension;
 
+    const bool begin_and_end_masked =
+        (dense_spec.begin_mask & (1 << i)) && (dense_spec.end_mask & (1 << i));
+    if (dense_spec.begin_valid && dense_spec.end_valid) {
+      if (shrink_i) {
+        // If we are shrinking, the end index is now possibly incorrect. In
+        // particular foo[-1] produces sparse_begin = -1, sparse_end = 0.
+        // and canonical puts these to n-1 and 0, which implies a degenerate
+        // interval. Fortunately, it is now safe to re-create end as begin+1.
+        int64 x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
+        begin_i = x_fwd;
+        end_i = begin_i + 1;
+        if (x_fwd < 0 || x_fwd >= dim_i) {
+          return errors::InvalidArgument(
+              "slice index ", begin_i, " of dimension ", i, " out of bounds.");
+        }
+      } else {
+        begin_i = canonical(begin_i, 0);
+        end_i = canonical(end_i, 1);
+      }
+      // Update optimization values
+      bool take_all_in_dimension =
+          stride_i == 1 && begin_i == 0 && end_i == dim_i;
+      (*is_identity) &= take_all_in_dimension;
+      (*slice_dim0) &= (i == 0 && stride_i == 1) || take_all_in_dimension;
+    } else {
+      (*is_identity) &= stride_i == 1 && begin_and_end_masked;
+      (*slice_dim0) &= (i == 0 && stride_i == 1) || begin_and_end_masked;
+    }
     // Compute the processing shape (the intermediate Eigen will produce)
-    int64 interval_length = end_i - begin_i;
-    int64 size_i;
-    // Hold zero if the interval is degenerate, otherwise account for remainder
-    if (interval_length == 0 || ((interval_length < 0) != (stride_i < 0)))
-      size_i = 0;
-    else
-      size_i = interval_length / stride_i +
-               (interval_length % stride_i != 0 ? 1 : 0);
-    processing_shape->add_dim(size_i);
+    int64 interval_length;
+    bool known_interval = false;
+    if (dense_spec.begin_valid && dense_spec.end_valid) {
+      interval_length = end_i - begin_i;
+      known_interval = true;
+    } else if (shrink_i) {
+      // The dimension is still known as 1 for the processing_shape, but will be
+      // discarded for the final shape.
+      interval_length = 1;
+      known_interval = true;
+    } else if (begin_and_end_masked) {
+      // Even if we don't have values for begin or end, we do know that this
+      // dimension covers the whole interval. If we have shape information for
+      // this dimension, that tells us the interval length.
+      if (dim_i > 0) {
+        if (stride_i < 0) {
+          interval_length = -dim_i;
+        } else {
+          interval_length = dim_i;
+        }
+        known_interval = true;
+      }
+    }
+    if (known_interval) {
+      int64 size_i;
+      // Hold zero if the interval is degenerate, otherwise account for
+      // remainder
+      if (interval_length == 0 || ((interval_length < 0) != (stride_i < 0))) {
+        size_i = 0;
+      } else {
+        size_i = interval_length / stride_i +
+                 (interval_length % stride_i != 0 ? 1 : 0);
+      }
+      processing_shape->add_dim(size_i);
+    } else {
+      processing_shape->add_dim(-1);
+    }
   }
 
   // Step 4: Compute the final shape

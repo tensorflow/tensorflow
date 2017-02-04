@@ -23,21 +23,33 @@ common machine learning algorithms.
 @@avg_pool2d
 @@batch_norm
 @@convolution2d
+@@conv2d_in_plane
 @@convolution2d_in_plane
+@@conv2d_transpose
 @@convolution2d_transpose
+@@dropout
 @@flatten
 @@fully_connected
 @@layer_norm
+@@linear
 @@max_pool2d
 @@one_hot_encoding
+@@relu
+@@relu6
 @@repeat
 @@safe_embedding_lookup_sparse
+@@separable_conv2d
 @@separable_convolution2d
+@@softmax
 @@stack
 @@unit_norm
+@@embed_sequence
 
 Aliases for fully_connected which set a default activation function are
 available: `relu`, `relu6` and `linear`.
+
+`stack` operation is also available. It builds a stack of layers by applying
+a layer repeatedly.
 
 ## Regularizers
 
@@ -79,16 +91,55 @@ The layers module defines convenience functions `summarize_variables`,
 of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 
 @@summarize_activations
+
+## Feature columns
+
+Feature columns provide a mechanism to map data to a model.
+
+@@bucketized_column
+@@check_feature_columns
+@@create_feature_spec_for_parsing
+@@crossed_column
+@@embedding_column
+@@scattered_embedding_column
+@@input_from_feature_columns
+@@joint_weighted_sum_from_feature_columns
+@@make_place_holder_tensors_for_base_features
+@@multi_class_target
+@@one_hot_column
+@@parse_feature_columns_from_examples
+@@parse_feature_columns_from_sequence_examples
+@@real_valued_column
+@@shared_embedding_columns
+@@sparse_column_with_hash_bucket
+@@sparse_column_with_integerized_feature
+@@sparse_column_with_keys
+@@weighted_sparse_column
+@@weighted_sum_from_feature_columns
+@@infer_real_valued_columns
+@@sequence_input_from_feature_columns
+
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.layers.python.layers import *
-from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
-__all__ = make_all(__name__)
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['bias_add',
+                    'conv2d',
+                    'feature_column',
+                    'legacy_fully_connected',
+                    'legacy_linear',
+                    'legacy_relu',
+                    'OPTIMIZER_CLS_NAMES',
+                    'regression_target',
+                    'SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY',
+                    'summaries']
+
+remove_undocumented(__name__, _allowed_symbols)

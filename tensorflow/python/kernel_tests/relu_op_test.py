@@ -12,32 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for Relu and ReluGrad."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent
 
 
-class ReluTest(tf.test.TestCase):
+class ReluTest(test.TestCase):
 
   def _npRelu(self, np_features):
     return np.maximum(np_features, np.zeros(np_features.shape))
 
   def testNpRelu(self):
     self.assertAllClose(
-        np.array([[0.0, 0.7, 0.0, 0.3, 0.0],
-                  [0.1, 0.0, 0.5, 0.0, 0.9]]),
-        self._npRelu(np.array([[-0.9, 0.7, -0.5, 0.3, -0.1],
-                               [0.1, -0.3, 0.5, -0.7, 0.9]])))
+        np.array([[0.0, 0.7, 0.0, 0.3, 0.0], [0.1, 0.0, 0.5, 0.0, 0.9]]),
+        self._npRelu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7, 0.9]
+                     ])))
 
   def _testRelu(self, np_features, use_gpu=False):
     np_relu = self._npRelu(np_features)
     with self.test_session(use_gpu=use_gpu):
-      relu = tf.nn.relu(np_features)
+      relu = nn_ops.relu(np_features)
       tf_relu = relu.eval()
     self.assertAllClose(np_relu, tf_relu)
     self.assertShapeEqual(np_relu, relu)
@@ -56,105 +66,103 @@ class ReluTest(tf.test.TestCase):
   # defined at around zero and we want to avoid that in terms of input values.
   def testGradientFloat32(self):
     with self.test_session():
-      x = tf.constant(
+      x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5], name="x")
-      y = tf.nn.relu(x, name="relu")
+          shape=[2, 5],
+          name="x")
+      y = nn_ops.relu(x, name="relu")
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-          dtype=np.float32, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           y,
-                                           [2, 5],
-                                           x_init_value=x_init)
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("relu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
     with self.test_session():
-      x = tf.constant(
+      x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5], dtype=tf.float64, name="x")
-      y = tf.nn.relu(x, name="relu")
+          shape=[2, 5],
+          dtype=dtypes.float64,
+          name="x")
+      y = nn_ops.relu(x, name="relu")
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-          dtype=np.float64, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           y,
-                                           [2, 5],
-                                           x_init_value=x_init)
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("relu (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradGradFloat32(self):
     with self.test_session():
-      x = tf.constant(
+      x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5], name="x")
-      y = tf.nn.relu(x, name="relu")
-      z = tf.gradients(y, x)
+          shape=[2, 5],
+          name="x")
+      y = nn_ops.relu(x, name="relu")
+      z = gradients_impl.gradients(y, x)
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-          dtype=np.float32, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           z[0],
-                                           [2, 5],
-                                           x_init_value=x_init)
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
     print("relu (float32) gradient of gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
     with self.test_session():
-      x = tf.constant(
+      x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
-          shape=[2, 5], dtype=tf.float64, name="x")
-      y = tf.nn.relu(x, name="relu")
-      z = tf.gradients(y, x)
+          shape=[2, 5],
+          dtype=dtypes.float64,
+          name="x")
+      y = nn_ops.relu(x, name="relu")
+      z = gradients_impl.gradients(y, x)
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
-          dtype=np.float64, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           z[0],
-                                           [2, 5],
-                                           x_init_value=x_init)
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
     print("relu (float64) gradient of gradient err = ", err)
     self.assertLess(err, 1e-10)
 
   def testGradientScalar(self):
     with self.test_session() as sess:
-      x = tf.Variable(100.)
-      y = tf.nn.relu(x)
+      x = variables.Variable(100.)
+      y = nn_ops.relu(x)
       loss = y**2
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.25)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.25)
       train_op = optimizer.minimize(loss)
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       sess.run(train_op)
       self.assertAllClose(x.eval(), 50.0)
 
 
-class Relu6Test(tf.test.TestCase):
+class Relu6Test(test.TestCase):
 
   def _npRelu6(self, np_features):
     sixes = np.copy(np_features)
     sixes.fill(6.0)
-    return np.minimum(np.maximum(np_features, np.zeros(np_features.shape)),
-                      sixes)
+    return np.minimum(
+        np.maximum(np_features, np.zeros(np_features.shape)), sixes)
 
   def testNpRelu6(self):
     self.assertAllClose(
-        np.array([[0.0, 0.7, 0.0, 0.3, 6.0],
-                  [0.1, 0.0, 6.0, 0.0, 0.9]]),
-        self._npRelu6(np.array([[-0.9, 0.7, -0.5, 0.3, 6.0],
-                                [0.1, -0.3, 6.5, -0.7, 0.9]])))
+        np.array([[0.0, 0.7, 0.0, 0.3, 6.0], [0.1, 0.0, 6.0, 0.0, 0.9]]),
+        self._npRelu6(
+            np.array([[-0.9, 0.7, -0.5, 0.3, 6.0], [0.1, -0.3, 6.5, -0.7, 0.9]
+                     ])))
 
   def _testRelu6(self, np_features, use_gpu=False):
     np_relu6 = self._npRelu6(np_features)
     with self.test_session(use_gpu=use_gpu):
-      relu6 = tf.nn.relu6(np_features)
+      relu6 = nn_ops.relu6(np_features)
       tf_relu6 = relu6.eval()
     self.assertAllClose(np_relu6, tf_relu6)
     self.assertShapeEqual(np_relu6, relu6)
@@ -174,40 +182,39 @@ class Relu6Test(tf.test.TestCase):
   # in terms of input values.
   def testGradientFloat32(self):
     with self.test_session():
-      x = tf.constant(
+      x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
-          shape=[2, 5], name="x")
-      y = tf.nn.relu6(x, name="relu6")
+          shape=[2, 5],
+          name="x")
+      y = nn_ops.relu6(x, name="relu6")
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [6.1, 6.3, 6.5, 6.7, 6.9]],
-          dtype=np.float32, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           y,
-                                           [2, 5],
-                                           x_init_value=x_init)
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("relu6 (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
     with self.test_session():
-      x = tf.constant(
+      x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
-          shape=[2, 5], dtype=tf.float64, name="x")
-      y = tf.nn.relu6(x, name="relu6")
+          shape=[2, 5],
+          dtype=dtypes.float64,
+          name="x")
+      y = nn_ops.relu6(x, name="relu6")
       x_init = np.asarray(
           [[-0.9, -0.7, -0.5, -0.3, -0.1], [6.1, 6.3, 6.5, 6.7, 6.9]],
-          dtype=np.float64, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           y,
-                                           [2, 5],
-                                           x_init_value=x_init)
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("relu6 (float64) gradient err = ", err)
     self.assertLess(err, 1e-10)
 
 
-class EluTest(tf.test.TestCase):
+class EluTest(test.TestCase):
 
   def _npElu(self, np_features):
     return np.where(np_features < 0, np.exp(np_features) - 1, np_features)
@@ -216,13 +223,14 @@ class EluTest(tf.test.TestCase):
     self.assertAllClose(
         np.array([[-0.59343034025, 0.7, -0.39346934028, 0.3, -0.09516258196],
                   [0.1, -0.25918177931, 0.5, -0.5034146962, 0.9]]),
-        self._npElu(np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -
-                                                             0.7, 0.9]])))
+        self._npElu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7, 0.9]
+                     ])))
 
   def _testElu(self, np_features, use_gpu=False):
     np_elu = self._npElu(np_features)
     with self.test_session(use_gpu=use_gpu):
-      elu = tf.nn.elu(np_features)
+      elu = nn_ops.elu(np_features)
       tf_elu = elu.eval()
     self.assertAllClose(np_elu, tf_elu)
     self.assertShapeEqual(np_elu, elu)
@@ -239,31 +247,91 @@ class EluTest(tf.test.TestCase):
   def testGradientFloat32(self):
     with self.test_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
-      x = tf.constant(x_val, name="x")
-      y = tf.nn.elu(x, name="elu")
+      x = constant_op.constant(x_val, name="x")
+      y = nn_ops.elu(x, name="elu")
       x_init = np.asarray(x_val, dtype=np.float32, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           y,
-                                           [2, 5],
-                                           x_init_value=x_init)
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("elu (float32) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
     with self.test_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
-      x = tf.constant(x_val, dtype=tf.float64, name="x")
-      y = tf.nn.elu(x, name="elu")
+      x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
+      y = nn_ops.elu(x, name="elu")
       x_init = np.asarray(x_val, dtype=np.float64, order="F")
-      err = tf.test.compute_gradient_error(x,
-                                           [2, 5],
-                                           y,
-                                           [2, 5],
-                                           x_init_value=x_init)
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("elu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
 
+  def testGradGradFloat32(self):
+    with self.test_session():
+      x = constant_op.constant(
+          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+          shape=[2, 5],
+          name="x")
+      y = nn_ops.elu(x, name="elu")
+      z = gradients_impl.gradients(y, x)
+      x_init = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+    print("elu (float32) gradient of gradient err = ", err)
+    self.assertLess(err, 1e-4)
+
+  def testGradGradFloat64(self):
+    with self.test_session():
+      x = constant_op.constant(
+          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+          shape=[2, 5],
+          dtype=dtypes.float64,
+          name="x")
+      y = nn_ops.elu(x, name="elu")
+      z = gradients_impl.gradients(y, x)
+      x_init = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+    print("elu (float64) gradient of gradient err = ", err)
+    self.assertLess(err, 1e-6)
+
+
+class CreluTest(test.TestCase):
+
+  def testCreluShape(self):
+    f = random_ops.random_normal([50, 5, 7, 10])
+    t = nn_ops.crelu(f)
+    self.assertEqual([50, 5, 7, 20], t.get_shape())
+
+  def _testCrelu(self, np_features, use_gpu=False):
+    np_relu = np.maximum(np_features, np.zeros_like(np_features))
+    np_neg_relu = np.maximum(-np_features, np.zeros_like(np_features))
+    np_crelu = np.concatenate((np_relu, np_neg_relu),
+                              len(np_features.shape) - 1)
+
+    with self.test_session(use_gpu=use_gpu):
+      crelu = nn_ops.crelu(np_features)
+      tf_relu = crelu.eval()
+
+    self.assertAllClose(np_crelu, tf_relu)
+    self.assertShapeEqual(np_crelu, crelu)
+
+  def testNumbers(self):
+    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      self._testCrelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+          use_gpu=False)
+      if t in [np.float16, np.float32, np.float64]:
+        self._testCrelu(
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+            use_gpu=True)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

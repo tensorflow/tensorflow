@@ -2,9 +2,45 @@ Categorical distribution.
 
 The categorical distribution is parameterized by the log-probabilities
 of a set of classes.
+
+#### Examples
+
+Creates a 3-class distiribution, with the 2nd class, the most likely to be
+drawn from.
+
+```python
+p = [0.1, 0.5, 0.4]
+dist = Categorical(probs=p)
+```
+
+Creates a 3-class distiribution, with the 2nd class the most likely to be
+drawn from, using logits.
+
+```python
+logits = [-50, 400, 40]
+dist = Categorical(logits=logits)
+```
+
+Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+The distribution functions can be evaluated on counts.
+
+```python
+# counts is a scalar.
+p = [0.1, 0.4, 0.5]
+dist = Categorical(probs=p)
+dist.prob(0)  # Shape []
+
+# p will be broadcast to [[0.1, 0.4, 0.5], [0.1, 0.4, 0.5]] to match counts.
+counts = [1, 0]
+dist.prob(counts)  # Shape [2]
+
+# p will be broadcast to shape [3, 5, 7, 3] to match counts.
+counts = [[...]] # Shape [5, 7, 3]
+dist.prob(counts)  # Shape [5, 7, 3]
+```
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits=None, probs=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -12,16 +48,25 @@ Initialize Categorical distributions using class log-probabilities.
 
 
 *  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
-      of a set of Categorical distributions. The first `N - 1` dimensions
-      index into a batch of independent distributions and the last dimension
-      indexes into the classes.
+    of a set of Categorical distributions. The first `N - 1` dimensions
+    index into a batch of independent distributions and the last dimension
+    represents a vector of logits for each class. Only one of `logits` or
+    `probs` should be passed in.
+*  <b>`probs`</b>: An N-D `Tensor`, `N >= 1`, representing the probabilities
+    of a set of Categorical distributions. The first `N - 1` dimensions
+    index into a batch of independent distributions and the last dimension
+    represents a vector of probabilities for each class. Only one of
+    `logits` or `probs` should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`validate_args`</b>: Unused in this distribution.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: A name for this distribution (optional).
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined.  When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
 
 
 - - -
@@ -47,12 +92,29 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.batch_shape(name='batch_shape')` {#Categorical.batch_shape}
+#### `tf.contrib.distributions.Categorical.batch_shape` {#Categorical.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.batch_shape_tensor(name='batch_shape_tensor')` {#Categorical.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -92,6 +154,73 @@ cdf(x) := P[X <= x]
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.copy(**override_parameters_kwargs)` {#Categorical.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.covariance(name='covariance')` {#Categorical.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.dtype` {#Categorical.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -101,12 +230,26 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.Categorical.entropy(name='entropy')` {#Categorical.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.event_shape(name='event_shape')` {#Categorical.event_shape}
+#### `tf.contrib.distributions.Categorical.event_shape` {#Categorical.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.event_shape_tensor(name='event_shape_tensor')` {#Categorical.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -123,30 +266,9 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.get_batch_shape()` {#Categorical.get_batch_shape}
+#### `tf.contrib.distributions.Categorical.event_size` {#Categorical.event_size}
 
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.get_event_shape()` {#Categorical.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+Scalar `int32` tensor: the number of classes.
 
 
 - - -
@@ -158,9 +280,36 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.is_reparameterized` {#Categorical.is_reparameterized}
+#### `tf.contrib.distributions.Categorical.is_scalar_batch(name='is_scalar_batch')` {#Categorical.is_scalar_batch}
+
+Indicates that `batch_shape == []`.
+
+##### Args:
 
 
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_scalar_event(name='is_scalar_event')` {#Categorical.is_scalar_event}
+
+Indicates that `event_shape == []`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
 
 
 - - -
@@ -190,54 +339,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.log_pdf(value, name='log_pdf')` {#Categorical.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.log_pmf(value, name='log_pmf')` {#Categorical.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -292,7 +393,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 #### `tf.contrib.distributions.Categorical.logits` {#Categorical.logits}
 
-
+Vector of coordinatewise logits.
 
 
 - - -
@@ -318,18 +419,15 @@ Name prepended to all ops created by this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.num_classes` {#Categorical.num_classes}
-
-Scalar `int32` tensor: the number of classes.
-
-
-- - -
-
 #### `tf.contrib.distributions.Categorical.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#Categorical.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -347,7 +445,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Categorical.param_static_shapes(cls, sample_shape)` {#Categorical.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.  Assumes that
+the sample's shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -369,55 +475,7 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.Categorical.parameters` {#Categorical.parameters}
 
-Dictionary of parameters used by this `Distribution`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.pdf(value, name='pdf')` {#Categorical.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.pmf(value, name='pmf')` {#Categorical.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
@@ -437,6 +495,28 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.probs` {#Categorical.probs}
+
+Vector of coordinatewise probabilities.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.reparameterization_type` {#Categorical.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
 
 
 - - -
@@ -463,34 +543,29 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.sample_n(n, seed=None, name='sample_n')` {#Categorical.sample_n}
+#### `tf.contrib.distributions.Categorical.stddev(name='stddev')` {#Categorical.stddev}
 
-Generate `n` samples.
+Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-    observations to sample.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `n` is not an integer type.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.std(name='std')` {#Categorical.std}
-
-Standard deviation.
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
@@ -515,7 +590,7 @@ survival_function(x) = P[X > x]
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -531,5 +606,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Categorical.variance(name='variance')` {#Categorical.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

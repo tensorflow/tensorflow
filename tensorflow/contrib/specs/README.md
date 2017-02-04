@@ -25,11 +25,11 @@ is a conjunction of a base layer and the activation. For example, `Fs`
 represents a fully connected layer followed by a sigmoid, whereas `Ft`
 represents a fully connected layer followed by a Tanh.
 
- - `Fx` = slim.fully_connected; x = activation function, one of s/t/r/l/m
- - `Cx` = slim.conv2d; x = activation function, one of s/t/r/l/m
- - `Mp` = slim.max_pool2d
- - `Ap` = slim.avg_pool2d
- - `Bn` = slim.batch_norm
+ - `Fx` = tf.contrib.layers.fully_connected; x = activation function, one of s/t/r/l/m
+ - `Cx` = tf.contrib.layers.conv2d; x = activation function, one of s/t/r/l/m
+ - `Mp` = tf.contrib.layers.max_pool2d
+ - `Ap` = tf.contrib.layers.avg_pool2d
+ - `Bn` = tf.contrib.layers.batch_norm
 
 Nonlinearities (suffixes for C/F, so Cs = convolutional layer + sigmoid):
 
@@ -73,9 +73,9 @@ there will be other modeling primitives.
 Other:
 
  - `Id` = identity
- - `Do` = slim.dropout
+ - `Do` = tf.contrib.layers.dropout
  - `Lrn` = tf.nn.local_response_normalization
- - `Unit` = slim.unit_norm
+ - `Unit` = tf.contrib.layers.unit_norm
  - `Conc` is roughly tf.nn.concat
 
 Binding external functions:
@@ -166,7 +166,7 @@ use the `specs.ops` context manager, which will temporarily make the
     outputs = net.funcall(inputs)
 
     sess = tf.InteractiveSession()
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     sess.run([outputs], feed_dict={inputs: npr.uniform(size=(17, 28, 28, 1))})
 
 # Sharing and Variables
@@ -206,25 +206,6 @@ number of imports that look like they are in modules, but they are
 actually just values placed in the namespace somehow. The `Import`
 function takes an arbitrary Python statement that eventually needs to
 assign a value to the variable `f` that is then wrapped up as a function.
-
-# AutoFunction
-
-Not all functions available in TensorFlow have corresponding short names
-in specs; in order to access other functions conveniently, you can refer
-to any function in a number of existing modules using the full function
-name in that module.  Module shortcuts are defined for:
-
- - `TF` = `tf`
- - `NN` = `tf.nn`
- - `SL` = `slim`
-
-You can, of course, introduce more abbreviations in your own code.
-
-These are defined as:
-
-    TF = specs_lib.AutoFunction(tf)
-
-Using these definitions, `SL.conv2d(64, 5)` is equivalent to `Cr(64, 5)`.
 
 # Summaries
 

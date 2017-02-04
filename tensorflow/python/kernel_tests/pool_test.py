@@ -21,16 +21,23 @@ from __future__ import print_function
 import math
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import nn_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
-def pool_direct_single_axis(input,  # pylint: disable=redefined-builtin
-                            axis,
-                            window_size,
-                            pooling_type,
-                            padding,
-                            dilation_rate,
-                            stride):
+def pool_direct_single_axis(
+    input,  # pylint: disable=redefined-builtin
+    axis,
+    window_size,
+    pooling_type,
+    padding,
+    dilation_rate,
+    stride):
   """Numpy implementation of pooling along a single axis.
 
   This is intended for testing only, and therefore isn't particularly efficient.
@@ -88,8 +95,14 @@ def pool_direct_single_axis(input,  # pylint: disable=redefined-builtin
   return output
 
 
-def pool_direct(input, window_shape, pooling_type, padding,  # pylint: disable=redefined-builtin
-                dilation_rate, strides):
+def pool_direct(
+    input,
+    window_shape,
+    pooling_type,
+    padding,  # pylint: disable=redefined-builtin
+    dilation_rate,
+    strides,
+    data_format=None):
   """Numpy implementation of pooling.
 
   This is intended for testing only, and therefore isn't particularly efficient.
@@ -103,6 +116,8 @@ def pool_direct(input, window_shape, pooling_type, padding,  # pylint: disable=r
     padding: either "SAME" or "VALID".
     dilation_rate: Sequence of N ints >= 1.
     strides: Sequence of N ints >= 1.
+    data_format: If specified and starts with "NC", indicates that second
+      dimension, rather than the last dimension, specifies the channel.
 
   Returns:
     pooling output array of rank N+2.
@@ -110,11 +125,15 @@ def pool_direct(input, window_shape, pooling_type, padding,  # pylint: disable=r
   Raises:
     ValueError: if arguments are invalid.
   """
+  if data_format is None or not data_format.startswith("NC"):
+    spatial_start_dim = 1
+  else:
+    spatial_start_dim = 2
   output = input
   for i in range(len(window_shape)):
     output = pool_direct_single_axis(
         input=output,
-        axis=i + 1,
+        axis=i + spatial_start_dim,
         window_size=window_shape[i],
         pooling_type=pooling_type,
         padding=padding,
@@ -123,28 +142,15 @@ def pool_direct(input, window_shape, pooling_type, padding,  # pylint: disable=r
   return output
 
 
-class PoolingTest(tf.test.TestCase):
+class PoolingTest(test.TestCase):
 
-  def _test(self, input_shape, window_shape, pooling_type, padding,
-            dilation_rate, strides):
+  def _test(self, input_shape, **kwargs):
     # Use negative numbers to make sure there isn't any zero padding getting
     # used.
     x = -np.arange(
         np.prod(input_shape), dtype=np.float32).reshape(input_shape) - 1
-    y1 = pool_direct(
-        input=x,
-        window_shape=window_shape,
-        pooling_type=pooling_type,
-        padding=padding,
-        dilation_rate=dilation_rate,
-        strides=strides)
-    y2 = tf.nn.pool(
-        input=x,
-        window_shape=window_shape,
-        pooling_type=pooling_type,
-        padding=padding,
-        dilation_rate=dilation_rate,
-        strides=strides)
+    y1 = pool_direct(input=x, **kwargs)
+    y2 = nn_ops.pool(input=x, **kwargs)
     self.assertAllClose(y1, y2.eval(), rtol=1e-2, atol=1e-2)
 
   def testPoolSimple(self):
@@ -158,6 +164,32 @@ class PoolingTest(tf.test.TestCase):
               pooling_type=pooling_type,
               dilation_rate=[1, 1],
               strides=[1, 2])
+
+  def testPool1D(self):
+    with self.test_session():
+      for padding in ["SAME", "VALID"]:
+        for pooling_type in ["MAX", "AVG"]:
+          for input_shape in [[2, 9, 2], [2, 10, 2]]:
+            for window_shape in [[1], [2], [3]]:
+              if padding != "SAME":
+                for dilation_rate in [[1], [2], [3]]:
+                  self._test(
+                      input_shape=input_shape,
+                      window_shape=window_shape,
+                      padding=padding,
+                      pooling_type=pooling_type,
+                      dilation_rate=dilation_rate,
+                      strides=[1])
+              for strides in [[1], [2], [3]]:
+                if np.any(np.array(strides) > window_shape):
+                  continue
+                self._test(
+                    input_shape=input_shape,
+                    window_shape=window_shape,
+                    padding=padding,
+                    pooling_type=pooling_type,
+                    dilation_rate=[1],
+                    strides=strides)
 
   def testPool2D(self):
     with self.test_session():
@@ -212,17 +244,80 @@ class PoolingTest(tf.test.TestCase):
                     dilation_rate=[1, 1, 1],
                     strides=strides)
 
+  def testPoolNC(self):
+    if test.is_gpu_available(cuda_only=True):
+      # "NC*" format is currently only supported on CUDA.
+      with self.test_session(use_gpu=True):
+        for padding in ["SAME", "VALID"]:
+          self._test(
+              input_shape=[2, 2, 9],
+              window_shape=[2],
+              padding=padding,
+              pooling_type="MAX",
+              strides=[1],
+              dilation_rate=[1],
+              data_format="NCW")
+          self._test(
+              input_shape=[2, 2, 9],
+              window_shape=[2],
+              padding=padding,
+              pooling_type="MAX",
+              strides=[2],
+              dilation_rate=[1],
+              data_format="NCW")
+          self._test(
+              input_shape=[2, 2, 7, 9],
+              window_shape=[2, 2],
+              padding=padding,
+              pooling_type="MAX",
+              strides=[1, 2],
+              dilation_rate=[1, 1],
+              data_format="NCHW")
+        self._test(
+            input_shape=[2, 2, 7, 9],
+            window_shape=[2, 2],
+            padding="VALID",
+            pooling_type="MAX",
+            strides=[1, 1],
+            dilation_rate=[2, 2],
+            data_format="NCHW")
+
   def _test_gradient(self, input_shape, **kwargs):
     x_val = -np.arange(
         np.prod(input_shape), dtype=np.float32).reshape(input_shape) - 1
-    x = tf.constant(x_val, name="x", dtype=tf.float32)
-    output = tf.nn.pool(input=x, **kwargs)
+    x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
+    output = nn_ops.pool(input=x, **kwargs)
     y_shape = output.get_shape().as_list()
-    err = tf.test.compute_gradient_error(
-        [x], [input_shape], output, y_shape, x_init_value=[x_val]
-    )
+    err = gradient_checker.compute_gradient_error(
+        [x], [input_shape], output, y_shape, x_init_value=[x_val])
     err_tolerance = 1e-2
     self.assertLess(err, err_tolerance)
+
+  def testGradient1D(self):
+    with self.test_session():
+      for padding in ["SAME", "VALID"]:
+        for pooling_type in ["AVG", "MAX"]:
+          for input_shape in [[2, 5, 2], [1, 4, 1]]:
+            for window_shape in [[1], [2]]:
+              if padding != "SAME":
+                for dilation_rate in [[1], [2]]:
+                  self._test_gradient(
+                      input_shape=input_shape,
+                      window_shape=window_shape,
+                      padding=padding,
+                      pooling_type=pooling_type,
+                      dilation_rate=dilation_rate,
+                      strides=[1])
+              for strides in [[1], [2]]:
+                if np.any(np.array(strides) > window_shape):
+                  continue
+                self._test(
+                    input_shape=input_shape,
+                    window_shape=window_shape,
+                    padding=padding,
+                    pooling_type=pooling_type,
+                    dilation_rate=[1],
+                    strides=strides)
 
   def testGradient2D(self):
     with self.test_session():
@@ -278,4 +373,4 @@ class PoolingTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

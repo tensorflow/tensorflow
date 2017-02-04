@@ -28,6 +28,7 @@ limitations under the License.
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -67,8 +68,9 @@ class DeviceType {
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 // Convenient constants that can be passed to a DeviceType constructor
-extern const char* const DEVICE_CPU;  // "CPU"
-extern const char* const DEVICE_GPU;  // "GPU"
+extern const char* const DEVICE_CPU;   // "CPU"
+extern const char* const DEVICE_GPU;   // "GPU"
+extern const char* const DEVICE_SYCL;  // "SYCL"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
@@ -177,6 +179,7 @@ MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
+MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 
 #undef MATCH_TYPE_AND_ENUM
 

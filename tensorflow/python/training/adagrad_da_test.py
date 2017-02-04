@@ -13,25 +13,38 @@
 # limitations under the License.
 # ==============================================================================
 """Functional tests for AdagradDA operations."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import adagrad_da
 
 
-class AdagradDAOptimizerTest(tf.test.TestCase):
+class AdagradDAOptimizerTest(test.TestCase):
 
-  def testAdagradDAwithoutRegularizationBasic1(self):
-    for dtype in [tf.float64, tf.float32]:
+  def doTestAdagradDAwithoutRegularizationBasic1(self, use_resource=False):
+    for dtype in [dtypes.float64, dtypes.float32]:
       with self.test_session() as sess:
-        global_step = tf.Variable(0, dtype=tf.int64)
-        var0 = tf.Variable([0.0, 0.0], dtype=dtype)
-        var1 = tf.Variable([0.0, 0.0], dtype=dtype)
-        grads0 = tf.constant([0.1, 0.2], dtype=dtype)
-        grads1 = tf.constant([0.01, 0.02], dtype=dtype)
-        opt = tf.train.AdagradDAOptimizer(
+        global_step = variables.Variable(0, dtype=dtypes.int64)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([0.0, 0.0], dtype=dtype)
+          var1 = variables.Variable([0.0, 0.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
+        opt = adagrad_da.AdagradDAOptimizer(
             3.0,
             global_step,
             initial_gradient_squared_accumulator_value=0.1,
@@ -39,7 +52,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
@@ -60,16 +73,42 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.094821, -0.189358]), v1_val)
 
-  def testAdagradDAwithoutRegularizationBasic2(self):
-    for dtype in [tf.float64, tf.float32]:
-      with self.test_session() as sess:
-        global_step = tf.Variable(0, dtype=tf.int64)
-        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
-        var1 = tf.Variable([4.0, 3.0], dtype=dtype)
-        grads0 = tf.constant([0.1, 0.2], dtype=dtype)
-        grads1 = tf.constant([0.01, 0.02], dtype=dtype)
+  def testAdagradDAWithoutRegularizationBasic1(self):
+    self.doTestAdagradDAwithoutRegularizationBasic1()
 
-        opt = tf.train.AdagradDAOptimizer(
+  def testResourceAdagradDAWithoutRegularizationBasic1(self):
+    self.doTestAdagradDAwithoutRegularizationBasic1(use_resource=True)
+
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        global_step = resource_variable_ops.ResourceVariable(
+            0, dtype=dtypes.int64)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = adagrad_da.AdagradDAOptimizer(
+            1.0, global_step).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[-1, -1]], var0.eval(), rtol=0.01)
+
+  def testAdagradDAwithoutRegularizationBasic2(self):
+    for dtype in [dtypes.float64, dtypes.float32]:
+      with self.test_session() as sess:
+        global_step = variables.Variable(0, dtype=dtypes.int64)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([4.0, 3.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
+
+        opt = adagrad_da.AdagradDAOptimizer(
             3.0,
             global_step,
             initial_gradient_squared_accumulator_value=0.1,
@@ -77,7 +116,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -93,15 +132,15 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             np.array([-0.094821, -0.189358]), v1_val)
 
   def testAdagradDAWithL1(self):
-    for dtype in [tf.float64, tf.float32]:
+    for dtype in [dtypes.float64, dtypes.float32]:
       with self.test_session() as sess:
-        global_step = tf.Variable(0, dtype=tf.int64)
-        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
-        var1 = tf.Variable([4.0, 3.0], dtype=dtype)
-        grads0 = tf.constant([0.1, 0.2], dtype=dtype)
-        grads1 = tf.constant([0.01, 0.02], dtype=dtype)
+        global_step = variables.Variable(0, dtype=dtypes.int64)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([4.0, 3.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
 
-        opt = tf.train.AdagradDAOptimizer(
+        opt = adagrad_da.AdagradDAOptimizer(
             3.0,
             global_step,
             initial_gradient_squared_accumulator_value=0.1,
@@ -109,7 +148,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -125,15 +164,15 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             np.array([-0.085339, -0.17989]), v1_val)
 
   def testAdagradDAWithL1_L2(self):
-    for dtype in [tf.float64, tf.float32]:
+    for dtype in [dtypes.float64, dtypes.float32]:
       with self.test_session() as sess:
-        global_step = tf.Variable(0, dtype=tf.int64)
-        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
-        var1 = tf.Variable([4.0, 3.0], dtype=dtype)
-        grads0 = tf.constant([0.1, 0.2], dtype=dtype)
-        grads1 = tf.constant([0.01, 0.02], dtype=dtype)
+        global_step = variables.Variable(0, dtype=dtypes.int64)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([4.0, 3.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
 
-        opt = tf.train.AdagradDAOptimizer(
+        opt = adagrad_da.AdagradDAOptimizer(
             3.0,
             global_step,
             initial_gradient_squared_accumulator_value=0.1,
@@ -141,7 +180,7 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
             l2_regularization_strength=2.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        tf.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
 
         v0_val, v1_val = sess.run([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -158,4 +197,4 @@ class AdagradDAOptimizerTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

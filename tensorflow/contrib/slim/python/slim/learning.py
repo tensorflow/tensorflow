@@ -262,10 +262,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import optimizer as tf_optimizer
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import supervisor
@@ -273,12 +273,8 @@ from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
 __all__ = [
-    'add_gradients_summaries',
-    'clip_gradient_norms',
-    'multiply_gradients',
-    'create_train_op',
-    'train_step',
-    'train'
+    'add_gradients_summaries', 'clip_gradient_norms', 'multiply_gradients',
+    'create_train_op', 'train_step', 'train'
 ]
 
 
@@ -334,12 +330,12 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
         raise ValueError('Requested multiple of `None` gradient.')
 
       if isinstance(grad, ops.IndexedSlices):
-        tmp = grad.values * constant_op.constant(gradient_multipliers[key],
-                                                 dtype=grad.dtype)
+        tmp = grad.values * constant_op.constant(
+            gradient_multipliers[key], dtype=grad.dtype)
         grad = ops.IndexedSlices(tmp, grad.indices, grad.dense_shape)
       else:
-        grad *= constant_op.constant(gradient_multipliers[key],
-                                     dtype=grad.dtype)
+        grad *= constant_op.constant(
+            gradient_multipliers[key], dtype=grad.dtype)
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
 
@@ -360,35 +356,38 @@ def add_gradients_summaries(grads_and_vars):
         grad_values = grad.values
       else:
         grad_values = grad
-      summaries.append(logging_ops.histogram_summary(
-          var.op.name + ':gradient', grad_values))
-      summaries.append(logging_ops.histogram_summary(
-          var.op.name + ':gradient_norm', clip_ops.global_norm([grad_values])))
+      summaries.append(
+          summary.histogram(var.op.name + '/gradient', grad_values))
+      summaries.append(
+          summary.scalar(var.op.name + '/gradient_norm',
+                         clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
   return summaries
 
 
-def create_train_op(
-    total_loss,
-    optimizer,
-    global_step=None,
-    update_ops=None,
-    variables_to_train=None,
-    clip_gradient_norm=0,
-    summarize_gradients=False,
-    gate_gradients=tf_optimizer.Optimizer.GATE_OP,
-    aggregation_method=None,
-    colocate_gradients_with_ops=False,
-    gradient_multipliers=None):
+_USE_GLOBAL_STEP = 0
+
+
+def create_train_op(total_loss,
+                    optimizer,
+                    global_step=_USE_GLOBAL_STEP,
+                    update_ops=None,
+                    variables_to_train=None,
+                    clip_gradient_norm=0,
+                    summarize_gradients=False,
+                    gate_gradients=tf_optimizer.Optimizer.GATE_OP,
+                    aggregation_method=None,
+                    colocate_gradients_with_ops=False,
+                    gradient_multipliers=None):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `None`, then slim.variables.global_step() is used.
+      `_USE_GLOBAL_STEP`, then slim.variables.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -411,7 +410,7 @@ def create_train_op(
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is None:
+  if global_step is _USE_GLOBAL_STEP:
     global_step = variables.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
@@ -443,7 +442,9 @@ def create_train_op(
   # Create the gradients. Note that apply_gradients adds the gradient
   # computation to the current graph.
   grads = optimizer.compute_gradients(
-      total_loss, variables_to_train, gate_gradients=gate_gradients,
+      total_loss,
+      variables_to_train,
+      gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
       colocate_gradients_with_ops=colocate_gradients_with_ops)
 
@@ -471,7 +472,14 @@ def create_train_op(
                                           'LossTensor is inf or nan')
 
     # Ensure the train_tensor computes grad_updates.
-    return control_flow_ops.with_dependencies([grad_updates], total_loss)
+    train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)
+
+  # Add the operation used for training to the 'train_op' collection
+  train_ops = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+  if train_op not in train_ops:
+    train_ops.append(train_op)
+
+  return train_op
 
 
 def _wait_for_step(sess, global_step, step):
@@ -530,8 +538,9 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
     logging.info('Writing trace to %s', trace_filename)
     file_io.write_string_to_file(trace_filename, trace)
     if 'summary_writer' in train_step_kwargs:
-      train_step_kwargs['summary_writer'].add_run_metadata(
-          run_metadata, 'run_metadata-%d' % np_global_step)
+      train_step_kwargs['summary_writer'].add_run_metadata(run_metadata,
+                                                           'run_metadata-%d' %
+                                                           np_global_step)
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
@@ -606,7 +615,7 @@ def train(train_op,
       and global step and logged.
     graph: The graph to pass to the supervisor. If no graph is supplied the
       default graph is used.
-    master: The BNS name of the tensorflow master.
+    master: The address of the tensorflow master.
     is_chief: Specifies whether or not the training is being run by the primary
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,
@@ -614,11 +623,11 @@ def train(train_op,
     number_of_steps: The max number of gradient steps to take during training.
       If the value is left as None, training proceeds indefinitely.
     init_op: The initialization operation. If left to its default value, then
-      the session is initialized by calling `tf.initialize_all_variables()`.
+      the session is initialized by calling `tf.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
     local_init_op: The local initialization operation. If left to its default
       value, then the session is initialized by calling
-      `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
+      `tf.local_variables_initializer()` and `tf.tables_initializer()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     ready_op: Operation to check if the model is ready to use. If left to its
@@ -680,18 +689,30 @@ def train(train_op,
 
     with ops.name_scope('init_ops'):
       if init_op == _USE_DEFAULT:
-        init_op = tf_variables.initialize_all_variables()
+        init_op = tf_variables.global_variables_initializer()
 
       if ready_op == _USE_DEFAULT:
         ready_op = tf_variables.report_uninitialized_variables()
 
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
-            tf_variables.initialize_local_variables(),
-            data_flow_ops.initialize_all_tables())
+            tf_variables.local_variables_initializer(),
+            data_flow_ops.tables_initializer())
+
+      if sync_optimizer is not None and isinstance(
+          sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
+        with ops.control_dependencies([local_init_op] if local_init_op is
+                                      not None else []):
+          if is_chief:
+            local_init_op = sync_optimizer.chief_init_op
+          else:
+            local_init_op = sync_optimizer.local_step_init_op
+        ready_for_local_init_op = sync_optimizer.ready_for_local_init_op
+      else:
+        ready_for_local_init_op = None
 
     if summary_op == _USE_DEFAULT:
-      summary_op = logging_ops.merge_all_summaries()
+      summary_op = summary.merge_all()
 
     if summary_writer == _USE_DEFAULT:
       summary_writer = supervisor.Supervisor.USE_DEFAULT
@@ -700,16 +721,16 @@ def train(train_op,
 
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
-                        sync_replicas_optimizer.SyncReplicasOptimizer):
+                        (sync_replicas_optimizer.SyncReplicasOptimizer)):
         raise ValueError(
-            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer.')
 
       # Need to create these BEFORE the supervisor finalizes the graph:
-      with ops.control_dependencies([init_op]):
-        init_tokens_op = sync_optimizer.get_init_tokens_op()
-      init_op = init_tokens_op
+      init_tokens_op = sync_optimizer.get_init_tokens_op()
       chief_queue_runner = sync_optimizer.get_chief_queue_runner()
-      cleanup_op = sync_optimizer.get_clean_up_op()
+      if isinstance(sync_optimizer,
+                    sync_replicas_optimizer.SyncReplicasOptimizer):
+        cleanup_op = sync_optimizer.get_clean_up_op()
 
     if train_step_kwargs == _USE_DEFAULT:
       with ops.name_scope('train_step'):
@@ -734,6 +755,7 @@ def train(train_op,
       init_op=init_op,
       init_feed_dict=init_feed_dict,
       local_init_op=local_init_op,
+      ready_for_local_init_op=ready_for_local_init_op,
       ready_op=ready_op,
       summary_op=summary_op,
       summary_writer=summary_writer,
@@ -758,19 +780,25 @@ def train(train_op,
             sv.start_standard_services(sess)
         elif startup_delay_steps > 0:
           _wait_for_step(sess, global_step,
-                         min(startup_delay_steps,
-                             number_of_steps or sys.maxint))
+                         min(startup_delay_steps, number_of_steps or
+                             sys.maxint))
         sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:
           sv.start_queue_runners(sess, [chief_queue_runner])
+          sess.run(init_tokens_op)
         try:
-          while not sv.should_stop():
-            total_loss, should_stop = train_step_fn(
-                sess, train_op, global_step, train_step_kwargs)
-            if should_stop:
-              logging.info('Stopping Training.')
-              break
+          try:
+            while not sv.should_stop():
+              total_loss, should_stop = train_step_fn(sess, train_op, global_step,
+                                                      train_step_kwargs)
+              if should_stop:
+                logging.info('Stopping Training.')
+                break
+          except errors.OutOfRangeError:
+            # OutOfRangeError is thrown when epoch limit per 
+            # tf.train.limit_epochs is reached.
+            logging.info('Caught OutOfRangeError. Stopping Training.')
           if logdir and sv.is_chief:
             logging.info('Finished training! Saving model to disk.')
             sv.saver.save(sess, sv.save_path, global_step=sv.global_step)

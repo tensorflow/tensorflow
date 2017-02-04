@@ -94,6 +94,32 @@ An iterator that read the records from a TFRecords file.
 *  <b>`IOError`</b>: If `path` cannot be opened for reading.
 
 
+- - -
+
+### `class tf.python_io.TFRecordCompressionType` {#TFRecordCompressionType}
+
+The type of compression for the record.
+
+- - -
+
+### `class tf.python_io.TFRecordOptions` {#TFRecordOptions}
+
+Options used for manipulating TFRecord files.
+- - -
+
+#### `tf.python_io.TFRecordOptions.__init__(compression_type)` {#TFRecordOptions.__init__}
+
+
+
+
+- - -
+
+#### `tf.python_io.TFRecordOptions.get_compression_type_string(cls, options)` {#TFRecordOptions.get_compression_type_string}
+
+
+
+
+
 
 - - -
 

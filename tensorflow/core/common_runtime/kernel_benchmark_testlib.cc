@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
@@ -46,6 +47,9 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   testing::StopTiming();
   string t = str_util::Uppercase(device);
+  // Allow NewDevice to allocate a new threadpool with different number of
+  // threads for each new benchmark.
+  LocalDevice::set_use_global_threadpool(false);
   device_ =
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0");
   CHECK(device_) << "Could not create a " << device << " device";

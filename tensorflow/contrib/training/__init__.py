@@ -30,22 +30,23 @@ like to store state in the forward direction across segments of an example.
 ## Online data resampling
 
 To resample data with replacement on a per-example basis, use
-['resample_at_rate'](#resample_at_rate), providing the desired rate
-for each example. If you wish to specify relative rates, rather than
-absolute ones, use ['weighted_resample'](#weighted_resample) (which
-also returns the actual resampling rate used for each output example).
+['rejection_sample'](#rejection_sample) or
+['resample_at_rate'](#resample_at_rate). For `rejection_sample`, provide
+a boolean Tensor describing whether to accept or reject. Resulting batch sizes
+are always the same. For `resample_at_rate`, provide the desired rate for each
+example. Resulting batch sizes may vary. If you wish to specify relative
+rates, rather than absolute ones, use ['weighted_resample'](#weighted_resample)
+(which also returns the actual resampling rate used for each output example).
 
-Use ['stratified_sample'](#stratified_sample) or
-['stratified_sample_unknown_dist'](#stratified_sample_unknown_dist) to
-resample without replacement from the data to achieve a desired mix of
-class proportions that the Tensorflow graph sees. For instance, if you
-have a binary classification dataset that is 99.9% class 1, a common
-approach is to resample from the data so that the data is more
-balanced.
+Use ['stratified_sample'](#stratified_sample) to resample without replacement
+from the data to achieve a desired mix of class proportions that the Tensorflow
+graph sees. For instance, if you have a binary classification dataset that is
+99.9% class 1, a common approach is to resample from the data so that the data
+is more balanced.
 
+@@rejection_sample
 @@resample_at_rate
 @@stratified_sample
-@@stratified_sample_unknown_dist
 @@weighted_resample
 
 ## Bucketing
@@ -66,9 +67,25 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.training.python.training.bucket_ops import *
+from tensorflow.contrib.training.python.training.device_setter import *
+from tensorflow.contrib.training.python.training.evaluation import checkpoints_iterator
+from tensorflow.contrib.training.python.training.evaluation import evaluate_once
+from tensorflow.contrib.training.python.training.evaluation import evaluate_repeatedly
+from tensorflow.contrib.training.python.training.evaluation import get_or_create_eval_step
+from tensorflow.contrib.training.python.training.evaluation import StopAfterNEvalsHook
+from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndHook
+from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
+from tensorflow.contrib.training.python.training.failure_tolerator import *
+from tensorflow.contrib.training.python.training.feeder import *
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *
+from tensorflow.contrib.training.python.training.training import add_gradients_summaries
+from tensorflow.contrib.training.python.training.training import clip_gradient_norms
+from tensorflow.contrib.training.python.training.training import create_train_op
+from tensorflow.contrib.training.python.training.training import multiply_gradients
+from tensorflow.contrib.training.python.training.training import train
 from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import,wildcard-import
 
 __all__ = make_all(__name__)

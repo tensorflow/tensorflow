@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,7 +34,7 @@ namespace io {
 // (http://www.zlib.net/).
 // A given instance of an ZlibOutputBuffer is NOT safe for concurrent use
 // by multiple threads
-class ZlibOutputBuffer {
+class ZlibOutputBuffer : public WritableFile {
  public:
   // Create an ZlibOutputBuffer for `file` with two buffers that cache the
   // 1. input data to be deflated
@@ -61,10 +62,10 @@ class ZlibOutputBuffer {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Write(StringPiece data);
+  Status Append(const StringPiece& data) override;
 
   // Deflates any cached input and writes all output to file.
-  Status Flush();
+  Status Flush() override;
 
   // Compresses any cached input and writes all output to file. This must be
   // called before the destructor to avoid any data loss.
@@ -74,7 +75,10 @@ class ZlibOutputBuffer {
   //
   // After calling this, any further calls to `Write()`, `Flush()` or `Close()`
   // will fail.
-  Status Close();
+  Status Close() override;
+
+  // Deflates any cached input, writes all output to file and syncs it.
+  Status Sync() override;
 
  private:
   WritableFile* file_;  // Not owned

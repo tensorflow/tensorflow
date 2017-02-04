@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for Coordinator."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,7 +22,9 @@ import sys
 import threading
 import time
 
-import tensorflow as tf
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
 
 
 def StopOnEvent(coord, wait_for_stop, set_when_stopped):
@@ -62,10 +64,10 @@ def WaitForThreadsToRegister(coord, num_threads):
     time.sleep(0.001)
 
 
-class CoordinatorTest(tf.test.TestCase):
+class CoordinatorTest(test.TestCase):
 
   def testStopAPI(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     self.assertFalse(coord.should_stop())
     self.assertFalse(coord.wait_for_stop(0.01))
     coord.request_stop()
@@ -73,7 +75,7 @@ class CoordinatorTest(tf.test.TestCase):
     self.assertTrue(coord.wait_for_stop(0.01))
 
   def testStopAsync(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     self.assertFalse(coord.should_stop())
     self.assertFalse(coord.wait_for_stop(0.1))
     wait_for_stop_ev = threading.Event()
@@ -89,7 +91,7 @@ class CoordinatorTest(tf.test.TestCase):
     self.assertTrue(coord.should_stop())
 
   def testJoin(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=SleepABit, args=(0.01,)),
         threading.Thread(target=SleepABit, args=(0.02,)),
@@ -101,7 +103,7 @@ class CoordinatorTest(tf.test.TestCase):
       self.assertFalse(t.is_alive())
 
   def testJoinAllRegistered(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=SleepABit, args=(0.01, coord)),
         threading.Thread(target=SleepABit, args=(0.02, coord)),
@@ -114,7 +116,7 @@ class CoordinatorTest(tf.test.TestCase):
       self.assertFalse(t.is_alive())
 
   def testJoinSomeRegistered(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=SleepABit, args=(0.01, coord)),
         threading.Thread(target=SleepABit, args=(0.02,)),
@@ -129,7 +131,7 @@ class CoordinatorTest(tf.test.TestCase):
 
   def testJoinGraceExpires(self):
     def TestWithGracePeriod(stop_grace_period):
-      coord = tf.train.Coordinator()
+      coord = coordinator.Coordinator()
       wait_for_stop_ev = threading.Event()
       has_stopped_ev = threading.Event()
       threads = [
@@ -148,7 +150,7 @@ class CoordinatorTest(tf.test.TestCase):
     TestWithGracePeriod(1.0)
 
   def testJoinRaiseReportExcInfo(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=RaiseInN,
                          args=(coord, 0.01, RuntimeError("First"), False)),
@@ -160,7 +162,7 @@ class CoordinatorTest(tf.test.TestCase):
       coord.join(threads)
 
   def testJoinRaiseReportException(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=RaiseInN,
                          args=(coord, 0.01, RuntimeError("First"), True)),
@@ -172,11 +174,11 @@ class CoordinatorTest(tf.test.TestCase):
       coord.join(threads)
 
   def testJoinIgnoresOutOfRange(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=RaiseInN,
                          args=(coord, 0.01,
-                               tf.errors.OutOfRangeError(None, None, "First"),
+                               errors_impl.OutOfRangeError(None, None, "First"),
                                True))
         ]
     for t in threads:
@@ -184,7 +186,7 @@ class CoordinatorTest(tf.test.TestCase):
     coord.join(threads)
 
   def testJoinIgnoresMyExceptionType(self):
-    coord = tf.train.Coordinator(clean_stop_exception_types=(ValueError,))
+    coord = coordinator.Coordinator(clean_stop_exception_types=(ValueError,))
     threads = [
         threading.Thread(target=RaiseInN,
                          args=(coord, 0.01, ValueError("Clean stop"), True))
@@ -194,7 +196,7 @@ class CoordinatorTest(tf.test.TestCase):
     coord.join(threads)
 
   def testJoinRaiseReportExceptionUsingHandler(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=RaiseInNUsingContextHandler,
                          args=(coord, 0.01, RuntimeError("First"))),
@@ -206,7 +208,7 @@ class CoordinatorTest(tf.test.TestCase):
       coord.join(threads)
 
   def testClearStopClearsExceptionToo(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     threads = [
         threading.Thread(target=RaiseInN,
                          args=(coord, 0.01, RuntimeError("First"), True)),
@@ -226,7 +228,7 @@ class CoordinatorTest(tf.test.TestCase):
       coord.join(threads)
 
   def testRequestStopRaisesIfJoined(self):
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     # Join the coordinator right away.
     coord.join([])
     reported = False
@@ -248,7 +250,7 @@ class CoordinatorTest(tf.test.TestCase):
 
   def testRequestStopRaisesIfJoined_ExcInfo(self):
     # Same as testRequestStopRaisesIfJoined but using syc.exc_info().
-    coord = tf.train.Coordinator()
+    coord = coordinator.Coordinator()
     # Join the coordinator right away.
     coord.join([])
     reported = False
@@ -276,32 +278,32 @@ def _StopAt0(coord, n):
     n[0] -= 1
 
 
-class LooperTest(tf.test.TestCase):
+class LooperTest(test.TestCase):
 
   def testTargetArgs(self):
     n = [3]
-    coord = tf.train.Coordinator()
-    thread = tf.train.LooperThread.loop(coord, 0, target=_StopAt0,
+    coord = coordinator.Coordinator()
+    thread = coordinator.LooperThread.loop(coord, 0, target=_StopAt0,
                                         args=(coord, n))
     coord.join([thread])
     self.assertEqual(0, n[0])
 
   def testTargetKwargs(self):
     n = [3]
-    coord = tf.train.Coordinator()
-    thread = tf.train.LooperThread.loop(coord, 0, target=_StopAt0,
+    coord = coordinator.Coordinator()
+    thread = coordinator.LooperThread.loop(coord, 0, target=_StopAt0,
                                         kwargs={"coord": coord, "n": n})
     coord.join([thread])
     self.assertEqual(0, n[0])
 
   def testTargetMixedArgs(self):
     n = [3]
-    coord = tf.train.Coordinator()
-    thread = tf.train.LooperThread.loop(coord, 0, target=_StopAt0,
+    coord = coordinator.Coordinator()
+    thread = coordinator.LooperThread.loop(coord, 0, target=_StopAt0,
                                         args=(coord,), kwargs={"n": n})
     coord.join([thread])
     self.assertEqual(0, n[0])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()
