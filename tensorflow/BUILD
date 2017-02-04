@@ -251,6 +251,20 @@ filegroup(
     visibility = [":__subpackages__"],
 )
 
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+
+filegroup(
+    name = "intel_binary_blob",
+    data = if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
