@@ -427,9 +427,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
     elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
           run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
       if run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
-        retvals = self.invoke_node_stepper(
-            stepper.NodeStepper(self._sess, fetches, feed_dict),
-            restore_variable_values_on_exit=True)
+        with stepper.NodeStepper(
+            self._sess, fetches, feed_dict) as node_stepper:
+          retvals = self.invoke_node_stepper(
+              node_stepper, restore_variable_values_on_exit=True)
 
       # Invoke run() method of the wrapped session.
       retvals = self._sess.run(
