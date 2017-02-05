@@ -41,7 +41,8 @@ function bazel_clean_and_fetch() {
   if ! is_windows; then
     bazel clean --expunge
   fi
-  bazel fetch "//tensorflow/... -//tensorflow/examples/android/..."
+  bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... \
+      -//tensorflow/examples/android/..."
 }
 
 # Delete any leftover BUILD files from the Makefile build, which would interfere
