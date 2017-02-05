@@ -182,7 +182,7 @@ def basic_rnn_seq2seq(encoder_inputs,
         It is a 2D Tensor of shape [batch_size x cell.state_size].
   """
   with variable_scope.variable_scope(scope or "basic_rnn_seq2seq"):
-    enc_cell = copy.copy(cell)
+    enc_cell = copy.deepcopy(cell)
     _, enc_state = core_rnn.static_rnn(enc_cell, encoder_inputs, dtype=dtype)
     return rnn_decoder(decoder_inputs, enc_state, cell)
 
@@ -355,7 +355,7 @@ def embedding_rnn_seq2seq(encoder_inputs,
       dtype = scope.dtype
 
     # Encoder.
-    encoder_cell = copy.copy(cell)
+    encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
         encoder_cell,
         embedding_classes=num_encoder_symbols,
@@ -846,7 +846,7 @@ def embedding_attention_seq2seq(encoder_inputs,
       scope or "embedding_attention_seq2seq", dtype=dtype) as scope:
     dtype = scope.dtype
     # Encoder.
-    encoder_cell = copy.copy(cell)
+    encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
         encoder_cell,
         embedding_classes=num_encoder_symbols,
@@ -969,7 +969,7 @@ def one2many_rnn_seq2seq(encoder_inputs,
     dtype = scope.dtype
 
     # Encoder.
-    encoder_cell = copy.copy(cell)
+    encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
         encoder_cell,
         embedding_classes=num_encoder_symbols,
@@ -983,7 +983,7 @@ def one2many_rnn_seq2seq(encoder_inputs,
 
       with variable_scope.variable_scope("one2many_decoder_" + str(
           name)) as scope:
-        decoder_cell = copy.copy(cell)
+        decoder_cell = copy.deepcopy(cell)
         decoder_cell = core_rnn_cell.OutputProjectionWrapper(
             decoder_cell, num_decoder_symbols)
         if isinstance(feed_previous, bool):
