@@ -43,6 +43,44 @@ cc_library(
         "-Iexternal/nccl_archive/src",
         "-O3",
     ] + cuda_default_copts(),
+    linkopts = select({
+        ":android": [
+            "-pie",
+        ],
+        ":darwin": [
+            "-Wl,-framework",
+            "-Wl,CoreFoundation",
+            "-Wl,-framework",
+            "-Wl,Security",
+        ],
+        ":ios": [],
+        ":windows": [
+            "ws2_32.lib",
+        ],
+        "//conditions:default": [
+            "-lrt",
+        ],
+    }),
     visibility = ["//visibility:public"],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
+)
+
+config_setting(
+    name = "ios",
+    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
+)
+
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows_msvc"},
+)
+
+config_setting(
+    name = "android",
+    values = {"crosstool_top": "//external:android/crosstool"},
 )
