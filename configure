@@ -395,46 +395,8 @@ while true; do
 
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
     TF_CUDNN_EXT=""
-    cudnn_lib_path=""
-    cudnn_alt_lib_path=""
-    if is_windows; then
-      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
-      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
-    elif is_linux; then
-      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib64/libcudnn.so"
-      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.so"
-    elif is_macos; then
-      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/libcudnn.dylib"
-      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.dylib"
-    fi
-    # Resolve to the SONAME of the symlink.  Use readlink without -f
-    # to resolve exactly once to the SONAME.  E.g, libcudnn.so ->
-    # libcudnn.so.4.
-    # If the path is not a symlink, readlink will exit with an error code, so
-    # in that case, we return the path itself.
-    if [ -f "$cudnn_lib_path" ]; then
-      REALVAL=`readlink "${cudnn_lib_path}" || echo "${cudnn_lib_path}"`
-    else
-      REALVAL=`readlink "${cudnn_alt_lib_path}" || echo "${cudnn_alt_lib_path}"`
-    fi
-
-    # Extract the version of the SONAME, if it was indeed symlinked to
-    # the SONAME version of the file.
-    if [[ "$REALVAL" =~ .so[.]+([0-9]*) ]]; then
-      TF_CUDNN_EXT="."${BASH_REMATCH[1]}
-      TF_CUDNN_VERSION=${BASH_REMATCH[1]}
-      echo "libcudnn.so resolves to libcudnn${TF_CUDNN_EXT}"
-    elif [[ "$REALVAL" =~ ([0-9]*).dylib ]]; then
-      TF_CUDNN_EXT="."${BASH_REMATCH[1]}".dylib"
-      TF_CUDNN_VERSION=${BASH_REMATCH[1]}
-      echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
-    fi
   else
-    if is_macos; then
-      TF_CUDNN_EXT=".${TF_CUDNN_VERSION}.dylib"
-    else
-      TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
-    fi
+    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
 
   if is_windows; then
@@ -444,8 +406,8 @@ while true; do
     CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   elif is_macos; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
