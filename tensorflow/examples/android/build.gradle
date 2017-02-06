@@ -61,12 +61,13 @@ task buildNative(type:Exec) {
        '--host_crosstool_top=@bazel_tools//tools/cpp:toolchain'
 }
 
-task copyNativeLibs(type: Copy) {
+task copyNativeLibs(type: Copy, dependsOn: "buildNative") {
     from('../../../bazel-bin/tensorflow/examples/android') { include '**/*.so' }
     into nativeDir
     duplicatesStrategy = 'include'
 }
 
-copyNativeLibs.dependsOn buildNative
-assemble.dependsOn copyNativeLibs
-assembleDebug.dependsOn copyNativeLibs
+afterEvaluate {
+    assemble.dependsOn copyNativeLibs
+    assembleDebug.dependsOn copyNativeLibs
+}
