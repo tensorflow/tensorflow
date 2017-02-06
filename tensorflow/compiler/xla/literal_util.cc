@@ -912,6 +912,17 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
   }
 }
 
+/* static */ bool LiteralUtil::IsAllFloat(const Literal& literal, float value) {
+  switch (literal.shape().element_type()) {
+    case F32:
+      return AllElementsEqualValue<float>(literal, value);
+    case F64:
+      return AllElementsEqualValue<double>(literal, value);
+    default:
+      return false;
+  }
+}
+
 /* static */ bool LiteralUtil::IsZero(
     const Literal& literal, tensorflow::gtl::ArraySlice<int64> indices) {
   switch (literal.shape().element_type()) {
