@@ -95,6 +95,38 @@ def _parsed_used_feeds(lines):
       feed_types[feed_name] = feed_type
 
 
+def _parse_updated(lines):
+  """Parse the Updated section in the output text lines.
+
+  Args:
+    lines: (list of str) The output text lines to be parsed.
+
+  Returns:
+    If the Updated section does not exist, returns None.
+    Otherwise, returns the Tensor names included in the section.
+  """
+  updated = None
+
+  begin_line = -1
+  for i, line in enumerate(lines):
+    if line.startswith("Updated:"):
+      updated = []
+      begin_line = i + 1
+      break
+
+  if begin_line == -1:
+    return updated
+
+  for line in lines[begin_line:]:
+    line = line.strip()
+    if not line:
+      return updated
+    else:
+      updated.append(line.strip())
+
+  return updated
+
+
 class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -208,6 +240,7 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
       self.assertEqual(0, node_pointer)
 
       output = cli.cont("c")
+      self.assertIsNone(_parse_updated(output.lines))
       node_names, stat_labels, node_pointer = _parse_sorted_nodes_list(
           output.lines)
 
@@ -218,6 +251,7 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
       self.assertIn(stepper_cli.NodeStepperCLI.STATE_CONT, stat_labels[index_c])
 
       output = cli.cont("d")
+      self.assertIsNone(_parse_updated(output.lines))
       node_names, stat_labels, node_pointer = _parse_sorted_nodes_list(
           output.lines)
 
@@ -309,6 +343,7 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
       cli = stepper_cli.NodeStepperCLI(node_stepper)
       output = cli.cont([no_output_node])
+      self.assertIsNone(_parse_updated(output.lines))
       node_names, stat_labels, node_pointer = _parse_sorted_nodes_list(
           output.lines)
 
@@ -333,6 +368,8 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
       cli = stepper_cli.NodeStepperCLI(node_stepper)
       output = cli.cont(["opt/update_b/ApplyGradientDescent"])
 
+      self.assertItemsEqual([self.b.name], _parse_updated(output.lines))
+
       output = cli.list_sorted_nodes([])
       node_names, stat_labels, _ = _parse_sorted_nodes_list(output.lines)
       self.assertIn(stepper_cli.NodeStepperCLI.STATE_DIRTY_VARIABLE,
@@ -346,6 +383,8 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
       output = cli.cont(["opt/update_a/ApplyGradientDescent",
                          "--invalidate_from_updated_variables"])
 
+      self.assertItemsEqual([self.a.name], _parse_updated(output.lines))
+
       # After cont() call on .../update_a/..., Variable a should have been
       # marked as dirty, whereas b should not have.
       output = cli.list_sorted_nodes([])
@@ -356,6 +395,8 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
                        stat_labels[node_names.index("b")])
 
       output = cli.cont(["opt/update_b/ApplyGradientDescent", "-r", "-i"])
+
+      self.assertItemsEqual([self.b.name], _parse_updated(output.lines))
 
       # After cont() call on .../update_b/... with the -r flag, Variable b
       # should have been marked as dirty, whereas Variable a should not be
