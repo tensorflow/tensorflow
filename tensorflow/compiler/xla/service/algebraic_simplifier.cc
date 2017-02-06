@@ -46,7 +46,7 @@ namespace xla {
 namespace {
 
 // Returns whether operand is a literal with the given value.
-bool IsLiteralWithValue(const HloInstruction* operand, int value) {
+bool IsLiteralWithValue(const HloInstruction* operand, int8 value) {
   return operand->opcode() == HloOpcode::kConstant &&
          LiteralUtil::IsAll(operand->literal(), value);
 }
