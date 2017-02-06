@@ -43,6 +43,7 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -59,6 +60,60 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
+
+
+class CheckpointedOp(object):
+  """Op with a custom checkpointing implementation.
+
+  Defined as part of the test because the MutableHashTable Python code is
+  currently in contrib.
+  """
+
+  def __init__(self, name):
+    self._table_ref = gen_data_flow_ops._mutable_hash_table(
+        key_dtype=dtypes.string, value_dtype=dtypes.float32, name=name)
+    self._name = name
+    self._saveable = CheckpointedOp.CustomSaveable(self, name)
+    ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
+                              self._saveable)
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def saveable(self):
+    return self._saveable
+
+  def insert(self, keys, values):
+    return gen_data_flow_ops._lookup_table_insert(self._table_ref, keys, values)
+
+  def keys(self):
+    return self._export()[0]
+
+  def values(self):
+    return self._export()[1]
+
+  def _export(self):
+    return gen_data_flow_ops._lookup_table_export(self._table_ref,
+                                                  dtypes.string, dtypes.float32)
+
+  class CustomSaveable(saver_module.BaseSaverBuilder.SaveableObject):
+
+    def __init__(self, table, name):
+      tensors = table._export()
+      specs = [
+          saver_module.BaseSaverBuilder.SaveSpec(tensors[0], "",
+                                                 name + "-keys"),
+          saver_module.BaseSaverBuilder.SaveSpec(tensors[1], "",
+                                                 name + "-values")
+      ]
+      super(CheckpointedOp.CustomSaveable, self).__init__(table, specs, name)
+
+    def restore(self, restore_tensors, shapes):
+      return gen_data_flow_ops._lookup_table_import(self.op._table_ref,
+                                                    restore_tensors[0],
+                                                    restore_tensors[1])
 
 
 class SaverTest(test.TestCase):
