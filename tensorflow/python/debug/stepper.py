@@ -156,6 +156,9 @@ class NodeStepper(object):
     # Keep track of which variables are in a dirty state.
     self._dirty_variables = set()
 
+    # Variables updated in the last cont() call.
+    self._last_updated = None
+
     # Cached tensor handles: a dict with keys as tensor names and values as
     # tensor handles.
     self._tensor_handles = {}
@@ -441,9 +444,6 @@ class NodeStepper(object):
 
     return self._last_feed_types
 
-  # TODO(cais): Add method last_updated_variables() to allow client to look
-  # up the Variables updated in the last cont() call.
-
   def cont(self,
            target,
            use_tensor_handles=True,
@@ -550,7 +550,7 @@ class NodeStepper(object):
 
     # Keep track of which variables are "touched" (i.e., possibly updated) in
     # this cont() call.
-    touched_variables = set()
+    self._last_updated = set()
 
     # =========================================================================
     # Use a non-recursive method to trace the inputs from the node and set up
@@ -583,7 +583,7 @@ class NodeStepper(object):
 
         if (restore_variable_values and inp.name in self._dirty_variables and
             inp.name not in restored_variables and
-            inp.name not in touched_variables):
+            inp.name not in self._last_updated):
           # Do not restore Variables touched or restored previously in this
           # cont() call.
           initializer_op = self._variable_initializers[inp.name]
@@ -604,7 +604,7 @@ class NodeStepper(object):
         if (is_inp_ref and inp.op.type in ["Variable", "VariableV2"] and
             curr_node.type != "Identity"):
           # Mark the variable as dirty.
-          touched_variables.add(inp.name)
+          self._last_updated.add(inp.name)
 
           # Obtain the old value of the variable and cache it.
           if inp.name not in self._cached_variable_values:
@@ -648,8 +648,8 @@ class NodeStepper(object):
 
     # =========================================================================
 
-    if touched_variables:
-      self._dirty_variables.update(touched_variables)
+    if self._last_updated:
+      self._dirty_variables.update(self._last_updated)
 
     for variable in restored_variables:
       self._dirty_variables.remove(variable)
@@ -686,8 +686,8 @@ class NodeStepper(object):
 
     if invalidate_from_updated_variables:
       # Invalidate caches at the end.
-      for touched_variable in touched_variables:
-        self._invalidate_transitively_outgoing_cache(touched_variable)
+      for last_updated_variable in self._last_updated:
+        self._invalidate_transitively_outgoing_cache(last_updated_variable)
 
     return return_value
 
@@ -847,6 +847,16 @@ class NodeStepper(object):
     """
 
     return self._dumped_intermediate_tensors.keys()
+
+  def last_updated(self):
+    """Get the names of the variables updated in the last cont() call.
+
+    Returns:
+      A set of the variable names updated in the previous cont() call.
+      If no cont() call has occurred before, returns None.
+    """
+
+    return self._last_updated
 
   def dirty_variables(self):
     """Get the set of variables that are currently "dirty".
