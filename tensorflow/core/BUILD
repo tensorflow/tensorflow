@@ -1174,7 +1174,7 @@ cc_library(
     copts = tf_copts(),
     defines = tf_additional_lib_defines(),
     linkopts = select({
-        "//tensorflow:FreeBSD": [],
+        "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = tf_additional_lib_deps() + [
@@ -1204,7 +1204,7 @@ cc_library(
     hdrs = ["lib/gif/gif_io.h"],
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:FreeBSD": [],
+        "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -1226,7 +1226,7 @@ cc_library(
     ],
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:FreeBSD": [],
+        "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }),
     deps = [
@@ -1307,10 +1307,10 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:FreeBSD": [],
+        "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }) + [
-        "-lm"
+        "-lm",
     ],
     deps = [
         ":lib",

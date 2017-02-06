@@ -87,7 +87,7 @@ config_setting(
 )
 
 config_setting(
-    name = "FreeBSD",
+    name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
 )

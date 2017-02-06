@@ -34,7 +34,7 @@ config_setting(
 )
 
 config_setting(
-    name = "FreeBSD",
+    name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
 )
@@ -56,7 +56,7 @@ cc_library(
     srcs = ["lib/%{cudart_static_lib}"],
     includes = ["include/"],
     linkopts = select({
-        ":FreeBSD": [],
+        ":freebsd": [],
         "//conditions:default": ["-ldl"],
     }) + [
         "-lpthread",

@@ -25,7 +25,7 @@ cc_library(
         "platform/**/*.h",
     ]),
     linkopts = select({
-        "//tensorflow:FreeBSD": [],
+        "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }),
     visibility = ["//visibility:public"],
@@ -47,7 +47,7 @@ cc_library(
         ),
     ),
     linkopts = select({
-        "//tensorflow:FreeBSD": [],
+        "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }),
     visibility = ["//visibility:public"],
