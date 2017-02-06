@@ -204,7 +204,7 @@ class ResourceVariable(object):
           with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
             self._initialize_op = gen_resource_variable_ops.assign_variable_op(
                 self._handle, self._initial_value, name=n)
-        with ops.name_scope("Read"):
+        with ops.name_scope("Read"), ops.colocate_with(self._handle):
           self._value = gen_resource_variable_ops.read_variable_op(
               self._handle, dtype=self._dtype)
           if caching_device is not None:
