@@ -56,9 +56,9 @@ cc_library(
     srcs = ["lib/%{cudart_static_lib}"],
     includes = ["include/"],
     linkopts = select({
-            ":FreeBSD": [],
-            "//conditions:default": ["-ldl"],
-        }) + [
+        ":FreeBSD": [],
+        "//conditions:default": ["-ldl"],
+    }) + [
         "-lpthread",
         %{cudart_static_linkopt}
     ],
