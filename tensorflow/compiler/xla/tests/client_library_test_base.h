@@ -239,6 +239,18 @@ class ClientLibraryTestBase : public ::testing::Test {
       const string& name, ComputationBuilder* builder,
       ComputationDataHandle* data_handle);
 
+  // Create a parameter instruction that wraps the given constant array
+  // "array_3d" and then stores to "data_handle" the global handle for that
+  // parameter.
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR3Parameter(
+      const Array3D<NativeT>& array_3d, int64 parameter_number,
+      const string& name, ComputationBuilder* builder,
+      ComputationDataHandle* data_handle);
+
   Client* client_;
   ExecutionOptions execution_options_;
 };
@@ -376,6 +388,18 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
   std::unique_ptr<Literal> literal = LiteralUtil::CreateR2FromArray2D(array_2d);
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(*literal).ConsumeValueOrDie();
+  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  return data;
+}
+
+template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
+    const Array3D<NativeT>& array_3d, int64 parameter_number,
+    const string& name, ComputationBuilder* builder,
+    ComputationDataHandle* data_handle) {
+  std::unique_ptr<Literal> literal = LiteralUtil::CreateR3FromArray3D(array_3d);
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);

@@ -252,13 +252,13 @@ import sys
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -410,76 +410,28 @@ def create_train_op(total_loss,
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is _USE_GLOBAL_STEP:
-    global_step = variables.get_or_create_global_step()
+  def transform_grads_fn(grads):
+    if gradient_multipliers:
+      with ops.name_scope('multiply_grads'):
+        grads = multiply_gradients(grads, gradient_multipliers)
 
-  # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
-  global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
-  if update_ops is None:
-    update_ops = global_update_ops
-  else:
-    update_ops = set(update_ops)
-  if not global_update_ops.issubset(update_ops):
-    logging.warning('update_ops in create_train_op does not contain all the '
-                    ' update_ops in GraphKeys.UPDATE_OPS')
+    # Clip gradients.
+    if clip_gradient_norm > 0:
+      with ops.name_scope('clip_grads'):
+        grads = clip_gradient_norms(grads, clip_gradient_norm)
+    return grads
 
-  # Make sure update_ops are computed before total_loss.
-  if update_ops:
-    with ops.control_dependencies(update_ops):
-      barrier = control_flow_ops.no_op(name='update_barrier')
-    total_loss = control_flow_ops.with_dependencies([barrier], total_loss)
-
-  if variables_to_train is None:
-    # Default to tf.trainable_variables()
-    variables_to_train = tf_variables.trainable_variables()
-  else:
-    # Make sure that variables_to_train are in tf.trainable_variables()
-    for v in variables_to_train:
-      assert v in tf_variables.trainable_variables()
-
-  assert variables_to_train
-
-  # Create the gradients. Note that apply_gradients adds the gradient
-  # computation to the current graph.
-  grads = optimizer.compute_gradients(
-      total_loss,
-      variables_to_train,
+  return training.create_train_op(
+      total_loss=total_loss,
+      optimizer=optimizer,
+      global_step=global_step,
+      update_ops=update_ops,
+      variables_to_train=variables_to_train,
+      transform_grads_fn=transform_grads_fn,
+      summarize_gradients=summarize_gradients,
       gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
       colocate_gradients_with_ops=colocate_gradients_with_ops)
-
-  # Scale gradients.
-  if gradient_multipliers:
-    with ops.name_scope('multiply_grads'):
-      grads = multiply_gradients(grads, gradient_multipliers)
-
-  # Clip gradients.
-  if clip_gradient_norm > 0:
-    with ops.name_scope('clip_grads'):
-      grads = clip_gradient_norms(grads, clip_gradient_norm)
-
-  # Summarize gradients.
-  if summarize_gradients:
-    with ops.name_scope('summarize_grads'):
-      add_gradients_summaries(grads)
-
-  # Create gradient updates.
-  grad_updates = optimizer.apply_gradients(grads, global_step=global_step)
-
-  with ops.name_scope('train_op'):
-    # Make sure total_loss is valid.
-    total_loss = array_ops.check_numerics(total_loss,
-                                          'LossTensor is inf or nan')
-
-    # Ensure the train_tensor computes grad_updates.
-    train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)
-
-  # Add the operation used for training to the 'train_op' collection
-  train_ops = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-  if train_op not in train_ops:
-    train_ops.append(train_op)
-
-  return train_op
 
 
 def _wait_for_step(sess, global_step, step):
@@ -790,13 +742,13 @@ def train(train_op,
         try:
           try:
             while not sv.should_stop():
-              total_loss, should_stop = train_step_fn(sess, train_op, global_step,
-                                                      train_step_kwargs)
+              total_loss, should_stop = train_step_fn(
+                  sess, train_op, global_step, train_step_kwargs)
               if should_stop:
                 logging.info('Stopping Training.')
                 break
           except errors.OutOfRangeError:
-            # OutOfRangeError is thrown when epoch limit per 
+            # OutOfRangeError is thrown when epoch limit per
             # tf.train.limit_epochs is reached.
             logging.info('Caught OutOfRangeError. Stopping Training.')
           if logdir and sv.is_chief:

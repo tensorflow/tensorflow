@@ -30,14 +30,25 @@ import (
 )
 
 func main() {
-	filename := flag.String("outfile", "", "File to write generated source code to.")
+	var (
+		filename = flag.String("outfile", "", "File to write generated source code to.")
+		header   = flag.String("header", "", "Path to a file whose contents will be copied into the generated file. Can be empty")
+		buf bytes.Buffer
+	)
 	flag.Parse()
 	if *filename == "" {
 		log.Fatal("-outfile must be set")
 	}
+	if *header != "" {
+		hdr, err := ioutil.ReadFile(*header)
+		if err != nil {
+			log.Fatalf("Unable to read %s: %v", *header, err)
+		}
+		buf.Write(hdr)
+		buf.WriteString("\n\n")
+	}
 	os.MkdirAll(filepath.Dir(*filename), 0755)
 
-	var buf bytes.Buffer
 	if err := internal.GenerateFunctionsForRegisteredOps(&buf); err != nil {
 		log.Fatal(err)
 	}

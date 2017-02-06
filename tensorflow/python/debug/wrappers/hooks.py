@@ -107,10 +107,13 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
       run_context.session.graph._finalized = False
       # pylint: enable=protected-access
 
-      self.invoke_node_stepper(
-          stepper.NodeStepper(run_context.session, run_context.original_args.
-                              fetches, run_context.original_args.feed_dict),
-          restore_variable_values_on_exit=True)
+      with stepper.NodeStepper(
+          run_context.session,
+          run_context.original_args.
+          fetches,
+          run_context.original_args.feed_dict) as node_stepper:
+        self.invoke_node_stepper(
+            node_stepper, restore_variable_values_on_exit=True)
 
     return run_args
 
