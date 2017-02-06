@@ -1307,9 +1307,9 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     linkopts = select({
-            "//tensorflow:FreeBSD": [],
-            "//conditions:default": ["-ldl"],
-        }) + [
+        "//tensorflow:FreeBSD": [],
+        "//conditions:default": ["-ldl"],
+    }) + [
         "-lm"
     ],
     deps = [
