@@ -587,6 +587,10 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
 
+  def testLastUpdatedVariablesReturnsNoneBeforeAnyContCalls(self):
+    with NodeStepper(self.sess, [self.q, self.v_add]) as stepper:
+      self.assertIsNone(stepper.last_updated())
+
   def testContToUpdateInvalidatesDumpedIntermedates(self):
     with NodeStepper(self.sess, [self.q, self.v_add]) as stepper:
       self.assertAllClose(400.0, stepper.cont("q:0"))
@@ -599,6 +603,7 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
           12.0, stepper.cont(
               self.v_add, invalidate_from_updated_variables=True))
       self.assertAllClose(12.0, self.sess.run(self.v))
+      self.assertSetEqual({self.v.name}, stepper.last_updated())
       self.assertItemsEqual(["v:0"], stepper.dirty_variables())
       # Updating the value of v by calling v_add should have invalidated the
       # dumped intermediate tensors for v/read:0 and p:0.
@@ -612,6 +617,7 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
       # The next cont to q should not have used any dumped intermediate tensors
       # and its result should reflect the updated value.
       self.assertAllClose(576.0, stepper.cont("q:0"))
+      self.assertSetEqual(set(), stepper.last_updated())
       self.assertEqual({}, stepper.last_feed_types())
 
   def testOverridingUpstreamTensorInvalidatesDumpedIntermediates(self):
@@ -652,8 +658,10 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
   def testRepeatedCallsToAssignAddDoesNotUpdateVariableAgain(self):
     with NodeStepper(self.sess, self.v_add) as stepper:
       stepper.cont(self.v_add)
+      self.assertSetEqual({self.v.name}, stepper.last_updated())
       self.assertAllClose(12.0, stepper.cont(self.v))
       stepper.cont(self.v_add)
+      self.assertSetEqual(set(), stepper.last_updated())
       self.assertEqual({"v_add:0": NodeStepper.FEED_TYPE_HANDLE},
                        stepper.last_feed_types())
       self.assertAllClose(12.0, stepper.cont(self.v))
@@ -661,8 +669,10 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
   def testRepeatedCallsToAssignAddDownStreamDoesNotUpdateVariableAgain(self):
     with NodeStepper(self.sess, self.v_add_plus_one) as stepper:
       stepper.cont(self.v_add_plus_one)
+      self.assertSetEqual({self.v.name}, stepper.last_updated())
       self.assertAllClose(12.0, stepper.cont(self.v))
       stepper.cont(self.v_add_plus_one)
+      self.assertSetEqual(set(), stepper.last_updated())
       self.assertEqual({"v_add_plus_one:0": NodeStepper.FEED_TYPE_HANDLE},
                        stepper.last_feed_types())
       self.assertAllClose(12.0, stepper.cont(self.v))
@@ -724,6 +734,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
       # Now variable a should have been marked as dirty due to the update
       # by optim/update_a/ApplyGradientDescent.
+      self.assertSetEqual({"a:0"}, stepper.last_updated())
       self.assertEqual({"a:0"}, stepper.dirty_variables())
       self.assertIsNone(result)
       self.assertEqual({
@@ -745,6 +756,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
       result = stepper.cont("optim/update_b/ApplyGradientDescent",
                             invalidate_from_updated_variables=True)
       self.assertIsNone(result)
+      self.assertSetEqual({"b:0"}, stepper.last_updated())
       self.assertEqual(set(["b:0"]), stepper.dirty_variables())
 
       # For backprop on Variable b:
@@ -763,6 +775,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
           invalidate_from_updated_variables=True,
           restore_variable_values=True)
       self.assertIsNone(result)
+      self.assertSetEqual({"a:0"}, stepper.last_updated())
       self.assertEqual(set(["a:0"]), stepper.dirty_variables())
       self.assertAllClose(0.84, self.sess.run(self.a))
       self.assertAllClose(2.0, self.sess.run(self.b))
@@ -790,6 +803,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
           invalidate_from_updated_variables=False))
       # Even though invalidate_from_updated_variables is set to False, dirty
       # variables should still have been tracked.
+      self.assertSetEqual({"a:0"}, stepper.last_updated())
       self.assertEqual({"a:0"}, stepper.dirty_variables())
       self.assertIn("a/read:0", stepper.intermediate_tensor_names())
       self.assertIn("b/read:0", stepper.intermediate_tensor_names())
@@ -825,6 +839,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
           invalidate_from_updated_variables=True,
           restore_variable_values=True)
       self.assertIsNone(result)
+      self.assertSetEqual({"a:0"}, stepper.last_updated())
       self.assertEqual({"a:0"}, stepper.dirty_variables())
 
       result = stepper.cont(
@@ -834,6 +849,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
       self.assertIsNone(result)
       # Variables a and c should have been restored and hence no longer dirty.
       # Variable b should have been marked as dirty.
+      self.assertSetEqual({"b:0"}, stepper.last_updated())
       self.assertEqual({"b:0"}, stepper.dirty_variables())
 
     # The result of the update should be identitcal to as if only update_b is
@@ -857,6 +873,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
       self.assertItemsEqual(["a/read:0", "b/read:0"],
                             stepper.intermediate_tensor_names())
       self.assertItemsEqual(["d:0"], stepper.handle_names())
+      self.assertSetEqual(set(), stepper.last_updated())
       self.assertEqual(set(), stepper.dirty_variables())
 
       result = stepper.cont("e:0")
@@ -867,6 +884,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
       self.assertItemsEqual(["d:0", "e:0"], stepper.handle_names())
       self.assertItemsEqual(["a/read:0", "b/read:0", "c/read:0"],
                             stepper.intermediate_tensor_names())
+      self.assertSetEqual(set(), stepper.last_updated())
       self.assertEqual(set(), stepper.dirty_variables())
 
       # Now run update_a, so as to let Variable a be dirty.
@@ -878,7 +896,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
       # Due to the update to the value of a:0, the dumped intermediate a/read:0
       # should have been invalidated.
       self.assertNotIn("a/read:0", stepper.intermediate_tensor_names())
-      # ["b/read:0", "c/read:0"],
+      self.assertSetEqual({"a:0"}, stepper.last_updated())
       self.assertEqual({"a:0"}, stepper.dirty_variables())
 
       # Now, run update_b.
@@ -942,6 +960,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
       result = stepper.cont("d:0")
       self.assertAllClose(2.0, result)
       self.assertEqual({}, stepper.last_feed_types())
+      self.assertSetEqual(set(), stepper.last_updated())
       self.assertEqual(set(), stepper.dirty_variables())
       self.assertEqual(["d:0"], stepper.handle_names())
       self.assertSetEqual({"d"}, stepper.handle_node_names())

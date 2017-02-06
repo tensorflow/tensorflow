@@ -65,6 +65,8 @@ class NodeStepperCLI(object):
           "Please use full tensor name.",
   }
 
+  _UPDATED_ATTRIBUTE = "bold"
+
   _STATE_COLORS = {
       STATE_CONT: "green",
       STATE_DIRTY_VARIABLE: "magenta",
@@ -72,6 +74,13 @@ class NodeStepperCLI(object):
       STATE_OVERRIDDEN: "yellow",
       STATE_IS_PLACEHOLDER: "cyan",
       STATE_UNFEEDABLE: "red",
+  }
+
+  _FEED_COLORS = {
+      stepper.NodeStepper.FEED_TYPE_CLIENT: "white",
+      stepper.NodeStepper.FEED_TYPE_HANDLE: "green",
+      stepper.NodeStepper.FEED_TYPE_OVERRIDE: "yellow",
+      stepper.NodeStepper.FEED_TYPE_DUMPED_INTERMEDIATE: "blue",
   }
 
   def __init__(self, node_stepper):
@@ -403,45 +412,13 @@ class NodeStepperCLI(object):
         restore_variable_values=parsed.restore_variable_values)
     self._completed_nodes.add(parsed.target_name.split(":")[0])
 
-    feed_types = self._node_stepper.last_feed_types()
-
-    lines = ["Continued to %s:" % parsed.target_name, ""]
-    font_attr_segs = {}
-    lines.append("Stepper used feeds:")
-    line_counter = len(lines)
-
-    if feed_types:
-      for feed_name in feed_types:
-        feed_info_line = "  %s : %s" % (feed_name, feed_types[feed_name])
-        lines.append(feed_info_line)
-        if feed_types[feed_name] == stepper.NodeStepper.FEED_TYPE_HANDLE:
-          font_attr_segs[line_counter] = [
-              (len(feed_name) + 2,
-               len(feed_info_line),
-               self._STATE_COLORS[self.STATE_UNFEEDABLE])
-          ]
-        elif (feed_types[feed_name] ==
-              stepper.NodeStepper.FEED_TYPE_DUMPED_INTERMEDIATE):
-          font_attr_segs[line_counter] = [(
-              len(feed_name) + 2,
-              len(feed_info_line),
-              self._STATE_COLORS[self.STATE_DUMPED_INTERMEDIATE])]
-        elif feed_types[feed_name] == stepper.NodeStepper.FEED_TYPE_OVERRIDE:
-          font_attr_segs[line_counter] = [
-              (len(feed_name) + 2, len(feed_info_line), "yellow")
-          ]
-        line_counter += 1
-    else:
-      lines.append("  (No feeds)")
-    lines.append("")
-
     screen_output = debugger_cli_common.RichTextLines(
-        lines, font_attr_segs=font_attr_segs)
-
-    tensor_output = tensor_format.format_tensor(
-        cont_result, parsed.target_name,
-        include_metadata=True)
-    screen_output.extend(tensor_output)
+        ["Continued to %s:" % parsed.target_name, ""])
+    screen_output.extend(self._report_last_feed_types())
+    screen_output.extend(self._report_last_updated())
+    screen_output.extend(
+        tensor_format.format_tensor(
+            cont_result, parsed.target_name, include_metadata=True))
 
     # Generate windowed view of the sorted transitive closure on which the
     # stepping is occurring.
@@ -457,6 +434,47 @@ class NodeStepperCLI(object):
     self._calculate_next()
 
     return final_output
+
+  def _report_last_feed_types(self):
+    """Generate a report of the feed types used in the cont/step call.
+
+    Returns:
+      (debugger_cli_common.RichTextLines) A RichTextLines representation of the
+        feeds used in the last cont/step call.
+    """
+    feed_types = self._node_stepper.last_feed_types()
+
+    out = debugger_cli_common.RichTextLines(["Stepper used feeds:"])
+    if feed_types:
+      for feed_name in feed_types:
+        feed_info = RL("  %s : " % feed_name)
+        feed_info += RL(feed_types[feed_name],
+                        self._FEED_COLORS[feed_types[feed_name]])
+        out.append(feed_info.text, font_attr_segs=feed_info.font_attr_segs)
+    else:
+      out.append("  (No feeds)")
+    out.append("")
+
+    return out
+
+  def _report_last_updated(self):
+    """Generate a report of the variables updated in the last cont/step call.
+
+    Returns:
+      (debugger_cli_common.RichTextLines) A RichTextLines representation of the
+        variables updated in the last cont/step call.
+    """
+
+    last_updated = self._node_stepper.last_updated()
+    if not last_updated:
+      return debugger_cli_common.RichTextLines([])
+
+    rich_lines = [RL("Updated:", self._UPDATED_ATTRIBUTE)]
+    sorted_last_updated = sorted(list(last_updated))
+    for updated in sorted_last_updated:
+      rich_lines.append(RL("  %s" % updated))
+    rich_lines.append(RL(""))
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(rich_lines)
 
   def step(self, args, screen_info=None):
     """Step once.
