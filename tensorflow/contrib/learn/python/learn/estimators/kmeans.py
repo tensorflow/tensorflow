@@ -41,7 +41,7 @@ KMEANS_PLUS_PLUS_INIT = clustering_ops.KMEANS_PLUS_PLUS_INIT
 
 # TODO(agarwal,ands): support sharded input.
 class KMeansClustering(estimator.Estimator):
-  """An Estimator fo rK-Means clustering."""
+  """An Estimator for K-Means clustering."""
   SCORES = 'scores'
   CLUSTER_IDX = 'cluster_idx'
   CLUSTERS = 'clusters'
