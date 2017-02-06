@@ -4,7 +4,7 @@ Adds a pairwise-errors-squared loss to the training procedure. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.mean_pairwise_squared_error instead.
+Use tf.losses.mean_pairwise_squared_error instead. Note that the order of the predictions and labels arguments was changed.
 
 Unlike `mean_squared_error`, which is a measure of the differences between
 corresponding elements of `predictions` and `labels`,
