@@ -36,12 +36,9 @@ import numpy as np
 import six
 
 from tensorflow.core.framework.summary_pb2 import Summary
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.client import timeline
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
