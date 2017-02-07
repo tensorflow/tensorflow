@@ -19,7 +19,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/temp_buffer_offsets.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -33,12 +32,10 @@ class IrEmitterContext {
  public:
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
-                   const TempBufferOffsets* temp_buffer_offsets,
                    const perftools::gputools::DeviceDescription* device_desc,
                    llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
-        temp_buffer_offsets_(temp_buffer_offsets),
         device_desc_(device_desc),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
@@ -50,9 +47,6 @@ class IrEmitterContext {
   const BufferAssignment& buffer_assignment() const {
     return *buffer_assignment_;
   }
-  const TempBufferOffsets& temp_buffer_offsets() const {
-    return *temp_buffer_offsets_;
-  }
   const perftools::gputools::DeviceDescription& device_description() const {
     return *device_desc_;
   }
@@ -62,7 +56,6 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-  const TempBufferOffsets* temp_buffer_offsets_;
   const perftools::gputools::DeviceDescription* device_desc_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;

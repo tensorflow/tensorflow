@@ -191,11 +191,10 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // We know that it doesn't alias any of the escaped arguments (the inputs +
   // the result).  We also know how many bytes can be dereferenced in it.
   const llvm::Argument& temp_buffer = kernel->getArgumentList().back();
-  int64 temp_buffer_size =
-      ir_emitter_context_->temp_buffer_offsets().TotalSizeInBytes();
   int64 temp_buffer_arg_no = temp_buffer.getArgNo();
-  if (temp_buffer_size > 0) {
-    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1, temp_buffer_size);
+  if (const BufferAllocation* allocation =
+          ir_emitter_context_->buffer_assignment().GetTempAllocation()) {
+    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1, allocation->size());
   }
   kernel->setDoesNotAlias(temp_buffer_arg_no + 1);
 
@@ -1195,12 +1194,12 @@ Status IrEmitterUnnested::HandleTuple(
   // buffer -- their contents are stored in code. In that case, we fall back
   // to emitting kernels which have access to their buffer addresses in code.
   if (all_tuple_elements_have_buffer) {
-    std::vector<BufferAllocation::Index> tuple_element_buffers;
+    std::vector<BufferAllocation::Slice> tuple_element_buffers;
     for (const HloInstruction* tuple_element : operands) {
-      tuple_element_buffers.push_back(GetAllocationIndex(*tuple_element));
+      tuple_element_buffers.push_back(GetAllocationSlice(*tuple_element));
     }
     thunk_sequence_->emplace_back(MakeUnique<TupleThunk>(
-        tuple_element_buffers, GetAllocationIndex(*tuple), tuple));
+        tuple_element_buffers, GetAllocationSlice(*tuple), tuple));
     return Status::OK();
   }
   // If `inst` is a nested thunk that can be disassembled from the result tuple,
@@ -1463,8 +1462,9 @@ llvm::Function* IrEmitterUnnested::EmitBasePointersForHloAndItsOperands(
   for (const HloInstruction* operand : hlo.operands()) {
     const HloInstruction* to_lookup = LatestNonGteAncestor(operand);
     if (buffer_assignment.HasTopLevelAllocation(to_lookup) &&
-        buffer_assignment.GetUniqueTopLevelAllocation(to_lookup)
+        buffer_assignment.GetUniqueTopLevelSlice(to_lookup)
             .ConsumeValueOrDie()
+            .allocation()
             ->IsInputOrOutput()) {
       io_hlos->push_back(operand);
     } else {
@@ -1474,8 +1474,9 @@ llvm::Function* IrEmitterUnnested::EmitBasePointersForHloAndItsOperands(
 
   CHECK_NE(HloOpcode::kGetTupleElement, hlo.opcode());
   if (buffer_assignment.HasTopLevelAllocation(&hlo) &&
-      buffer_assignment.GetUniqueTopLevelAllocation(&hlo)
+      buffer_assignment.GetUniqueTopLevelSlice(&hlo)
           .ConsumeValueOrDie()
+          .allocation()
           ->IsInputOrOutput()) {
     io_hlos->push_back(&hlo);
   } else {
@@ -1496,9 +1497,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
       EmitBasePointersForHloAndItsOperands(*inst, &io_hlos);
 
   // Compute the input buffer indices.
-  std::vector<BufferAllocation::Index> io_buffers;
+  std::vector<BufferAllocation::Slice> io_buffers;
   for (const HloInstruction* io_hlo : io_hlos) {
-    io_buffers.push_back(GetAllocationIndex(*LatestNonGteAncestor(io_hlo)));
+    io_buffers.push_back(GetAllocationSlice(*LatestNonGteAncestor(io_hlo)));
   }
 
   // Create a KernelThunk that launches the kernel that implements "inst".
@@ -1512,10 +1513,10 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildCopyThunk(
   CHECK_EQ(HloOpcode::kConstant, operand->opcode());
   return MakeUnique<CopyThunk>(
       /*source_address=*/LiteralUtil::InternalData(operand->literal()),
-      /*destination_buffer=*/GetAllocationIndex(*inst),
-      /*mem_size=*/llvm_ir::ByteSizeOf(
-          operand->shape(),
-          ir_emitter_context_->llvm_module()->getDataLayout()),
+      /*destination_buffer=*/GetAllocationSlice(*inst),
+      /*mem_size=*/
+      llvm_ir::ByteSizeOf(operand->shape(),
+                          ir_emitter_context_->llvm_module()->getDataLayout()),
       inst);
 }
 
@@ -1525,9 +1526,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     const HloInstruction* lhs = inst->operand(0);
     const HloInstruction* rhs = inst->operand(1);
     return MakeUnique<GemmThunk>(
-        GetAllocationIndex(*lhs),   // The buffer assigned to LHS.
-        GetAllocationIndex(*rhs),   // The buffer assigned to RHS.
-        GetAllocationIndex(*inst),  // The output buffer.
+        GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
+        GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
+        GetAllocationSlice(*inst),  // The output buffer.
         lhs->shape(),               // The shape of LHS.
         rhs->shape(),               // The shape of RHS.
         inst->shape(),              // The shape of the output.
@@ -1549,9 +1550,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
         inst->operand(rhs_parameter->parameter_number());
 
     return MakeUnique<GemmThunk>(
-        GetAllocationIndex(*lhs),             // The buffer assigned to LHS.
-        GetAllocationIndex(*rhs),             // The buffer assigned to RHS.
-        GetAllocationIndex(*inst),            // The output buffer.
+        GetAllocationSlice(*lhs),             // The buffer assigned to LHS.
+        GetAllocationSlice(*rhs),             // The buffer assigned to RHS.
+        GetAllocationSlice(*inst),            // The output buffer.
         lhs->shape(),                         // The shape of LHS.
         rhs->shape(),                         // The shape of RHS.
         inst->shape(),                        // The shape of the output.
@@ -1571,9 +1572,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConvolutionThunk(
     // Forward covolution.
     return MakeUnique<ConvolutionThunk>(
         ConvolutionThunk::ConvolutionKind::kForward,
-        /*input_buffer=*/GetAllocationIndex(*lhs),
-        /*filter_buffer=*/GetAllocationIndex(*rhs),
-        /*output_buffer=*/GetAllocationIndex(*inst),
+        /*input_buffer=*/GetAllocationSlice(*lhs),
+        /*filter_buffer=*/GetAllocationSlice(*rhs),
+        /*output_buffer=*/GetAllocationSlice(*inst),
         /*input_shape=*/lhs->shape(),
         /*filter_shape=*/rhs->shape(),
         /*output_shape=*/inst->shape(), inst->window(),
@@ -1587,9 +1588,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConvolutionThunk(
     case HloInstruction::FusionKind::kConvBackwardFilter:
       return MakeUnique<ConvolutionThunk>(
           ConvolutionThunk::ConvolutionKind::kBackwardFilter,
-          /*input_buffer=*/GetAllocationIndex(*lhs),
-          /*filter_buffer=*/GetAllocationIndex(*inst),
-          /*output_buffer=*/GetAllocationIndex(*rhs),
+          /*input_buffer=*/GetAllocationSlice(*lhs),
+          /*filter_buffer=*/GetAllocationSlice(*inst),
+          /*output_buffer=*/GetAllocationSlice(*rhs),
           /*input_shape=*/lhs->shape(),
           /*filter_shape=*/inst->shape(),
           /*output_shape=*/rhs->shape(), inst->window(),
@@ -1597,9 +1598,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConvolutionThunk(
     case HloInstruction::FusionKind::kConvBackwardInput:
       return MakeUnique<ConvolutionThunk>(
           ConvolutionThunk::ConvolutionKind::kBackwardInput,
-          /*input_buffer=*/GetAllocationIndex(*inst),
-          /*filter_buffer=*/GetAllocationIndex(*rhs),
-          /*output_buffer=*/GetAllocationIndex(*lhs),
+          /*input_buffer=*/GetAllocationSlice(*inst),
+          /*filter_buffer=*/GetAllocationSlice(*rhs),
+          /*output_buffer=*/GetAllocationSlice(*lhs),
           /*input_shape=*/inst->shape(),
           /*filter_shape=*/rhs->shape(),
           /*output_shape=*/lhs->shape(), inst->window(),
@@ -1658,19 +1659,16 @@ Status CheckWhileBuffersShareAllocation(
         auto check = [&buffer_assignment](const HloInstruction* a,
                                           const HloInstruction* b,
                                           const ShapeIndex& index) -> Status {
-          BufferAllocation::Index index_a =
-              buffer_assignment.GetUniqueAllocation(a, index)
-                  .ConsumeValueOrDie()
-                  ->index();
-          BufferAllocation::Index index_b =
-              buffer_assignment.GetUniqueAllocation(b, index)
-                  .ConsumeValueOrDie()
-                  ->index();
-          if (index_a != index_b) {
+          const BufferAllocation::Slice slice_a =
+              buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
+          const BufferAllocation::Slice slice_b =
+              buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
+          if (slice_a != slice_b) {
             return InternalError(
-                "instruction %s does not share allocation with "
-                "instruction %s ",
-                a->ToString().c_str(), b->ToString().c_str());
+                "instruction %s %s does not share allocation with "
+                "instruction %s %s",
+                a->ToString().c_str(), slice_a.ToString().c_str(),
+                b->ToString().c_str(), slice_b.ToString().c_str());
           }
           return Status::OK();
         };
@@ -1710,7 +1708,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
   TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
 
   return MakeUnique<WhileThunk>(
-      GetAllocationIndex(*condition->root_instruction()),        // cond result
+      GetAllocationSlice(*condition->root_instruction()),  // cond result
       ir_emitter_condition.ConsumeThunkSequence(),
       ir_emitter_body.ConsumeThunkSequence(), hlo);
 }
