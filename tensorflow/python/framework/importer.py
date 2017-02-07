@@ -151,7 +151,8 @@ def _FindAttrInOpDef(attr_name, op_def):
 
 def import_graph_def(graph_def, input_map=None, return_elements=None,
                      name=None, op_dict=None, producer_op_list=None):
-  """Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
+  """Imports the TensorFlow graph in `graph_def` into the current default Python
+  `Graph`.
 
   This function provides a way to import a serialized TensorFlow
   [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
