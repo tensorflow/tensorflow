@@ -46,6 +46,12 @@ a tensor of bools. If the script detects this, it will report this to stdout
 `tf.reverse(a, [False, True, True])` you will need to manually change it to
 `tf.reverse(a, [1, 2])`.
 
-
-
-
+- There are some syntaxes that are not handleable with this script as this
+script was designed to use only standard python packages. If the script fails
+with "A necessary keyword argument failed to be inserted." or
+"Failed to find keyword lexicographically. Fix manually.", you can try
+[@machrisaa's fork of this script](https://github.com/machrisaa/tf0to1).
+[@machrisaa](https://github.com/machrisaa) has used the
+[RedBaron Python refactoring engine](https://redbaron.readthedocs.io/en/latest/)
+which is able to localize syntactic elements more reliably than the built-in
+`ast` module this script is based upon.
