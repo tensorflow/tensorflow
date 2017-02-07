@@ -74,8 +74,11 @@ RecordReader::RecordReader(RandomAccessFile* file,
 }
 
 RecordReader::~RecordReader() {
+#if defined(IS_SLIM_BUILD)
+#else
   zlib_input_stream_.reset(nullptr);
   random_input_stream_.reset(nullptr);
+#endif
 }
 
 // Read n+4 bytes from file, verify that checksum of first n bytes is

@@ -31,6 +31,8 @@ tensorflow/core/lib/random/random.cc
 tensorflow/core/lib/random/distribution_sampler.cc
 tensorflow/core/lib/io/zlib_outputbuffer.cc
 tensorflow/core/lib/io/zlib_inputstream.cc
+tensorflow/core/lib/io/random_inputstream.cc
+tensorflow/core/lib/io/inputstream_interface.cc
 tensorflow/core/lib/io/two_level_iterator.cc
 tensorflow/core/lib/io/table_builder.cc
 tensorflow/core/lib/io/table.cc
