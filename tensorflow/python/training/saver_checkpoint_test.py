@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Tests for tensorflow.python.training.saver.py."""
+"""Checkpoint tests for tensorflow.python.training.saver.py."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -147,7 +147,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
       self.assertTrue(saver_module.checkpoint_exists(s4))
 
 
-class LatestCheckpointWithRelativePaths(test.TestCase):
+class LatestCheckpointWithRelativePathsTest(test.TestCase):
 
   @staticmethod
   @contextlib.contextmanager
