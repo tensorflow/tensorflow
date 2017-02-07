@@ -60,30 +60,30 @@ class GenerateTest(googletest.TestCase):
     module = sys.modules[__name__]
 
     index = {
-        '': sys,  # Can be any module, this test doesn't care about content.
-        'TestModule': module,
-        'test_function': test_function,
-        'TestModule.test_function': test_function,
-        'TestModule.TestClass': TestClass,
-        'TestModule.TestClass.ChildClass': TestClass.ChildClass,
-        'TestModule.TestClass.ChildClass.GrandChildClass':
+        'tf': sys,  # Can be any module, this test doesn't care about content.
+        'tf.TestModule': module,
+        'tf.test_function': test_function,
+        'tf.TestModule.test_function': test_function,
+        'tf.TestModule.TestClass': TestClass,
+        'tf.TestModule.TestClass.ChildClass': TestClass.ChildClass,
+        'tf.TestModule.TestClass.ChildClass.GrandChildClass':
         TestClass.ChildClass.GrandChildClass,
     }
 
     tree = {
-        '': ['TestModule', 'test_function'],
-        'TestModule': ['test_function', 'TestClass'],
-        'TestModule.TestClass': ['ChildClass'],
-        'TestModule.TestClass.ChildClass': ['GrandChildClass'],
-        'TestModule.TestClass.ChildClass.GrandChildClass': []
+        'tf': ['TestModule', 'test_function'],
+        'tf.TestModule': ['test_function', 'TestClass'],
+        'tf.TestModule.TestClass': ['ChildClass'],
+        'tf.TestModule.TestClass.ChildClass': ['GrandChildClass'],
+        'tf.TestModule.TestClass.ChildClass.GrandChildClass': []
     }
 
     duplicate_of = {
-        'TestModule.test_function': 'test_function'
+        'tf.TestModule.test_function': 'tf.test_function'
     }
 
     duplicates = {
-        'test_function': ['test_function', 'TestModule.test_function']
+        'tf.test_function': ['tf.test_function', 'tf.TestModule.test_function']
     }
 
     output_dir = tempfile.mkdtemp()
@@ -91,23 +91,24 @@ class GenerateTest(googletest.TestCase):
 
     generate.write_docs(output_dir, base_dir,
                         duplicate_of, duplicates,
-                        index, tree)
+                        index, tree, reverse_index={})
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
-    self.assertTrue(os.path.exists(os.path.join(output_dir, 'full_index.md')))
-    self.assertTrue(os.path.exists(os.path.join(output_dir, 'TestModule.md')))
+    self.assertTrue(os.path.exists(os.path.join(output_dir, 'tf.md')))
     self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'test_function.md')))
+        output_dir, 'tf/TestModule.md')))
     self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'TestModule/TestClass.md')))
+        output_dir, 'tf/test_function.md')))
     self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'TestModule/TestClass/ChildClass.md')))
+        output_dir, 'tf/TestModule/TestClass.md')))
     self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'TestModule/TestClass/ChildClass/GrandChildClass.md')))
+        output_dir, 'tf/TestModule/TestClass/ChildClass.md')))
+    self.assertTrue(os.path.exists(os.path.join(
+        output_dir, 'tf/TestModule/TestClass/ChildClass/GrandChildClass.md')))
     # Make sure that duplicates are not written
     self.assertFalse(os.path.exists(os.path.join(
-        output_dir, 'TestModule/test_function.md')))
+        output_dir, 'tf/TestModule/test_function.md')))
 
 
 if __name__ == '__main__':

@@ -70,9 +70,9 @@ class ConvolutionThunk : public Thunk {
   // Constructs a thunk for launching a DNN convolution.
   // Semantics of null hlo_instruction argument are as in Thunk.
   ConvolutionThunk(ConvolutionKind convolution_kind,
-                   BufferAllocation::Index input_buffer,
-                   BufferAllocation::Index filter_buffer,
-                   BufferAllocation::Index output_buffer,
+                   const BufferAllocation::Slice& input_buffer,
+                   const BufferAllocation::Slice& filter_buffer,
+                   const BufferAllocation::Slice& output_buffer,
                    const Shape& input_shape, const Shape& filter_shape,
                    const Shape& output_shape, const Window& window,
                    const ConvolutionDimensionNumbers& dnums,
@@ -125,19 +125,19 @@ class ConvolutionThunk : public Thunk {
   // the best algorithm from some heuristics based on its parameters.
   perftools::gputools::dnn::AlgorithmConfig best_algorithm_;
 
-  ConvolutionKind convolution_kind_;
+  const ConvolutionKind convolution_kind_;
 
-  BufferAllocation::Index input_buffer_;
-  BufferAllocation::Index filter_buffer_;
-  BufferAllocation::Index output_buffer_;
+  const BufferAllocation::Slice input_buffer_;
+  const BufferAllocation::Slice filter_buffer_;
+  const BufferAllocation::Slice output_buffer_;
 
-  Shape input_shape_;
-  Shape filter_shape_;
-  Shape output_shape_;
+  const Shape input_shape_;
+  const Shape filter_shape_;
+  const Shape output_shape_;
 
-  Window window_;
+  const Window window_;
 
-  ConvolutionDimensionNumbers dim_nums_;
+  const ConvolutionDimensionNumbers dim_nums_;
 };
 
 string ConvolutionKindToString(

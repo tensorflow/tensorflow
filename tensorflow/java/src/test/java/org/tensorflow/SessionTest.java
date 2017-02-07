@@ -74,6 +74,20 @@ public class SessionTest {
   }
 
   @Test
+  public void runMultipleOutputs() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      TestUtil.constant(g, "c1", 2718);
+      TestUtil.constant(g, "c2", 31415);
+      AutoCloseableList<Tensor> outputs =
+          new AutoCloseableList<Tensor>(s.runner().fetch("c2").fetch("c1").run());
+      assertEquals(2, outputs.size());
+      assertEquals(31415, outputs.get(0).intValue());
+      assertEquals(2718, outputs.get(1).intValue());
+    }
+  }
+
+  @Test
   public void failOnUseAfterClose() {
     try (Graph g = new Graph()) {
       Session s = new Session(g);

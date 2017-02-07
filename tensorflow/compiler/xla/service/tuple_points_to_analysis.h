@@ -247,10 +247,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
       points_to_;
 
   // A map containing the LogicalBuffers defined by each HLO instruction.
-  std::unordered_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
+  tensorflow::gtl::FlatMap<const HloInstruction*,
+                           std::vector<const LogicalBuffer*>>
       instruction_defined_buffers_;
 
-  std::unordered_map<const LogicalBuffer*, std::vector<BufferAlias>>
+  tensorflow::gtl::FlatMap<const LogicalBuffer*, std::vector<BufferAlias>>
       buffer_aliases_;
 
   // All logical buffers in the module, indexed by LogicalBuffer::Id. Keep as

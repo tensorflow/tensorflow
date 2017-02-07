@@ -204,7 +204,7 @@ updates to the parameters. Training the model can therefore be accomplished by
 repeatedly running `train_step`.
 
 ```python
-for i in range(1000):
+for _ in range(1000):
   batch = mnist.train.next_batch(100)
   train_step.run(feed_dict={x: batch[0], y_: batch[1]})
 ```

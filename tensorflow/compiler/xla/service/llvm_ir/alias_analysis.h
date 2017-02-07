@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_ALIAS_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_ALIAS_ANALYSIS_H_
 
-#include <unordered_map>
-
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
@@ -44,20 +44,20 @@ class AliasAnalysis {
   // Returns a unique alias domain for this emitter.
   llvm::MDNode* GetAliasDomain();
 
-  // Returns an alias.scope metadata node corresponding to a given buffer index.
+  // Returns an alias.scope metadata node corresponding to a given buffer slice.
   llvm::MDNode* GetAliasScopeMetadataForBuffer(
-      BufferAllocation::Index buffer_index, llvm::MDNode* domain);
+      const BufferAllocation::Slice& buffer_slice, llvm::MDNode* domain);
 
-  // Returns a noalias metadata node corresponding to a given buffer index.
+  // Returns a noalias metadata node corresponding to a given buffer slice.
   //
-  // |buffer_index| is the buffer index.
+  // |buffer_slice| is the buffer slice.
   //
   // |domain| corresponds to the alias scope domain as documented at
   // http://llvm.org/docs/LangRef.html#noalias-and-alias-scope-metadata
   //
   // |hlo| is the instruction we are computing a noalias set for.
   llvm::MDNode* GetNoaliasMetadataForBuffer(
-      BufferAllocation::Index buffer_index, llvm::MDNode* domain,
+      const BufferAllocation::Slice& buffer_slice, llvm::MDNode* domain,
       const BufferAssignment& assignment, const HloInstruction& hlo);
 
   // The HLO module we are compiling for.
@@ -73,18 +73,18 @@ class AliasAnalysis {
   // Holds the alias domain for this computation.
   llvm::MDNode* alias_domain_ = nullptr;
 
-  // Index in alias_scope_metadata_ and noalias_metadata_ for parameters
-  // of the entry computation which have special aliasing properties.
-  static constexpr int kParameterAliasSet = -1;
-
-  // A map from a buffer index to metadata corresponding to its alias.scope
+  // A map from a buffer slice to metadata corresponding to its alias.scope
   // metadata.  The index kParameterAliasSet is used to hold aliasing
   // information for parameters.
-  std::unordered_map<int, llvm::MDNode*> alias_scope_metadata_;
+  tensorflow::gtl::FlatMap<BufferAllocation::Slice, llvm::MDNode*,
+                           BufferAllocation::Slice::Hasher>
+      alias_scope_metadata_;
 
-  // A map from a buffer index to metadata corresponding to its noalias
+  // A map from a buffer slice to metadata corresponding to its noalias
   // metadata.
-  std::unordered_map<int, llvm::MDNode*> noalias_metadata_;
+  tensorflow::gtl::FlatMap<BufferAllocation::Slice, llvm::MDNode*,
+                           BufferAllocation::Slice::Hasher>
+      noalias_metadata_;
 };
 
 }  // namespace llvm_ir
