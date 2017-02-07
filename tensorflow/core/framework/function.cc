@@ -252,7 +252,6 @@ Status InstantiateNode(const NodeDef& fnode,
   NodeDef* gnode = gdef->add_node();
   gnode->set_name(Name(gdef->node_size() - 1));
   gnode->set_op(fnode.op());
-  gnode->set_device(fnode.device());
 
   // Input
   const int num_args = fnode_sig->input_arg_size();

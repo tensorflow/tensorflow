@@ -258,7 +258,7 @@ class ConcatOffsetOp : public OpKernel {
       OP_REQUIRES(
           ctx, dims == inp.NumElements(),
           errors::InvalidArgument("input ", i, " should contain ", dims,
-                                  " elements, but got ", inp.NumElements()));
+                                  " elements, but got", inp.NumElements()));
       auto inp_vec = inp.vec<int32>();
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
