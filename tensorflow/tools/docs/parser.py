@@ -520,15 +520,24 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
     member_full_name = full_name + '.' + name if full_name else name
     member = index[member_full_name]
 
+    suffix = ''
     if inspect.isclass(member):
       link_text = 'class ' + name
     elif inspect.isfunction(member):
       link_text = name + '(...)'
-    else:
+    elif inspect.ismodule(member):
       link_text = name
+      suffix = ' module'
+    else:
+      member_links.append('Constant ' + name)
+      continue
+
+    brief_docstring = _get_brief_docstring(member)
+    if brief_docstring:
+      suffix = '%s: %s' % (suffix, brief_docstring)
 
     member_links.append(_markdown_link(link_text, member_full_name,
-                                       relative_path, duplicate_of))
+                                       relative_path, duplicate_of) + suffix)
 
   # TODO(deannarubin): Make this list into a table and add the brief docstring.
   # (use _get_brief_docstring)
