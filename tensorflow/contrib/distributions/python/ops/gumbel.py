@@ -172,10 +172,17 @@ class _Gumbel(distribution.Distribution):
 
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat(([n], array_ops.shape(self.mean())), 0)
-    np_dtype = self.dtype.as_numpy_dtype()
-    minval = np.nextafter(np_dtype(0), np_dtype(1))
+    np_dtype = self.dtype.as_numpy_dtype
+    # Uniform variates must be sampled from the interval (0,1] rather than
+    # [0,1], as they are passed through log() to compute Gumbel variates.
+    # We need to use np.finfo(np_dtype).tiny because it is the smallest,
+    # positive, "normal" number. A "normal" number is such that the mantissa
+    # has an implicit leading 1. Normal, positive numbers x, y have the
+    # reasonable property that: x + y >= max(x, y).
+    # minval=np.nextafter(np.float32(0),1)) can cause
+    # tf.random_uniform(dtype=tf.float32) to sample 0.
     uniform = random_ops.random_uniform(shape=shape,
-                                        minval=minval,
+                                        minval=np.finfo(np_dtype).tiny,
                                         maxval=1,
                                         dtype=self.dtype,
                                         seed=seed)

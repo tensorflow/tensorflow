@@ -32,6 +32,7 @@ RUN pip --no-cache-dir install \
         numpy \
         scipy \
         sklearn \
+        pandas \
         && \
     python -m ipykernel.kernelspec
 
@@ -82,7 +83,7 @@ RUN mkdir /bazel && \
 
 RUN git clone https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout r0.12
+    git checkout r1.0
 WORKDIR /tensorflow
 
 # TODO(craigcitro): Don't install the pip package, since it makes it

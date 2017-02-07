@@ -50,8 +50,8 @@ A `TransformedDistribution` implements the following operations:
     Programmatically:
 
     ```python
-    return (distribution.log_prob(bijector.inverse(x)) +
-            bijector.inverse_log_det_jacobian(x))
+    return (distribution.log_prob(bijector.inverse(y)) +
+            bijector.inverse_log_det_jacobian(y))
     ```
 
   * `log_cdf`:

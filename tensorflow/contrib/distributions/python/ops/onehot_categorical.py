@@ -31,14 +31,16 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 
 
-class _OneHotCategorical(distribution.Distribution):
+class OneHotCategorical(distribution.Distribution):
   """OneHotCategorical distribution.
 
   The categorical distribution is parameterized by the log-probabilities
   of a set of classes. The difference between OneHotCategorical and Categorical
   distributions is that OneHotCategorical is a discrete distribution over
   one-hot bit vectors whereas Categorical is a discrete distribution over
-  positive integers.
+  positive integers. OneHotCategorical is equivalent to Categorical except
+  Categorical has event_dim=() while OneHotCategorical has event_dim=K, where
+  K is the number of classes.
 
   This class provides methods to create indexed batches of OneHotCategorical
   distributions.  If the provided `logits` or `probs` is rank 2 or higher, for
@@ -132,7 +134,7 @@ class _OneHotCategorical(distribution.Distribution):
       with ops.name_scope(name="event_size"):
         self._event_size = array_ops.shape(self._logits)[-1]
 
-    super(_OneHotCategorical, self).__init__(
+    super(OneHotCategorical, self).__init__(
         dtype=dtype,
         is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
@@ -193,15 +195,12 @@ class _OneHotCategorical(distribution.Distribution):
       logits = array_ops.ones_like(x, dtype=logits.dtype) * logits
       x = array_ops.ones_like(logits, dtype=x.dtype) * x
 
-    logits_shape = array_ops.shape(logits)
-    if logits.get_shape().ndims == 2:
-      logits_2d = logits
-      x_2d = x
-    else:
-      logits_2d = array_ops.reshape(logits, [-1, self.event_size])
-      x_2d = array_ops.reshape(x, [-1, self.event_size])
+    logits_shape = array_ops.shape(math_ops.reduce_sum(logits, -1))
+    logits_2d = array_ops.reshape(logits, [-1, self.event_size])
+    x_2d = array_ops.reshape(x, [-1, self.event_size])
     ret = -nn_ops.softmax_cross_entropy_with_logits(labels=x_2d,
                                                     logits=logits_2d)
+    # Reshape back to user-supplied batch and sample dims prior to 2D reshape.
     ret = array_ops.reshape(ret, logits_shape)
     return ret
 
@@ -209,23 +208,22 @@ class _OneHotCategorical(distribution.Distribution):
     return math_ops.exp(self._log_prob(x))
 
   def _entropy(self):
-    if self.logits.get_shape().ndims == 2:
-      logits_2d = self.logits
-    else:
-      logits_2d = array_ops.reshape(self.logits, [-1, self.event_size])
-    histogram_2d = nn_ops.softmax(logits_2d)
-    ret = array_ops.reshape(
-        nn_ops.softmax_cross_entropy_with_logits(labels=histogram_2d,
-                                                 logits=logits_2d),
-        self.batch_shape_tensor())
-    ret.set_shape(self.batch_shape)
-    return ret
+    return -math_ops.reduce_sum(
+        nn_ops.log_softmax(self.logits) * self.probs, axis=-1)
 
   def _mode(self):
     ret = math_ops.argmax(self.logits, axis=self._batch_rank)
     ret = array_ops.one_hot(ret, self.event_size, dtype=self.dtype)
     ret.set_shape(self.logits.get_shape())
     return ret
+
+  def _covariance(self):
+    p = self.probs
+    ret = -math_ops.matmul(p[..., None], p[..., None, :])
+    return array_ops.matrix_set_diag(ret, self._variance())
+
+  def _variance(self):
+    return self.probs * (1. - self.probs)
 
   def _assert_valid_sample(self, x):
     if not self.validate_args:
@@ -238,7 +236,7 @@ class _OneHotCategorical(distribution.Distribution):
     ], x)
 
 
-@kullback_leibler.RegisterKL(_OneHotCategorical, _OneHotCategorical)
+@kullback_leibler.RegisterKL(OneHotCategorical, OneHotCategorical)
 def _kl_categorical_categorical(a, b, name=None):
   """Calculate the batched KL divergence KL(a || b) with a, b OneHotCategorical.
 

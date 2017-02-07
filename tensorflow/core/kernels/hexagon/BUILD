@@ -88,6 +88,7 @@ tf_kernel_library(
     ],
     data = ["//tensorflow/core:example_parser_configuration_testdata"],
     deps = [
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
