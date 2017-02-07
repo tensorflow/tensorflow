@@ -57,6 +57,7 @@ void resolveHandles(JNIEnv* env, const char* type, jlongArray src_array,
 
 void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,
                     jintArray src_index, TF_Output* dst, jint n) {
+  if (env->ExceptionCheck()) return;
   jint len = env->GetArrayLength(src_op);
   if (len != n) {
     throwException(env, kIllegalArgumentException,
