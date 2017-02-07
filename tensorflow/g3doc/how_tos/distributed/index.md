@@ -7,7 +7,7 @@ writing TensorFlow programs.
 
 ## Hello distributed TensorFlow!
 
- To see a simple TensorFlow cluster in action, execute the following:
+To see a simple TensorFlow cluster in action, execute the following:
 
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
@@ -48,8 +48,9 @@ the following:
 ### Create a `tf.train.ClusterSpec` to describe the cluster
 
 The cluster specification dictionary maps job names to lists of network
-adresses. Pass this dictionary to the `tf.train.ClusterSpec` constructor.  For
-example:
+adresses. Pass this dictionary to
+the [`tf.train.ClusterSpec`](../../api_docs/python/train.md#ClusterSpec)
+constructor.  For example:
 
 <table>
   <tr><th><code>tf.train.ClusterSpec</code> construction</th><th>Available tasks</th>
@@ -173,7 +174,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   gradient averaging as in the
   [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
-  `tf.train.SyncReplicasOptimizer`).
+  [`tf.train.SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)).
 
 ### Putting it all together: example trainer program
 
@@ -307,10 +308,11 @@ serve multiple clients.
 
 **Cluster**
 
-A TensorFlow cluster comprises a one or more "jobs", each divided into lists
-of one or more "tasks". A cluster is typically dedicated to a particular
-high-level objective, such as training a neural network, using many machines in
-parallel. A cluster is defined by a `tf.train.ClusterSpec` object.
+A TensorFlow cluster comprises a one or more "jobs", each divided into lists of
+one or more "tasks". A cluster is typically dedicated to a particular high-level
+objective, such as training a neural network, using many machines in parallel. A
+cluster is defined by
+a [`tf.train.ClusterSpec`](../../api_docs/python/train.md#ClusterSpec) object.
 
 **Job**
 
@@ -335,9 +337,9 @@ A task corresponds to a specific TensorFlow server, and typically corresponds
 to a single process. A task belongs to a particular "job" and is identified by
 its index within that job's list of tasks.
 
-**TensorFlow server**
-A process running a `tf.train.Server` instance, which is a member of a cluster,
-and exports a "master service" and "worker service".
+**TensorFlow server** A process running
+a [`tf.train.Server`](../../api_docs/python/train.md#Server) instance, which is
+a member of a cluster, and exports a "master service" and "worker service".
 
 **Worker service**
 
