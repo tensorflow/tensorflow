@@ -46,7 +46,7 @@ class KernelThunk : public Thunk {
   // Constructs a thunk for the given kernel.
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Index> io_buffers,
+  KernelThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Slice> io_buffers,
               const string& kernel_name, const HloInstruction* hlo_instruction);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
@@ -64,7 +64,7 @@ class KernelThunk : public Thunk {
 
  private:
   // The indices of the input/output buffers.
-  const std::vector<BufferAllocation::Index> io_buffers_;
+  const std::vector<BufferAllocation::Slice> io_buffers_;
 
   // Entry kernel name for the computation.
   const string kernel_name_;

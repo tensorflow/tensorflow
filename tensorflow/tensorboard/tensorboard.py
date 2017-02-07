@@ -122,7 +122,7 @@ class Server(object):
         purge_orphaned_data=FLAGS.purge_orphaned_data)
     plugins = {
         debugger_plugin.PLUGIN_PREFIX_ROUTE:
-            debugger_plugin.DebuggerPlugin(),
+            debugger_plugin.DebuggerPlugin(multiplexer),
         projector_plugin.PLUGIN_PREFIX_ROUTE:
             projector_plugin.ProjectorPlugin(),
     }

@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
 /* static */ std::priority_queue<std::tuple<float, int, string>>
-GraphTransferUtils::GetTopNFloatResults(const float *const data,
-                                        const string *const labels,
+GraphTransferUtils::GetTopNFloatResults(const float* const data,
+                                        const string* const labels,
                                         const int element_count) {
   CHECK(data != nullptr);
   CHECK(labels != nullptr);
@@ -33,7 +36,7 @@ GraphTransferUtils::GetTopNFloatResults(const float *const data,
 }
 
 /* static */ void GraphTransferUtils::DumpTopNFloatResults(
-    const float *const data, const string *const labels,
+    const float* const data, const string* const labels,
     const int element_count, const int top_n) {
   std::priority_queue<std::tuple<float, int, string>> queue =
       GetTopNFloatResults(data, labels, element_count);
@@ -44,6 +47,51 @@ GraphTransferUtils::GetTopNFloatResults(const float *const data,
               << ", " << std::get<0>(entry);
     queue.pop();
   }
+}
+
+/* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
+    const string& remote_graph_execute_name,
+    const std::vector<GraphTransferer::InputNodeInfo>& inputs,
+    const std::vector<string>& outputs, const GraphDef& def,
+    GraphTransferer* const gt) {
+  CHECK(gt != nullptr);
+  std::vector<tensorflow::Tensor> output_tensors;
+  Status status = gt->DryRunInference(
+      def, inputs, outputs, false /* initialize_by_zero */, &output_tensors);
+  CHECK(status.ok());
+
+  Scope root = Scope::NewRootScope();
+  std::vector<Output> output_list;
+  for (const GraphTransferer::InputNodeInfo& input_node_info : inputs) {
+    const Scope& scope = root.WithOpName(input_node_info.name);
+    Node* ret;
+    const auto unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
+    auto builder = NodeBuilder(unique_name, "PlaceholderV2")
+                       .Attr("dtype", input_node_info.tensor.dtype())
+                       .Attr("shape", input_node_info.tensor.shape());
+    scope.UpdateBuilder(&builder);
+    scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+    CHECK(scope.ok());
+    output_list.emplace_back(Output(ret, 0));
+  }
+  string serialized_graph = gt->GetGraphTransferInfo().SerializeAsString();
+
+  const Scope& scope = root.WithOpName(remote_graph_execute_name);
+  auto node_out_list = ops::AsNodeOutList(scope, InputList(output_list));
+  Node* node;
+  const auto unique_name = scope.GetUniqueNameForOp("RemoteFusedGraphExecute");
+  auto builder = NodeBuilder(unique_name, "RemoteFusedGraphExecute")
+                     .Input(node_out_list)
+                     .Attr("N", static_cast<int64>(outputs.size()))
+                     .Attr("serialized_graph_transfer_info",
+                           StringPiece(serialized_graph));
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &node));
+  CHECK(scope.ok());
+
+  GraphDef fusedGraphDef;
+  root.ToGraphDef(&fusedGraphDef);
+  return fusedGraphDef;
 }
 
 }  // namespace tensorflow

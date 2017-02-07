@@ -226,6 +226,7 @@ public final class Session implements AutoCloseable {
       for (Output o : outputs) {
         outputOpHandles[idx] = o.op().getUnsafeNativeHandle();
         outputOpIndices[idx] = o.index();
+        idx++;
       }
       idx = 0;
       for (Operation op : targets) {

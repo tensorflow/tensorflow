@@ -251,7 +251,7 @@ class EventMultiplexer(object):
     return accumulator.Scalars(tag)
 
   def HealthPills(self, run, node_name):
-    """Retrieve the scalar events associated with a run and node name.
+    """Retrieve the health pill events associated with a run and node name.
 
     Args:
       run: A string name of the run for which health pills are retrieved.

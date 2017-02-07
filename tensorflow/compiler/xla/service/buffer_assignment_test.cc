@@ -145,7 +145,7 @@ class BufferAssignmentTest : public HloTestBase {
       const BufferAssignment& buffers, HloInstruction* hlo) {
     LOG(INFO) << "Checking input: " << hlo->ToString();
     const BufferAllocation& buffer =
-        *buffers.GetUniqueTopLevelAllocation(hlo).ConsumeValueOrDie();
+        *buffers.GetUniqueTopLevelSlice(hlo).ConsumeValueOrDie().allocation();
     EXPECT_EQ(hlo->parameter_number(), buffer.parameter_number());
     return buffer;
   }
@@ -163,11 +163,13 @@ class BufferAssignmentTest : public HloTestBase {
   const BufferAllocation& GetAllocation(const BufferAssignment& buffers,
                                         const HloInstruction* hlo,
                                         const ShapeIndex& index) {
-    return *buffers.GetUniqueAllocation(hlo, index).ConsumeValueOrDie();
+    return *buffers.GetUniqueSlice(hlo, index).ConsumeValueOrDie().allocation();
   }
   const BufferAllocation& GetTopLevelAllocation(const BufferAssignment& buffers,
                                                 const HloInstruction* hlo) {
-    return *buffers.GetUniqueTopLevelAllocation(hlo).ConsumeValueOrDie();
+    return *buffers.GetUniqueTopLevelSlice(hlo)
+                .ConsumeValueOrDie()
+                .allocation();
   }
 
   // Verifies that all instructions in the given instruction list except
@@ -200,20 +202,18 @@ class BufferAssignmentTest : public HloTestBase {
   bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
                        const std::vector<const HloInstruction*>& b,
                        const BufferAssignment& assignment) {
-    std::set<BufferAllocation::Index> a_buffers;
+    std::set<BufferAllocation::Slice> a_slices;
     for (const HloInstruction* instruction : a) {
       if (assignment.HasTopLevelAllocation(instruction)) {
-        a_buffers.insert(assignment.GetUniqueTopLevelAllocation(instruction)
-                             .ConsumeValueOrDie()
-                             ->index());
+        a_slices.insert(
+            assignment.GetUniqueTopLevelSlice(instruction).ConsumeValueOrDie());
       }
     }
 
     for (const HloInstruction* instruction : b) {
       if (assignment.HasTopLevelAllocation(instruction)) {
-        if (a_buffers.count(assignment.GetUniqueTopLevelAllocation(instruction)
-                                .ConsumeValueOrDie()
-                                ->index())) {
+        if (a_slices.count(assignment.GetUniqueTopLevelSlice(instruction)
+                               .ConsumeValueOrDie())) {
           return false;
         }
       }
@@ -236,9 +236,10 @@ class BufferAssignmentTest : public HloTestBase {
 };
 
 namespace {
-std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module) {
+std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
+                                                      int64 alignment = 1) {
   return BufferAssigner::Run(module, MakeUnique<DependencyHloOrdering>(module),
-                             /*pointer_size=*/sizeof(void*))
+                             /*pointer_size=*/sizeof(void*), alignment)
       .ConsumeValueOrDie();
 }
 }
@@ -703,13 +704,14 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
   //
   // param ---> (negate) ---> (slice) ---> (broadcast)
   //
-  // The negate should *not* share a buffer with broadcast.
+  // Neither negate nor slice may share a buffer with broadcast.
   auto builder = HloComputation::Builder(TestName());
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32vec100_, "param0"));
   // Negate output is 100 elements.
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
+  // Slice output is 10 elements.
   auto slice = builder.AddInstruction(
       HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
   // Broadcast output is 40 elements.
@@ -720,12 +722,10 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
-  // The instructions should not share buffers.
+  // The broadcast output buffer cannot be shared.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
             GetTopLevelAllocation(*assignment, negate));
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
-            GetTopLevelAllocation(*assignment, slice));
-  EXPECT_NE(GetTopLevelAllocation(*assignment, negate),
             GetTopLevelAllocation(*assignment, slice));
 }
 
@@ -773,13 +773,14 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
   //
   // param ---> (negate) ---> (slice) ---> (broadcast) --> (tuple)
   //
-  // The negate should *not* share a buffer with broadcast.
+  // Neither negate nor slice may share a buffer with broadcast.
   auto builder = HloComputation::Builder(TestName());
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32vec100_, "param0"));
   // Negate output is 100 elements.
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
+  // Slice output is 10 elements.
   auto slice = builder.AddInstruction(
       HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
   // Broadcast output is 40 elements.
@@ -791,12 +792,10 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
-  // The instructions should not share buffers.
+  // The broadcast output buffer cannot be shared.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
             GetTopLevelAllocation(*assignment, negate));
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
-            GetTopLevelAllocation(*assignment, slice));
-  EXPECT_NE(GetTopLevelAllocation(*assignment, negate),
             GetTopLevelAllocation(*assignment, slice));
 }
 
@@ -1066,19 +1065,20 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
   // buffer and receives its own allocation.
   auto select_alloc = GetTopLevelAllocation(*assignment, select);
   EXPECT_EQ(1, select_alloc.assigned_buffers().size());
-  EXPECT_EQ(select, select_alloc.assigned_buffers()[0]->instruction());
+  EXPECT_EQ(select,
+            select_alloc.assigned_buffers().begin()->first->instruction());
 
   // The buffer for the tuple element of the select is forwarded from one its
-  // operands which cannot be determined statically. Therefore its allocation
-  // should include the allocations of both of the elements in the parameters.
-  auto element_allocations = assignment->GetAllocations(select, /*index=*/{0});
-  EXPECT_EQ(2, element_allocations.size());
-  EXPECT_MATCH(testing::SetToVec<BufferAllocation>(element_allocations),
-               testing::UnorderedMatcher<BufferAllocation>(
-                   *assignment->GetUniqueAllocation(tuple_param0, /*index=*/{0})
-                        .ConsumeValueOrDie(),
-                   *assignment->GetUniqueAllocation(tuple_param1, /*index=*/{0})
-                        .ConsumeValueOrDie()));
+  // operands which cannot be determined statically. Therefore its slices
+  // should include the slices of both of the elements in the parameters.
+  auto element_slices = assignment->GetAllSlices(select, /*index=*/{0});
+  EXPECT_EQ(2, element_slices.size());
+  EXPECT_MATCH(testing::SetToVec<BufferAllocation::Slice>(element_slices),
+               testing::UnorderedMatcher<BufferAllocation::Slice>(
+                   assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
+                       .ConsumeValueOrDie(),
+                   assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
+                       .ConsumeValueOrDie()));
 }
 
 // TODO(b/34669761): Remove this test when buffers are allowed to share
@@ -1104,6 +1104,74 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   EXPECT_EQ(3, assignment->Allocations().size());
   EXPECT_NE(GetTopLevelAllocation(*assignment, tuple),
             GetTopLevelAllocation(*assignment, copy));
+}
+
+TEST_F(BufferAssignmentTest, OneTempAllocation) {
+  // Test a computation that requires multiple temp buffers, and ensure they are
+  // combined into a single allocation.
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape_2x3 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape_2x4 = ShapeUtil::MakeShape(F32, {2, 4});
+  Shape shape_3x4 = ShapeUtil::MakeShape(F32, {3, 4});
+  Shape shape_4x4 = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape shape_5x4 = ShapeUtil::MakeShape(F32, {5, 4});
+
+  // There should be separate temp buffers for dot_ab and dot_bc.
+  auto param_a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape_2x3, "param_a"));
+  auto param_b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape_3x4, "param_b"));
+  auto param_c = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, shape_4x4, "param_c"));
+  auto dot_ab = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape_2x4, HloOpcode::kDot, param_a, param_b));
+  auto dot_bc = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape_3x4, HloOpcode::kDot, param_b, param_c));
+  builder.AddInstruction(
+      HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 1));
+
+  // Run buffer assignment with alignment=1.
+  auto module = MakeUnique<HloModule>(TestName());
+  module->AddEntryComputation(builder.Build());
+  auto assignment = RunBufferAssignment(module.get(), /*alignment=*/1);
+
+  // There are 5 allocations: 3 parameters, 1 output, and 1 temp.
+  EXPECT_EQ(5, assignment->Allocations().size());
+
+  // Ensure the temp buffers for dot_ab and dot_bc share a single allocation,
+  // and each occupies different slices of that allocation.
+  BufferAllocation::Slice slice_ab =
+      assignment->GetUniqueTopLevelSlice(dot_ab).ConsumeValueOrDie();
+  BufferAllocation::Slice slice_bc =
+      assignment->GetUniqueTopLevelSlice(dot_bc).ConsumeValueOrDie();
+  EXPECT_EQ(slice_ab.allocation(), slice_bc.allocation());
+  EXPECT_NE(slice_ab, slice_bc);
+  EXPECT_EQ(32, slice_ab.size());
+  EXPECT_EQ(48, slice_bc.size());
+  EXPECT_EQ(80, slice_ab.allocation()->size());
+  EXPECT_EQ(80, slice_bc.allocation()->size());
+
+  // Re-run buffer assignment with alignment=64.
+  assignment = RunBufferAssignment(module.get(), /*alignment=*/64);
+  EXPECT_EQ(5, assignment->Allocations().size());
+  slice_ab = assignment->GetUniqueTopLevelSlice(dot_ab).ConsumeValueOrDie();
+  slice_bc = assignment->GetUniqueTopLevelSlice(dot_bc).ConsumeValueOrDie();
+  EXPECT_EQ(slice_ab.allocation(), slice_bc.allocation());
+  EXPECT_NE(slice_ab, slice_bc);
+  EXPECT_EQ(32, slice_ab.size());
+  EXPECT_EQ(48, slice_bc.size());
+  // Ensure the offsets and allocation size account for the alignment, without
+  // assuming which buffer gets assigned first.
+  if (slice_ab.offset() == 0) {
+    EXPECT_EQ(64, slice_bc.offset());
+    EXPECT_EQ(64 + 48, slice_ab.allocation()->size());
+    EXPECT_EQ(64 + 48, slice_bc.allocation()->size());
+  } else {
+    EXPECT_EQ(64, slice_ab.offset());
+    EXPECT_EQ(0, slice_bc.offset());
+    EXPECT_EQ(64 + 32, slice_ab.allocation()->size());
+    EXPECT_EQ(64 + 32, slice_bc.allocation()->size());
+  }
 }
 
 }  // namespace

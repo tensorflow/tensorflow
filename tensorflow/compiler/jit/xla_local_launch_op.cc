@@ -166,7 +166,8 @@ Status XlaLocalLaunchOp::BuildCompilationCache(XlaCompilationCache** compiler) {
   }
   const string* compiler_device;
   if (!XlaOpRegistry::GetJitDevice(device_type_.type(), &compiler_device,
-                                   /*requires_jit=*/nullptr)) {
+                                   /*requires_jit=*/nullptr,
+                                   /*enable_jit_by_default=*/nullptr)) {
     return errors::InvalidArgument("No JIT device registered for ",
                                    device_type_.type());
   }
