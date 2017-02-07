@@ -73,7 +73,7 @@ class MetricSpecTest(test.TestCase):
         ValueError,
         "MetricSpec without specified prediction_key "
         "requires predictions tensor or single element "
-        "dict, got",
+        "dict, got ",
         MetricSpec(
             metric_fn=test_metric, label_key="label1",
             weight_key="feature2").create_metric_ops,
