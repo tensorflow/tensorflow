@@ -31,7 +31,8 @@ from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import parser
 
 
-def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
+def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
+               reverse_index):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol in `index` to a tree of docs at
@@ -56,6 +57,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
       of "@{symbol}" references.
     tree: A `dict` mapping a fully qualified name to the names of all its
       members. Used to populate the members section of a class or module page.
+    reverse_index: A `dict` mapping object ids to fully qualified names.
   """
   # Make output_dir.
   try:
@@ -89,6 +91,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
                                         duplicates=duplicates,
                                         index=index,
                                         tree=tree,
+                                        reverse_index=reverse_index,
                                         base_dir=base_dir)
 
     # TODO(deannarubin): use _tree to generate sidebar information.
@@ -107,14 +110,13 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
     # TODO(deannarubin): write sidebar file?
 
   # Write a global index containing all full names with links.
-  with open(os.path.join(output_dir, 'full_index.md'), 'w') as f:
-    f.write(parser.generate_global_index('TensorFlow', 'tensorflow',
-                                         index, duplicate_of))
+  with open(os.path.join(output_dir, 'index.md'), 'w') as f:
+    f.write(parser.generate_global_index('TensorFlow', index, duplicate_of))
 
 
 def extract():
   """Extract docs from tf namespace and write them to disk."""
-  visitor = doc_generator_visitor.DocGeneratorVisitor()
+  visitor = doc_generator_visitor.DocGeneratorVisitor('tf')
   api_visitor = public_api.PublicAPIVisitor(visitor)
 
   # Access something in contrib so tf.contrib is properly loaded (it's hidden
@@ -193,9 +195,9 @@ def write(output_dir, base_dir, visitor):
     visitor: A `DocGeneratorVisitor` that has traversed a library located at
       `base_dir`.
   """
-  duplicate_of, duplicates = visitor.find_duplicates()
   write_docs(output_dir, os.path.abspath(base_dir),
-             duplicate_of, duplicates, visitor.index, visitor.tree)
+             visitor.duplicate_of, visitor.duplicates,
+             visitor.index, visitor.tree, visitor.reverse_index)
 
 
 if __name__ == '__main__':
@@ -209,11 +211,12 @@ if __name__ == '__main__':
   )
 
   # This doc generator works on the TensorFlow codebase. Since this script lives
-  # at tensorflow/tools/docs, we can compute the base directory (three levels
-  # up), which is valid unless we're trying to apply this to a different code
-  # base, or are moving the script around.
+  # at tensorflow/tools/docs, and all code is defined somewhere inside
+  # tensorflow/, we can compute the base directory (two levels up), which is
+  # valid unless we're trying to apply this to a different code base, or are
+  # moving the script around.
   script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-  default_base_dir = os.path.join(script_dir, '..', '..', '..')
+  default_base_dir = os.path.join(script_dir, '..', '..')
 
   argument_parser.add_argument(
       '--base_dir',
