@@ -32,7 +32,7 @@ application that will let you check your application.
 First, clone this TensorFlow repository.
 
 You will need to download all dependencies as well.  We have provided a script
-that does so, to be run (as with all commands) at the root of the repository:
+that does so, to be run (as with all commands) **at the root of the repository**:
 
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
@@ -141,6 +141,11 @@ xcode-select --install
 
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
+
+If you do not have [Homebrew](http://brew.sh/) installed, you will need to install via terminal by using:
+```bash
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
 
 Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
 
