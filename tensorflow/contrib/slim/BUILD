@@ -52,6 +52,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",

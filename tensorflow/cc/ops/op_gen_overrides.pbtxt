@@ -171,7 +171,7 @@ op { name: "SoftplusGrad" hide: true }
 op { name: "SoftsignGrad" hide: true }
 op { name: "FractionalAvgPoolGrad" hide: true }
 op { name: "FractionalMaxPoolGrad" hide: true }
-op { name: "TopKV2" rename_to: "TopK" alias: "TopKV2" }  # TODO(josh11b): delete "TopKV2" alias once users updated
+op { name: "TopKV2" rename_to: "TopK" }
 op { name: "BiasAddV1" skip: true }  # Use BiasAdd instead
 
 # parsing_ops

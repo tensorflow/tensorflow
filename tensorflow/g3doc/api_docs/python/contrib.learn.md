@@ -857,7 +857,7 @@ Returns a path in which the eval process will look for checkpoints.
 
 ### `class tf.contrib.learn.KMeansClustering` {#KMeansClustering}
 
-An Estimator fo rK-Means clustering.
+An Estimator for K-Means clustering.
 - - -
 
 #### `tf.contrib.learn.KMeansClustering.__init__(num_clusters, model_dir=None, initial_clusters='random', distance_metric='squared_euclidean', random_seed=0, use_mini_batch=True, kmeans_plus_plus_num_retries=2, relative_tolerance=None, config=None)` {#KMeansClustering.__init__}

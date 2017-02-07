@@ -98,7 +98,10 @@ class GraphTransferer {
 
   void EnableStrictCheckMode(bool enable);
 
-  // Return parameters for transfer
+  // Import parameters for transfer
+  void SetSerializedGraphTransferInfo(const string& serialized_proto);
+
+  // Return parameters for graph transfer
   const GraphTransferInfo& GetGraphTransferInfo() const;
 
  private:
@@ -220,10 +223,10 @@ class GraphTransferer {
   // Dump verification string of parameters to verify with offline tools
   void DumpVerificationStringOfNodeTransferParams() const;
 
-  GraphTransferInfo graph_transfer_info_;
+  GraphTransferInfo graph_transfer_info_{};
 
-  std::vector<const Node*> node_name_cache_list_;
-  std::unordered_map<string, int> node_name_to_id_cache_map_;
+  std::vector<const Node*> node_name_cache_list_{};
+  std::unordered_map<string, int> node_name_to_id_cache_map_{};
 
   // strict check mode is true by default.  Disable this if the ops' shape
   // inferences are not implemented correctly.

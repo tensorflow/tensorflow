@@ -36,6 +36,9 @@ particular, functions that have had reordered arguments like `tf.concat`,
 `tf.split` will cause the script to incorrectly add keyword arguments that
 mismap arguments.
 
+- This script wouldn't actually reorder arguments. Instead, the script will add
+keyword arguments to functions that had their arguments reordered.
+
 - This script is not able to upgrade all functions. One notable example is
 `tf.reverse()` which has been changed to take a list of indices rather than
 a tensor of bools. If the script detects this, it will report this to stdout

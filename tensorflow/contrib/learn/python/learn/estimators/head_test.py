@@ -602,6 +602,22 @@ class BinaryClassificationModelHeadTest(test.TestCase):
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
 
+  def testBinaryClassificationInferMode_withWightColumn(self):
+    n_classes = 2
+    head = head_lib._multi_class_head(n_classes=n_classes,
+                                      weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          # This is what is being tested, features should not have weight for
+          # inference.
+          {}, model_fn.ModeKeys.INFER, self._labels, _noop_train_op,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      self.assertIsNone(model_fn_ops.train_op)
+      _assert_no_variables(self)
+
   def testErrorInSparseTensorLabels(self):
     n_classes = 2
     head = head_lib._multi_class_head(n_classes=n_classes)

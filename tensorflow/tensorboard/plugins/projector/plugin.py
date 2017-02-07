@@ -36,6 +36,9 @@ from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.tensorboard.lib.python.http_util import Respond
 from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
 
+# The prefix of routes provided by this plugin.
+PLUGIN_PREFIX_ROUTE = 'projector'
+
 # HTTP routes.
 CONFIG_ROUTE = '/info'
 TENSOR_ROUTE = '/tensor'

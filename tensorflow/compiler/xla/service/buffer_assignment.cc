@@ -111,7 +111,7 @@ std::set<BufferAllocation> BufferAssignment::GetAllocations(
 const BufferAllocation& BufferAssignment::GetAllocation(
     BufferAllocation::Index index) const {
   CHECK(index >= 0 && index < allocations_.size())
-      << "Allocation index " << index << "is out of range.";
+      << "Allocation index " << index << " is out of range.";
   return allocations_[index];
 }
 

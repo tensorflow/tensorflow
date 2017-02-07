@@ -316,6 +316,11 @@ void GraphTransferer::EnableStrictCheckMode(const bool enable) {
   strict_check_mode_ = enable;
 }
 
+void GraphTransferer::SetSerializedGraphTransferInfo(
+    const string& serialized_proto) {
+  graph_transfer_info_.ParseFromString(serialized_proto);
+}
+
 const GraphTransferInfo& GraphTransferer::GetGraphTransferInfo() const {
   return graph_transfer_info_;
 }

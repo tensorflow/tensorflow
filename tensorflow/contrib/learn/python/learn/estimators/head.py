@@ -605,11 +605,11 @@ class _BinaryLogisticHead(_SingleHead):
         logits = nn.bias_add(logits, centered_bias)
 
       predictions = self._logits_to_predictions(logits)
-      weight_tensor = _weight_tensor(features, self.weight_column_name)
       loss = None
       train_op = None
       eval_metric_ops = None
       if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+        weight_tensor = _weight_tensor(features, self.weight_column_name)
         labels_tensor = _to_labels_tensor(labels, self._label_name)
         loss, weighted_average_loss = _loss(
             self._loss_fn(logits, labels_tensor), weight_tensor)
@@ -796,11 +796,11 @@ class _MultiClassHead(_SingleHead):
         logits = nn.bias_add(logits, centered_bias)
 
       predictions = self._logits_to_predictions(logits)
-      weight_tensor = _weight_tensor(features, self.weight_column_name)
       loss = None
       train_op = None
       eval_metric_ops = None
       if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+        weight_tensor = _weight_tensor(features, self.weight_column_name)
         labels_tensor = _to_labels_tensor(labels, self._label_name,
                                           self._logits_dimension)
         loss, weighted_average_loss = _loss(

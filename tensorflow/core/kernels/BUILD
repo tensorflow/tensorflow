@@ -3773,6 +3773,7 @@ filegroup(
             "decode_gif_op.*",
             "identity_reader_op.*",
             "reader_base.*",
+            "remote_fused_graph_execute_op.*",
             "fixed_length_record_reader_op.*",
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
@@ -4195,6 +4196,50 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "remote_fused_graph_ops",
+    prefix = "remote_fused_graph_ops",
+    deps = [
+        ":remote_fused_graph_execute_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
+        "//tensorflow/core/kernels/hexagon:graph_transferer",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_execute_op",
+    srcs = ["remote_fused_graph_execute_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/hexagon:graph_transferer",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_ops_test",
+    size = "small",
+    srcs = [
+        "remote_fused_graph_execute_op_test.cc",
+    ],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":remote_fused_graph_execute_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 if_mkl(
   tf_kernel_library(
       name = "mkl_ops",
@@ -4203,6 +4248,7 @@ if_mkl(
             "//third_party/mkl:intel_binary_blob",],
   )
 )
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 
