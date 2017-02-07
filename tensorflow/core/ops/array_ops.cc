@@ -575,7 +575,8 @@ REGISTER_OP("SplitV")
           else
             cumsum_outputs = split_dim_size + 1;
         }
-        if (cumsum_outputs != c->Value(c->Dim(input, split_dim)))
+        if (c->ValueKnown(c->Dim(input, split_dim)) &&
+            cumsum_outputs != c->Value(c->Dim(input, split_dim)))
           return errors::InvalidArgument(
               "Sum of output sizes must match "
               "the size of the original Tensor along the split dimension "
