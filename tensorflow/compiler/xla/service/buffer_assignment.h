@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -52,8 +53,12 @@ class BufferAllocation {
   // contiguously and can be used as array indexes.
   using Index = int64;
 
-  BufferAllocation(Index index, int64 size, bool is_thread_local)
-      : index_(index), size_(size), is_thread_local_(is_thread_local) {}
+  BufferAllocation(Index index, int64 size, bool is_thread_local,
+                   bool is_reusable)
+      : index_(index),
+        size_(size),
+        is_thread_local_(is_thread_local),
+        is_reusable_(is_reusable) {}
   ~BufferAllocation() {}
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
@@ -63,6 +68,9 @@ class BufferAllocation {
   // inside of a map or reduce computation. Such allocations need to be thread
   // local.
   bool is_thread_local() const { return is_thread_local_; }
+
+  // Whether this allocation can be used by more than one logical buffer.
+  bool is_reusable() const { return is_reusable_; }
 
   // Whether this allocation holds a LogicalBuffer from a parameter of the entry
   // computation. These buffers have lifetimes which may be longer than the
@@ -137,6 +145,9 @@ class BufferAllocation {
 
   // Whether this buffer needs to be thread-local.
   bool is_thread_local_;
+
+  // Whether this buffer is usable by more than one logical buffer.
+  bool is_reusable_;
 
   // Whether this allocation holds an entry computation parameter. Entry
   // computation parameters are special be cause they have lifetimes which may
@@ -232,10 +243,13 @@ class BufferAssignment {
   // assigned to it. `is_thread_local` indicates whether this buffer needs to be
   // thread-local.
   BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size,
-                                  bool is_thread_local);
+                                  bool is_thread_local, bool is_reusable);
 
-  // Adds a LogicalBuffer to the set assigned to the given allocation.
-  void AddAssignment(const LogicalBuffer& buffer, BufferAllocation* allocation);
+  // Adds a LogicalBuffer to the set assigned to the given allocation. If
+  // colocated_buffer is true, then the logical buffer is an alias of another
+  // buffer assigned to this allocation.
+  void AddAssignment(const LogicalBuffer& buffer, BufferAllocation* allocation,
+                     bool colocated_buffer);
 
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() { return *liveness_; }
@@ -273,10 +287,9 @@ class BufferAssigner {
   // will be colocated in the same allocation (i.e buffers for while result
   // will share an allocation with buffers related to that same while
   // instruction: init operand, condition/body parameter and body result).
-  using BufferSizeFunction = std::function<int64(const LogicalBuffer&)>;
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      BufferSizeFunction buffer_size, bool colocate_related_buffers,
+      LogicalBuffer::SizeFunction buffer_size, bool colocate_related_buffers,
       const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
 
   // Overload of Run which uses ShapeUtil::ByteSizeOf to determine buffer size
@@ -286,7 +299,7 @@ class BufferAssigner {
       int64 pointer_size);
 
  private:
-  explicit BufferAssigner(BufferSizeFunction buffer_size,
+  explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
                           bool colocate_related_buffers)
       : buffer_size_(std::move(buffer_size)),
         colocate_related_buffers_(colocate_related_buffers) {}
@@ -305,7 +318,10 @@ class BufferAssigner {
   // included.
   tensorflow::Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
-      const std::unordered_set<const HloInstruction*>* hlos_to_allocate,
+      const tensorflow::gtl::FlatSet<const HloInstruction*>* hlos_to_allocate,
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
+      const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
+          colocated_allocations,
       BufferAssignment* assignment);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
@@ -314,41 +330,40 @@ class BufferAssigner {
                          const LogicalBuffer& buffer,
                          BufferAssignment* assignment);
 
-  using ColocatedBufferSet = std::vector<const LogicalBuffer*>;
+  // Colocated buffers are logical buffers from different computations which
+  // alias. Explicitly handling these colocated buffers is necessary because
+  // points-to analysis is computation level scope and does not recognize
+  // aliasing across computations (b/32491382).
+  using ColocatedBufferSet = tensorflow::gtl::FlatSet<const LogicalBuffer*>;
 
   // Returns a vector of ColocatedBufferSet objects, where each
   // ColocatedBufferSet aggregates a set of related LogicalBuffers from 'module'
   // which should be colocated in the same buffer allocation.
-  std::vector<ColocatedBufferSet> BuildColocatedBufferSets(
-      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis);
+  void BuildColocatedBufferSets(
+      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   // For each buffer set in 'colocated_buffer_sets', assigns all buffers in the
   // same set to the same buffer allocation in 'assignment'.
   void AssignColocatedBufferSets(
       const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
-      BufferAssignment* assignment);
+      BufferAssignment* assignment,
+      tensorflow::gtl::FlatSet<const LogicalBuffer*>* colocated_buffers,
+      tensorflow::gtl::FlatSet<BufferAllocation::Index>* colocated_allocations);
 
-  // Checks that points-to set of 'instruction' is unambiguous and distinct
-  // (ensured by CopyInsertion), then adds buffer from point-to set at 'index'
-  // to 'colocated_buffer_set'.
-  void AddBufferToColocatedBufferSet(
-      const HloInstruction* instruction, const ShapeIndex& index,
-      const TuplePointsToAnalysis& points_to_analysis,
-      BufferAssigner::ColocatedBufferSet* colocated_buffer_set);
+  // Adds the 'colocated_set' of buffers to 'colocated_buffer_sets', maintaining
+  // the invariant that all sets in 'colocated_buffer_sets' are disjoint.
+  void AddSetToColocatedBufferSets(
+      const std::vector<const LogicalBuffer*>& colocated_set,
+      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   const HloModule* module_;
 
   // Function which returns the buffer size for a given shape.
-  BufferSizeFunction buffer_size_;
+  LogicalBuffer::SizeFunction buffer_size_;
 
   // Indicates whether related buffers should share the same buffer allocation.
   const bool colocate_related_buffers_;
-
-  // Set of colocated buffers populated in AssignColocatedBufferSets.
-  std::unordered_set<const LogicalBuffer*> colocated_buffers_;
-
-  // Set of allocations containing colocated buffers.
-  std::unordered_set<BufferAllocation::Index> colocated_buffer_allocations_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

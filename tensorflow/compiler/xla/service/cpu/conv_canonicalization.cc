@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace cpu {
@@ -133,10 +134,10 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       // reshape the output back to the shape of the original convolution. This
       // is done by apply the inverse permutation of the collapsing order of the
       // input reshape.
-      module->entry_computation()->ReplaceWithNewInstruction(
-          hlo,
-          HloInstruction::CreateTranspose(
-              hlo->shape(), new_conv, InversePermutation(new_input_dim_order)));
+      TF_RETURN_IF_ERROR(module->entry_computation()->ReplaceWithNewInstruction(
+          hlo, HloInstruction::CreateTranspose(
+                   hlo->shape(), new_conv,
+                   InversePermutation(new_input_dim_order))));
       changed = true;
     }
   }

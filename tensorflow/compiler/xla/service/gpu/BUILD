@@ -176,6 +176,7 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -365,6 +366,39 @@ cc_library(
 )
 
 cc_library(
+    name = "fusion_merger",
+    srcs = ["fusion_merger.cc"],
+    hdrs = ["fusion_merger.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:instruction_fusion",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "fusion_merger_test",
+    srcs = ["fusion_merger_test.cc"],
+    deps = [
+        ":fusion_merger",
+        ":instruction_fusion",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "pad_insertion",
     srcs = ["pad_insertion.cc"],
     hdrs = ["pad_insertion.h"],
@@ -386,6 +420,7 @@ cc_library(
     deps = [
         ":convolution_folding",
         ":copy_insertion",
+        ":fusion_merger",
         ":gpu_executable",
         ":hlo_schedule",
         ":instruction_fusion",
@@ -506,10 +541,12 @@ cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
     deps = [
+        ":instruction_fusion",
         ":while_transformer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",

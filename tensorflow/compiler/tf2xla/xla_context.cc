@@ -133,10 +133,12 @@ Status XlaContext::CollectResults(
     int* num_nonconst_outputs) {
   mutex_lock l(mu_);
 
-  bool return_singleton = (1 == retval_.size());
-
   xla::ComputationDataHandle handle;
-  if (return_singleton) {
+  if (retval_.empty() && has_side_effects_) {
+    // Build a empty tuple return value for computations that have side effects
+    // but have no return values.
+    handle = builder().Tuple({});
+  } else if (retval_.size() == 1) {
     handle = retval_[0].second;
 
     // TODO(b/31775371): to workaround bug, add a no-op computation that is
@@ -147,29 +149,26 @@ Status XlaContext::CollectResults(
     // Ensure that the retval is returned even if another computation
     // was mistakenly placed on the ComputationBuilder.
     TF_CHECK_OK(builder().SetReturnValue(handle));
-  } else {
-    if (!retval_.empty()) {
-      // There is at least one data-dependent expression: combine them
-      // into a Tuple in index order before compiling.
-      VLOG(1) << "Making the retval tuple.";
-      std::sort(retval_.begin(), retval_.end(),
-                [](const std::pair<int, xla::ComputationDataHandle>& a,
-                   const std::pair<int, xla::ComputationDataHandle>& b) {
-                  return a.first < b.first;
-                });
-      std::vector<xla::ComputationDataHandle> elems;
-      elems.reserve(retval_.size());
-      for (const std::pair<int, xla::ComputationDataHandle>& r : retval_) {
-        elems.push_back(r.second);
-      }
-      // Make a tuple from the vector of handles.
-      handle = builder().Tuple(elems);
+  } else if (retval_.size() > 1) {
+    // There is at least one data-dependent expression: combine them
+    // into a Tuple in index order before compiling.
+    VLOG(1) << "Making the retval tuple.";
+    std::sort(retval_.begin(), retval_.end(),
+              [](const std::pair<int, xla::ComputationDataHandle>& a,
+                 const std::pair<int, xla::ComputationDataHandle>& b) {
+                return a.first < b.first;
+              });
+    std::vector<xla::ComputationDataHandle> elems;
+    elems.reserve(retval_.size());
+    for (const std::pair<int, xla::ComputationDataHandle>& r : retval_) {
+      elems.push_back(r.second);
     }
+    // Make a tuple from the vector of handles.
+    handle = builder().Tuple(elems);
   }
 
-  if (handle.handle() > 0 || has_side_effects_) {
-    // Build the full computation. The return value is the handle
-    // constructed above.
+  if (handle.handle() > 0) {
+    // Builds the XLA computation.
     xla::StatusOr<xla::Computation> computation_status = builder().Build();
     if (!computation_status.ok()) {
       return computation_status.status();
@@ -192,10 +191,12 @@ Status XlaContext::CollectResults(
 
 XlaContext::XlaContext(XlaCompiler* compiler, xla::Client* client,
                        const string& computation_name,
-                       bool allow_cpu_custom_calls)
+                       bool allow_cpu_custom_calls,
+                       bool resolve_compile_time_constants)
     : compiler_(compiler),
       xla_builder_(client, computation_name),
-      allow_cpu_custom_calls_(allow_cpu_custom_calls) {}
+      allow_cpu_custom_calls_(allow_cpu_custom_calls),
+      resolve_compile_time_constants_(resolve_compile_time_constants) {}
 
 const xla::ComputationDataHandle&
 XlaContext::GetOrCreateRuntimeContextParameter() {
@@ -227,11 +228,16 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
                                   const xla::Literal& literal) {
   VLOG(1) << "Adding retval index " << retval_index
           << " with non-data-dependent tensor to XLA computation";
-  ConstRetVal value;
-  value.index = retval_index;
-  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value.value));
-  mutex_lock l(mu_);
-  compile_time_constant_.push_back(std::move(value));
+  if (resolve_compile_time_constants_) {
+    ConstRetVal value;
+    value.index = retval_index;
+    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value.value));
+    mutex_lock l(mu_);
+    compile_time_constant_.push_back(std::move(value));
+  } else {
+    mutex_lock l(mu_);
+    retval_.emplace_back(retval_index, xla_builder_.ConstantLiteral(literal));
+  }
   return Status::OK();
 }
 

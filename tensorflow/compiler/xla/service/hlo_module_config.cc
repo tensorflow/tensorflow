@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
+#include <atomic>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -24,29 +25,31 @@ limitations under the License.
 
 namespace xla {
 
+using tensorflow::strings::StrAppend;
+
 HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape)
     : entry_computation_layout_(program_shape) {}
 
 string HloModuleConfig::compilation_cache_key() const {
   string key = tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled_,
-                                           "::", "hybrid=", has_hybrid_result_);
-  tensorflow::strings::StrAppend(&key, "::(");
+                                           "::hybrid=", has_hybrid_result_);
+  StrAppend(&key, "::(");
   std::vector<string> params;
   for (const ShapeLayout& param_layout :
        entry_computation_layout_.parameter_layouts()) {
-    params.push_back(param_layout.shape().SerializeAsString());
+    params.push_back(param_layout.shape().DebugString());
   }
-  tensorflow::strings::StrAppend(
-      &key, tensorflow::str_util::Join(params, ", "), ") => ",
-      entry_computation_layout_.result_shape().SerializeAsString());
-  if (seed_ != 0) {
+  StrAppend(&key, tensorflow::str_util::Join(params, ", "), ") => ",
+            entry_computation_layout_.result_shape().SerializeAsString());
+  if (seed() != 0) {
     // TODO(b/32083678): force recompilation to reset global state.
-    static int counter = 0;
-    tensorflow::strings::StrAppend(&key, "forcing recompile ", counter++);
+    static std::atomic<int> counter{0};
+    StrAppend(&key, "forcing recompile ", counter++);
   }
   if (replica_count() != 1) {
-    tensorflow::strings::StrAppend(&key, "::replica_count=", replica_count());
+    StrAppend(&key, "::replica_count=", replica_count());
   }
+  StrAppend(&key, "::fast_math_disabled=", fast_math_disabled_);
   return key;
 }
 

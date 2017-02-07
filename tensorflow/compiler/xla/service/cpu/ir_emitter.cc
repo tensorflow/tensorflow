@@ -73,9 +73,7 @@ IrEmitter::IrEmitter(
       hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module_config) {
-  llvm::FastMathFlags fast_math_flags;
-  llvm_ir::SetFastMathFlags(&fast_math_flags);
-  ir_builder_.setFastMathFlags(fast_math_flags);
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -406,9 +404,14 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // TODO(b/34359662): Implement outfeed on CPU.
+  return Unimplemented("Outfeed is not supported on CPU (b/34359662).");
+}
+
 Status IrEmitter::HandleSort(HloInstruction* sort, HloInstruction* operand) {
   // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("sort");
+  return Unimplemented("Sort is not supported on GPU (b/26783907).");
 }
 
 Status IrEmitter::HandleTuple(
@@ -1139,6 +1142,18 @@ Status IrEmitter::HandleRecv(HloInstruction* recv) {
 }
 
 Status IrEmitter::HandlePad(HloInstruction* pad) {
+  // CPU backend does not properly handle negative padding but this is ok
+  // because negative padding should be removed by the algebraic simplifier.
+  for (auto& padding_dimension : pad->padding_config().dimensions()) {
+    if (padding_dimension.edge_padding_low() < 0 ||
+        padding_dimension.edge_padding_high() < 0) {
+      return Unimplemented(
+          "Negative padding not supported in the CPU backend (b/34628603); "
+          "this should have been eliminated at the HLO level: %s",
+          pad->padding_config().ShortDebugString().c_str());
+    }
+  }
+
   // First, fill in the padding value to all output elements.
   TF_RETURN_IF_ERROR(EmitTargetElementLoop(
       pad, [this, pad](const llvm_ir::IrArray::Index& target_index) {

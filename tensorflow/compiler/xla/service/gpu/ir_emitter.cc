@@ -58,9 +58,7 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->temp_buffer_offsets(), &ir_builder_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  llvm::FastMathFlags fast_math_flags;
-  llvm_ir::SetFastMathFlags(&fast_math_flags);
-  ir_builder_.setFastMathFlags(fast_math_flags);
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
@@ -571,7 +569,11 @@ Status IrEmitter::HandleCustomCall(
 }
 
 Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+  return Unimplemented("Infeed is not supported on GPU (b/30467474).");
+}
+
+Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  return Unimplemented("Outfeed is not supported on GPU (b/34359662).");
 }
 
 Status IrEmitter::HandleRng(HloInstruction* random,
