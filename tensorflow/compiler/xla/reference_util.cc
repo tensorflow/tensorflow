@@ -335,18 +335,38 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
                                  result_dimensions[2], result_dimensions[3]);
   result->Fill(0.0);
 
+  const auto is_int32 = [](int64 x) {
+    return x >= std::numeric_limits<int32>::min() &&
+           x <= std::numeric_limits<int32>::max();
+  };
+
+  // 64-bit idiv/mod are much more expensive x86-64 than 32-bit idiv/imod (at
+  // least on x86-64), so we avoid them where possible.
+  const auto fast_idiv64 = [&](int64 a, int64 b) {
+    if (is_int32(a) && is_int32(b)) {
+      return static_cast<int64>(static_cast<int32>(a) / static_cast<int32>(b));
+    }
+    return a / b;
+  };
+  const auto fast_imod64 = [&](int64 a, int64 b) {
+    if (is_int32(a) && is_int32(b)) {
+      return static_cast<int64>(static_cast<int32>(a) % static_cast<int32>(b));
+    }
+    return a % b;
+  };
+
   // Lambda to access the lhs operand at the given 4D index.
   const auto lhs_element = [&](int64 batch, int64 feature, int64 height,
                                int64 width) {
-    if (height % dy != 0 || width % dx != 0) {
+    if (fast_imod64(height, dy) != 0 || fast_imod64(width, dx) != 0) {
       return 0.0f;
     }
 
     std::array<int64, 4> index;
     index[dnums.batch_dimension()] = batch;
     index[dnums.feature_dimension()] = feature;
-    index[dnums.spatial_dimensions(0)] = height / dy;
-    index[dnums.spatial_dimensions(1)] = width / dx;
+    index[dnums.spatial_dimensions(0)] = fast_idiv64(height, dy);
+    index[dnums.spatial_dimensions(1)] = fast_idiv64(width, dx);
     return lhs(index[0], index[1], index[2], index[3]);
   };
 
@@ -354,13 +374,13 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   const auto rhs_element = [&](int64 kernel_output_feature,
                                int64 kernel_input_feature, int64 height,
                                int64 width) {
-    CHECK_EQ(height % dky, 0);
-    CHECK_EQ(width % dkx, 0);
+    CHECK_EQ(fast_imod64(height, dky), 0);
+    CHECK_EQ(fast_imod64(width, dkx), 0);
     std::array<int64, 4> index;
     index[dnums.kernel_output_feature_dimension()] = kernel_output_feature;
     index[dnums.kernel_input_feature_dimension()] = kernel_input_feature;
-    index[dnums.kernel_spatial_dimensions(0)] = height / dky;
-    index[dnums.kernel_spatial_dimensions(1)] = width / dkx;
+    index[dnums.kernel_spatial_dimensions(0)] = fast_idiv64(height, dky);
+    index[dnums.kernel_spatial_dimensions(1)] = fast_idiv64(width, dkx);
     return rhs(index[0], index[1], index[2], index[3]);
   };
 
