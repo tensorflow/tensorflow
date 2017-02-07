@@ -41,7 +41,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
   // operand HLOs are already bound to avoid rebinding the same HLO.
   std::set<const HloInstruction*> already_bound_for_this_function;
   auto arg_iter = function->arg_begin();
-  for (const auto* io_hlo : io_hlos) {
+  for (const HloInstruction* io_hlo : io_hlos) {
     if (!already_bound_for_this_function.count(io_hlo)) {
       if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {
         BindHloToIrValue(*io_hlo, EmitGetTupleElement(io_hlo, &*arg_iter));
@@ -56,7 +56,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
   temp_buffer_base_ = &*arg_iter;
   temp_buffer_base_->setName("temp_buffer");
 
-  for (auto* non_io_hlo : non_io_hlos) {
+  for (const HloInstruction* non_io_hlo : non_io_hlos) {
     if (already_bound_for_this_function.count(non_io_hlo)) {
       continue;
     }
@@ -65,13 +65,13 @@ void HloToIrBindings::EmitBasePointersForHlos(
     if (non_io_hlo->opcode() == HloOpcode::kGetTupleElement) {
       if (!is_nested_) {
         // Lookup allocation GetTupleElement operand.
-        const BufferAllocation* allocation =
+        const BufferAllocation::Slice slice =
             buffer_assignment_
-                ->GetUniqueTopLevelAllocation(LatestNonGteAncestor(non_io_hlo))
+                ->GetUniqueTopLevelSlice(LatestNonGteAncestor(non_io_hlo))
                 .ConsumeValueOrDie();
         // We are not in a nested context, so check non-thread-local allocation.
-        CHECK(!allocation->is_thread_local());
-        int64 offset = temp_buffer_offsets_->GetOffset(allocation->index());
+        CHECK(!slice.allocation()->is_thread_local());
+        const int64 offset = slice.offset();
         CHECK_NE(nullptr, temp_buffer_base_);
         // Emit IR for GetTupleElement instruction and bind to emitted value.
         llvm::Value* base_ptr = ir_builder_->CreateInBoundsGEP(
@@ -89,15 +89,15 @@ void HloToIrBindings::EmitBasePointersForHlos(
     // A non-IO HLO with a buffer is bound to
     // (1) an alloca if it is thread-local, or
     // (2) an internal pointer in temp_buffer_base according to its offset.
-    const BufferAllocation* allocation =
-        buffer_assignment_->GetUniqueTopLevelAllocation(non_io_hlo)
+    const BufferAllocation::Slice slice =
+        buffer_assignment_->GetUniqueTopLevelSlice(non_io_hlo)
             .ConsumeValueOrDie();
-    if (allocation->is_thread_local()) {
+    if (slice.allocation()->is_thread_local()) {
       llvm::Type* pointee_type =
           llvm_ir::ShapeToIrType(non_io_hlo->shape(), ir_builder_);
       BindHloToIrValue(*non_io_hlo, ir_builder_->CreateAlloca(pointee_type));
     } else {
-      int64 offset = temp_buffer_offsets_->GetOffset(allocation->index());
+      const int64 offset = slice.offset();
       CHECK_NE(nullptr, temp_buffer_base_);
       BindHloToIrValue(*non_io_hlo,
                        ir_builder_->CreateInBoundsGEP(

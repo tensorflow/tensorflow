@@ -256,6 +256,9 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
 
 namespace {
 
+// Align buffers to 16-byte boundaries.
+constexpr int64 kMemoryAlignment = 16;
+
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& execution_options) {
   llvm::TargetOptions target_options;
@@ -322,7 +325,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(hlo_module.get(),
                             MakeUnique<DependencyHloOrdering>(hlo_module.get()),
-                            pointer_size));
+                            pointer_size, kMemoryAlignment));
 
     // If we are using the parallel CPU backend, we need to create map from
     // HloInstruction to the corresponding generated function name.
@@ -348,7 +351,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       }
       // The parallel preparation should have ensured that the top-level
       // computation consists solely of Call instructions.
-      TF_RET_CHECK(instruction->opcode() == HloOpcode::kCall);
+      TF_RET_CHECK(instruction->opcode() == HloOpcode::kCall)
+          << hlo_module->ToString();
       HloComputation* to_apply = instruction->to_apply();
       parallel_computations.emplace(to_apply, instruction);
     }
@@ -414,7 +418,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(hlo_module.get(),
                             MakeUnique<SequentialHloOrdering>(hlo_module.get(),
                                                               module_sequence),
-                            pointer_size));
+                            pointer_size, kMemoryAlignment));
 
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
@@ -574,11 +578,11 @@ CpuCompiler::CompileAheadOfTime(
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(hlo_module, MakeUnique<SequentialHloOrdering>(
-                                            hlo_module, module_sequence),
-                            pointer_size));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
+                        BufferAssigner::Run(hlo_module,
+                                            MakeUnique<SequentialHloOrdering>(
+                                                hlo_module, module_sequence),
+                                            pointer_size, kMemoryAlignment));
 
     IrEmitter ir_emitter(*hlo_module, *module_config, *assignment, &llvm_module,
                          /*hlo_to_profile_idx=*/nullptr);
@@ -627,12 +631,12 @@ CpuCompiler::CompileAheadOfTime(
       buffer_sizes.push_back(allocation.size());
     }
 
-    TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                        assignment->GetUniqueTopLevelOutputAllocation());
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment->GetUniqueTopLevelOutputSlice());
 
     results.emplace_back(MakeUnique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_sizes),
-        result_allocation->index()));
+        result_slice.index()));
   }
   return std::move(results);
 }

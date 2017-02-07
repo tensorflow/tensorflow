@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
@@ -427,4 +428,25 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, true, &output_tensor_info);
 }
+
+TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
+  GraphDef def = CreateAddGraphDef();
+  GraphTransferer::InputNodeInfo input_node_info_a;
+  input_node_info_a.name = NAME_A;
+  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
+  input_node_info_a.tensor.scalar<float>()() = 1.0f;
+  GraphTransferer::InputNodeInfo input_node_info_b;
+  input_node_info_b.name = NAME_B;
+  input_node_info_b.tensor = Tensor(DT_FLOAT, {});
+  input_node_info_b.tensor.scalar<float>()() = 10.0f;
+  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a,
+                                                           input_node_info_b};
+  std::vector<string> outputs = {NAME_A_PLUS_B};
+
+  GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
+      "remote_fused_graph_execute_node", inputs, outputs, def, &gt_);
+
+  EXPECT_EQ(3, fused_graph_def.node_size());
+}
+
 }  // namespace tensorflow

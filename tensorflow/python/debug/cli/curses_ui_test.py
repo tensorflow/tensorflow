@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import argparse
 import curses
+import os
 import tempfile
 
 import numpy as np
@@ -219,6 +220,13 @@ class MockCursesUI(curses_ui.CursesUI):
 class CursesTest(test_util.TensorFlowTestCase):
 
   _EXIT = string_to_codes("exit\n")
+
+  def tearDown(self):
+    history_file_path = os.path.join(
+        os.path.expanduser("~"),
+        debugger_cli_common.CommandHistory._HISTORY_FILE_NAME)
+    if os.path.isfile(history_file_path):
+      os.remove(history_file_path)
 
   def _babble(self, args, screen_info=None):
     ap = argparse.ArgumentParser(

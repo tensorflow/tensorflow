@@ -80,16 +80,13 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('test.md', parser.documentation_path('test'))
     self.assertEqual('test/module.md', parser.documentation_path('test.module'))
 
-  def test_documentation_path_empty(self):
-    self.assertEqual('index.md', parser.documentation_path(''))
-
   def test_replace_references(self):
-    string = 'A @{reference}, another @{tf.reference}, and a @{third}.'
+    string = 'A @{reference}, another @{reference}, and a @{third}.'
     duplicate_of = {'third': 'fourth'}
     result = parser.replace_references(string, '../..', duplicate_of)
     self.assertEqual(
         'A [`reference`](../../reference.md), another '
-        '[`tf.reference`](../../reference.md), '
+        '[`reference`](../../reference.md), '
         'and a [`third`](../../fourth.md).',
         result)
 
@@ -109,7 +106,8 @@ class ParserTest(googletest.TestCase):
 
     docs = parser.generate_markdown(full_name='TestClass', py_object=TestClass,
                                     duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+                                    index=index, tree=tree, reverse_index={},
+                                    base_dir='/')
 
     # Make sure all required docstrings are present.
     self.assertTrue(inspect.getdoc(TestClass) in docs)
@@ -146,7 +144,8 @@ class ParserTest(googletest.TestCase):
 
     docs = parser.generate_markdown(full_name='TestModule', py_object=module,
                                     duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+                                    index=index, tree=tree, reverse_index={},
+                                    base_dir='/')
 
     # Make sure all required docstrings are present.
     self.assertTrue(inspect.getdoc(module) in docs)
@@ -174,7 +173,8 @@ class ParserTest(googletest.TestCase):
     docs = parser.generate_markdown(full_name='test_function',
                                     py_object=test_function,
                                     duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+                                    index=index, tree=tree, reverse_index={},
+                                    base_dir='/')
 
     # Make sure docstring shows up.
     self.assertTrue(inspect.getdoc(test_function) in docs)
@@ -198,7 +198,8 @@ class ParserTest(googletest.TestCase):
     docs = parser.generate_markdown(full_name='test_function_with_args_kwargs',
                                     py_object=test_function_with_args_kwargs,
                                     duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+                                    index=index, tree=tree, reverse_index={},
+                                    base_dir='/')
 
     # Make sure docstring shows up.
     self.assertTrue(inspect.getdoc(test_function_with_args_kwargs) in docs)
@@ -222,7 +223,7 @@ class ParserTest(googletest.TestCase):
         full_name='test_function_for_markdown_reference',
         py_object=test_function_for_markdown_reference,
         duplicate_of={}, duplicates={},
-        index=index, tree=tree, base_dir='/')
+        index=index, tree=tree, reverse_index={}, base_dir='/')
 
     # Make sure docstring shows up and is properly processed.
     expected_docs = parser.replace_references(
@@ -244,7 +245,7 @@ class ParserTest(googletest.TestCase):
         full_name='test_function',
         py_object=test_function_with_fancy_docstring,
         duplicate_of={}, duplicates={},
-        index=index, tree=tree, base_dir='/')
+        index=index, tree=tree, reverse_index={}, base_dir='/')
 
     expected = '\n'.join([
         'Function with a fancy docstring.',
@@ -278,8 +279,7 @@ class ParserTest(googletest.TestCase):
         'TestModule.test_function': 'test_function'
     }
 
-    docs = parser.generate_global_index('TestLibrary', 'test',
-                                        index=index,
+    docs = parser.generate_global_index('TestLibrary', index=index,
                                         duplicate_of=duplicate_of)
 
     # Make sure duplicates and non-top-level symbols are in the index, but

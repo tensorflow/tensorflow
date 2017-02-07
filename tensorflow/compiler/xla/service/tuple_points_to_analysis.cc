@@ -33,9 +33,10 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat("BufferAlias(", instruction_->name(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "] => ", buffer_->ToString(), ")");
+  return tensorflow::strings::StrCat(
+      "BufferAlias(", instruction_->parent()->name(),
+      "::", instruction_->name(), "[", tensorflow::str_util::Join(index_, ","),
+      "] => ", buffer_->ToString(), ")");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -453,9 +454,11 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
 string TuplePointsToAnalysis::ToString() const {
   string output = tensorflow::strings::Printf(
       "TuplePointsToSet for module %s:\n", module_->name().c_str());
-  for (auto& computation : module_->computations()) {
-    tensorflow::strings::StrAppend(&output, "computation ",
-                                   computation->name().c_str(), ":\n");
+  for (const auto& computation : module_->computations()) {
+    const char* entry =
+        computation.get() == module_->entry_computation() ? "entry " : "";
+    tensorflow::strings::StrAppend(&output, entry, "computation ",
+                                   computation->name(), ":\n");
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       tensorflow::strings::StrAppend(&output, "  instruction ",
@@ -475,19 +478,15 @@ string TuplePointsToAnalysis::ToString() const {
             return Status::OK();
           }));
     }
-    for (auto& buffer : logical_buffers_) {
-      tensorflow::strings::StrAppend(&output, "  buffer ", buffer->ToString(),
-                                     ":\n");
-      for (const BufferAlias& buffer_alias : buffer_aliases_.at(buffer.get())) {
-        tensorflow::strings::StrAppend(&output, "    alias ",
-                                       buffer_alias.ToString(), "\n");
-      }
-    }
   }
-
   tensorflow::strings::StrAppend(&output, "LogicalBuffers:\n");
-  for (const auto& buffer : logical_buffers_) {
-    tensorflow::strings::StrAppend(&output, "  ", buffer->ToString());
+  for (auto& buffer : logical_buffers_) {
+    tensorflow::strings::StrAppend(&output, "  buffer ", buffer->ToString(),
+                                   ":\n");
+    for (const BufferAlias& buffer_alias : buffer_aliases_.at(buffer.get())) {
+      tensorflow::strings::StrAppend(&output, "    alias ",
+                                     buffer_alias.ToString(), "\n");
+    }
   }
   return output;
 }

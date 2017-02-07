@@ -72,7 +72,8 @@ public final class Tensor implements AutoCloseable {
    * }</pre>
    *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
-   *     system.
+   *     system, or if obj does not disambiguate between multiple DataTypes. In that case, consider
+   *     using {@link #create(DataType, long[], ByteBuffer)} instead.
    */
   public static Tensor create(Object obj) {
     Tensor t = new Tensor();

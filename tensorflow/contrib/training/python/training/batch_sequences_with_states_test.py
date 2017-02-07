@@ -92,11 +92,12 @@ class BatchSequencesWithStatesTest(test.TestCase):
                   expected_seq1_batch1, expected_seq2_batch1,
                   expected_seq1_batch2, expected_seq2_batch2,
                   expected_seq3_batch1, expected_seq3_batch2,
-                  expected_seq4_batch1, expected_seq4_batch2):
+                  expected_seq4_batch1, expected_seq4_batch2,
+                  key=None, make_keys_unique=False):
 
     with self.test_session() as sess:
       next_batch = sqss.batch_sequences_with_states(
-          input_key=self.key,
+          input_key=key if key is not None else self.key,
           input_sequences=self.sequences,
           input_context=self.context,
           input_length=length,
@@ -107,7 +108,9 @@ class BatchSequencesWithStatesTest(test.TestCase):
           # to enforce that we only move on to the next examples after finishing
           # all segments of the first ones.
           capacity=2,
-          pad=pad)
+          pad=pad,
+          make_keys_unique=make_keys_unique,
+          make_keys_unique_seed=9)
 
       state1 = next_batch.state("state1")
       state2 = next_batch.state("state2")
@@ -197,7 +200,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
       coord.request_stop()
       coord.join(threads, stop_grace_period_secs=2)
 
-  def _testBasicPadding(self, pad):
+  def _testBasicPadding(self, pad, key=None, make_keys_unique=False):
     num_unroll = 2  # Divisor of value_length - so no padding necessary.
     expected_seq1_batch1 = np.tile(
         self.sequences["seq1"][np.newaxis, 0:num_unroll, :],
@@ -272,13 +275,20 @@ class BatchSequencesWithStatesTest(test.TestCase):
         expected_seq3_batch1=expected_seq3_batch1,
         expected_seq3_batch2=expected_seq3_batch2,
         expected_seq4_batch1=expected_seq4_batch1,
-        expected_seq4_batch2=expected_seq4_batch2)
+        expected_seq4_batch2=expected_seq4_batch2,
+        key=key,
+        make_keys_unique=make_keys_unique)
 
   def testBasicPadding(self):
     self._testBasicPadding(pad=True)
 
   def testBasicNoPadding(self):
     self._testBasicPadding(pad=False)
+
+  def testRandomKeyGen(self):
+    self._testBasicPadding(pad=False,
+                           key=constant_op.constant("fixed_key"),
+                           make_keys_unique=True)
 
   def testNotAMultiple(self):
     num_unroll = 3  # Not a divisor of value_length -
