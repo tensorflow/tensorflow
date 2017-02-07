@@ -279,6 +279,7 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantization_utils_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_and_dequantize_op_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_down_and_shrink_range_op_test.cc"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/graph_transferer_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantized_activation_ops_test.cc"

@@ -90,7 +90,9 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
       # not working on windows yet
+      "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
+      "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute_op*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
   )
