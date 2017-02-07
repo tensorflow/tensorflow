@@ -446,7 +446,7 @@ def remove_control_inputs(op, cops):
 
 
 def add_control_inputs(op, cops):
-  """Add the control inputs cops to co.
+  """Add the control inputs cops to op.
 
   Warning: this function is directly manipulating the internals of the tf.Graph.
 
@@ -462,8 +462,8 @@ def add_control_inputs(op, cops):
   cops = util.make_list_of_op(cops, allow_graph=False)
   for cop in cops:
     if cop in op.control_inputs:
-      raise ValueError("{} is already a control_input of {}".format(op.name,
-                                                                    cop.name))
+      raise ValueError("{} is already a control_input of {}".format(cop.name,
+                                                                    op.name))
   # pylint: disable=protected-access
   op._control_inputs += cops
   op._recompute_node_def()
