@@ -9,6 +9,9 @@ This library contains a Java API capable of loading TensorFlow graphs and
 performing inference on Android. See [TensorFlowImageClassifier.java](../../examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
 in the [TensorFlow Android Camera Demo](../../examples/android) for an example.
 
+It also contains a Java class (`RunStats`) for summarizing performance
+of operations during graph execution.
+
 With both the native .so library and the Java JAR (or AAR which combines both),
 you will have everything you need to use TensorFlow for inference in your
 Android app. Note that training is not supported through this interface; for
