@@ -56,7 +56,7 @@ _summary_writer = _sentinel_summary_writer
 # Map from the tensorboard_logging logging enum values to the proto's enum
 # values.
 _LEVEL_PROTO_MAP = {
-    DEBUG: event_pb2.LogMessage.DEBUG,
+    DEBUG: event_pb2.LogMessage.DEBUGGING,
     INFO: event_pb2.LogMessage.INFO,
     WARN: event_pb2.LogMessage.WARN,
     ERROR: event_pb2.LogMessage.ERROR,
