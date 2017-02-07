@@ -49,7 +49,7 @@ def char_cnn_model(features, target):
   """Character level convolutional neural network model to predict classes."""
   target = tf.one_hot(target, 15, 1, 0)
   byte_list = tf.reshape(
-      tf.one_hot(features, 256, 1, 0), [-1, MAX_DOCUMENT_LENGTH, 256, 1])
+      tf.one_hot(features, 256), [-1, MAX_DOCUMENT_LENGTH, 256, 1])
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
     conv1 = tf.contrib.layers.convolution2d(
