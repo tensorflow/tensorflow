@@ -75,8 +75,6 @@ class DocGeneratorVisitorTest(googletest.TestCase):
         [('index', doc_generator_visitor.DocGeneratorVisitor.index),
          ('index2', doc_generator_visitor.DocGeneratorVisitor.index)])
 
-    duplicate_of, duplicates = visitor.find_duplicates()
-
     # The shorter path should be master, or if equal, the lexicographically
     # first will be.
     self.assertEqual(
@@ -91,7 +89,7 @@ class DocGeneratorVisitorTest(googletest.TestCase):
              'DocGeneratorVisitor2.index',
              'DocGeneratorVisitor2.index2'
          ]),
-        }, duplicates)
+        }, visitor.duplicates)
     self.assertEqual({
         'submodule.DocGeneratorVisitor': 'DocGeneratorVisitor2',
         'submodule.DocGeneratorVisitor.index': 'DocGeneratorVisitor2.index',
@@ -100,8 +98,12 @@ class DocGeneratorVisitorTest(googletest.TestCase):
         'submodule2.DocGeneratorVisitor.index': 'DocGeneratorVisitor2.index',
         'submodule2.DocGeneratorVisitor.index2': 'DocGeneratorVisitor2.index',
         'DocGeneratorVisitor2.index2': 'DocGeneratorVisitor2.index'
-    }, duplicate_of)
-
+    }, visitor.duplicate_of)
+    self.assertEqual({
+        id(doc_generator_visitor.DocGeneratorVisitor): 'DocGeneratorVisitor2',
+        id(doc_generator_visitor.DocGeneratorVisitor.index):
+        'DocGeneratorVisitor2.index',
+    }, visitor.reverse_index)
 
 if __name__ == '__main__':
   googletest.main()

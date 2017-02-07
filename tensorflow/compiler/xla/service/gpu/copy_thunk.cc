@@ -21,7 +21,7 @@ namespace xla {
 namespace gpu {
 
 CopyThunk::CopyThunk(const void* source_address,
-                     BufferAllocation::Index destination_buffer,
+                     const BufferAllocation::Slice& destination_buffer,
                      uint64 mem_size, const HloInstruction* hlo_instruction)
     : Thunk(Kind::kCopy, hlo_instruction),
       source_address_(source_address),

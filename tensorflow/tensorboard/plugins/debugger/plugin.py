@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import json
 
 from werkzeug import wrappers
@@ -32,8 +33,14 @@ PLUGIN_PREFIX_ROUTE = 'debugger'
 # HTTP routes.
 _HEALTH_PILLS_ROUTE = '/health_pills'
 
-# The POST key value of the HEALTH_PILLS_ROUTE for a JSON list of node names.
+# The POST key of HEALTH_PILLS_ROUTE for a JSON list of node names.
 _NODE_NAMES_POST_KEY = 'node_names'
+
+# The POST key of HEALTH_PILLS_ROUTE for the run to retrieve health pills for.
+_RUN_POST_KEY = 'run'
+
+# The default run to retrieve health pills for.
+_DEFAULT_RUN = '.'
 
 
 class DebuggerPlugin(base_plugin.TBPlugin):
@@ -42,6 +49,14 @@ class DebuggerPlugin(base_plugin.TBPlugin):
   That data could include health pills, which unveil the status of tensor
   values.
   """
+
+  def __init__(self, event_multiplexer):
+    """Constructs a plugin for serving TensorFlow debugger data.
+
+    Args:
+      event_multiplexer: Organizes data from events files.
+    """
+    self._event_multiplexer = event_multiplexer
 
   def get_plugin_apps(self, unused_run_paths, unused_logdir):
     """Obtains a mapping between routes and handlers.
@@ -62,10 +77,6 @@ class DebuggerPlugin(base_plugin.TBPlugin):
   def _serve_health_pills_handler(self, request):
     """A (wrapped) werkzeug handler for serving health pills.
 
-    NOTE(chizeng): This handler is currently not useful and does not behave as
-    expected. It currently merely responds with the provided list of op names
-    (instead of the health pills for those ops). Very soon, that will change.
-
     We defer to another method for actually performing the main logic because
     the @wrappers.Request.application decorator makes this logic hard to access
     in tests.
@@ -82,14 +93,26 @@ class DebuggerPlugin(base_plugin.TBPlugin):
     """Responds with health pills.
 
     Accepts POST requests and responds with health pills. Specifically, the
-    handler expects a "node_names" POST data key. The value of that key should
-    be a JSON-ified list of node names for which the client would like to
-    request health pills. This data is sent via POST instead of GET because URL
-    length is limited.
+    handler expects a required "node_names" and an optional "run" POST data key.
+    The value of the "node_names" key should be a JSON-ified list of node names
+    for which the client would like to request health pills. The value of the
+    "run" key (which defaults to ".") should be the run to retrieve health pills
+    for. This data is sent via POST (not GET) because URL length is limited.
 
     This handler responds with a JSON-ified object mapping from node names to a
-    list of HealthPillEvents. Node names for which there are no health pills to
-    be found are excluded from the mapping.
+    list of health pill event objects, each of which has these properties.
+
+    {
+        'wall_time': float,
+        'step': int,
+        'node_name': string,
+        'output_slot': int,
+        # A list of 12 floats that summarizes the elements of the tensor.
+        'value': float[],
+    }
+
+    Node names for which there are no health pills to be found are excluded from
+    the mapping.
 
     Args:
       request: The request issued by the client for health pills.
@@ -125,5 +148,20 @@ class DebuggerPlugin(base_plugin.TBPlugin):
           '%s is not a JSON list of node names:', jsonified_node_names)
       return wrappers.Response(status=400)
 
-    # TODO(chizeng): Actually respond with the health pills per node name.
-    return http_util.Respond(request, node_names, mimetype='application/json')
+    mapping = collections.defaultdict(list)
+    run = request.form.get(_RUN_POST_KEY, _DEFAULT_RUN)
+    for node_name in node_names:
+      try:
+        pill_events = self._event_multiplexer.HealthPills(run, node_name)
+        for pill_event in pill_events:
+          mapping[node_name].append({
+              'wall_time': pill_event[0],
+              'step': pill_event[1],
+              'node_name': pill_event[2],
+              'output_slot': pill_event[3],
+              'value': pill_event[4],
+          })
+      except KeyError:
+        logging.info('No health pills found for node %s.', node_name)
+
+    return http_util.Respond(request, mapping, 'application/json')

@@ -535,6 +535,14 @@ class ResidualWrapper(RNNCell):
     """
     self._cell = cell
 
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  @property
+  def output_size(self):
+    return self._cell.output_size
+
   def __call__(self, inputs, state, scope=None):
     """Run the cell and add its inputs to its outputs.
 
@@ -550,11 +558,15 @@ class ResidualWrapper(RNNCell):
       TypeError: If cell inputs and outputs have different structure (type).
       ValueError: If cell inputs and outputs have different structure (value).
     """
-    output, new_state = self._cell(inputs, state, scope=scope)
-    nest.assert_same_structure(inputs, output)
-    res_output = nest.map_structure(
-        lambda inp, out: inp + out, inputs, output)
-    return (res_output, new_state)
+    outputs, new_state = self._cell(inputs, state, scope=scope)
+    nest.assert_same_structure(inputs, outputs)
+    # Ensure shapes match
+    def assert_shape_match(inp, out):
+      inp.get_shape().assert_is_compatible_with(out.get_shape())
+    nest.map_structure(assert_shape_match, inputs, outputs)
+    res_outputs = nest.map_structure(
+        lambda inp, out: inp + out, inputs, outputs)
+    return (res_outputs, new_state)
 
 
 class DeviceWrapper(RNNCell):

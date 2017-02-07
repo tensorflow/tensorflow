@@ -376,6 +376,14 @@ tf_gen_op_wrappers_cc(
     visibility = ["//tensorflow:internal"],
 )
 
+tf_gen_op_wrappers_cc(
+    name = "remote_fused_graph_ops",
+    op_lib_names = [
+        "remote_fused_graph_ops",
+    ],
+    pkg = "//tensorflow/core",
+)
+
 cc_library_with_android_deps(
     name = "cc_op_gen_main",
     srcs = [

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import os
 import re
 import sre_constants
 import traceback
@@ -959,6 +960,8 @@ class TabCompletionRegistry(object):
 class CommandHistory(object):
   """Keeps command history and supports lookup."""
 
+  _HISTORY_FILE_NAME = ".tfdbg_history"
+
   def __init__(self, limit=100):
     """CommandHistory constructor.
 
@@ -969,6 +972,33 @@ class CommandHistory(object):
 
     self._commands = []
     self._limit = limit
+    self._history_file_path = os.path.join(os.path.expanduser("~"),
+                                           self._HISTORY_FILE_NAME)
+    self._load_history_from_file()
+
+  def _load_history_from_file(self):
+    if os.path.isfile(self._history_file_path):
+      try:
+        with open(self._history_file_path, "rt") as history_file:
+          commands = history_file.readlines()
+        self._commands = [command.strip() for command in commands
+                          if command.strip()]
+
+        # Limit the size of the history file.
+        if len(self._commands) > self._limit:
+          self._commands = self._commands[-self._limit:]
+          with open(self._history_file_path, "wt") as history_file:
+            for command in self._commands:
+              history_file.write(command + "\n")
+      except IOError:
+        print("WARNING: writing history file failed.")
+
+  def _add_command_to_history_file(self, command):
+    try:
+      with open(self._history_file_path, "at") as history_file:
+        history_file.write(command + "\n")
+    except IOError:
+      pass
 
   def add_command(self, command):
     """Add a command to the command history.
@@ -980,6 +1010,10 @@ class CommandHistory(object):
       TypeError: if command is not a str.
     """
 
+    if self._commands and command == self._commands[-1]:
+      # Ignore repeating commands in a row.
+      return
+
     if not isinstance(command, str):
       raise TypeError("Attempt to enter non-str entry to command history")
 
@@ -987,6 +1021,8 @@ class CommandHistory(object):
 
     if len(self._commands) > self._limit:
       self._commands = self._commands[-self._limit:]
+
+    self._add_command_to_history_file(command)
 
   def most_recent_n(self, n):
     """Look up the n most recent commands.

@@ -14,6 +14,6 @@
 
 package tensorflow
 
-// #cgo LDFLAGS: -L${SRCDIR}/../../bazel-bin/tensorflow -ltensorflow
+// #cgo LDFLAGS: -ltensorflow
 // #cgo CFLAGS: -I${SRCDIR}/../../
 import "C"

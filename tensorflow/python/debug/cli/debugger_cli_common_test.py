@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import stat
 import tempfile
 
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -905,6 +906,13 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._cmd_hist = debugger_cli_common.CommandHistory(limit=3)
+    self._history_file_path = os.path.join(
+        os.path.expanduser("~"),
+        debugger_cli_common.CommandHistory._HISTORY_FILE_NAME)
+
+  def tearDown(self):
+    if os.path.isfile(self._history_file_path):
+      os.remove(self._history_file_path)
 
   def testLookUpMostRecent(self):
     self.assertEqual([], self._cmd_hist.most_recent_n(3))
@@ -958,6 +966,63 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         TypeError, "Attempt to enter non-str entry to command history"):
       self._cmd_hist.add_command(["print_tensor node_a:0"])
+
+  def testRepeatingCommandsDoNotGetLoggedRepeatedly(self):
+    self._cmd_hist.add_command("help")
+    self._cmd_hist.add_command("help")
+
+    self.assertEqual(["help"], self._cmd_hist.most_recent_n(2))
+
+  def testCommandHistoryFileIsCreated(self):
+    self.assertFalse(os.path.isfile(self._history_file_path))
+    self._cmd_hist.add_command("help")
+    self.assertTrue(os.path.isfile(self._history_file_path))
+    with open(self._history_file_path, "rt") as f:
+      self.assertEqual(["help\n"], f.readlines())
+
+  def testLoadingCommandHistoryFileObeysLimit(self):
+    self._cmd_hist.add_command("help 1")
+    self._cmd_hist.add_command("help 2")
+    self._cmd_hist.add_command("help 3")
+    self._cmd_hist.add_command("help 4")
+
+    cmd_hist_2 = debugger_cli_common.CommandHistory(limit=3)
+    self.assertEqual(["help 2", "help 3", "help 4"],
+                     cmd_hist_2.most_recent_n(3))
+
+    with open(self._history_file_path, "rt") as f:
+      self.assertEqual(
+          ["help 2\n", "help 3\n", "help 4\n"], f.readlines())
+
+  def testCommandHistoryHandlesReadingIOErrorGracoiusly(self):
+    with open(self._history_file_path, "wt") as f:
+      f.write("help\n")
+
+    # Change file to not readable by anyone.
+    os.chmod(self._history_file_path, 0)
+
+    # The creation of a CommandHistory object should not error out.
+    debugger_cli_common.CommandHistory(limit=3)
+
+  def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
+    with open(self._history_file_path, "wt") as f:
+      f.write("help\n")
+
+    # Change file to read-only.
+    os.chmod(self._history_file_path,
+             stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+
+    # Reading from the file should still work.
+    cmd_hist_2 = debugger_cli_common.CommandHistory(limit=3)
+    self.assertEqual(["help"], cmd_hist_2.most_recent_n(1))
+
+    # Writing should no longer work, but it should fail silently and
+    # the within instance-command history should still work.
+    cmd_hist_2.add_command("foo")
+    self.assertEqual(["help", "foo"], cmd_hist_2.most_recent_n(2))
+
+    cmd_hist_3 = debugger_cli_common.CommandHistory(limit=3)
+    self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
 
 
 class MenuNodeTest(test_util.TensorFlowTestCase):

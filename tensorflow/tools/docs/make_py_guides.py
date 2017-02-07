@@ -35,7 +35,6 @@ def _md_files_in_dir(input_dir):
 def _main(input_dir, output_dir):
   """Convert all the files in `input_dir` and write results to `output_dir`."""
   visitor = generate.extract()
-  duplicate_of, unused_duplicates = visitor.find_duplicates()
 
   # Make output_dir.
   try:
@@ -53,7 +52,7 @@ def _main(input_dir, output_dir):
     print('Processing %s...' % base_name)
     md_string = open(full_path).read()
     output = parser.replace_references(
-        md_string, relative_path_to_root, duplicate_of)
+        md_string, relative_path_to_root, visitor.duplicate_of)
     open(os.path.join(output_dir, base_name), 'w').write(output)
   print('Done.')
 
