@@ -1104,17 +1104,14 @@ Constructs a `ResidualWrapper` for `cell`.
 
 #### `tf.contrib.rnn.ResidualWrapper.output_size` {#ResidualWrapper.output_size}
 
-Integer or TensorShape: size of outputs produced by this cell.
+
 
 
 - - -
 
 #### `tf.contrib.rnn.ResidualWrapper.state_size` {#ResidualWrapper.state_size}
 
-size(s) of state(s) used by this cell.
 
-It can be represented by an Integer, a TensorShape or a tuple of Integers
-or TensorShapes.
 
 
 - - -
