@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import argparse
 import curses
-import os
 import tempfile
 
 import numpy as np
@@ -80,6 +79,11 @@ class MockCursesUI(curses_ui.CursesUI):
     self.toasts = []
 
     curses_ui.CursesUI.__init__(self)
+
+    # Override the default path to the command history file to avoid test
+    # concurrency issues.
+    self._command_history_store = debugger_cli_common.CommandHistory(
+        history_file_path=tempfile.mktemp())
 
   # Below, override the _screen_ prefixed member methods that interact with the
   # actual terminal, so that the mock can run in a terminal-less environment.
@@ -220,13 +224,6 @@ class MockCursesUI(curses_ui.CursesUI):
 class CursesTest(test_util.TensorFlowTestCase):
 
   _EXIT = string_to_codes("exit\n")
-
-  def tearDown(self):
-    history_file_path = os.path.join(
-        os.path.expanduser("~"),
-        debugger_cli_common.CommandHistory._HISTORY_FILE_NAME)
-    if os.path.isfile(history_file_path):
-      os.remove(history_file_path)
 
   def _babble(self, args, screen_info=None):
     ap = argparse.ArgumentParser(

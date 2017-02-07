@@ -962,18 +962,20 @@ class CommandHistory(object):
 
   _HISTORY_FILE_NAME = ".tfdbg_history"
 
-  def __init__(self, limit=100):
+  def __init__(self, limit=100, history_file_path=None):
     """CommandHistory constructor.
 
     Args:
       limit: Maximum number of the most recent commands that this instance
         keeps track of, as an int.
+      history_file_path: (str) Manually specified path to history file. Used in
+        testing.
     """
 
     self._commands = []
     self._limit = limit
-    self._history_file_path = os.path.join(os.path.expanduser("~"),
-                                           self._HISTORY_FILE_NAME)
+    self._history_file_path = (
+        history_file_path or self._get_default_history_file_path())
     self._load_history_from_file()
 
   def _load_history_from_file(self):
@@ -999,6 +1001,10 @@ class CommandHistory(object):
         history_file.write(command + "\n")
     except IOError:
       pass
+
+  @classmethod
+  def _get_default_history_file_path(cls):
+    return os.path.join(os.path.expanduser("~"), cls._HISTORY_FILE_NAME)
 
   def add_command(self, command):
     """Add a command to the command history.
