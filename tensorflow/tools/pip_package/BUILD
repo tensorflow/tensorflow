@@ -92,6 +92,7 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
+        "@nccl_archive//:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
