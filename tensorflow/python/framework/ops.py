@@ -2899,7 +2899,8 @@ class Graph(object):
       A context manager that installs `name` as a new name scope.
 
     Raises:
-      ValueError: If `name` is not a valid scope name. The rules are the
+      ValueError: If `name` is not a valid scope name, according to the rules
+        above.
     """
     if name:
       if self._name_stack:
