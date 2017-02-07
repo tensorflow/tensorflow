@@ -976,6 +976,12 @@ cc_library(
     name = "android_tensorflow_test_lib",
     testonly = 1,
     srcs = if_android([":android_test_srcs"]),
+    hdrs = [
+        "framework/fake_input.h",
+        "framework/shape_inference_testutil.h",
+        "framework/tensor_testutil.h",
+        "util/reporter.h",
+    ],
     copts = tf_copts() + ["-Os"],
     tags = [
         "manual",
