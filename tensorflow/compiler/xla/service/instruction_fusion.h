@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -38,11 +38,12 @@ bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer);
 // with the intent that the loops which compute their values will be fused in
 // code generation. Derived classes define ShouldFuse method to select which
 // instructions to fuse.
-class InstructionFusion : public HloPass {
+class InstructionFusion : public HloPassInterface {
  public:
   explicit InstructionFusion(bool may_duplicate = true)
-      : HloPass("fusion"), may_duplicate_(may_duplicate) {}
+      : may_duplicate_(may_duplicate) {}
   ~InstructionFusion() override {}
+  tensorflow::StringPiece name() const override { return "fusion"; }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
