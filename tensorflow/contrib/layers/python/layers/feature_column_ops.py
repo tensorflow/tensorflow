@@ -558,8 +558,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       except ValueError as ee:
         raise ValueError('Error creating weighted sum for column: {}.\n'
                          '{}'.format(column.name, ee))
-      output_tensors.append(array_ops.reshape(
-          predictions, shape=(-1, num_outputs)))
+      output_tensors.append(predictions)
       column_to_variable[column] = variable
       _log_variable(variable)
       _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)

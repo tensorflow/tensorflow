@@ -490,7 +490,7 @@ class ConcatOpTest(test.TestCase):
       scalar = constant_op.constant(7)
       dim = array_ops.placeholder(dtypes.int32)
       with self.assertRaisesRegexp(
-          ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
+          ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
         array_ops.concat([scalar, scalar, scalar], dim)
 
   # important as gpu implementation could fail if
