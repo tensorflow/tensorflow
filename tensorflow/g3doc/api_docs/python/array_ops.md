@@ -3134,13 +3134,6 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 ## Other Functions and Classes
 - - -
 
-### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
-
-
-
-
-- - -
-
 ### `tf.contrib.graph_editor.copy(sgv, dst_graph=None, dst_scope='', src_scope='', reuse_dst_scope=False)` {#copy}
 
 Copy a subgraph.
