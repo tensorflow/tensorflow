@@ -418,7 +418,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       inp = constant(1.0, shape=[100, 32], name="in")
       out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
         _ = gradients.gradients(out, inp)
 
 
