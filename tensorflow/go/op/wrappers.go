@@ -4723,6 +4723,35 @@ func Cumsum(scope *Scope, x tf.Output, axis tf.Output, optional ...CumsumAttr) (
 	return op.Output(0)
 }
 
+// Produces the max pool of the input tensor for quantized types.
+//
+// Arguments:
+//	input: The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
+//	min_input: The float value that the lowest quantized input value represents.
+//	max_input: The float value that the highest quantized input value represents.
+//	ksize: The size of the window for each dimension of the input tensor.
+// The length must be 4 to match the number of dimensions of the input.
+//	strides: The stride of the sliding window for each dimension of the input
+// tensor. The length must be 4 to match the number of dimensions of the input.
+//	padding: The type of padding algorithm to use.
+//
+// Returns The float value that the lowest quantized output value represents.The float value that the highest quantized output value represents.
+func QuantizedMaxPool(scope *Scope, input tf.Output, min_input tf.Output, max_input tf.Output, ksize []int64, strides []int64, padding string) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	opspec := tf.OpSpec{
+		Type: "QuantizedMaxPool",
+		Input: []tf.Input{
+			input, min_input, max_input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // Performs 3D average pooling on the input.
 //
 // Arguments:
@@ -6730,21 +6759,6 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "Acos",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes exponential of x element-wise.  \\(y = e^x\\).
-func Exp(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Exp",
 		Input: []tf.Input{
 			x,
 		},
@@ -15684,6 +15698,63 @@ func Ceil(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Computes exponential of x element-wise.  \\(y = e^x\\).
+func Exp(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Exp",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the Max along segments of a tensor.
+//
+// Read [the section on
+// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+// of segments.
+//
+// This operator is similar to the [unsorted segment sum operator](../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+// Instead of computing the sum over segments, it computes the maximum
+// such that:
+//
+// \\(output_i = \max_j data_j\\) where max is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,
+//  `output[i] = numeric_limits<T>::min()`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+// </div>
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+// first dimension.
+//
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `num_segments`.
+func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "UnsortedSegmentMax",
+		Input: []tf.Input{
+			data, segment_ids, num_segments,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns x + y element-wise.
 //
 // *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
@@ -20050,33 +20121,4 @@ func RestoreV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and
 		return
 	}
 	return tensors
-}
-
-// Produces the max pool of the input tensor for quantized types.
-//
-// Arguments:
-//	input: The 4D (batch x rows x cols x depth) Tensor to MaxReduce over.
-//	min_input: The float value that the lowest quantized input value represents.
-//	max_input: The float value that the highest quantized input value represents.
-//	ksize: The size of the window for each dimension of the input tensor.
-// The length must be 4 to match the number of dimensions of the input.
-//	strides: The stride of the sliding window for each dimension of the input
-// tensor. The length must be 4 to match the number of dimensions of the input.
-//	padding: The type of padding algorithm to use.
-//
-// Returns The float value that the lowest quantized output value represents.The float value that the highest quantized output value represents.
-func QuantizedMaxPool(scope *Scope, input tf.Output, min_input tf.Output, max_input tf.Output, ksize []int64, strides []int64, padding string) (output tf.Output, min_output tf.Output, max_output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
-	opspec := tf.OpSpec{
-		Type: "QuantizedMaxPool",
-		Input: []tf.Input{
-			input, min_input, max_input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
 }
