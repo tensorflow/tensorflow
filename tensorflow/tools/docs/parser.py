@@ -152,6 +152,27 @@ def replace_references(string, relative_path_to_root, duplicate_of):
                 string)
 
 
+# TODO(aselle): Collect these into a big list for all modules and functions
+# and make a rosetta stone page.
+def _handle_compatibility(doc):
+  """Parse and remove compatibility blocks from the main docstring.
+
+  Args:
+    doc: The docstring that contains compatibility notes"
+
+  Returns:
+    a tuple of the modified doc string and a hash that maps from compatibility
+    note type to the text of the note.
+  """
+  compatibility_notes = {}
+  match_compatibility = re.compile(r'[ \t]*@compatibility\((\w+)\)\s*\n'
+                                   r'((?:[^@\n]*\n)+)'
+                                   r'\s*@end_compatibility')
+  for f in match_compatibility.finditer(doc):
+    compatibility_notes[f.group(1)] = f.group(2)
+  return match_compatibility.subn(r'', doc)[0], compatibility_notes
+
+
 def _md_docstring(py_object, relative_path_to_root, duplicate_of):
   """Get the docstring from an object and make it into nice Markdown.
 
@@ -177,6 +198,9 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of):
   """
   # TODO(wicke): If this is a partial, use the .func docstring and add a note.
   raw_docstring = _get_raw_docstring(py_object)
+  raw_docstring = replace_references(raw_docstring, relative_path_to_root,
+                                     duplicate_of)
+  raw_docstring, compatibility = _handle_compatibility(raw_docstring)
   raw_lines = raw_docstring.split('\n')
 
   # Define regular expressions used during parsing below.
@@ -189,10 +213,9 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of):
 
   def is_section_start(i):
     # Previous line is empty, line i is "Word:", and next line is indented.
-    return (i > 0 and not raw_lines[i-1].strip() and
+    return (i > 0  and i < len(raw_lines) and not raw_lines[i-1].strip() and
             re.match(section_re, raw_lines[i]) and
             len(raw_lines) > i+1 and raw_lines[i+1].startswith('  '))
-
   for i, line in enumerate(raw_lines):
     if not in_special_section and is_section_start(i):
       in_special_section = True
@@ -210,13 +233,14 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of):
       lines.append(symbol_list_item_re.sub(r'* <b>`\1`</b>: ', line))
     else:
       lines.append(line)
-
   docstring = '\n'.join(lines)
-
+  sorted_keys = compatibility.keys()
+  sorted_keys.sort()
+  for key in sorted_keys:
+    value = compatibility[key]
+    docstring += ('\n\n#### %s compatibility\n%s\n' % (key, value))
   # TODO(deannarubin): Improve formatting for devsite
-  # TODO(deannarubin): Interpret @compatibility and other formatting notes.
-
-  return replace_references(docstring, relative_path_to_root, duplicate_of)
+  return docstring
 
 
 def _get_arg_spec(func):
