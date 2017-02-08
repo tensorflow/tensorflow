@@ -54,7 +54,7 @@ py_library(
 
 py_test(
     name = "server_test",
-    size = "small",
+    size = "medium",
     srcs = ["server_test.py"],
     data = ["//tensorflow/tensorboard:frontend"],
     srcs_version = "PY2AND3",
