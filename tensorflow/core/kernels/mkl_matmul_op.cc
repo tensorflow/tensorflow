@@ -28,9 +28,9 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename Device, typename T, bool USE_CUBLAS>
-class MatMulOpMKL : public OpKernel {
+class MklMatMulOp : public OpKernel {
  public:
-  explicit MatMulOpMKL(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit MklMatMulOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
   }
@@ -144,10 +144,10 @@ class MatMulOpMKL : public OpKernel {
 #define REGISTER_CPU(T)                                                      \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),              \
-      MatMulOpMKL<CPUDevice, T, false /* cublas, ignored for CPU */>);       \
+      MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);       \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("MKL"), \
-      MatMulOpMKL<CPUDevice, T, false /* cublas, ignored for CPU */>)
+      MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>)
 
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
