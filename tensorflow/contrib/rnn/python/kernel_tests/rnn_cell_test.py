@@ -95,7 +95,7 @@ class RNNCellTest(test.TestCase):
       input_size = 4
       feature_size = 2
       frequency_skip = 1
-      num_shifts = (input_size - feature_size) / frequency_skip + 1
+      num_shifts = (input_size - feature_size) // frequency_skip + 1
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
