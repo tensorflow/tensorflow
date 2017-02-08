@@ -1254,6 +1254,12 @@ installed, such as:
 $ pip install --upgrade protobuf
 ```
 
+Or (if you have protobuf installed with Homebrew):
+
+```bash
+$ brew upgrade protobuf
+```
+
 ### Mac OS X: Segmentation Fault when import tensorflow
 
 On Mac OS X, you might get the following error when importing tensorflow in python:
