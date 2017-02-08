@@ -14326,6 +14326,64 @@ op {
   is_stateful: true
 }
 op {
+  name: "RandomPoisson"
+  input_arg {
+    name: "shape"
+    description: "1-D integer tensor. Shape of independent samples to draw from each\ndistribution described by the shape parameters given in rate."
+    type_attr: "S"
+  }
+  input_arg {
+    name: "rate"
+    description: "A tensor in which each scalar is a \"rate\" parameter describing the\nassociated poisson distribution."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    description: "A tensor with shape `shape + shape(rate)`. Each slice\n`[:, ..., :, i0, i1, ...iN]` contains the samples drawn for\n`rate[i0, i1, ...iN]`. The dtype of the output matches the dtype of\nrate."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "S"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Outputs random values from the Poisson distribution(s) described by rate."
+  description: "This op uses two algorithms, depending on rate. If rate >= 10, then\nthe algorithm by Hormann is used to acquire samples via\ntransformation-rejection.\nSee http://www.sciencedirect.com/science/article/pii/0167668793909974.\n\nOtherwise, Knuth\'s algorithm is used to acquire samples via multiplying uniform\nrandom variables.\nSee Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer\nProgramming, Volume 2. Addison Wesley"
+  is_stateful: true
+}
+op {
   name: "RandomShuffle"
   input_arg {
     name: "value"
