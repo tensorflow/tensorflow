@@ -905,10 +905,9 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 class CommandHistoryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self._cmd_hist = debugger_cli_common.CommandHistory(limit=3)
-    self._history_file_path = os.path.join(
-        os.path.expanduser("~"),
-        debugger_cli_common.CommandHistory._HISTORY_FILE_NAME)
+    self._history_file_path = tempfile.mktemp()
+    self._cmd_hist = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
 
   def tearDown(self):
     if os.path.isfile(self._history_file_path):
@@ -986,7 +985,8 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     self._cmd_hist.add_command("help 3")
     self._cmd_hist.add_command("help 4")
 
-    cmd_hist_2 = debugger_cli_common.CommandHistory(limit=3)
+    cmd_hist_2 = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
     self.assertEqual(["help 2", "help 3", "help 4"],
                      cmd_hist_2.most_recent_n(3))
 
@@ -1002,7 +1002,8 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     os.chmod(self._history_file_path, 0)
 
     # The creation of a CommandHistory object should not error out.
-    debugger_cli_common.CommandHistory(limit=3)
+    debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
 
   def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
     with open(self._history_file_path, "wt") as f:
@@ -1013,7 +1014,8 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
              stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
 
     # Reading from the file should still work.
-    cmd_hist_2 = debugger_cli_common.CommandHistory(limit=3)
+    cmd_hist_2 = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
     self.assertEqual(["help"], cmd_hist_2.most_recent_n(1))
 
     # Writing should no longer work, but it should fail silently and
@@ -1021,8 +1023,14 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     cmd_hist_2.add_command("foo")
     self.assertEqual(["help", "foo"], cmd_hist_2.most_recent_n(2))
 
-    cmd_hist_3 = debugger_cli_common.CommandHistory(limit=3)
+    cmd_hist_3 = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
     self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
+
+    # Change the file to back to read-write.
+    os.chmod(self._history_file_path,
+             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
+              stat.S_IWGRP | stat.S_IWOTH))
 
 
 class MenuNodeTest(test_util.TensorFlowTestCase):

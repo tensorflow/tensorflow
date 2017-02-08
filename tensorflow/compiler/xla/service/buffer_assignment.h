@@ -324,11 +324,9 @@ class BufferAssignment {
                                   int64 alignment, bool is_thread_local,
                                   bool is_reusable);
 
-  // Adds a LogicalBuffer to the set assigned to the given allocation. If
-  // colocated_buffer is true, then the logical buffer is an alias of another
-  // buffer assigned to this allocation.
+  // Adds a LogicalBuffer to the set assigned to the given allocation.
   void AddAssignment(const LogicalBuffer& buffer, BufferAllocation* allocation,
-                     int64 size, int64 alignment, bool colocated_buffer);
+                     int64 size, int64 alignment);
 
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() { return *liveness_; }

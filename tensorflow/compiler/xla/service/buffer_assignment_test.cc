@@ -1023,6 +1023,75 @@ TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
             GetTopLevelAllocation(*assignment, sub_param));
 }
 
+TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
+  // Test a chain of calls with tuple output. The chain looks like:
+  // A: call(B, tuple(param))
+  // B: call(C, param)
+  // C: call(D, param)
+  // D: param
+  auto module = MakeUnique<HloModule>(TestName());
+  auto elem_shape = f32vec4_;
+  auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
+
+  auto d_builder = HloComputation::Builder(TestName() + "_d");
+  auto d_param = d_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "d_param"));
+  auto d_computation = d_builder.Build();
+
+  auto c_builder = HloComputation::Builder(TestName() + "_c");
+  auto c_param = c_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "c_param"));
+  auto c_call = c_builder.AddInstruction(
+      HloInstruction::CreateCall(tuple_shape, {c_param}, d_computation.get()));
+  auto c_computation = c_builder.Build();
+
+  auto b_builder = HloComputation::Builder(TestName() + "_b");
+  auto b_param = b_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "b_param"));
+  auto b_call = b_builder.AddInstruction(
+      HloInstruction::CreateCall(tuple_shape, {b_param}, c_computation.get()));
+  auto b_computation = b_builder.Build();
+
+  auto a_builder = HloComputation::Builder(TestName());
+  auto a_param = a_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, elem_shape, "param"));
+  auto a_tuple =
+      a_builder.AddInstruction(HloInstruction::CreateTuple({a_param}));
+  auto a_call = a_builder.AddInstruction(
+      HloInstruction::CreateCall(tuple_shape, {a_tuple}, b_computation.get()));
+  auto a_computation = a_builder.Build();
+
+  // Add the computations in an order that doesn't match the dependency
+  // post-order, to shake out more possible bugs.
+  module->AddEmbeddedComputation(std::move(d_computation));
+  module->AddEmbeddedComputation(std::move(c_computation));
+  module->AddEntryComputation(std::move(a_computation));
+  module->AddEmbeddedComputation(std::move(b_computation));
+
+  auto assignment = RunBufferAssignment(module.get());
+
+  // Buffers for call are co-located with the sub-computations.
+  EXPECT_EQ(GetAllocation(*assignment, a_call, /*index=*/{}),
+            GetAllocation(*assignment, b_call, /*index=*/{}));
+  EXPECT_EQ(GetAllocation(*assignment, b_call, /*index=*/{}),
+            GetAllocation(*assignment, c_call, /*index=*/{}));
+  EXPECT_EQ(GetAllocation(*assignment, c_call, /*index=*/{}),
+            GetAllocation(*assignment, d_param, /*index=*/{}));
+  EXPECT_EQ(GetAllocation(*assignment, a_call, /*index=*/{0}),
+            GetAllocation(*assignment, b_call, /*index=*/{0}));
+  EXPECT_EQ(GetAllocation(*assignment, b_call, /*index=*/{0}),
+            GetAllocation(*assignment, c_call, /*index=*/{0}));
+  EXPECT_EQ(GetAllocation(*assignment, c_call, /*index=*/{0}),
+            GetAllocation(*assignment, d_param, /*index=*/{0}));
+  // The parameters aren't aliased with anything.
+  EXPECT_TRUE(BuffersDistinct({a_param}, {b_param}, *assignment));
+  EXPECT_TRUE(BuffersDistinct({a_param}, {c_param}, *assignment));
+  EXPECT_TRUE(BuffersDistinct({a_param}, {d_param}, *assignment));
+  EXPECT_TRUE(BuffersDistinct({b_param}, {c_param}, *assignment));
+  EXPECT_TRUE(BuffersDistinct({b_param}, {d_param}, *assignment));
+  EXPECT_TRUE(BuffersDistinct({c_param}, {d_param}, *assignment));
+}
+
 TEST_F(BufferAssignmentTest, BitcastAsOutput) {
   // Test a computation which returns a bitcast value.
   auto builder = HloComputation::Builder(TestName());
