@@ -20,7 +20,7 @@ limitations under the License.
 
 using namespace tensorflow;
 
-REGISTER_OP("Fact")
+REGISTER_OP("MyFact")
     .Output("fact: string")
     .Doc(R"doc(
 Output a fact about factorials.
@@ -41,4 +41,4 @@ class FactOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("Fact").Device(DEVICE_CPU), FactOp);
+REGISTER_KERNEL_BUILDER(Name("MyFact").Device(DEVICE_CPU), FactOp);
