@@ -96,6 +96,7 @@ print(sess.run(var))
 @@random_crop
 @@multinomial
 @@random_gamma
+@@random_poisson
 @@set_random_seed
 """
 
