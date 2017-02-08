@@ -41,6 +41,20 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
       tools = ["@com_microsoft_typescript//:tsc"],
       **kwargs
   )
+  native.genrule(
+      name = name + "_typings",
+      srcs = _DEFAULT_TYPINGS + typings + srcs,
+      outs = [src[:-3] + ".d.ts" for src in srcs],
+      cmd = "$(location @com_microsoft_typescript//:tsc)" +
+            " --inlineSourceMap" +
+            " --inlineSources" +
+            " --outDir $(@D)" +
+            " --declaration" +
+            " $(SRCS)",
+      tools = ["@com_microsoft_typescript//:tsc"],
+      **kwargs
+  )
+
 
 def tensorboard_ts_library(**kwargs):
   """Rules referencing this will be deleted from the codebase soon."""
