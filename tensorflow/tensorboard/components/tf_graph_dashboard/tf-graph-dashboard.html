@@ -98,14 +98,29 @@ out-hierarchy-params="{{_hierarchyParams}}"
 (function() {
 Polymer({
   is: 'tf-graph-dashboard',
+  behaviors: [
+    TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
+    TF.Backend.Behavior,
+  ],
   properties: {
     _datasets: Object,
     _renderHierarchy: Object,
     backend: {type: Object, observer: 'reload'},
+    debuggerDataEnabled: Boolean,
     runs: Array
   },
   reload: function() {
-    Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
+    let requestPromises = [
+        this.backend.graphRuns(),
+        this.backend.runMetadataRuns()];
+    if (this.debuggerDataEnabled && this._renderHierarchy) {
+      // Request debugger data on graph reloads.
+      requestPromises.push(this._renderHierarchy.getNamesOfRenderedOps());
+    }
+    // TODO(chizeng): Prevent the graph layout itself from refreshing when the reload button is hit.
+    // We should only update the data atop the graph such as debugger data. The graph itself does
+    // not change on successive reloads.
+    Promise.all(requestPromises)
     .then(function(result) {
       var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
       var runToMetadata = result[1];
