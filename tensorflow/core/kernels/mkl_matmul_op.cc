@@ -29,52 +29,6 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename Device, typename T, bool USE_CUBLAS>
 class MatMulOpMKL : public OpKernel {
-  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
-                   const int k, const float* a, const int lda, const float* b,
-                   const int ldb, float* c, const int ldc) {
-    const float alpha = 1.0f;
-    const float beta = 0.0f;
-    cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
-                ldb, beta, c, ldc);
-  }
-
-  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
-                   const int k, const double* a, const int lda, const double* b,
-                   const int ldb, double* c, const int ldc) {
-    const double alpha = 1.0;
-    const double beta = 0.0;
-    cblas_dgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
-                ldb, beta, c, ldc);
-  }
-
-  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
-                   const int k, const std::complex<float>* a, const int lda,
-                   const std::complex<float>* b, const int ldb,
-                   std::complex<float>* c, int const ldc) {
-    const MKL_Complex8 alpha = {1.0f, 0.0f};
-    const MKL_Complex8 beta = {0.0f, 0.0f};
-    cblas_cgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k,
-                static_cast<const void*>(&alpha), static_cast<const void*>(a),
-                lda, static_cast<const void*>(b), ldb,
-                static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
-  }
-
-  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
-                   const int k, const std::complex<double>* a, const int lda,
-                   const std::complex<double>* b, const int ldb,
-                   std::complex<double>* c, const int ldc) {
-    const MKL_Complex16 alpha = {1.0, 0.0};
-    const MKL_Complex16 beta = {0.0, 0.0};
-    cblas_zgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k,
-                static_cast<const void*>(&alpha), static_cast<const void*>(a),
-                lda, static_cast<const void*>(b), ldb,
-                static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
-  }
-
  public:
   explicit MatMulOpMKL(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
@@ -138,6 +92,53 @@ class MatMulOpMKL : public OpKernel {
  private:
   bool transpose_a_;
   bool transpose_b_;
+
+  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
+                   const int k, const float* a, const int lda, const float* b,
+                   const int ldb, float* c, const int ldc) {
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+    cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
+                transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
+                ldb, beta, c, ldc);
+  }
+
+  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
+                   const int k, const double* a, const int lda, const double* b,
+                   const int ldb, double* c, const int ldc) {
+    const double alpha = 1.0;
+    const double beta = 0.0;
+    cblas_dgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
+                transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
+                ldb, beta, c, ldc);
+  }
+
+  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
+                   const int k, const std::complex<float>* a, const int lda,
+                   const std::complex<float>* b, const int ldb,
+                   std::complex<float>* c, int const ldc) {
+    const MKL_Complex8 alpha = {1.0f, 0.0f};
+    const MKL_Complex8 beta = {0.0f, 0.0f};
+    cblas_cgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
+                transb ? CblasTrans : CblasNoTrans, m, n, k,
+                static_cast<const void*>(&alpha), static_cast<const void*>(a),
+                lda, static_cast<const void*>(b), ldb,
+                static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
+  }
+
+  void MklBlasGemm(bool transa, bool transb, const int m, const int n,
+                   const int k, const std::complex<double>* a, const int lda,
+                   const std::complex<double>* b, const int ldb,
+                   std::complex<double>* c, const int ldc) {
+    const MKL_Complex16 alpha = {1.0, 0.0};
+    const MKL_Complex16 beta = {0.0, 0.0};
+    cblas_zgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
+                transb ? CblasTrans : CblasNoTrans, m, n, k,
+                static_cast<const void*>(&alpha), static_cast<const void*>(a),
+                lda, static_cast<const void*>(b), ldb,
+                static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
+  }
+
 };
 
 #define REGISTER_CPU(T)                                                      \
