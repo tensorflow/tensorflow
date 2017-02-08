@@ -216,8 +216,7 @@ BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
   BufferAllocation::Index index = allocations_.size();
   allocations_.emplace_back(index, size, is_thread_local, is_reusable);
   BufferAllocation* allocation = &allocations_.back();
-  AddAssignment(buffer, allocation, size, alignment,
-                /*colocated_buffer=*/false);
+  AddAssignment(buffer, allocation, size, alignment);
   allocation_index_for_buffer_[&buffer] = index;
   return allocation;
 }
@@ -225,11 +224,10 @@ BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
 // Adds an instruction to the set assigned to the given buffer.
 void BufferAssignment::AddAssignment(const LogicalBuffer& buffer,
                                      BufferAllocation* allocation, int64 size,
-                                     int64 alignment, bool colocated_buffer) {
+                                     int64 alignment) {
   CHECK_EQ(0, allocation_index_for_buffer_.count(&buffer))
       << "LogicalBuffer " << buffer << " already has an allocation.";
-  CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty() ||
-        colocated_buffer)
+  CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty())
       << "Non-reusable allocation already assigned a buffer";
 
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
@@ -473,8 +471,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
   }
 
   assignment->AddAssignment(buffer, allocation, buffer_size_(buffer),
-                            alignment_(buffer),
-                            /*colocated_buffer=*/false);
+                            alignment_(buffer));
   return true;
 }
 
@@ -683,12 +680,14 @@ void BufferAssigner::AddSetToColocatedBufferSets(
   }
 
   // Find existing sets that overlap with at least one buffer from the
-  // colocated_set.
+  // colocated_set. The resulting 'overlap_set_indices' will have at most
+  // colocated_buffer_sets->size() entries, and will be in increasing order.
   std::vector<size_t> overlap_set_indices;
-  for (const LogicalBuffer* buffer : colocated_set) {
-    for (size_t index = 0; index < colocated_buffer_sets->size(); ++index) {
+  for (size_t index = 0; index < colocated_buffer_sets->size(); ++index) {
+    for (const LogicalBuffer* buffer : colocated_set) {
       if ((*colocated_buffer_sets)[index].count(buffer) > 0) {
         overlap_set_indices.push_back(index);
+        break;
       }
     }
   }
@@ -815,8 +814,7 @@ void BufferAssigner::AssignColocatedBufferSets(
         colocated_allocations->insert(allocation->index());
       } else {
         assignment->AddAssignment(*buffer, allocation, buffer_size_(*buffer),
-                                  alignment_(*buffer),
-                                  /*colocated_buffer=*/true);
+                                  alignment_(*buffer));
       }
       colocated_buffers->insert(buffer);
     }
