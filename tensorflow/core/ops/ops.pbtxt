@@ -7109,8 +7109,8 @@ op {
     name: "outputs"
     type: DT_FLOAT
   }
-  summary: "Fake-quantize the \'inputs\' tensor of type float and shape `[b, h, w, d]` via"
-  description: "global float scalars `min` and `max` to \'outputs\' tensor of same shape as\n`inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  summary: "Fake-quantize the \'inputs\' tensor of type float via global float scalars `min`"
+  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
 }
 op {
   name: "FakeQuantWithMinMaxVarsGradient"
@@ -11793,7 +11793,7 @@ op {
   }
   input_arg {
     name: "dense_defaults"
-    description: "A list of Ndense Tensors (some may be empty).\ndense_defaults[j] provides default values\nwhen the example\'s feature_map lacks dense_key[j].  If an empty Tensor is\nprovided for dense_defaults[j], then the Feature dense_keys[j] is required.\nThe input type is inferred from dense_defaults[j], even when it\'s empty.\nIf dense_defaults[j] is not empty, its shape must match dense_shapes[j]."
+    description: "A list of Ndense Tensors (some may be empty).\ndense_defaults[j] provides default values\nwhen the example\'s feature_map lacks dense_key[j].  If an empty Tensor is\nprovided for dense_defaults[j], then the Feature dense_keys[j] is required.\nThe input type is inferred from dense_defaults[j], even when it\'s empty.\nIf dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,\nthen the shape of dense_defaults[j] must match that of dense_shapes[j].\nIf dense_shapes[j] has an undefined major dimension (variable strides dense\nfeature), dense_defaults[j] must contain a single element:\nthe padding element."
     type_list_attr: "Tdense"
   }
   output_arg {
@@ -11852,7 +11852,7 @@ op {
   attr {
     name: "dense_shapes"
     type: "list(shape)"
-    description: "A list of Ndense shapes; the shapes of data in each Feature\ngiven in dense_keys.\nThe number of elements in the Feature corresponding to dense_key[j]\nmust always equal dense_shapes[j].NumEntries().\nIf dense_shapes[j] == (D0, D1, ..., DN) then the shape of output\nTensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):\nThe dense outputs are just the inputs row-stacked by batch."
+    description: "A list of Ndense shapes; the shapes of data in each Feature\ngiven in dense_keys.\nThe number of elements in the Feature corresponding to dense_key[j]\nmust always equal dense_shapes[j].NumEntries().\nIf dense_shapes[j] == (D0, D1, ..., DN) then the shape of output\nTensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):\nThe dense outputs are just the inputs row-stacked by batch.\nThis works for dense_shapes[j] = (-1, D1, ..., DN).  In this case\nthe shape of the output Tensor dense_values[j] will be\n(|serialized|, M, D1, .., DN), where M is the maximum number of blocks\nof elements of length D1 * .... * DN, across all minibatch entries\nin the input.  Any minibatch entry with less than M blocks of elements of\nlength D1 * ... * DN will be padded with the corresponding default_value\nscalar element along the second dimension."
     has_minimum: true
   }
   summary: "Transforms a vector of brain.Example protos (as strings) into typed tensors."
