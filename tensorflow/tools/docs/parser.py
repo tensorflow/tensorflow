@@ -547,7 +547,7 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
 
 
 _CODE_URL_PREFIX = (
-    'https://www.tensorflow.org/code/')
+    'https://www.tensorflow.org/code/tensorflow/')
 
 
 def generate_markdown(full_name, py_object,
@@ -629,7 +629,7 @@ def generate_markdown(full_name, py_object,
 
     # Never include links outside this code base.
     if not path.startswith('..'):
-      markdown += '\n\nDefined in [`%s`](%s%s).\n\n' % (
+      markdown += '\n\nDefined in [`tensorflow/%s`](%s%s).\n\n' % (
           path, _CODE_URL_PREFIX, path)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
     markdown += '\n\nThis is an alias for a Python built-in.'
