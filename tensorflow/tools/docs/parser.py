@@ -328,7 +328,9 @@ def _generate_signature(func, reverse_index):
       len(argspec.args or []) - len(argspec.defaults or []))
 
   # Python documentation skips `self` when printing method signatures.
-  first_arg = 1 if inspect.ismethod(func) and 'self' in argspec.args[:1] else 0
+  # Note we cannot test for ismethod here since unbound methods do not register
+  # as methods (in Python 3).
+  first_arg = 1 if 'self' in argspec.args[:1] else 0
 
   # Add all args without defaults.
   for arg in argspec.args[first_arg:first_arg_with_default]:
@@ -679,6 +681,15 @@ def generate_global_index(library_name, index, duplicate_of):
   for full_name, py_object in six.iteritems(index):
     if (inspect.ismodule(py_object) or inspect.isfunction(py_object) or
         inspect.isclass(py_object)):
+      # In Python 3, unbound methods are functions, so eliminate those.
+      if inspect.isfunction(py_object):
+        if full_name.count('.') == 0:
+          parent_name = ''
+        else:
+          parent_name = full_name[:full_name.rfind('.')]
+        if parent_name in index and inspect.isclass(index[parent_name]):
+          # Skip methods (=functions with class parents).
+          continue
       symbol_links.append((full_name,
                            _markdown_link(full_name, full_name,
                                           '.', duplicate_of)))

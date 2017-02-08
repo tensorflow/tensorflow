@@ -480,6 +480,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",

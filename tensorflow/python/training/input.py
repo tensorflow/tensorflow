@@ -64,7 +64,8 @@ def match_filenames_once(pattern, name=None):
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
     return variables.Variable(io_ops.matching_files(pattern), trainable=False,
-                              name=name, validate_shape=False)
+                              name=name, validate_shape=False,
+                              collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
 
 def limit_epochs(tensor, num_epochs=None, name=None):

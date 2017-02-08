@@ -13,7 +13,7 @@ and [Rust](https://github.com/tensorflow/rust).
 The command:
 
 ```sh
-bazel build -c opt //tensorflow/tools/lib_package:libtensorflow
+bazel build --config opt //tensorflow/tools/lib_package:libtensorflow
 ```
 
 produces `bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz`, which
