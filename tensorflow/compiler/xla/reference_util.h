@@ -144,6 +144,12 @@ class ReferenceUtil {
   static int64 WindowCount(int64 unpadded_width, int64 window_len, int64 stride,
                            Padding padding);
 
+  // Performs a 2D window reduction with Add as the function to apply.
+  static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
+      const Array2D<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+
   // Performs a 4D window reduction with Add as the function to apply.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
