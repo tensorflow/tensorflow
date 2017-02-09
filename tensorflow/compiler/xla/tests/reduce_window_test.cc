@@ -446,10 +446,16 @@ XLA_TEST_F(ReduceWindowTest, NonstandardReduceFunction) {
                         /*window_dimensions=*/{1, 1, 2, 1},
                         /*window_strides=*/{1, 1, 1, 1}, padding);
 
-  Array4D<float> expected(1, 2, 1, 1);
-  expected(0, 0, 0, 0) = 6;
-  expected(0, 1, 0, 0) = 8;
-  ComputeAndCompareR4<float>(&builder_, expected, {}, ErrorSpec(1e-3, 1e-3));
+  const auto reduce_func = [](float arg1, float arg2) {
+    return std::min<float>(arg1 + arg2, 8.0f);
+  };
+
+  auto expected =
+      ReferenceUtil::ReduceWindow4DGeneric(input_array, 3.0f, reduce_func,
+                                           /*window=*/{1, 1, 2, 1},
+                                           /*stride=*/{1, 1, 1, 1}, padding);
+
+  ComputeAndCompareR4<float>(&builder_, *expected, {}, ErrorSpec(1e-3, 1e-3));
 }
 
 }  // namespace
