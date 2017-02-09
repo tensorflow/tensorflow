@@ -172,8 +172,10 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
   return result;
 }
 
-/* static  */ std::unique_ptr<Array4D<float>> ReferenceUtil::ReduceWindow4DAdd(
+/* static */ std::unique_ptr<Array4D<float>>
+ReferenceUtil::ReduceWindow4DGeneric(
     const Array4D<float>& operand, float init,
+    const std::function<float(float, float)>& reduce_func,
     const tensorflow::gtl::ArraySlice<int64>& window,
     const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
   std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
@@ -210,8 +212,9 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
                       i1_base + i1_win < operand.n2() &&
                       i2_base + i2_win < operand.n3() &&
                       i3_base + i3_win < operand.n4()) {
-                    val += operand(i0_base + i0_win, i1_base + i1_win,
-                                   i2_base + i2_win, i3_base + i3_win);
+                    val = reduce_func(
+                        val, operand(i0_base + i0_win, i1_base + i1_win,
+                                     i2_base + i2_win, i3_base + i3_win));
                   }
                 }
               }
@@ -223,6 +226,15 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
     }
   }
   return result;
+}
+
+/* static  */ std::unique_ptr<Array4D<float>> ReferenceUtil::ReduceWindow4DAdd(
+    const Array4D<float>& operand, float init,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+  const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
+  return ReduceWindow4DGeneric(operand, init, add_reduce, window, stride,
+                               padding);
 }
 
 /* static  */ std::unique_ptr<Array4D<float>>
