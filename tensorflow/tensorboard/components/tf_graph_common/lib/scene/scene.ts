@@ -473,18 +473,18 @@ export function positionEllipse(ellipse, cx: number, cy: number,
  * Renders a health pill for an op atop a node.
  */
 function _addHealthPill(
-    nodeGroupElement: SVGElement, healthPills: HealthPill[],
+    nodeGroupElement: SVGElement, healthPill: HealthPill,
     nodeInfo: render.RenderGroupNodeInfo, colors: string[]) {
   // Check if text already exists at location.
   d3.select(nodeGroupElement.parentNode)
       .selectAll('.health-pill-group')
       .remove();
 
-  if (!nodeInfo || !healthPills || !healthPills.length) {
+  if (!nodeInfo || !healthPill) {
     return;
   }
 
-  let lastHealthPillData = healthPills[healthPills.length - 1].value;
+  let lastHealthPillData = healthPill.value;
 
   // For now, we only visualize the 6 values that summarize counts of tensor
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
@@ -492,10 +492,10 @@ function _addHealthPill(
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
-  let healthPill = document.createElementNS(svgNamespace, 'svg');
-  healthPill.classList.add('health-pill-group');
-  healthPill.setAttribute('width', String(healthPillWidth));
-  healthPill.setAttribute('height', String(healthPillHeight));
+  let healthPillSvg = document.createElementNS(svgNamespace, 'svg');
+  healthPillSvg.classList.add('health-pill-group');
+  healthPillSvg.setAttribute('width', String(healthPillWidth));
+  healthPillSvg.setAttribute('height', String(healthPillHeight));
 
   let totalCount = lastHealthPillData[1];
   // Create 1 rectangle for each category.
@@ -515,34 +515,38 @@ function _addHealthPill(
         'x', String(totalWidthDividedByTotalCount * totalCountSoFar));
     rect.setAttribute('fill', colors[i]);
     totalCountSoFar += lastHealthPillOverview[i];
-    Polymer.dom(healthPill).appendChild(rect);
+    Polymer.dom(healthPillSvg).appendChild(rect);
   }
 
   // Center this health pill just right above the node for the op.
-  healthPill.setAttribute(
+  healthPillSvg.setAttribute(
       'x', String(nodeInfo.x - healthPillWidth + nodeInfo.width / 2));
-  healthPill.setAttribute(
+  healthPillSvg.setAttribute(
       'y',
       String(nodeInfo.y - healthPillHeight - nodeInfo.coreBox.height / 2 - 2));
-  Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPill);
+  Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPillSvg);
 }
 
 /**
  * Adds health pills (which visualize tensor summaries) to a graph group.
  * @param svgRoot The root SVG element of the graph to add heath pills to.
- * @param nodeNamesToHealthPills An object mapping node names to health pills.
+ * @param nodeNamesToHealthPills An object mapping node name to health pill.
  * @param colors A list of colors to use.
  */
 export function addHealthPills(
-    svgRoot: SVGElement, nodeNamesToHealthPills: {[key: string]: HealthPill[]},
+    svgRoot: SVGElement, nodeNamesToHealthPill: {[key: string]: HealthPill},
     colors: string[]) {
-  let svgRootSelection = d3.select(svgRoot);
+  if (!nodeNamesToHealthPill) {
+    // No health pill information available.
+    return;
+  }
 
+  let svgRootSelection = d3.select(svgRoot);
   svgRootSelection.selectAll('g.nodeshape')
       .each(function(nodeInfo: render.RenderGroupNodeInfo) {
         // The element is the first item of a d3 selection.
         _addHealthPill(
-            this, nodeNamesToHealthPills[nodeInfo.node.name], nodeInfo, colors);
+            this, nodeNamesToHealthPill[nodeInfo.node.name], nodeInfo, colors);
       });
 };
 
