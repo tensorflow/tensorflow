@@ -495,6 +495,17 @@ class ModelVariablesTest(test.TestCase):
       self.assertEquals([a], variables_lib2.get_model_variables('A'))
       self.assertEquals([b], variables_lib2.get_model_variables('B'))
 
+  def testGetTrainableVariables(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        variables_lib2.local_variable([5])
+        a = variables_lib.Variable([5])
+      with variable_scope.variable_scope('B'):
+        variables_lib2.local_variable([5])
+        b = variables_lib.Variable([5])
+      self.assertEquals([a], variables_lib2.get_trainable_variables('A'))
+      self.assertEquals([b], variables_lib2.get_trainable_variables('B'))
+
   def testGetLocalVariables(self):
     with self.test_session():
       with variable_scope.variable_scope('A'):

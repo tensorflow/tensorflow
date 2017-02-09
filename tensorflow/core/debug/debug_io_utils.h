@@ -32,6 +32,13 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event);
 
 class DebugIO {
  public:
+  static Status PublishDebugMetadata(
+      const int64 global_step, const int64 session_run_count,
+      const int64 executor_step_count, const std::vector<string>& input_names,
+      const std::vector<string>& output_names,
+      const std::vector<string>& target_nodes,
+      const std::unordered_set<string>& debug_urls);
+
   // Publish a tensor to a debug target URL.
   //
   // Args:
@@ -59,7 +66,6 @@ class DebugIO {
 
   static Status CloseDebugURL(const string& debug_url);
 
- private:
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;
 };
@@ -172,18 +178,18 @@ class DebugGrpcIO {
                                             const string& debug_op,
                                             const Tensor& tensor,
                                             const uint64 wall_time_us,
-                                            const string& server_stream_addr);
+                                            const string& grpc_stream_url);
 
   // Send an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to CloseGrpcStream().
-  static Status SendEventProtoThroughGrpcStream(
-      const Event& event_proto, const string& server_stream_addr);
+  static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
+                                                const string& grpc_stream_url);
 
   // Close a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
-  static Status CloseGrpcStream(const string& server_stream_addr);
+  static Status CloseGrpcStream(const string& grpc_stream_url);
 
  private:
   static mutex streams_mu;

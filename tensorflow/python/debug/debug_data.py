@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import os
 
 import numpy as np
@@ -31,6 +32,7 @@ from tensorflow.python.platform import gfile
 
 
 METADATA_FILE_PREFIX = "_tfdbg_"
+CORE_METADATA_TAG = "core_metadata_"
 GRAPH_FILE_TAG = "graph_"
 FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
@@ -108,6 +110,10 @@ def parse_node_or_tensor_name(name):
     return node_name, output_slot
   else:
     return name, None
+
+
+def _is_core_metadata_file(file_name):
+  return file_name.startswith(METADATA_FILE_PREFIX + CORE_METADATA_TAG)
 
 
 def _is_graph_file(file_name):
@@ -272,6 +278,20 @@ def has_inf_or_nan(datum, tensor):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
   else:
     return False
+
+
+def extract_core_metadata_from_event_proto(event):
+  json_metadata = json.loads(event.log_message.message)
+  core_metadata = collections.namedtuple("CoreMetadata", [
+      "global_step", "session_run_count", "executor_step_count", "input_names",
+      "output_names", "target_nodes"
+  ])
+  return core_metadata(json_metadata["global_step"],
+                       json_metadata["session_run_count"],
+                       json_metadata["executor_step_count"],
+                       json_metadata["input_names"],
+                       json_metadata["output_names"],
+                       json_metadata["target_nodes"])
 
 
 class DebugTensorDatum(object):
@@ -455,6 +475,7 @@ class DebugDumpDir(object):
     if not gfile.IsDirectory(dump_root):
       raise IOError("Dump root directory %s does not exist" % dump_root)
 
+    self._core_metadata = None
     self._load_dumps(dump_root)
     self._create_tensor_watch_maps()
     self._load_partition_graphs(partition_graphs, validate)
@@ -498,6 +519,9 @@ class DebugDumpDir(object):
     for root, _, files in gfile.Walk(self._dump_root):
       for f in files:
         if f.startswith(METADATA_FILE_PREFIX):
+          if _is_core_metadata_file(f):
+            self._load_core_metadata(os.path.join(self._dump_root, root, f))
+
           if _is_graph_file(f):
             self._dump_graph_file_paths.append(
                 os.path.join(self._dump_root, root, f))
@@ -525,6 +549,12 @@ class DebugDumpDir(object):
       self._t0 = self._dump_tensor_data[0].timestamp
     else:
       self._t0 = None
+
+  def _load_core_metadata(self, event_file_path):
+    event = event_pb2.Event()
+    with gfile.Open(event_file_path, "rb") as f:
+      event.ParseFromString(f.read())
+      self._core_metadata = extract_core_metadata_from_event_proto(event)
 
   def _dump_file_name_to_datum(self, dir_name, file_name):
     """Obtain a DebugTensorDatum from the directory and file name.
@@ -586,6 +616,37 @@ class DebugDumpDir(object):
     if self._python_graph:
       for op in self._python_graph.get_operations():
         self._node_traceback[op.name] = op.traceback
+
+  @property
+  def core_metadata(self):
+    """Metadata about the `Session.run()` call from the core runtime.
+
+    Of the three counters available in the return value, `global_step` is
+    supplied by the caller of the debugged `Session.run()`, while
+    `session_run_count` and `executor_step_count` are determined by the state
+    of the core runtime, automatically. For the same fetch list, feed keys and
+    debug tensor watch options, the same executor will be used and
+    `executor_step_count` should increase by one at a time. However, runs with
+    different fetch lists, feed keys and debug_tensor watch options that all
+    share the same `Session` object can lead to gaps in `session_run_count`.
+
+    Returns:
+      If core metadata are loaded, a `namedtuple` with the fields:
+        `global_step`: A global step count supplied by the caller of
+          `Session.run()`. It is optional to the caller. If the caller did not
+          supply this parameter, its value will be -1.
+        `session_run_count`: A counter for Run() calls to the underlying
+          TensorFlow `Session` object.
+        `executor_step_count`: A counter for invocations of a given runtime
+          executor. The same executor is re-used for the same fetched tensors,
+          target nodes, input feed keys and debug tensor watch options.
+        `input_names`: Names of the input (feed) Tensors.
+        `output_names`: Names of the output (fetched) Tensors.
+        `target_nodes`: Names of the target nodes.
+      If the core metadata have not been loaded, `None`.
+    """
+
+    return self._core_metadata
 
   @property
   def dumped_tensor_data(self):

@@ -27,7 +27,8 @@ def add_debug_tensor_watch(run_options,
                            node_name,
                            output_slot=0,
                            debug_ops="DebugIdentity",
-                           debug_urls=None):
+                           debug_urls=None,
+                           global_step=-1):
   """Add watch on a `Tensor` to `RunOptions`.
 
   N.B.: Under certain circumstances, the `Tensor` may not be actually watched
@@ -42,9 +43,12 @@ def add_debug_tensor_watch(run_options,
       `list` of `str` with only one element.
     debug_urls: (`str` or `list` of `str`) URL(s) to send debug values to,
       e.g., `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
+    global_step: (`int`) Optional global_step count for this debug tensor
+      watch.
   """
 
   watch_opts = run_options.debug_options.debug_tensor_watch_opts
+  run_options.debug_options.global_step = global_step
 
   watch = watch_opts.add()
   watch.node_name = node_name
@@ -67,7 +71,8 @@ def watch_graph(run_options,
                 debug_ops="DebugIdentity",
                 debug_urls=None,
                 node_name_regex_whitelist=None,
-                op_type_regex_whitelist=None):
+                op_type_regex_whitelist=None,
+                global_step=-1):
   """Add debug watches to `RunOptions` for a TensorFlow graph.
 
   To watch all `Tensor`s on the graph, let both `node_name_regex_whitelist`
@@ -93,6 +98,8 @@ def watch_graph(run_options,
       are set, the two filtering operations will occur in a logical `AND`
       relation. In other words, a node will be included if and only if it
       hits both whitelists.
+    global_step: (`int`) Optional global_step count for this debug tensor
+      watch.
   """
 
   if isinstance(debug_ops, str):
@@ -128,7 +135,8 @@ def watch_graph(run_options,
           node_name,
           output_slot=slot,
           debug_ops=debug_ops,
-          debug_urls=debug_urls)
+          debug_urls=debug_urls,
+          global_step=global_step)
 
 
 def watch_graph_with_blacklists(run_options,
@@ -136,7 +144,8 @@ def watch_graph_with_blacklists(run_options,
                                 debug_ops="DebugIdentity",
                                 debug_urls=None,
                                 node_name_regex_blacklist=None,
-                                op_type_regex_blacklist=None):
+                                op_type_regex_blacklist=None,
+                                global_step=-1):
   """Add debug tensor watches, blacklisting nodes and op types.
 
   This is similar to `watch_graph()`, but the node names and op types are
@@ -161,6 +170,8 @@ def watch_graph_with_blacklists(run_options,
       relation. In other words, a node will be excluded if it hits either of
       the two blacklists; a node will be included if and only if it hits
       neither of the blacklists.
+    global_step: (`int`) Optional global_step count for this debug tensor
+      watch.
   """
 
   if isinstance(debug_ops, str):
@@ -196,4 +207,5 @@ def watch_graph_with_blacklists(run_options,
           node_name,
           output_slot=slot,
           debug_ops=debug_ops,
-          debug_urls=debug_urls)
+          debug_urls=debug_urls,
+          global_step=global_step)

@@ -256,24 +256,12 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   std::unique_ptr<Executor> exec(exec_ptr);
   // At this point ownership of the graph has been transferred to exec.
 
-  auto runner = [](Executor::Args::Closure c) {
-    // TODO(misard) Temporarily just schedule c eagerly while we
-    // decide what to do about the fact that the ComputationBuilder is
-    // thread-compatible, but we don't really want Op writers to have
-    // to remember to acquire a lock around every call to
-    // ComputationBuilder. One possibility is to add the (generally
-    // useful) ability to run a single-threaded Executor based on an
-    // option in LocalExecutorParams. Another is to automagically
-    // acquire a lock around ComputationBuilder calls using some
-    // wrapper or RAII funny business.
-    c();
-  };
-
   // Run the graph symbolically, turning the graph into an XLA computation.
   Executor::Args exec_args;
   exec_args.step_id = step_id;
   exec_args.step_container = step_container.get();
-  exec_args.runner = runner;
+  // Run all compilation kernels on the main thread.
+  exec_args.runner = [](Executor::Args::Closure c) { c(); };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       exec->Run(exec_args),
       "Conversion from TensorFlow graph to XLA computation failed.");

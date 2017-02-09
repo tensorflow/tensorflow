@@ -1,9 +1,8 @@
 ### `tf.fake_quant_with_min_max_vars(inputs, min, max, name=None)` {#fake_quant_with_min_max_vars}
 
-Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
 
-global float scalars `min` and `max` to 'outputs' tensor of same shape as
-`inputs`.
+and `max` to 'outputs' tensor of same shape as `inputs`.
 
 [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 into 255 steps (total of 256 values), then replaces each 'inputs' value with the

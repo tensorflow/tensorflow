@@ -35,6 +35,7 @@ class GraphTransferUtils {
                                    const int element_count, const int top_n);
 
   static GraphDef BuildFusedGraphDef(
+      const IGraphTransferOpsDefinitions& ops_definitions,
       const string& remote_graph_execute_name,
       const std::vector<GraphTransferer::InputNodeInfo>& inputs,
       const std::vector<string>& outputs, const GraphDef& def,

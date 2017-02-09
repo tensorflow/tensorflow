@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Sparsemax Loss op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,6 +23,8 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+
+__all__ = ["sparsemax_loss"]
 
 
 def sparsemax_loss(logits, sparsemax, labels, name=None):

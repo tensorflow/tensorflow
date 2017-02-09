@@ -1156,6 +1156,7 @@ class Estimator(BaseEstimator):
     model_fn_ops = self._call_model_fn(
         features, labels, model_fn_lib.ModeKeys.EVAL)
 
+    features, labels = self._feature_engineering_fn(features, labels)
     # Custom metrics should overwrite defaults.
     if metrics:
       model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
