@@ -11,6 +11,8 @@ licenses([
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "if_mkl")
+
 cc_library(
     name = "eigen3",
     hdrs = glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"]) + [
@@ -25,6 +27,7 @@ cc_library(
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
     ],
+    includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",

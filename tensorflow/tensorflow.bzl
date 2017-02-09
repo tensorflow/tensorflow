@@ -20,10 +20,10 @@ load(
     "cuda_default_copts"
 )
 
-#load(
-#    "//third_party/mkl:build_defs.bzl",
-#    "if_mkl",
-#)
+load(
+    "//tensorflow/third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
@@ -382,9 +382,9 @@ def tf_cc_tests(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
         args=args,
         linkopts=linkopts)
 
-#def tf_cc_test_mkl(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
-#                    args=None):
-#  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
+def tf_cc_test_mkl(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
+                    args=None):
+  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
 
 def tf_cc_tests_gpu(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):

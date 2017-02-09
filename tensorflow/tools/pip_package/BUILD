@@ -4,6 +4,7 @@
 package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -131,5 +132,5 @@ sh_binary(
             "//tensorflow/python/tools:all_files",
             "//tensorflow/tensorboard",
         ],
-    }),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
