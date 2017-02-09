@@ -63,6 +63,9 @@ class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
     }
     return -1;
   }
+  GraphTransferInfo::Destination GetTransferDestination() const final {
+    return GraphTransferInfo::NOP;
+  }
 
  private:
 } TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;

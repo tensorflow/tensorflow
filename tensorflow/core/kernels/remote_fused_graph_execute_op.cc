@@ -104,8 +104,10 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
         // for each output node
         CHECK(outputs.size() <= 1);
         if (!outputs.empty()) {
-          std::memcpy(output->vec<uint8>().data(), std::get<0>(outputs[0]),
-                      std::get<1>(outputs[2]));
+          CHECK(output->TotalBytes() >= std::get<1>(outputs[0]));
+          // TODO(satok): Avoid specifying float
+          std::memcpy(output->flat<float>().data(), std::get<0>(outputs[0]),
+                      std::get<1>(outputs[0]));
         }
       }
     }

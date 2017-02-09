@@ -127,6 +127,9 @@ Status GraphTransferer::LoadGraphFromProto(
     }
   }
 
+  graph_transfer_info_.set_destination(
+      ops_definitions.GetTransferDestination());
+
   ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();

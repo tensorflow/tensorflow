@@ -117,4 +117,9 @@ int HexagonOpsDefinitions::GetOpIdFor(const string& op_type) const {
   }
   return IGraphTransferOpsDefinitions::INVALID_OP_ID;
 }
+
+GraphTransferInfo::Destination HexagonOpsDefinitions::GetTransferDestination()
+    const {
+  return GraphTransferInfo::HEXAGON;
+}
 };
