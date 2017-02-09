@@ -29,32 +29,25 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
         src.endswith(".d.ts") or
         not src.endswith(".ts")):
       fail("srcs must be typescript sources in same package")
+  typings_out = [src[:-3] + ".d.ts" for src in srcs]
   native.genrule(
       name = name,
       srcs = _DEFAULT_TYPINGS + typings + srcs,
-      outs = [src[:-3] + ".js" for src in srcs],
+      outs = [src[:-3] + ".js" for src in srcs] + typings_out,
       cmd = "$(location @com_microsoft_typescript//:tsc)" +
             " --inlineSourceMap" +
             " --inlineSources" +
-            " --outDir $(@D)" +
-            " $(SRCS)",
-      tools = ["@com_microsoft_typescript//:tsc"],
-      **kwargs
-  )
-  native.genrule(
-      name = name + "_typings",
-      srcs = _DEFAULT_TYPINGS + typings + srcs,
-      outs = [src[:-3] + ".d.ts" for src in srcs],
-      cmd = "$(location @com_microsoft_typescript//:tsc)" +
-            " --inlineSourceMap" +
-            " --inlineSources" +
-            " --outDir $(@D)" +
             " --declaration" +
+            " --outDir $(@D)" +
             " $(SRCS)",
       tools = ["@com_microsoft_typescript//:tsc"],
       **kwargs
   )
-
+  native.filegroup(
+      name = name + "_typings",
+      srcs = typings_out,
+      **kwargs
+  )
 
 def tensorboard_ts_library(**kwargs):
   """Rules referencing this will be deleted from the codebase soon."""
