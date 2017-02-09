@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/math_ops.cc.
+
+// This file uses MKL CBLAS xGEMM for acceleration of TF Matrix-Matrix
+// Multiplication (MatMul) operations. 
+// We currently register this kernel only for MKL supported data
+// types (float, double, complex64, complex128). The macro INTEL_MKL is defined
+// by the build system only when MKL is chosen as an option at configure stage
+// and when it is undefined at build time, this file becomes an empty
+// compilation unit
 
 #if defined(INTEL_MKL)
 
@@ -93,9 +101,51 @@ class MklMatMulOp : public OpKernel {
   bool transpose_a_;
   bool transpose_b_;
 
+  // --------------------------------------------------------------------------
+  //
+  // @brief Matrix-Matrix Multiplication with FP32 tensors, a, b, c using CBLAS
+  // interface. c = op(a) * op(b)
+  //
+  // @param transa  Specifies the form of op(a) used in MatMul. If transa is
+  // true, then op(a) = a^T, otherwise op(a) = a
+  //
+  // @param transb  Specifies the form of op(b) used in MatMul. If transb is
+  // true, then op(b) = b^T, otherwise op(b) = b
+  //
+  // @param m       Specifies the number of rows of the matrix op(a) and of the
+  // matrix c. The value of m must be at least zero.
+  //
+  // @param n       Specifies the number of columns of the matrix op(b) and the
+  // number of columns of the matrix c. The value of n must be at least zero.
+  //
+  // @param k       Specifies the number of columns of the matrix op(a) and the
+  // number of rows of the matrix op(b)
+  //
+  // @param a       Address of matrix a
+  //
+  // @param lda     Leading dimension of 'a' matrix. Since TF uses row-major
+  // layout, leading dimension is the stride between consecutive rows
+  // lda = max(1,k) when transa is false, otherwise lda = max(1,m)
+  //
+  // @param b       Address of matrix b
+  //
+  // @param ldb     Leading dimension of 'b' matrix. Since TF uses row-major
+  // layout, leading dimension is the stride between consecutive rows
+  // ldb = max(1,n) when transb is false, otherwise ldb = max(1,k)
+  //
+  // @param c       Address of matrix c
+  //
+  // @param ldc     Leading dimension of 'c' matrix. Since TF uses row-major
+  // layout, leading dimension is the stride between consecutive rows, max(1,n)
+  //
+  // --------------------------------------------------------------------------
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
                    const int k, const float* a, const int lda, const float* b,
                    const int ldb, float* c, const int ldc) {
+    // BLAS GEMM API defines Matrix Multiplication as c = alpha * op(a) * op(b)
+    // + beta * c.
+    // Since TF MatMul does not have parameters for alpha, beta, we set them to
+    // 1.0 and 0.0 respectively.
     const float alpha = 1.0f;
     const float beta = 0.0f;
     cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
@@ -103,6 +153,8 @@ class MklMatMulOp : public OpKernel {
                 ldb, beta, c, ldc);
   }
 
+  // Matrix-Matrix Multiplication with FP64 tensors. For detailed info about
+  // parameters, look at FP32 function description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
                    const int k, const double* a, const int lda, const double* b,
                    const int ldb, double* c, const int ldc) {
@@ -113,6 +165,8 @@ class MklMatMulOp : public OpKernel {
                 ldb, beta, c, ldc);
   }
 
+  // Matrix-Matrix Multiplication with Complex64 (std::complex<float>) tensors.
+  // For detailed info about parameters, look at FP32 function description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
                    const int k, const std::complex<float>* a, const int lda,
                    const std::complex<float>* b, const int ldb,
@@ -126,6 +180,9 @@ class MklMatMulOp : public OpKernel {
                 static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
   }
 
+  // Matrix-Matrix Multiplication with Complex128 (std::complex<double>)
+  // tensors. For detailed info about parameters, look at FP32 function
+  // description.
   void MklBlasGemm(bool transa, bool transb, const int m, const int n,
                    const int k, const std::complex<double>* a, const int lda,
                    const std::complex<double>* b, const int ldb,
@@ -138,7 +195,6 @@ class MklMatMulOp : public OpKernel {
                 lda, static_cast<const void*>(b), ldb,
                 static_cast<const void*>(&beta), static_cast<void*>(c), ldc);
   }
-
 };
 
 #define REGISTER_CPU(T)                                                      \
@@ -149,6 +205,7 @@ class MklMatMulOp : public OpKernel {
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("MKL"), \
       MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>)
 
+// TODO:Consider template specialization when adding/removing additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
