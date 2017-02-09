@@ -185,6 +185,14 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library(
+    name = "protos_test",
+    srcs = ["util/example_proto_fast_parsing_test.proto"],
+    cc_api_version = 2,
+    protodeps = [":protos_all"],
+    visibility = ["//visibility:public"],
+)
+
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
@@ -1856,6 +1864,7 @@ tf_cc_tests(
         ":lib_internal",
         ":ops",
         ":protos_all_cc",
+        ":protos_test_cc",
         ":test",
         ":test_main",
         ":testlib",

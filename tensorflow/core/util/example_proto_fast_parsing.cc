@@ -215,6 +215,31 @@ using Example = std::vector<FeatureMapEntry>;
 
 }  // namespace parsed
 
+inline bool SkipExtraneousTag(protobuf::io::CodedInputStream* stream) {
+  uint32 data;
+  protobuf_uint64 dummy;
+  switch (stream->ReadTag() & 0x7) {
+    case 0:  // varint
+      if (!stream->ReadVarint32(&data)) return false;
+      return true;
+    case 1:  // fixed64
+      if (!stream->ReadLittleEndian64(&dummy)) return false;
+      return true;
+    case 2:  // length delimited
+      if (!stream->ReadVarint32(&data)) return false;
+      stream->Skip(data);
+      return true;
+    case 3:          // group begin
+      return false;  // groups not supported.
+    case 4:          // group end
+      return false;  // groups not supported.
+    case 5:          // fixed32
+      if (!stream->ReadLittleEndian32(&data)) return false;
+      return true;
+  }
+  return false;  // unrecognized tag type
+}
+
 bool ParseString(protobuf::io::CodedInputStream* stream, StringPiece* result) {
   DCHECK(stream != nullptr);
   DCHECK(result != nullptr);
@@ -278,7 +303,10 @@ bool ParseExample(protobuf::io::CodedInputStream* stream,
   // protos merged together as strings. This behavior is consistent with Proto's
   // ParseFromString when string representations are concatenated.
   while (!stream->ExpectAtEnd()) {
-    if (!stream->ExpectTag(kDelimitedTag(1))) return false;
+    if (!stream->ExpectTag(kDelimitedTag(1))) {
+      if (!SkipExtraneousTag(stream)) return false;
+      continue;
+    }
     if (!ParseFeatures(stream, example)) return false;
   }
   return true;
