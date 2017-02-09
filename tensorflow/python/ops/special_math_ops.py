@@ -370,7 +370,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
         t0_shape[:len(preserved_axes)+len(broadcast_axes[0])] +
         t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
-    # Make new_shape valid, if invalid to be used in reshape
+    # Make uncompacted_shape valid, if invalid to be used in reshape
     none_dims = [i for i, d in enumerate(uncompacted_shape) if d is None]
     if len(none_dims) > 1:
       uncompacted_shape = list(uncompacted_shape)
