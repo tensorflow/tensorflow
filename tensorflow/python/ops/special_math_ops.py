@@ -324,6 +324,21 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
     num_summed_elements = _total_size(t0_shape[-len(axes_to_sum):])
     new_shape = t0_shape[:len(preserved_axes)] + (num_broadcast_elements_t0,
                                                   num_summed_elements)
+    # Make new_shape valid, if invalid to be used in reshape
+    none_dims = [i for i, d in enumerate(new_shape)
+                 if d is None or d == -1]
+    if len(none_dims) > 1:
+      new_shape = list(new_shape)
+      for i in none_dims[:-1]:
+        if i < len(preserved_axes):
+          new_shape[i] = array_ops.shape(t0)[i]
+        elif i == len(new_shape) - 2:
+          new_shape[i] = math_ops.reduce_prod(
+            array_ops.shape(t0)[len(preserved_axes):-len(axes_to_sum)])
+        else:
+          new_shape[i] = math_ops.reduce_prod(
+            array_ops.shape(t0)[-len(axes_to_sum):])
+      new_shape = tuple(new_shape)
     t0 = _reshape_if_necessary(t0, new_shape)
 
     t1_shape = tuple(x.value for x in t1.get_shape())
@@ -331,6 +346,21 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
         t1_shape[len(preserved_axes)+len(axes_to_sum):])
     new_shape = t1_shape[:len(preserved_axes)] + (num_summed_elements,
                                                   num_broadcast_elements_t1)
+    # Make new_shape valid, if invalid to be used in reshape
+    none_dims = [i for i, d in enumerate(new_shape)
+                 if d is None or d == -1]
+    if len(none_dims) > 1:
+      new_shape = list(new_shape)
+      for i in none_dims[:-1]:
+        if i < len(preserved_axes):
+          new_shape[i] = array_ops.shape(t1)[i]
+        elif i == len(new_shape) - 2:
+          new_shape[i] = math_ops.reduce_prod(
+            array_ops.shape(t0)[-len(axes_to_sum):])
+        else:
+          new_shape[i] = math_ops.reduce_prod(
+            array_ops.shape(t1)[len(preserved_axes)+len(axes_to_sum):])
+      new_shape = tuple(new_shape)
     t1 = _reshape_if_necessary(t1, new_shape)
 
     product = math_ops.matmul(t0, t1)
@@ -340,22 +370,18 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
         t0_shape[:len(preserved_axes)+len(broadcast_axes[0])] +
         t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
-
-    # Check the number of None values and replace them with Tensors containing
-    # corresponding dimensions if there exist two or more None values
-    num_none_dims = sum(1 for d in uncompacted_shape if d is None)
-    if num_none_dims > 1:
+    # Make new_shape valid, if invalid to be used in reshape
+    none_dims = [i for i, d in enumerate(uncompacted_shape) if d is None]
+    if len(none_dims) > 1:
       uncompacted_shape = list(uncompacted_shape)
-      for i in xrange(len(uncompacted_shape)):
-        if uncompacted_shape[i] is None:
-          if i < len(preserved_axes) + len(broadcast_axes[0]):
-            uncompacted_shape[i] = array_ops.shape(inputs[0])[i]
-          else:
-            idx = (i - len(preserved_axes) - len(broadcast_axes[0])
-                   + len(t1_shape) - len(broadcast_axes[1]))
-            uncompacted_shape[i] = array_ops.shape(inputs[1])[idx]
+      for i in none_dims[:-1]:
+        if i < len(preserved_axes) + len(broadcast_axes[0]):
+          uncompacted_shape[i] = array_ops.shape(inputs[0])[i]
+        else:
+          idx = (i - len(preserved_axes) - len(broadcast_axes[0])
+                 + len(t1_shape) - len(broadcast_axes[1]))
+          uncompacted_shape[i] = array_ops.shape(inputs[1])[idx]
       uncompacted_shape = tuple(uncompacted_shape)
-
     product = _reshape_if_necessary(product, uncompacted_shape)
 
     product_axes = (
