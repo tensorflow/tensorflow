@@ -229,8 +229,8 @@ class Variable(object):
     return self.__repr_()
 
   def __repr__(self):
-    return "<tf.Variable name='%s' shape=%s dtype=%s>" % (
-            self.name(), self.get_shape(), self.dtype().name)
+    return "<tf.Variable '%s' shape=%s dtype=%s>" % (
+            self.name(), self.get_shape(), self.dtype.name)
 
   def _init_from_args(self,
                       initial_value=None,
