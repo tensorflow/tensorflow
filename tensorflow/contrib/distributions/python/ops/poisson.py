@@ -28,7 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-
+from tensorflow.python.ops import random_ops
 
 __all__ = [
     "Poisson",
@@ -147,6 +147,10 @@ class Poisson(distribution.Distribution):
       and `rate - 1`. In this case we return the larger, i.e., `rate`.""")
   def _mode(self):
     return math_ops.floor(self.rate)
+
+  def _sample_n(self, n, seed=None):
+    return random_ops.random_poisson(
+        self.rate, [n], dtype=self.dtype, seed=seed)
 
   def _assert_valid_sample(self, x, check_integer=True):
     if not self.validate_args:

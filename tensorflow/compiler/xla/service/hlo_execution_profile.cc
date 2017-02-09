@@ -80,9 +80,8 @@ string HloExecutionProfile::ToString(
   append_item(total_cycles, -1, "[total]");
   for (const auto& item : items) {
     tensorflow::strings::StrAppend(&result, "\n\t");
-    auto flops = item.first == nullptr
-                     ? -1
-                     : cost_analysis.hlo_to_flop_count(*item.first);
+    auto flops =
+        item.first == nullptr ? -1 : cost_analysis.flop_count(*item.first);
     string display = item.first == nullptr ? "<none>" : item.first->ToString();
     append_item(item.second, flops, display);
   }

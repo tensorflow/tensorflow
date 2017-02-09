@@ -6,8 +6,8 @@ models `Y=log(X)` where `X ~ Gamma`.
 
 ```python
 exp_gamma_distribution = TransformedDistribution(
-  Gamma(alpha=1., beta=2.),
-  bijector.Invert(bijector.Exp())
+  distribution=Gamma(concentration=1., rate=2.),
+  bijector=bijector.Invert(bijector.Exp())
 ```
 - - -
 

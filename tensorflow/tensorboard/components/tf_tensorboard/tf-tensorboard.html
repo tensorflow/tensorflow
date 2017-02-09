@@ -66,7 +66,7 @@ allows the user to toggle between various dashboards.
             <paper-icon-button
               icon="refresh"
               on-tap="reload"
-              disabled$="[[_modeIsGraphs(mode)]]"
+              disabled$="[[_isReloadDisabled(mode)]]"
               id="reload-button"
             ></paper-icon-button>
             <paper-icon-button
@@ -110,6 +110,7 @@ allows the user to toggle between various dashboards.
           <tf-graph-dashboard
             id="graphs"
             backend="[[_backend]]"
+            debugger-data-enabled="[[_debuggerDataEnabled]]"
           ></tf-graph-dashboard>
         </template>
 
@@ -215,6 +216,15 @@ allows the user to toggle between various dashboards.
           type: Object,
           computed: "_makeBackend(router, demoDir)",
         },
+        _debuggerDataEnabled: {
+          type: Boolean,
+          value: function() {
+            // For now, Tensorboard only shows debugger data if the debugger_data GET param is set
+            // to enabled.
+            let match = window.location.href.match(/[&\?]debugger_data=enabled/);
+            return match && match.length == 1;
+          },
+        },
         // Which tab is selected (scalars, graph, images etc).
         mode: {
           type: String,
@@ -259,6 +269,9 @@ allows the user to toggle between various dashboards.
           router = TF.Backend.router(demoDir, true);
         }
         return new TF.Backend.Backend(router);
+      },
+      _isReloadDisabled: function(mode) {
+        return !this._debuggerDataEnabled && this._modeIsGraphs(mode);
       },
       _modeIsScalars: function(mode) {
         return mode === "scalars";
@@ -308,7 +321,10 @@ allows the user to toggle between various dashboards.
         }
       },
       reload: function() {
-        if (this.mode === "graphs" || this.mode === "embeddings") {
+        if (this._modeIsEmbeddings(this.mode)) {
+          return;
+        }
+        if (!this._debuggerDataEnabled && this._modeIsGraphs(this.mode)) {
           return;
         }
         this.selectedDashboard().reload();

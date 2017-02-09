@@ -196,7 +196,7 @@ def sdca_model_fn(features, labels, mode, params):
     params: A dict of hyperparameters.
       The following hyperparameters are expected:
       * head: A `Head` instance. Type must be one of `_BinarySvmHead`,
-          `_RegressionHead` or `_MultiClassHead`.
+          `_RegressionHead` or `_BinaryLogisticHead`.
       * feature_columns: An iterable containing all the feature columns used by
           the model.
       * optimizer: An `SDCAOptimizer` instance.
@@ -223,17 +223,16 @@ def sdca_model_fn(features, labels, mode, params):
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
 
-  # pylint: disable=protected-access
-  if isinstance(head, head_lib._BinarySvmHead):
+  if isinstance(head, head_lib._BinarySvmHead):  # pylint: disable=protected-access
     loss_type = "hinge_loss"
-  elif isinstance(
-      head, (head_lib._MultiClassHead, head_lib._BinaryLogisticHead)):
+  elif isinstance(head, head_lib._BinaryLogisticHead):  # pylint: disable=protected-access
     loss_type = "logistic_loss"
-  elif isinstance(head, head_lib._RegressionHead):
+  elif isinstance(head, head_lib._RegressionHead):  # pylint: disable=protected-access
+    assert head.logits_dimension == 1, ("SDCA only applies for "
+                                        "logits_dimension=1.")
     loss_type = "squared_loss"
   else:
     raise ValueError("Unsupported head type: {}".format(head))
-  # pylint: enable=protected-access
 
   parent_scope = "linear"
 
@@ -887,3 +886,110 @@ class LinearRegressor(estimator.Estimator):
               "get_variable_value().")
   def bias_(self):
     return self.get_variable_value("linear/bias_weight")
+
+
+# TODO(zakaria): Make it public when b/34751732 is fixed.
+class _LinearEstimator(estimator.Estimator):
+  """Linear model with user specified head.
+
+  Train a generalized linear model to predict label value given observation of
+  feature values.
+
+  Example:
+  To do poisson regression,
+
+  ```python
+  sparse_column_a = sparse_column_with_hash_bucket(...)
+  sparse_column_b = sparse_column_with_hash_bucket(...)
+
+  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+
+  estimator = _LinearEstimator(
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
+      head=head_lib._poisson_regression_head())
+
+  # Input builders
+  def input_fn_train: # returns x, y
+    ...
+  def input_fn_eval: # returns x, y
+    ...
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
+
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a KeyError:
+
+  * if `weight_column_name` is not `None`:
+    key=weight_column_name, value=a `Tensor`
+  * for column in `feature_columns`:
+    - if isinstance(column, `SparseColumn`):
+        key=column.name, value=a `SparseTensor`
+    - if isinstance(column, `WeightedSparseColumn`):
+        {key=id column name, value=a `SparseTensor`,
+         key=weight column name, value=a `SparseTensor`}
+    - if isinstance(column, `RealValuedColumn`):
+        key=column.name, value=a `Tensor`
+  """
+
+  def __init__(self,  # _joint_weights: pylint: disable=invalid-name
+               feature_columns,
+               head,
+               model_dir=None,
+               weight_column_name=None,
+               optimizer=None,
+               gradient_clip_norm=None,
+               _joint_weights=False,
+               config=None,
+               feature_engineering_fn=None):
+    """Construct a `_LinearEstimator` object.
+
+    Args:
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      head: An instance of _Head class.
+      model_dir: Directory to save model parameters, graph, etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Ftrl optimizer.
+      gradient_clip_norm: A `float` > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        `tf.clip_by_global_norm` for more details.
+      _joint_weights: If True use a single (possibly partitioned) variable to
+        store the weights. It's faster, but requires all feature columns are
+        sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
+      config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
+                        into the model.
+
+    Returns:
+      A `_LinearEstimator` estimator.
+
+    Raises:
+      ValueError: if optimizer is not supported, e.g., SDCAOptimizer
+    """
+    assert feature_columns
+    if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+      raise ValueError("_LinearEstimator does not support SDCA optimizer.")
+
+    params = {
+        "head": head,
+        "feature_columns": feature_columns,
+        "optimizer": optimizer,
+        "gradient_clip_norm": gradient_clip_norm,
+        "joint_weights": _joint_weights,
+    }
+    super(_LinearEstimator, self).__init__(
+        model_fn=_linear_model_fn,
+        model_dir=model_dir,
+        config=config,
+        params=params,
+        feature_engineering_fn=feature_engineering_fn)

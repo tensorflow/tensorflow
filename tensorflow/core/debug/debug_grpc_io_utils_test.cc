@@ -80,10 +80,10 @@ TEST_F(GrpcDebugTest, AttemptToSendToNonexistentGrpcAddress) {
       "foo_tensor", "DebugIdentity", tensor, Env::Default()->NowMicros(),
       {kInvalidGrpcUrl});
   ASSERT_FALSE(publish_status.ok());
-  ASSERT_NE(
-      string::npos,
-      publish_status.error_message().find(
-          "Channel at the following gRPC address is not ready: 0.0.0.0:0"));
+  ASSERT_NE(string::npos,
+            publish_status.error_message().find(
+                "Channel at the following gRPC stream URL is not ready: "
+                "grpc://0.0.0.0:0"));
 
   DebugIO::CloseDebugURL(kInvalidGrpcUrl);
 }
