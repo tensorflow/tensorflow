@@ -78,8 +78,45 @@ def _regression_head(label_name=None,
       weight_column_name=weight_column_name,
       label_dimension=label_dimension,
       enable_centered_bias=enable_centered_bias,
-      head_name=head_name)
+      head_name=head_name,
+      loss_fn=_mean_squared_loss,
+      link_fn=array_ops.identity)
 
+
+def _poisson_regression_head(label_name=None,
+                             weight_column_name=None,
+                             label_dimension=1,
+                             enable_centered_bias=False,
+                             head_name=None):
+  """Creates a _Head for linear regression.
+
+  Args:
+    label_name: String, name of the key in label dict. Can be null if label
+        is a tensor (single headed models).
+    weight_column_name: A string defining feature column name representing
+      weights. It is used to down weight or boost examples during training. It
+      will be multiplied by the loss of the example.
+    label_dimension: Number of regression labels per example. This is the size
+      of the last dimension of the labels `Tensor` (typically, this has shape
+      `[batch_size, label_dimension]`).
+    enable_centered_bias: A bool. If True, estimator will learn a centered
+      bias variable for each class. Rest of the model structure learns the
+      residual after centered bias.
+    head_name: name of the head. If provided, predictions, summary and metrics
+      keys will be suffixed by `"/" + head_name` and the default variable scope
+      will be `head_name`.
+
+  Returns:
+    An instance of _Head
+  """
+  return _RegressionHead(
+      label_name=label_name,
+      weight_column_name=weight_column_name,
+      label_dimension=label_dimension,
+      enable_centered_bias=enable_centered_bias,
+      head_name=head_name,
+      loss_fn=_poisson_loss,
+      link_fn=math_ops.exp)
 
 # TODO(zakaria): Add logistic_regression_head
 
@@ -259,7 +296,7 @@ def _multi_head(heads, loss_weights=None):
 
 
 # TODO(zakaria): Make the classes public once we are ready for users to subclass
-#   them.
+#   them. See b/34751732
 class _Head(object):
   """Interface for the head/top of a model.
 
@@ -383,6 +420,22 @@ def _mean_squared_loss(logits, labels):
     return math_ops.square(logits - math_ops.to_float(labels), name=name)
 
 
+def _poisson_loss(logits, labels):
+  """Computes poisson loss from logits."""
+  with ops.name_scope(None, "_poisson_loss", (logits, labels)) as name:
+    logits = ops.convert_to_tensor(logits)
+    labels = ops.convert_to_tensor(labels)
+    # To prevent broadcasting inside "-".
+    if len(labels.get_shape()) == 1:
+      labels = array_ops.expand_dims(labels, dim=(1,))
+    # TODO(zakaria): make sure it does not recreate the broadcast bug.
+    if len(logits.get_shape()) == 1:
+      logits = array_ops.expand_dims(logits, dim=(1,))
+    logits.get_shape().assert_is_compatible_with(labels.get_shape())
+    return nn.log_poisson_loss(labels, logits,
+                               compute_full_loss=True, name=name)
+
+
 def _logits(logits_input, logits, logits_dimension):
   """Validate logits args, and create `logits` if necessary.
 
@@ -422,21 +475,24 @@ def _logits(logits_input, logits, logits_dimension):
 
 
 class _RegressionHead(_SingleHead):
-  """_Head for regression."""
+  """_Head for regression with a generalized linear model."""
 
   def __init__(self,
                label_dimension,
+               loss_fn,
+               link_fn,
                label_name=None,
                weight_column_name=None,
                enable_centered_bias=False,
-               head_name=None,
-               loss_fn=_mean_squared_loss):
-    """Base type for all single heads.
+               head_name=None):
+    """Head for regression.
 
     Args:
       label_dimension: Number of regression labels per example. This is the
         size of the last dimension of the labels `Tensor` (typically, this has
         shape `[batch_size, label_dimension]`).
+      loss_fn: Loss function, takes logits and labels and returns loss.
+      link_fn: Link function, takes a logits tensor and returns the output.
       label_name: String, name of the key in label dict. Can be null if label
           is a tensor (single headed models).
       weight_column_name: A string defining feature column name representing
@@ -448,7 +504,6 @@ class _RegressionHead(_SingleHead):
       head_name: name of the head. Predictions, summary and metrics keys are
         suffixed by `"/" + head_name` and the default variable scope is
         `head_name`.
-      loss_fn: Loss function.
     """
     super(_RegressionHead, self).__init__(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
@@ -458,6 +513,7 @@ class _RegressionHead(_SingleHead):
         head_name=head_name)
 
     self._loss_fn = loss_fn
+    self._link_fn = link_fn
     self._enable_centered_bias = enable_centered_bias
 
   def create_model_fn_ops(self,
@@ -500,7 +556,6 @@ class _RegressionHead(_SingleHead):
         with ops.name_scope("default_metrics", values=[weighted_average_loss]):
           eval_metric_ops = {_summary_key(self.head_name, mkey.LOSS):
                              metrics_lib.streaming_mean(weighted_average_loss)}
-
     return model_fn.ModelFnOps(
         mode=mode,
         predictions=predictions,
@@ -522,7 +577,7 @@ class _RegressionHead(_SingleHead):
     with ops.name_scope(None, "predictions", (logits,)):
       if self.logits_dimension == 1:
         logits = array_ops.squeeze(logits, squeeze_dims=(1,), name=key)
-      return {key: logits}
+      return {key: self._link_fn(logits)}
 
 
 def _log_loss_with_two_classes(logits, labels):

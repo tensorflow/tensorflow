@@ -51,6 +51,17 @@ def test_function_with_fancy_docstring(arg):
   Returns:
     arg: the input, and
     arg: the input, again.
+
+  @compatibility(numpy)
+  NumPy has nothing as awesome as this function.
+  @end_compatibility
+
+  @compatibility(theano)
+  Theano has nothing as awesome as this function.
+
+  Check it out.
+  @end_compatibility
+
   """
   return arg, arg
 
@@ -178,7 +189,6 @@ class ParserTest(googletest.TestCase):
 
     # Make sure docstring shows up.
     self.assertTrue(inspect.getdoc(test_function) in docs)
-
     # Make sure the extracted signature is good.
     self.assertTrue(
         'test_function(unused_arg, unused_kwarg=\'default\')' in docs)
@@ -246,7 +256,6 @@ class ParserTest(googletest.TestCase):
         py_object=test_function_with_fancy_docstring,
         duplicate_of={}, duplicates={},
         index=index, tree=tree, reverse_index={}, base_dir='/')
-
     expected = '\n'.join([
         'Function with a fancy docstring.',
         '',
@@ -259,6 +268,22 @@ class ParserTest(googletest.TestCase):
         '',
         '* <b>`arg`</b>: the input, and',
         '* <b>`arg`</b>: the input, again.',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '#### numpy compatibility',
+        'NumPy has nothing as awesome as this function.',
+        '',
+        '',
+        '',
+        '#### theano compatibility',
+        'Theano has nothing as awesome as this function.',
+        '',
+        'Check it out.',
+        '',
+        '',
         ''])
     self.assertTrue(expected in docs)
 

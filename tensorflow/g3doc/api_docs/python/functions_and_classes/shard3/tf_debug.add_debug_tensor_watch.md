@@ -1,4 +1,4 @@
-### `tf_debug.add_debug_tensor_watch(run_options, node_name, output_slot=0, debug_ops='DebugIdentity', debug_urls=None)` {#add_debug_tensor_watch}
+### `tf_debug.add_debug_tensor_watch(run_options, node_name, output_slot=0, debug_ops='DebugIdentity', debug_urls=None, global_step=-1)` {#add_debug_tensor_watch}
 
 Add watch on a `Tensor` to `RunOptions`.
 
@@ -16,4 +16,6 @@ N.B.: Under certain circumstances, the `Tensor` may not be actually watched
     `list` of `str` with only one element.
 *  <b>`debug_urls`</b>: (`str` or `list` of `str`) URL(s) to send debug values to,
     e.g., `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 

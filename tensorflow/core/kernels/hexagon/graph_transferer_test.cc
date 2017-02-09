@@ -16,8 +16,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -65,15 +63,91 @@ class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
     }
     return -1;
   }
+  GraphTransferInfo::Destination GetTransferDestination() const final {
+    return GraphTransferInfo::NOP;
+  }
 
  private:
 } TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
+
+static Output BuildAddOps(const Scope& scope, const Input& x, const Input& y) {
+  EXPECT_TRUE(scope.ok());
+  auto _x = ops::AsNodeOut(scope, x);
+  EXPECT_TRUE(scope.ok());
+  auto _y = ops::AsNodeOut(scope, y);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("Add");
+  auto builder = NodeBuilder(unique_name, "Add").Input(_x).Input(_y);
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
+static Output BuildSoftmaxOps(const Scope& scope, const Input& logits) {
+  EXPECT_TRUE(scope.ok());
+  auto _logits = ops::AsNodeOut(scope, logits);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("Softmax");
+  auto builder = NodeBuilder(unique_name, "Softmax").Input(_logits);
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
+static Output BuildConv2DOps(const Scope& scope, const Input& input,
+                             const Input& filter,
+                             const gtl::ArraySlice<int>& strides,
+                             const StringPiece& padding) {
+  EXPECT_TRUE(scope.ok());
+  auto _input = ops::AsNodeOut(scope, input);
+  EXPECT_TRUE(scope.ok());
+  auto _filter = ops::AsNodeOut(scope, filter);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("Conv2D");
+  auto builder = NodeBuilder(unique_name, "Conv2D")
+                     .Input(_input)
+                     .Input(_filter)
+                     .Attr("strides", strides)
+                     .Attr("use_cudnn_on_gpu", true)
+                     .Attr("padding", padding)
+                     .Attr("data_format", "NHWC");
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
+static Output BuildMaxPoolOps(const Scope& scope, const Input& input,
+                              const gtl::ArraySlice<int>& ksize,
+                              const gtl::ArraySlice<int>& strides,
+                              const StringPiece& padding) {
+  EXPECT_TRUE(scope.ok());
+  auto _input = ops::AsNodeOut(scope, input);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("MaxPool");
+  auto builder = NodeBuilder(unique_name, "MaxPool")
+                     .Input(_input)
+                     .Attr("ksize", ksize)
+                     .Attr("strides", strides)
+                     .Attr("padding", padding)
+                     .Attr("data_format", "NHWC");
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
 
 static GraphDef CreateAddGraphDef() {
   Scope root = Scope::NewRootScope();
   Output node_a = ops::Const(root.WithOpName(NAME_A), NODE_A_VAL);
   Output node_b = ops::Const(root.WithOpName(NAME_B), NODE_B_VAL);
-  Output node_add = ops::Add(root.WithOpName(NAME_A_PLUS_B), node_a, node_b);
+  Output node_add = BuildAddOps(root.WithOpName(NAME_A_PLUS_B), node_a, node_b);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -91,8 +165,8 @@ static GraphDef CreateConvGraphDef() {
       ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
   const std::vector<int> strides{1, 1, 1, 1};
   Output conv =
-      ops::Conv2D(root.WithOpName("conv"), input, filter, strides, "SAME");
-  Output softmax = ops::Softmax(root.WithOpName("softmax"), conv);
+      BuildConv2DOps(root.WithOpName("conv"), input, filter, strides, "SAME");
+  Output softmax = BuildSoftmaxOps(root.WithOpName("softmax"), conv);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -111,9 +185,9 @@ static GraphDef CreatePoolGraphDef() {
   const std::vector<int> ksize{1, 1, 1, 1};
   const std::vector<int> padding{0, 0, 0, 0};
   const std::vector<int> strides{1, 1, 1, 1};
-  Output max_pool =
-      ops::MaxPool(root.WithOpName("maxpool"), input, ksize, strides, "SAME");
-  Output softmax = ops::Softmax(root.WithOpName("softmax"), max_pool);
+  Output max_pool = BuildMaxPoolOps(root.WithOpName("maxpool"), input, ksize,
+                                    strides, "SAME");
+  Output softmax = BuildSoftmaxOps(root.WithOpName("softmax"), max_pool);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -444,7 +518,8 @@ TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
   std::vector<string> outputs = {NAME_A_PLUS_B};
 
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
-      "remote_fused_graph_execute_node", inputs, outputs, def, &gt_);
+      TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, "remote_fused_graph_execute_node",
+      inputs, outputs, def, &gt_);
 
   EXPECT_EQ(3, fused_graph_def.node_size());
 }

@@ -305,8 +305,8 @@ class PendingCounts {
   void operator=(const PendingCounts&) = delete;
 };
 
-PendingCounts::Handle PendingCounts::Layout::CreateHandle(int max_pending_count,
-                                                          int max_dead_count) {
+inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
+    int max_pending_count, int max_dead_count) {
   Handle result;
   if ((max_pending_count > kMaxCountForPackedCounts) ||
       (max_dead_count > kMaxCountForPackedCounts)) {
