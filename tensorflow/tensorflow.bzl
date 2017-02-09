@@ -104,7 +104,7 @@ def tf_copts():
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_mkl(["-DINTEL_MKL=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          if_x86(["-msse4.1"]) +
+          if_x86(["-msse3"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",
@@ -118,7 +118,7 @@ def tf_copts():
                 "/DPLATFORM_WINDOWS",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-		"/DEIGEN_VECTORIZE_SSE3",  # To flush denormals without __SSE3__ set.
+                "/DEIGEN_VECTORIZE_SSE3",  # To flush denormals without __SSE3__ set.
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
