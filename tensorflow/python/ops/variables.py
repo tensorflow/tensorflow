@@ -226,7 +226,8 @@ class Variable(object):
           expected_shape=expected_shape)
 
   def __str__(self):
-    return str(self._snapshot)
+    return "<{} name=\"{}\" shape=\"{}\" dtype=\"{}\">".format(
+        self.__class__, self.name(), self.get_shape(), self.dtype())
 
   def _init_from_args(self,
                       initial_value=None,
