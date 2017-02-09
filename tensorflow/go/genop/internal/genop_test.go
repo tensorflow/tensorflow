@@ -39,14 +39,16 @@ summary: "No. Op."
 `,
 			wanted: `
 // No. Op.
-func NoOp(scope *Scope) {
+//
+// Returns the created operation.
+func NoOp(scope *Scope) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "NoOp",
 	}
-	scope.AddOperation(opspec)
+	return scope.AddOperation(opspec)
 }
 `,
 		},
