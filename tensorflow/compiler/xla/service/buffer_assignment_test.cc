@@ -1243,31 +1243,6 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   }
 }
 
-// TODO(b/34669761): Remove this test when buffers are allowed to share
-// allocations.
-TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
-  // Test a computation that returns a tuple parameter.
-  auto builder = HloComputation::Builder(TestName());
-  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "param0"));
-  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({param}));
-  auto tuple_element = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape, tuple, 0));
-  auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape, HloOpcode::kCopy, tuple_element));
-
-  auto module = MakeUnique<HloModule>(TestName());
-  module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module.get());
-
-  // There should be no buffer reuse. The copy should not reuse the tuple
-  // buffer.
-  EXPECT_EQ(3, assignment->Allocations().size());
-  EXPECT_NE(GetTopLevelAllocation(*assignment, tuple),
-            GetTopLevelAllocation(*assignment, copy));
-}
-
 }  // namespace
 
 }  // namespace xla

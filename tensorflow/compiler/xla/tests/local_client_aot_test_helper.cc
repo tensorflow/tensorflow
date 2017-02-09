@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 0);
-  CHECK_EQ(result->buffer_sizes().size(), 4);
+  CHECK_EQ(result->buffer_sizes().size(), 3);
   CHECK_EQ(result->buffer_sizes()[0], sizeof(float));  // result buffer
   CHECK_EQ(result->buffer_sizes()[1], -1);             // param buffer
   CHECK_EQ(result->buffer_sizes()[2], 20);             // temp buffer
