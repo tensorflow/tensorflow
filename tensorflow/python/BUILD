@@ -2635,6 +2635,7 @@ cuda_py_tests(
         "training/proximal_gradient_descent_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
+        "training/saver_checkpoint_test.py",
         "training/saver_test.py",
         "training/slot_creator_test.py",
         "training/tensorboard_logging_test.py",
