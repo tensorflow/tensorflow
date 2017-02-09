@@ -226,11 +226,10 @@ class Variable(object):
           expected_shape=expected_shape)
 
   def __str__(self):
-    return "<Variable name='%s' shape=%s dtype=%s>" % (
-            self.name(), self.get_shape(), self.dtype().name)
+    return self.__repr_()
 
   def __repr__(self):
-    return "<Variable name='%s' shape=%s dtype=%s>" % (
+    return "<tf.Variable name='%s' shape=%s dtype=%s>" % (
             self.name(), self.get_shape(), self.dtype().name)
 
   def _init_from_args(self,
