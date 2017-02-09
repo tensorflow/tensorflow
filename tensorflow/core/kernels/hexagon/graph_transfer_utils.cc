@@ -50,15 +50,18 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
 }
 
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
+    const IGraphTransferOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<GraphTransferer::InputNodeInfo>& inputs,
     const std::vector<string>& outputs, const GraphDef& def,
     GraphTransferer* const gt) {
   CHECK(gt != nullptr);
-  std::vector<tensorflow::Tensor> output_tensors;
-  Status status = gt->DryRunInference(
-      def, inputs, outputs, false /* initialize_by_zero */, &output_tensors);
+  GraphTransferer::OutputTensorInfo output_tensor_info;
+  Status status = gt->DryRunInferenceForAllNode(
+      def, inputs, false /* initialize_by_zero */, &output_tensor_info);
   CHECK(status.ok());
+  status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs,
+                                  output_tensor_info.output_tensor_map);
 
   Scope root = Scope::NewRootScope();
   std::vector<Output> output_list;

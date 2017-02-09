@@ -101,6 +101,32 @@ Status GraphTransferer::LoadGraphFromProto(
     }
   }
   SortParams(output_node_names);
+
+  for (const InputNodeInfo& input_node_info : input_node_info_list) {
+    GraphTransferInfo::GraphInputNodeInfo& graph_input_node_info =
+        *graph_transfer_info_.add_graph_input_node_info();
+    graph_input_node_info.set_name(input_node_info.name);
+    for (const int64 dim : ToTensorShapeArray(input_node_info.tensor.shape())) {
+      graph_input_node_info.add_shape(dim);
+    }
+  }
+
+  for (const string& output_node_name : output_node_names) {
+    GraphTransferInfo::GraphOutputNodeInfo& graph_output_node_info =
+        *graph_transfer_info_.add_graph_output_node_info();
+    graph_output_node_info.set_name(output_node_name);
+    // TODO(satok): Use shape inference to obtain output shapes
+    if (!output_tensor_map.empty()) {
+      CHECK_EQ(output_tensor_map.count(output_node_name), 1)
+          << output_tensor_map.count(output_node_name);
+      Tensor* output_tensor = output_tensor_map.at(output_node_name);
+      CHECK(output_tensor != nullptr);
+      for (const int64 dim : ToTensorShapeArray(output_tensor->shape())) {
+        graph_output_node_info.add_shape(dim);
+      }
+    }
+  }
+
   ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();

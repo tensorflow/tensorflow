@@ -515,7 +515,8 @@ TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
   std::vector<string> outputs = {NAME_A_PLUS_B};
 
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
-      "remote_fused_graph_execute_node", inputs, outputs, def, &gt_);
+      TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, "remote_fused_graph_execute_node",
+      inputs, outputs, def, &gt_);
 
   EXPECT_EQ(3, fused_graph_def.node_size());
 }

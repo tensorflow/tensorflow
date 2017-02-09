@@ -65,7 +65,9 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
     CHECK(ctx != nullptr);
     const int input_count = ctx->num_inputs();
     const GraphTransferInfo& gt_info = graph_transferer_.GetGraphTransferInfo();
-    CHECK(input_count == gt_info.graph_input_node_info_size());
+    CHECK(input_count == gt_info.graph_input_node_info_size())
+        << "input_count = " << input_count
+        << ", gt input count = " << gt_info.graph_input_node_info_size();
 
     // 3. Send inputs into remote processor
     for (int i = 0; i < input_count; ++i) {
