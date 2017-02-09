@@ -367,6 +367,7 @@ def batch_norm(
     epsilon=0.001,
     activation_fn=None,
     param_initializers=None,
+    param_regularizers=None,
     updates_collections=ops.GraphKeys.UPDATE_OPS,
     is_training=True,
     reuse=None,
@@ -419,6 +420,7 @@ def batch_norm(
       maintain a linear activation.
     param_initializers: Optional initializers for beta, gamma, moving mean and
       moving variance.
+    param_regularizers: Optional regularizer for beta and gamma.
     updates_collections: Collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
@@ -450,6 +452,7 @@ def batch_norm(
 
   Raises:
     ValueError: If `batch_weights` is not None and `fused` is True.
+    ValueError: If `param_regularizers` is not None and `fused` is True.
     ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
@@ -457,6 +460,9 @@ def batch_norm(
   if fused:
     if batch_weights is not None:
       raise ValueError('Weighted mean and variance is not currently '
+                       'supported for fused batch norm.')
+    if param_regularizers is not None:
+      raise ValueError('Regularizers are not currently '
                        'supported for fused batch norm.')
     return _fused_batch_norm(
         inputs,
@@ -501,6 +507,10 @@ def batch_norm(
           'moving_mean', init_ops.zeros_initializer())
       moving_variance_initializer = param_initializers.get(
           'moving_variance', init_ops.ones_initializer())
+      if not param_regularizers:
+        param_regularizers = {}
+      beta_regularizer = param_regularizers.get('beta')
+      gamma_regularizer = param_regularizers.get('gamma')
       layer = normalization_layers.BatchNormalization(
           axis=axis,
           momentum=decay,
@@ -511,6 +521,8 @@ def batch_norm(
           gamma_initializer=gamma_initializer,
           moving_mean_initializer=moving_mean_initializer,
           moving_variance_initializer=moving_variance_initializer,
+          beta_regularizer=beta_regularizer,
+          gamma_regularizer=gamma_regularizer,
           trainable=trainable,
           name=sc.name,
           _scope=sc,
