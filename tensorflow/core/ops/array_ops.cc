@@ -4911,9 +4911,8 @@ REGISTER_OP("FakeQuantWithMinMaxVars")
       return Status::OK();
     })
     .Doc(R"doc(
-Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
-global float scalars `min` and `max` to 'outputs' tensor of same shape as
-`inputs`.
+Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
+and `max` to 'outputs' tensor of same shape as `inputs`.
 
 [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 into 255 steps (total of 256 values), then replaces each 'inputs' value with the

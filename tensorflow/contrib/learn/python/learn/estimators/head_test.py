@@ -100,7 +100,42 @@ def _sigmoid(x):
   return 1. / (1. + math.exp(-1 * x))
 
 
-class RegressionModelHeadTest(test.TestCase):
+class PoissonHeadTest(test.TestCase):
+
+  def _assert_output_alternatives(self, model_fn_ops):
+    self.assertEquals({
+        None: constants.ProblemType.LINEAR_REGRESSION
+    }, {
+        k: v[0] for k, v in six.iteritems(model_fn_ops.output_alternatives)
+    })
+
+  def _log_poisson_loss(self, logits, labels):
+    x = np.array([f[0] for f in logits])
+    z = np.array([f[0] for f in labels])
+    lpl = np.exp(x) - z * x
+    stirling_approx = z * np.log(z) - z + 0.5 * np.log(2. * np.pi * z)
+    lpl += np.ma.masked_array(stirling_approx, mask=(z <= 1)).filled(0.)
+    return sum(lpl)/len(lpl)
+
+  def testPoissonWithLogits(self):
+    head = head_lib._poisson_regression_head()
+    labels = ((0.,), (1.,), (1.,))
+    logits = ((0.,), (-1.,), (3.,))
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          labels=labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=_noop_train_op,
+          logits=logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_summary_tags(self, ["loss"])
+      _assert_no_variables(self)
+      loss = self._log_poisson_loss(logits, labels)
+      _assert_metrics(self, loss, {"loss": loss}, model_fn_ops)
+
+
+class RegressionHeadTest(test.TestCase):
 
   def _assert_output_alternatives(self, model_fn_ops):
     self.assertEquals({
@@ -251,7 +286,7 @@ class RegressionModelHeadTest(test.TestCase):
             logits=((1.,), (1.,), (3.,)))
 
 
-class MultiLabelModelHeadTest(test.TestCase):
+class MultiLabelHeadTest(test.TestCase):
 
   def _assert_output_alternatives(self, model_fn_ops):
     self.assertEquals({
@@ -482,7 +517,7 @@ class MultiLabelModelHeadTest(test.TestCase):
             logits=[0.])
 
 
-class BinaryClassificationModelHeadTest(test.TestCase):
+class BinaryClassificationHeadTest(test.TestCase):
 
   def _assert_output_alternatives(self, model_fn_ops):
     self.assertEquals({
@@ -713,7 +748,7 @@ class BinaryClassificationModelHeadTest(test.TestCase):
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
 
-class MultiClassModelHeadTest(test.TestCase):
+class MultiClassHeadTest(test.TestCase):
 
   def _assert_output_alternatives(self, model_fn_ops):
     self.assertEquals({
@@ -870,7 +905,7 @@ class MultiClassModelHeadTest(test.TestCase):
         head_lib._multi_class_head(n_classes=n_classes)
 
 
-class BinarySvmModelHeadTest(test.TestCase):
+class BinarySvmHeadTest(test.TestCase):
 
   def _assert_output_alternatives(self, model_fn_ops):
     self.assertEquals({

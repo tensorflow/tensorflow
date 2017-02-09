@@ -48,6 +48,7 @@ struct FastParseExampleConfig {
     // Documentation is avaliable in: tensorflow/core/ops/parsing_ops.cc
     PartialTensorShape shape;
     Tensor default_value;
+    bool variable_length;
     std::size_t elements_per_stride;
   };
 

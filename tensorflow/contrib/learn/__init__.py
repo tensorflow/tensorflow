@@ -71,8 +71,10 @@ Queue and read batched input data.
 
 Export utilities
 
-@@build_parsing_serving_input_fn
+@@InputFnOps
 @@ProblemType
+@@build_parsing_serving_input_fn
+@@make_export_strategy
 """
 
 from __future__ import absolute_import

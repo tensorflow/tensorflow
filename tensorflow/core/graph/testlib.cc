@@ -219,6 +219,16 @@ Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
   return ret;
 }
 
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomPoisson")
+                  .Input(shape)
+                  .Input(lam)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())

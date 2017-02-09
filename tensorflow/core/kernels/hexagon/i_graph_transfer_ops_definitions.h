@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
 
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -47,6 +48,8 @@ class IGraphTransferOpsDefinitions {
   virtual int GetOutputNodeOpId() const = 0;
   // Return op id for given string op name
   virtual int GetOpIdFor(const string& op_name) const = 0;
+  // Return destination of transfer
+  virtual GraphTransferInfo::Destination GetTransferDestination() const = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IGraphTransferOpsDefinitions);

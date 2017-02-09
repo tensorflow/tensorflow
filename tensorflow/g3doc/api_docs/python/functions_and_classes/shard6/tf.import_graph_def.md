@@ -1,13 +1,14 @@
 ### `tf.import_graph_def(graph_def, input_map=None, return_elements=None, name=None, op_dict=None, producer_op_list=None)` {#import_graph_def}
 
-Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
+Imports the graph from `graph_def` into the current default `Graph`.
 
 This function provides a way to import a serialized TensorFlow
 [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
 protocol buffer, and extract individual objects in the `GraphDef` as
-[`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
-[`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
-`GraphDef` proto.
+[`Tensor`](#Tensor) and [`Operation`](#Operation) objects. Once extracted,
+these objects are placed into the current default `Graph`. See
+[`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a `GraphDef`
+proto.
 
 ##### Args:
 

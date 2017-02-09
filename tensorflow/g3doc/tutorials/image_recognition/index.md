@@ -254,7 +254,7 @@ definition with the `ToGraphDef()` function.
   TF_RETURN_IF_ERROR(session->Run({}, {output_name}, {}, out_tensors));
   return Status::OK();
 ```
-Then we create a [`Session`](http://www.tensorflow.org/versions/master/api_docs/cc/ClassSession.html#class-tensorflow-session)
+Then we create a [`Session`](../../api_docs/cc/class/tensorflow/session)
 object, which is the interface to actually running the graph, and run it,
 specifying which node we want to get the output from, and where to put the
 output data.

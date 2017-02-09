@@ -161,13 +161,32 @@ class ParseSingleExampleAttrs {
     // Temporary check until we start allowing a variable length outer
     // dimension.
     for (int i = 0; i < dense_shapes.size(); ++i) {
-      if (!dense_shapes[i].IsFullyDefined()) {
+      bool shape_ok = true;
+      if (dense_shapes[i].dims() == -1) {
+        shape_ok = false;
+      } else {
+        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
+          if (dense_shapes[i].dim_size(d) == -1) {
+            shape_ok = false;
+          }
+        }
+      }
+      if (!shape_ok) {
         return errors::InvalidArgument(
             "dense_shapes[", i,
-            "] is not fully defined: ", dense_shapes[i].DebugString());
+            "] has unknown rank or unknown inner dimensions: ",
+            dense_shapes[i].DebugString());
       }
       TensorShape dense_shape;
-      dense_shapes[i].AsTensorShape(&dense_shape);
+      if (dense_shapes[i].dims() > 0 && dense_shapes[i].dim_size(0) == -1) {
+        variable_length.push_back(true);
+        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
+          dense_shape.AddDim(dense_shapes[i].dim_size(d));
+        }
+      } else {
+        variable_length.push_back(false);
+        dense_shapes[i].AsTensorShape(&dense_shape);
+      }
       elements_per_stride.push_back(dense_shape.num_elements());
     }
     return FinishInit();
@@ -178,6 +197,7 @@ class ParseSingleExampleAttrs {
   std::vector<DataType> sparse_types;
   std::vector<DataType> dense_types;
   std::vector<PartialTensorShape> dense_shapes;
+  std::vector<bool> variable_length;
   std::vector<std::size_t> elements_per_stride;
 
  private:
