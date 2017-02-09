@@ -294,7 +294,6 @@ tf_cuda_cc_test(
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "manual",
-        "noguitar",
         "notap",
     ],
     deps = [":randomized_tests_library"],
