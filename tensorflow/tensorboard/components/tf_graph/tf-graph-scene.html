@@ -702,16 +702,13 @@ Polymer({
       readOnly: true,
       value: ['#762a83', '#af8dc3', '#f7da0b', '#a2c96f', '#1f8926', '#0909c6'],
     },
-    /**
-     * A mapping from node name to a list of tf.graph.scene.HealthPills. Updated when the client
-     * receives a health pills response.
-     */
-    nodeNamesToHealthPills: {},
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPill: Object,
   },
   observers: [
     '_colorByChanged(colorBy)',
     '_buildAndFit(renderHierarchy)',
-    '_updateHealthPills(nodeNamesToHealthPills)',
+    '_updateHealthPills(nodeNamesToHealthPill)',
   ],
   getNode: function(nodeName) {
     return this.renderHierarchy.getRenderNodeByName(nodeName);
@@ -754,7 +751,7 @@ Polymer({
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
-      this._updateHealthPills(this.nodeNamesToHealthPills);
+      this._updateHealthPills(this.nodeNamesToHealthPill);
       this.minimap.update();
     }.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
@@ -904,8 +901,8 @@ Polymer({
   getEdgeGroup: function(e) {
     return this._edgeGroupIndex[e];
   },
-  _updateHealthPills: function(nodeNamesToHealthPills) {
-    tf.graph.scene.addHealthPills(this.$.svg, nodeNamesToHealthPills, this.healthPillColors);
+  _updateHealthPills: function(nodeNamesToHealthPill) {
+    tf.graph.scene.addHealthPills(this.$.svg, nodeNamesToHealthPill, this.healthPillColors);
   },
   /**
    * Update node and annotation node of the given name.
