@@ -59,7 +59,7 @@ limitations under the License.
 #define SE_RETURN_STATUS_AS_BOOL(__status) \
   do {                                     \
     auto status = __status;                \
-    if (__status.ok()) {                   \
+    if (status.ok()) {                     \
       return true;                         \
     }                                      \
     LOG(ERROR) << status;                  \
