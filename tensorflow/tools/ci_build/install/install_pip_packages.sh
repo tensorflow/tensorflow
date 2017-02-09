@@ -48,12 +48,9 @@ if [[ -z $local_numpy_ver_flat ]]; then
   local_numpy_ver_flat=0
 fi
 if (( $local_numpy_ver_flat < $numpy_ver_flat )); then
-  set -e
-  wget -q https://pypi.python.org/packages/cb/47/19e96945ee6012459e85f87728633f05b1e8791677ae64370d16ac4c849e/numpy-1.12.0-cp27-cp27mu-manylinux1_x86_64.whl#md5=9f9bc53d2e281831e1a75be0c09a9548
-  mv numpy-1.12.0-cp27-cp27mu-manylinux1_x86_64.whl \
-     numpy-1.12.0-cp27-none-linux_x86_64.whl
-  pip install numpy-1.12.0-cp27-none-linux_x86_64.whl
-  rm numpy-1.12.0-cp27-none-linux_x86_64.whl
+  # We must pip install numpy to compile it from source due to subtle issues
+  # around the pypi package and Ubuntu 14.04.
+  pip install --upgrade numpy==$NUMPY_VERSION
 fi
 
 set +e
@@ -63,12 +60,9 @@ if [[ -z $local_numpy_ver_flat ]]; then
   local_numpy_ver_flat=0
 fi
 if (( $local_numpy_ver_flat < $numpy_ver_flat )); then
-  set -e
-  wget -q https://pypi.python.org/packages/48/56/fd4698f72aa705a0feddef869fbff26011efdcfcaf1126a48f8a59043843/numpy-1.12.0-cp34-cp34m-manylinux1_x86_64.whl#md5=0197a7f4060e82bf03a450fcac4f56a3
-  mv numpy-1.12.0-cp34-cp34m-manylinux1_x86_64.whl \
-     numpy-1.12.0-cp34-none-linux_x86_64.whl
-  pip3 install numpy-1.12.0-cp34-none-linux_x86_64.whl
-  rm numpy-1.12.0-cp34-none-linux_x86_64.whl
+  # We must pip install numpy to compile it from source due to subtle issues
+  # around the pypi package and Ubuntu 14.04.
+  pip3 install --upgrade numpy==$NUMPY_VERSION
 fi
 
 # Use pip to install scipy to get the latest version, instead of 0.13 through
