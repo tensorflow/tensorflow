@@ -244,5 +244,43 @@ class LinearOperatorUDVHUpdatetestWithDiagNotSquare(
   _use_v = True
 
 
+class LinearOpearatorUDVHUpdateBroadcastsShape(test.TestCase):
+  """Test that the operator's shape is the broadcast of arguments."""
+
+  def test_static_shape_broadcasts_up_from_operator_to_other_args(self):
+    base_operator = linalg.LinearOperatorIdentity(num_rows=3)
+    u = array_ops.ones(shape=[2, 3, 2])
+    diag = array_ops.ones(shape=[2, 2])
+
+    operator = linalg.LinearOperatorUDVHUpdate(
+        base_operator, u, diag)
+
+    # domain_dimension is 3
+    self.assertAllEqual([2, 3, 3], operator.shape)
+    with self.test_session():
+      self.assertAllEqual([2, 3, 3], operator.to_dense().eval().shape)
+
+  def test_dynamic_shape_broadcasts_up_from_operator_to_other_args(self):
+    num_rows_ph = array_ops.placeholder(dtypes.int32)
+
+    base_operator = linalg.LinearOperatorIdentity(num_rows=num_rows_ph)
+
+    u_shape_ph = array_ops.placeholder(dtypes.int32)
+    u = array_ops.ones(shape=u_shape_ph)
+
+    operator = linalg.LinearOperatorUDVHUpdate(base_operator, u)
+
+    feed_dict = {
+        num_rows_ph: 3,
+        u_shape_ph: [2, 3, 2],  # batch_shape = [2]
+    }
+
+    with self.test_session():
+      shape_tensor = operator.shape_tensor().eval(feed_dict=feed_dict)
+      self.assertAllEqual([2, 3, 3], shape_tensor)
+      dense = operator.to_dense().eval(feed_dict=feed_dict)
+      self.assertAllEqual([2, 3, 3], dense.shape)
+
+
 if __name__ == "__main__":
   test.main()
