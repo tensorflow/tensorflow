@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 declare function stub(el: string, obj: any): void;
 declare function fixture(id: string): void;
-
+let assert = chai.assert;
 
 describe(
     'audio dashboard tests', function() {
