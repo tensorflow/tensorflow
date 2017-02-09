@@ -1640,10 +1640,10 @@ Examples:
 
 ```python
 bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x.T
+# Result: [[1., 2], [2, 5]], i.e., x @ x.T
 
-bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
-# Result: [[1, 0], [2, 1]], i.e., chol(y).
+bijector.CholeskyOuterProduct(event_ndims=2).inverse(y=[[1., 2], [2, 5]])
+# Result: [[1., 0], [2, 1]], i.e., cholesky(y).
 ```
 - - -
 
@@ -2851,8 +2851,8 @@ models `Y=log(X)` where `X ~ Gamma`.
 
 ```python
 exp_gamma_distribution = TransformedDistribution(
-  Gamma(alpha=1., beta=2.),
-  bijector.Invert(bijector.Exp())
+  distribution=Gamma(concentration=1., rate=2.),
+  bijector=bijector.Invert(bijector.Exp())
 ```
 - - -
 
