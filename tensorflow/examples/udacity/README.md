@@ -109,3 +109,4 @@ History
 * 0.4.0: Move notMMNIST data for Google Cloud.
 * 0.5.0: Actually use 0.7.1 release.
 * 0.6.0: Update to TF 0.10.0, add libjpeg (for Pillow).
+* 0.7.0: Use TF 0.12.1 and the last update of initializer : tf.global_variables_initializer()
