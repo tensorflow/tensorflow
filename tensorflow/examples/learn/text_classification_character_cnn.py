@@ -73,7 +73,7 @@ def char_cnn_model(features, target):
 
   # Apply regular WX + B and classification.
   logits = tf.contrib.layers.fully_connected(pool2, 15, activation_fn=None)
-  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+  loss = tf.losses.softmax_cross_entropy(target, logits)
 
   train_op = tf.contrib.layers.optimize_loss(
       loss,
