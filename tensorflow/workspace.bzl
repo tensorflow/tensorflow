@@ -401,9 +401,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
       name = "nccl_archive",
-      url = "https://github.com/NVIDIA/nccl/archive/2a974f5ca2aa12b178046b2206b43f1fd69d9fae.tar.gz",
-      sha256 = "d6aa1a3f20ae85358890d9a96f49c51a75baa1d3af3598501f29ff9ef8a3107d",
-      strip_prefix = "nccl-2a974f5ca2aa12b178046b2206b43f1fd69d9fae",
+      url = "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+      sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
+      strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
       build_file = str(Label("//third_party:nccl.BUILD")),
   )
 
