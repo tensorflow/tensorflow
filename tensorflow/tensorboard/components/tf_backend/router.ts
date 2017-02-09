@@ -36,7 +36,7 @@ module TF.Backend {
    * @param dataDir {string} The base prefix for finding data on server.
    * @param demoMode {boolean} Whether to modify urls for filesystem demo usage.
    */
-  export function router(dataDir = '/data', demoMode = false): Router {
+  export function router(dataDir = 'data', demoMode = false): Router {
     var clean = demoMode ? demoify : (x) => x;
     if (dataDir[dataDir.length - 1] === '/') {
       dataDir = dataDir.slice(0, dataDir.length - 1);
