@@ -226,8 +226,12 @@ class Variable(object):
           expected_shape=expected_shape)
 
   def __str__(self):
-    return "<{} name=\"{}\" shape=\"{}\" dtype=\"{}\">".format(
-        self.__class__, self.name(), self.get_shape(), self.dtype())
+    return "<Variable name='%s' shape=%s dtype=%s>" % (
+            self.name(), self.get_shape(), self.dtype().name)
+
+  def __repr__(self):
+    return "<Variable name='%s' shape=%s dtype=%s>" % (
+            self.name(), self.get_shape(), self.dtype().name)
 
   def _init_from_args(self,
                       initial_value=None,
