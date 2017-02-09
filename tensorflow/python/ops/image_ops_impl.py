@@ -395,14 +395,18 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   `target_height` by `target_width`.
 
   Args:
-    image: 3-D tensor with shape `[height, width, channels]`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     offset_height: Number of rows of zeros to add on top.
     offset_width: Number of columns of zeros to add on the left.
     target_height: Height of output image.
     target_width: Width of output image.
 
   Returns:
-    3-D tensor of shape `[target_height, target_width, channels]`
+    If `image` was 4-D, a 4-D float Tensor of shape
+    `[batch, target_height, target_width, channels]`
+    If `image` was 3-D, a 3-D float Tensor of shape
+    `[target_height, target_width, channels]`
 
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
@@ -412,9 +416,17 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   image = ops.convert_to_tensor(image, name='image')
 
   assert_ops = []
-  assert_ops += _Check3DImage(image, require_static=False)
+  assert_ops += _CheckAtLeast3DImage(image, require_static=False)
 
-  height, width, depth = _ImageDimensions(image)
+  is_batch = True
+  if image.get_shape().ndims == 3:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+  elif image.get_shape().ndims != 4:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+  num_channels, height, width, depth = image.get_shape().as_list()
+
   after_padding_width = target_width - offset_width - width
   after_padding_height = target_height - offset_height - height
 
@@ -431,14 +443,17 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   # Do not pad on the depth dimensions.
   paddings = array_ops.reshape(
       array_ops.stack([
-          offset_height, after_padding_height, offset_width,
+          0, 0, offset_height, after_padding_height, offset_width,
           after_padding_width, 0, 0
-      ]), [3, 2])
+      ]), [4, 2])
   padded = array_ops.pad(image, paddings)
 
   padded_shape = [None if _is_tensor(i) else i
-                  for i in [target_height, target_width, depth]]
+                  for i in [num_channels, target_height, target_width, depth]]
   padded.set_shape(padded_shape)
+
+  if not is_batch:
+    padded = array_ops.squeeze(padded, squeeze_dims=[0])
 
   return padded
 
@@ -453,7 +468,8 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   `offset_height + target_height, offset_width + target_width`.
 
   Args:
-    image: 3-D tensor with shape `[height, width, channels]`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     offset_height: Vertical coordinate of the top-left corner of the result in
                    the input.
     offset_width: Horizontal coordinate of the top-left corner of the result in
@@ -462,7 +478,10 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     target_width: Width of the result.
 
   Returns:
-    3-D tensor of image with shape `[target_height, target_width, channels]`
+    If `image` was 4-D, a 4-D float Tensor of shape
+    `[batch, target_height, target_width, channels]`
+    If `image` was 3-D, a 3-D float Tensor of shape
+    `[target_height, target_width, channels]`
 
   Raises:
     ValueError: If the shape of `image` is incompatible with the `offset_*` or
@@ -472,9 +491,16 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   image = ops.convert_to_tensor(image, name='image')
 
   assert_ops = []
-  assert_ops += _Check3DImage(image, require_static=False)
+  assert_ops += _CheckAtLeast3DImage(image, require_static=False)
 
-  height, width, depth = _ImageDimensions(image)
+  is_batch = True
+  if image.get_shape().ndims == 3:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+  elif image.get_shape().ndims != 4:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+  num_channels, height, width, depth = image.get_shape().as_list()
 
   assert_ops += _assert(offset_width >= 0, ValueError,
                         'offset_width must be >= 0.')
@@ -491,12 +517,15 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   image = control_flow_ops.with_dependencies(assert_ops, image)
 
   cropped = array_ops.slice(image,
-                            array_ops.stack([offset_height, offset_width, 0]),
-                            array_ops.stack([target_height, target_width, -1]))
+                            array_ops.stack([0, offset_height, offset_width, 0]),
+                            array_ops.stack([-1, target_height, target_width, -1]))
 
   cropped_shape = [None if _is_tensor(i) else i
-                   for i in [target_height, target_width, depth]]
+                   for i in [num_channels, target_height, target_width, depth]]
   cropped.set_shape(cropped_shape)
+
+  if not is_batch:
+    cropped = array_ops.squeeze(cropped, squeeze_dims=[0])
 
   return cropped
 
@@ -514,7 +543,8 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   dimension.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     target_height: Target height.
     target_width: Target width.
 
@@ -522,13 +552,25 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     ValueError: if `target_height` or `target_width` are zero or negative.
 
   Returns:
-    Cropped and/or padded image of shape
-    `[target_height, target_width, channels]`
+    Cropped and/or padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
   """
   image = ops.convert_to_tensor(image, name='image')
+  if image.get_shape().ndims is None:
+    raise ValueError('\'image\' contains no shape.')
+  # TODO(shlens): Migrate this functionality to the underlying Op's.
+  is_batch = True
+  if image.get_shape().ndims == 3:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+  elif image.get_shape().ndims != 4:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
   assert_ops = []
-  assert_ops += _Check3DImage(image, require_static=False)
+  assert_ops += _CheckAtLeast3DImage(image, require_static=False)
   assert_ops += _assert(target_width > 0, ValueError,
                         'target_width must be > 0.')
   assert_ops += _assert(target_height > 0, ValueError,
@@ -561,7 +603,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     else:
       return x == y
 
-  height, width, _ = _ImageDimensions(image)
+  _, height, width, _ = image.get_shape().as_list()
   width_diff = target_width - width
   offset_crop_width = max_(-width_diff // 2, 0)
   offset_pad_width = max_(width_diff // 2, 0)
@@ -583,7 +625,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   if resized.get_shape().ndims is None:
     raise ValueError('resized contains no shape.')
 
-  resized_height, resized_width, _ = _ImageDimensions(resized)
+  _, resized_height, resized_width, _ = resized.get_shape().as_list()
 
   assert_ops = []
   assert_ops += _assert(equal_(resized_height, target_height), ValueError,
@@ -592,6 +634,10 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
                         'resized width is not correct.')
 
   resized = control_flow_ops.with_dependencies(assert_ops, resized)
+
+  if not is_batch:
+    resized = array_ops.squeeze(resized, squeeze_dims=[0])
+
   return resized
 
 
@@ -1220,24 +1266,24 @@ def adjust_saturation(image, saturation_factor, name=None):
 
 def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
-  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate 
+  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
   operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
 
-  Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as 
-  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays 
-  `[height, width, num_channels]`. Make sure to take this into account when 
-  constructing your graph if you are intermixing GIF files with JPEG and/or PNG 
+  Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
+  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
+  `[height, width, num_channels]`. Make sure to take this into account when
+  constructing your graph if you are intermixing GIF files with JPEG and/or PNG
   files.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
-    channels: An optional `int`. Defaults to `0`. Number of color channels for 
+    channels: An optional `int`. Defaults to `0`. Number of color channels for
       the decoded image.
     name: A name for the operation (optional)
-    
+
   Returns:
-    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for 
-      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF 
+    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
       images.
   """
   with ops.name_scope(name, 'decode_image') as scope:
