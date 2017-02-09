@@ -21,7 +21,7 @@ load(
 )
 
 load(
-    "//tensorflow/third_party/mkl:build_defs.bzl",
+    "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
 
