@@ -16,7 +16,7 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 // This file uses MKL CBLAS xGEMM for acceleration of TF Matrix-Matrix
-// Multiplication (MatMul) operations. 
+// Multiplication (MatMul) operations.
 // We currently register this kernel only for MKL supported data
 // types (float, double, complex64, complex128). The macro INTEL_MKL is defined
 // by the build system only when MKL is chosen as an option at configure stage
@@ -123,13 +123,15 @@ class MklMatMulOp : public OpKernel {
   //
   // @param a       Address of matrix a
   //
-  // @param lda     Leading dimension of 'a' matrix. Since TF uses row-major
+  // @param lda     Leading dimension of 'a' matrix. This is set at calling site
+  // depending on transa parameter. Since TF uses row-major
   // layout, leading dimension is the stride between consecutive rows
   // lda = max(1,k) when transa is false, otherwise lda = max(1,m)
   //
   // @param b       Address of matrix b
   //
-  // @param ldb     Leading dimension of 'b' matrix. Since TF uses row-major
+  // @param ldb     Leading dimension of 'b' matrix. This is set at calling site
+  // depending on transb parameter. Since TF uses row-major
   // layout, leading dimension is the stride between consecutive rows
   // ldb = max(1,n) when transb is false, otherwise ldb = max(1,k)
   //
