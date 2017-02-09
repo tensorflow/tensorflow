@@ -58,6 +58,7 @@ CheckpointReader::CheckpointReader(const string& filename,
 CheckpointReader::~CheckpointReader() {
   delete var_to_shape_map_ptr_;
   delete reader_;
+  delete v2_reader_;
 }
 
 bool CheckpointReader::HasTensor(const string& name) const {

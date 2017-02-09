@@ -384,7 +384,7 @@ following resources:
     creating `FeatureColumn`s and an `input_fn` for a linear classification
     model that predicts income range based on census data.
 
-*   [TensorFlow Wide & Deep Learning Tutorial](../wide/index.md): Building on
+*   [TensorFlow Wide & Deep Learning Tutorial](../wide_and_deep/index.md): Building on
     the [Linear Model Tutorial](../wide/index.md), this tutorial covers
     `FeatureColumn` and `input_fn` creation for a "wide and deep" model that
     combines a linear model and a neural network using

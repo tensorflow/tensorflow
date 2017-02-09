@@ -26,6 +26,7 @@ const bool SHOW_DBG_IN_SOC = false;
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
+const bool DBG_DUMP_INPUT_TENSOR_AS_FLOAT_DATA = false;
 
 #ifdef USE_HEXAGON_LIBS
 int HexagonControlWrapper::GetVersion() {
@@ -219,6 +220,19 @@ bool HexagonControlWrapper::FillInputNode(const string& node_name,
   const ConstByteArray ba =
       ConstByteArray(reinterpret_cast<const uint8*>(tensor_data.data()),
                      tensor_data.size(), tensor.dtype());
+  if (DBG_DUMP_INPUT_TENSOR_AS_FLOAT_DATA) {
+    LOG(INFO) << "Input tensor data: element size = " << tensor.NumElements()
+              << ", byte syze = " << tensor.TotalBytes();
+    std::stringstream line;
+    for (int i = 0; i < tensor.NumElements(); ++i) {
+      line << tensor.flat<float>().data()[i] << ", ";
+      if ((i - 2) % 3 == 0 || i == tensor.NumElements() - 1) {
+        LOG(INFO) << "(" << ((i - 2) / 3) << ") " << line.str();
+        line.str("");
+        line.clear();
+      }
+    }
+  }
   FillInputNode(node_name, ba);
   return true;
 }

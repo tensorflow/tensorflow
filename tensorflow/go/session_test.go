@@ -181,3 +181,15 @@ func TestConcurrency(t *testing.T) {
 		t.Errorf("Close() 2: %v", err)
 	}
 }
+
+func TestSavedModel(t *testing.T) {
+	_, graph, err := LoadSavedModel("../cc/saved_model/testdata/half_plus_two/00000123", []string{"serve"}, nil)
+	if err != nil {
+		t.Fatalf("LoadSavedModel(): %v", err)
+	}
+	if op := graph.Operation("y"); op == nil {
+		t.Fatalf("\"y\" not found in graph")
+	}
+	// TODO(jhseu): half_plus_two has a tf.Example proto dependency to run. Add a
+	// more thorough test when the generated protobufs are available.
+}

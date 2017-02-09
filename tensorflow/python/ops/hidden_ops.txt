@@ -282,6 +282,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle
