@@ -183,7 +183,7 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of):
 
   ```python
   relative_path_to_root = os.path.relpath(
-    os.path.dirname(documentation_path(full_name)) or '.', '.')
+    path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
   ```
 
   Args:
@@ -424,7 +424,7 @@ def _generate_markdown_for_function(full_name, duplicate_names,
   """
   # TODO(wicke): Make sure this works for partials.
   relative_path = os.path.relpath(
-      os.path.dirname(documentation_path(full_name)) or '.', '.')
+      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
   docstring = _md_docstring(function, relative_path, duplicate_of)
   signature = _generate_signature(function, reverse_index)
   guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
@@ -469,7 +469,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
     A string that can be written to a documentation file for this class.
   """
   relative_path = os.path.relpath(
-      os.path.dirname(documentation_path(full_name)) or '.', '.')
+      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
   docstring = _md_docstring(py_class, relative_path, duplicate_of)
   guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
   if duplicate_names:
@@ -553,7 +553,7 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
     A string that can be written to a documentation file for this module.
   """
   relative_path = os.path.relpath(
-      os.path.dirname(documentation_path(full_name)) or '.', '.')
+      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
   docstring = _md_docstring(module, relative_path, duplicate_of)
   if duplicate_names:
     aliases = '\n'.join(['### Module `%s`' % name for name in duplicate_names])
@@ -673,7 +673,7 @@ def generate_markdown(full_name, py_object, duplicate_of, duplicates,
   # TODO(wicke): Only use decorators that support this in TF.
 
   try:
-    path = os.path.relpath(inspect.getfile(py_object), base_dir)
+    path = os.path.relpath(path=inspect.getfile(py_object), start=base_dir)
 
     # TODO(wicke): If this is a generated file, point to the source instead.
 
