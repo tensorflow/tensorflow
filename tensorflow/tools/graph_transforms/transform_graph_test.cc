@@ -194,6 +194,15 @@ class TransformGraphTest : public ::testing::Test {
     EXPECT_EQ("1,2,3", params_list[0].second["b"][0]);
   }
 
+  void TestParseEscapedNewline() {
+    // This sequence of characters caused an infinite loop in the parser, which
+    // is responsible for the hang mentioned in
+    // https://github.com/tensorflow/tensorflow/issues/7150
+    TransformParameters params_list;
+    ParseTransformParameters("\\\n", &params_list);
+    EXPECT_EQ(0, params_list.size());
+  }
+
   void TestShouldIgnoreErrors() {
     bool ignore_errors;
     TF_EXPECT_OK(
@@ -220,6 +229,10 @@ TEST_F(TransformGraphTest, TestTransformRegistration) {
 
 TEST_F(TransformGraphTest, TestParseTransformParameters) {
   TestParseTransformParameters();
+}
+
+TEST_F(TransformGraphTest, TestParseEscapedNewline) {
+  TestParseEscapedNewline();
 }
 
 TEST_F(TransformGraphTest, TestShouldIgnoreErrors) { TestShouldIgnoreErrors(); }
