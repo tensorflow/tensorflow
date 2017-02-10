@@ -365,8 +365,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         // execution time per byte saved by rematerializing this instruction. In
         // general, we want the most memory saving for the least latency penalty
         // which is captured by this heuristic.
-        TF_ASSIGN_OR_RETURN(int64 bytes_accessed,
-                            cost_analysis.bytes_accessed(*candidate));
+        int64 bytes_accessed = cost_analysis.bytes_accessed(*candidate);
         int64 net_memory_reduced =
             std::min(memory_reduced, memory_usage - memory_limit_bytes_);
         int64 elements_accessed =

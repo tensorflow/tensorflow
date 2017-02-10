@@ -25,10 +25,6 @@ limitations under the License.
 
 namespace xla {
 
-int64 HloCostAnalysis::ShapeSizeBytes(const Shape& shape) const {
-  return shape_size_ == nullptr ? 0 : shape_size_(shape);
-}
-
 Status HloCostAnalysis::Preprocess(HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
   // handler can overwrite these values. In Postprocess, these value are
@@ -39,12 +35,9 @@ Status HloCostAnalysis::Preprocess(HloInstruction* hlo) {
   // The default element count for an instruction is the sum of elements in the
   // operands and output. The default ShapeUtil::ByteSizeOf does not handle
   // opaque types.
-  current_bytes_accessed_ =
-      ShapeUtil::IsOpaque(hlo->shape()) ? 0 : ShapeSizeBytes(hlo->shape());
+  current_bytes_accessed_ = shape_size_(hlo->shape());
   for (const HloInstruction* operand : hlo->operands()) {
-    current_bytes_accessed_ += ShapeUtil::IsOpaque(operand->shape())
-                                   ? 0
-                                   : ShapeSizeBytes(operand->shape());
+    current_bytes_accessed_ += shape_size_(operand->shape());
   }
 
   return Status::OK();
@@ -161,7 +154,7 @@ Status HloCostAnalysis::HandleTuple(
   // The tuple instruction only gathers pointers from inputs (it doesn't iterate
   // through them). The memory touched is then only the size of the output
   // buffer.
-  current_bytes_accessed_ = ShapeSizeBytes(tuple->shape());
+  current_bytes_accessed_ = shape_size_(tuple->shape());
   return Status::OK();
 }
 
@@ -412,12 +405,8 @@ Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while,
       body_visitor.flop_count() + condition_visitor.flop_count();
   current_transcendental_count_ = body_visitor.transcendental_count() +
                                   condition_visitor.transcendental_count();
-  if (shape_size_ != nullptr) {
-    TF_ASSIGN_OR_RETURN(int64 body_bytes, body_visitor.bytes_accessed());
-    TF_ASSIGN_OR_RETURN(int64 condition_bytes,
-                        condition_visitor.bytes_accessed());
-    current_bytes_accessed_ = body_bytes + condition_bytes;
-  }
+  current_bytes_accessed_ =
+      body_visitor.bytes_accessed() + condition_visitor.bytes_accessed();
 
   return Status::OK();
 }
@@ -436,22 +425,9 @@ int64 HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
   return it == hlo_to_transcendental_count_.end() ? 0 : it->second;
 }
 
-StatusOr<int64> HloCostAnalysis::bytes_accessed(
-    const HloInstruction& hlo) const {
-  if (shape_size_ == nullptr) {
-    return FailedPrecondition(
-        "Cannot determine number of bytes accessed; no size function given");
-  }
+int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   auto it = hlo_to_bytes_accessed_.find(&hlo);
   return it == hlo_to_bytes_accessed_.end() ? 0 : it->second;
-}
-
-StatusOr<int64> HloCostAnalysis::bytes_accessed() const {
-  if (shape_size_ == nullptr) {
-    return FailedPrecondition(
-        "Cannot determine number of bytes accessed; no size function given");
-  }
-  return bytes_accessed_;
 }
 
 }  // namespace xla
