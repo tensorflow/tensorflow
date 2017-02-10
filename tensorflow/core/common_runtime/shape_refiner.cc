@@ -34,8 +34,6 @@ using shape_inference::ShapeHandle;
 ShapeRefiner::ShapeRefiner(const OpRegistryInterface* ops)
     : ops_registry_(ops) {}
 
-ShapeRefiner::~ShapeRefiner() { gtl::STLDeleteValues(&node_to_context_); }
-
 Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
@@ -55,7 +53,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
           node->name(), "' was not previously added to ShapeRefiner.");
     }
 
-    InferenceContext* c = it->second;
+    InferenceContext* c = it->second.get();
     DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
@@ -161,7 +159,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
   } while (rerun_shape_fn);
 
   // Store the resulting InferenceContext object in the map.
-  node_to_context_[node] = c.release();
+  node_to_context_[node].swap(c);
 
   return Status::OK();
 }

@@ -21,7 +21,7 @@ def tf_cc_logged_benchmark(
                    "//path/to:test. Received: %s" % target)))
 
   all_tags = list(set(tags) + \
-                  set(["benchmark-test", "local", "regression-test"]))
+                  set(["benchmark-test", "local", "manual", "regression-test"]))
 
   tf_py_test(
       name = name,

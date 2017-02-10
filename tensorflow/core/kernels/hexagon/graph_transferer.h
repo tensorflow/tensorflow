@@ -64,6 +64,7 @@ class GraphTransferer {
       const GraphDef& graph_def,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names,
+      const bool shape_inference_for_unkown_shape,
       const OutputTensorMap& output_tensor_map);
 
   // Load graph structure into GraphTransferer from protobuf file
@@ -72,6 +73,7 @@ class GraphTransferer {
       const string& graph_def_path,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto,
+      const bool shape_inference_for_unknown_shape,
       const bool dry_run_for_unknown_shape,
       OutputTensorInfo* output_tensor_info);
 

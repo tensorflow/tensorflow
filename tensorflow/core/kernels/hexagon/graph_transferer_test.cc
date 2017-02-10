@@ -268,7 +268,7 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      {}, std::vector<string>{NAME_A_PLUS_B},
-                                     EMPTY_OUTPUT_TENSOR_MAP)
+                                     false, EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
 
@@ -404,8 +404,9 @@ TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
   const GraphTransferer::OutputTensorMap& output_tensor_map =
       output_tensor_info.output_tensor_map;
   const std::vector<string> output_node_names = {NAME_A_PLUS_B};
-  status = gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
-                                  inputs, output_node_names, output_tensor_map);
+  status =
+      gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, inputs,
+                             output_node_names, false, output_tensor_map);
   ASSERT_TRUE(status.ok());
 }
 
@@ -417,7 +418,7 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     EMPTY_OUTPUT_TENSOR_MAP)
+                                     false, EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count =
@@ -443,7 +444,7 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     EMPTY_OUTPUT_TENSOR_MAP)
+                                     false, EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count =
@@ -500,7 +501,7 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
-      is_text_proto, true, &output_tensor_info);
+      is_text_proto, false, true, &output_tensor_info);
 }
 
 TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
@@ -522,6 +523,71 @@ TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
       inputs, outputs, def, &gt_);
 
   EXPECT_EQ(3, fused_graph_def.node_size());
+}
+
+namespace {
+// Just compares the max_byte_size attributes present.
+void CompareGraphTransferInfo(const GraphTransferInfo& a,
+                              const GraphTransferInfo& b) {
+  EXPECT_EQ(a.node_output_info_size(), b.node_output_info_size());
+  for (int i = 0; i < a.node_output_info_size(); ++i) {
+    EXPECT_EQ(a.node_output_info(i).node_id(), b.node_output_info(i).node_id());
+    EXPECT_EQ(a.node_output_info(i).max_byte_size_size(),
+              b.node_output_info(i).max_byte_size_size());
+    for (int j = 0; j < a.node_output_info(i).max_byte_size_size(); ++j) {
+      EXPECT_EQ(a.node_output_info(i).max_byte_size(j),
+                b.node_output_info(i).max_byte_size(j));
+    }
+  }
+}
+}  // anonymous namespace
+
+TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
+  string filename =
+      io::JoinPath(testing::TensorFlowSrcRoot(),
+                   "core/example/testdata/parse_example_graph_def.pbtxt");
+  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {};
+  std::vector<string> output_node_names = {};
+  bool is_text_proto = true;
+
+  // In order to run with a more complex graph uncomment the following lines
+  // filename = "v3_stripped_quantized_graph_opt.pb";
+  // input_node_info_list.emplace_back(
+  // GraphTransferer::InputNodeInfo{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
+  // output_node_names.emplace_back("softmax");
+  // is_text_proto = false;
+  // ops_definitions = &HexagonOpsDefinitions::getInstance();
+
+  // First compute using Shape inference.
+  GraphTransferer::OutputTensorInfo si_output_tensor_info;
+  GraphTransferer si_gt;
+  si_gt.EnableStrictCheckMode(false);
+  bool shape_inference_for_unknown_shape = true;
+  bool dry_run_for_unknown_shape = false;
+  Status status1 = si_gt.LoadGraphFromProtoFile(
+      *ops_definitions, filename, input_node_info_list, output_node_names,
+      is_text_proto, shape_inference_for_unknown_shape,
+      dry_run_for_unknown_shape, &si_output_tensor_info);
+  const GraphTransferInfo& si_graph_transfer_info =
+      si_gt.GetGraphTransferInfo();
+
+  // Now compute using dry run.
+  GraphTransferer::OutputTensorInfo dr_output_tensor_info;
+  GraphTransferer dr_gt;
+  dr_gt.EnableStrictCheckMode(false);
+  shape_inference_for_unknown_shape = false;
+  dry_run_for_unknown_shape = true;
+  Status status2 = dr_gt.LoadGraphFromProtoFile(
+      *ops_definitions, filename, input_node_info_list, output_node_names,
+      is_text_proto, shape_inference_for_unknown_shape,
+      dry_run_for_unknown_shape, &si_output_tensor_info);
+  const GraphTransferInfo& dr_graph_transfer_info =
+      dr_gt.GetGraphTransferInfo();
+
+  // Now compare both of them.
+  CompareGraphTransferInfo(si_graph_transfer_info, dr_graph_transfer_info);
 }
 
 }  // namespace tensorflow

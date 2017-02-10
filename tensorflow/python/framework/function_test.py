@@ -644,6 +644,24 @@ class FunctionTest(test.TestCase):
       self.assertAllEqual(v0, 20.)
       self.assertAllEqual(v1, 20.)
 
+  def testShapeFunction(self):
+    @function.Defun(dtypes.float32,
+                    shape_func=lambda op: [op.inputs[0].get_shape()])
+    def Foo(x):
+      return x + 1.0
+
+    @function.Defun(
+        shape_func=lambda op: [[1] + op.inputs[0].get_shape().as_list()])
+    def Bar(x):
+      return array_ops.stack([x])
+
+    g = ops.Graph()
+    with g.as_default():
+      x = Foo([1.0, 2.0])
+      self.assertEqual(x.get_shape().as_list(), [2])
+      y = Bar(array_ops.zeros([1, 2, 3]))
+      self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
+
 
 class FunctionOverloadTest(test.TestCase):
 

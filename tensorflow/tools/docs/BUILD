@@ -64,11 +64,12 @@ py_binary(
     srcs = ["generate.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":doc_generator_visitor",
+        ":parser",
+        ":py_guide_parser",
         "//tensorflow:tensorflow_py",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-        "//tensorflow/tools/docs:doc_generator_visitor",
-        "//tensorflow/tools/docs:parser",
     ],
 )
 
@@ -86,13 +87,35 @@ py_test(
     ],
 )
 
+py_library(
+    name = "py_guide_parser",
+    srcs = [
+        "py_guide_parser.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "py_guide_parser_test",
+    size = "small",
+    srcs = [
+        "py_guide_parser_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":py_guide_parser",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_binary(
     name = "make_py_guides",
     srcs = ["make_py_guides.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/tools/docs:generate",
-        "//tensorflow/tools/docs:parser",
+        ":generate",
+        ":parser",
+        ":py_guide_parser",
     ],
 )
 

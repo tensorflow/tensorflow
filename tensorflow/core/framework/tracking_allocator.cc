@@ -151,20 +151,22 @@ void TrackingAllocator::GetStats(AllocatorStats* stats) {
   allocator_->GetStats(stats);
 }
 
-std::pair<size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
+std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
   size_t high_watermark;
   size_t total_bytes;
+  size_t still_live_bytes;
   bool should_delete;
   {
     mutex_lock lock(mu_);
     high_watermark = high_watermark_;
     total_bytes = total_bytes_;
+    still_live_bytes = allocated_;
     should_delete = UnRef();
   }
   if (should_delete) {
     delete this;
   }
-  return std::make_pair(total_bytes, high_watermark);
+  return std::make_tuple(total_bytes, high_watermark, still_live_bytes);
 }
 
 bool TrackingAllocator::UnRef() {

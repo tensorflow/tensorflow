@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A class of Decoders that may sample to generate the next input.
+"""A library of helpers for use with SamplingDecoders.
 """
 
 from __future__ import absolute_import
@@ -20,16 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 
 import six
 
 from tensorflow.contrib.distributions.python.ops import categorical
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -39,17 +36,19 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 
 __all__ = [
-    "Sampler", "SamplingDecoderOutput", "BasicSamplingDecoder",
-    "BasicTrainingSampler", "GreedyEmbeddingSampler", "CustomSampler",
-    "ScheduledEmbeddingTrainingSampler",
+    "Helper",
+    "TrainingHelper",
+    "GreedyEmbeddingHelper",
+    "CustomHelper",
+    "ScheduledEmbeddingTrainingHelper",
 ]
 
 _transpose_batch_time = decoder._transpose_batch_time  # pylint: disable=protected-access
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Sampler(object):
-  """Sampler interface.  Sampler instances are used by BasicSamplingDecoder."""
+class Helper(object):
+  """Helper interface.  Helper instances are used by SamplingDecoder."""
 
   @abc.abstractproperty
   def batch_size(self):
@@ -72,93 +71,7 @@ class Sampler(object):
     pass
 
 
-class SamplingDecoderOutput(
-    collections.namedtuple("SamplingDecoderOutput",
-                           ("rnn_output", "sample_id"))):
-  pass
-
-
-class BasicSamplingDecoder(decoder.Decoder):
-  """Basic sampling decoder."""
-
-  def __init__(self, cell, sampler, initial_state):
-    """Initialize BasicSamplingDecoder.
-
-    Args:
-      cell: An `RNNCell` instance.
-      sampler: A `Sampler` instance.
-      initial_state: A (possibly nested tuple of...) tensors and TensorArrays.
-
-    Raises:
-      TypeError: if `cell` is not an instance of `RNNCell` or `sampler`
-        is not an instance of `Sampler`.
-    """
-    if not isinstance(cell, core_rnn_cell.RNNCell):
-      raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
-    if not isinstance(sampler, Sampler):
-      raise TypeError("sampler must be a Sampler, received: %s" %
-                      type(sampler))
-    self._cell = cell
-    self._sampler = sampler
-    self._initial_state = initial_state
-
-  @property
-  def batch_size(self):
-    return self._sampler.batch_size
-
-  @property
-  def output_size(self):
-    # Return the cell output and the id
-    return SamplingDecoderOutput(
-        rnn_output=self._cell.output_size,
-        sample_id=tensor_shape.TensorShape([]))
-
-  @property
-  def output_dtype(self):
-    # Assume the dtype of the cell is the output_size structure
-    # containing the input_state's first component's dtype.
-    # Return that structure and int32 (the id)
-    dtype = nest.flatten(self._initial_state)[0].dtype
-    return SamplingDecoderOutput(
-        nest.map_structure(lambda _: dtype, self._cell.output_size),
-        dtypes.int32)
-
-  def initialize(self, name=None):
-    """Initialize the decoder.
-
-    Args:
-      name: Name scope for any created operations.
-
-    Returns:
-      `(finished, first_inputs, initial_state)`.
-    """
-    return self._sampler.initialize() + (self._initial_state,)
-
-  def step(self, time, inputs, state, name=None):
-    """Perform a decoding step.
-
-    Args:
-      time: scalar `int32` tensor.
-      inputs: A (structure of) input tensors.
-      state: A (structure of) state tensors and TensorArrays.
-      name: Name scope for any created operations.
-
-    Returns:
-      `(outputs, next_state, next_inputs, finished)`.
-    """
-    with ops.name_scope(
-        name, "BasicSamplingDecoderStep", (time, inputs, state)):
-      cell_outputs, cell_state = self._cell(inputs, state)
-      sample_ids = self._sampler.sample(
-          time=time, outputs=cell_outputs, state=cell_state)
-      (finished, next_inputs, next_state) = self._sampler.next_inputs(
-          time=time, outputs=cell_outputs, state=cell_state,
-          sample_ids=sample_ids)
-    outputs = SamplingDecoderOutput(cell_outputs, sample_ids)
-    return (outputs, next_state, next_inputs, finished)
-
-
-class CustomSampler(Sampler):
+class CustomHelper(Helper):
   """Base abstract class that allows the user to customize sampling."""
 
   def __init__(self, initialize_fn, sample_fn, next_inputs_fn):
@@ -202,8 +115,8 @@ class CustomSampler(Sampler):
           time=time, outputs=outputs, state=state, sample_ids=sample_ids)
 
 
-class BasicTrainingSampler(Sampler):
-  """A (non-)sampler for use during training.  Only reads inputs.
+class TrainingHelper(Helper):
+  """A helper for use during training.  Only reads inputs.
 
   Returned sample_ids are the argmax of the RNN output logits.
   """
@@ -221,8 +134,7 @@ class BasicTrainingSampler(Sampler):
     Raises:
       ValueError: if `sequence_length` is not a 1D tensor.
     """
-    with ops.name_scope(
-        name, "BasicTrainingSampler", [inputs, sequence_length]):
+    with ops.name_scope(name, "TrainingHelper", [inputs, sequence_length]):
       inputs = ops.convert_to_tensor(inputs, name="inputs")
       if not time_major:
         inputs = nest.map_structure(_transpose_batch_time, inputs)
@@ -250,7 +162,7 @@ class BasicTrainingSampler(Sampler):
     return self._batch_size
 
   def initialize(self, name=None):
-    with ops.name_scope(name, "BasicTrainingSamplerInitialize"):
+    with ops.name_scope(name, "TrainingHelperInitialize"):
       finished = math_ops.equal(0, self._sequence_length)
       all_finished = math_ops.reduce_all(finished)
       next_inputs = control_flow_ops.cond(
@@ -259,15 +171,15 @@ class BasicTrainingSampler(Sampler):
       return (finished, next_inputs)
 
   def sample(self, time, outputs, name=None, **unused_kwargs):
-    with ops.name_scope(name, "BasicTrainingSamplerSample", [time, outputs]):
+    with ops.name_scope(name, "TrainingHelperSample", [time, outputs]):
       sample_ids = math_ops.cast(
           math_ops.argmax(outputs, axis=-1), dtypes.int32)
       return sample_ids
 
   def next_inputs(self, time, outputs, state, name=None, **unused_kwargs):
-    """next_inputs_fn for BasicTrainingSampler."""
-    with ops.name_scope(
-        name, "BasicTrainingSamplerNextInputs", [time, outputs, state]):
+    """next_inputs_fn for TrainingHelper."""
+    with ops.name_scope(name, "TrainingHelperNextInputs",
+                        [time, outputs, state]):
       next_time = time + 1
       finished = (next_time >= self._sequence_length)
       all_finished = math_ops.reduce_all(finished)
@@ -279,8 +191,8 @@ class BasicTrainingSampler(Sampler):
       return (finished, next_inputs, state)
 
 
-class ScheduledEmbeddingTrainingSampler(BasicTrainingSampler):
-  """A training sampler that adds scheduled sampling.
+class ScheduledEmbeddingTrainingHelper(TrainingHelper):
+  """A training helper that adds scheduled sampling.
 
   Returns -1s for sample_ids where no sampling took place; valid sample id
   values elsewhere.
@@ -322,18 +234,17 @@ class ScheduledEmbeddingTrainingSampler(BasicTrainingSampler):
             "saw shape: %s" % (self._sampling_probability.get_shape()))
       self._seed = seed
       self._scheduling_seed = scheduling_seed
-      super(ScheduledEmbeddingTrainingSampler, self).__init__(
+      super(ScheduledEmbeddingTrainingHelper, self).__init__(
           inputs=inputs,
           sequence_length=sequence_length,
           time_major=time_major,
           name=name)
 
   def initialize(self, name=None):
-    return super(ScheduledEmbeddingTrainingSampler, self).initialize(
-        name=name)
+    return super(ScheduledEmbeddingTrainingHelper, self).initialize(name=name)
 
   def sample(self, time, outputs, state, name=None):
-    with ops.name_scope(name, "ScheduledEmbeddingTrainingSamplerSample",
+    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperSample",
                         [time, outputs, state]):
       # Return -1s where we did not sample, and sample_ids elsewhere
       select_sample_noise = random_ops.random_uniform(
@@ -346,11 +257,14 @@ class ScheduledEmbeddingTrainingSampler(BasicTrainingSampler):
           array_ops.tile([-1], [self.batch_size]))
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
-    with ops.name_scope(name, "ScheduledEmbeddingTrainingSamplerSample",
+    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperSample",
                         [time, outputs, state, sample_ids]):
       (finished, base_next_inputs, state) = (
-          super(ScheduledEmbeddingTrainingSampler, self).next_inputs(
-              time=time, outputs=outputs, state=state, sample_ids=sample_ids,
+          super(ScheduledEmbeddingTrainingHelper, self).next_inputs(
+              time=time,
+              outputs=outputs,
+              state=state,
+              sample_ids=sample_ids,
               name=name))
 
       def maybe_sample():
@@ -379,8 +293,8 @@ class ScheduledEmbeddingTrainingSampler(BasicTrainingSampler):
       return (finished, next_inputs, state)
 
 
-class GreedyEmbeddingSampler(Sampler):
-  """A (non-)sampler for use during inference.
+class GreedyEmbeddingHelper(Helper):
+  """A helper for use during inference.
 
   Uses the argmax of the output (treated as logits) and passes the
   result through an embedding layer to get the next input.
@@ -424,7 +338,7 @@ class GreedyEmbeddingSampler(Sampler):
     return (finished, self._start_inputs)
 
   def sample(self, time, outputs, state, name=None):
-    """sample for GreedyEmbeddingSampler."""
+    """sample for GreedyEmbeddingHelper."""
     del time, state  # unused by sample_fn
     # Outputs are logits, use argmax to get the most probable id
     if not isinstance(outputs, ops.Tensor):
@@ -435,7 +349,7 @@ class GreedyEmbeddingSampler(Sampler):
     return sample_ids
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
-    """next_inputs_fn for GreedyEmbeddingSampler."""
+    """next_inputs_fn for GreedyEmbeddingHelper."""
     del time, outputs  # unused by next_inputs_fn
     finished = math_ops.equal(sample_ids, self._end_token)
     all_finished = math_ops.reduce_all(finished)

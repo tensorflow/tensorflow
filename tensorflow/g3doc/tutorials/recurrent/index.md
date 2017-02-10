@@ -12,7 +12,7 @@ a challenging task of language modeling. The goal of the problem is to fit a
 probabilistic model which assigns probabilities to sentences. It does so by
 predicting next words in a text given a history of previous words. For this
 purpose we will use the [Penn Tree Bank](https://catalog.ldc.upenn.edu/ldc99t42)
-(PTB) dataset, which is a popular benchmark for measuring quality of these
+(PTB) dataset, which is a popular benchmark for measuring the quality of these
 models, whilst being small and relatively fast to train.
 
 Language modeling is key to many interesting problems such as speech
@@ -35,7 +35,7 @@ File | Purpose
 
 ## Download and Prepare the Data
 
-The data required for this tutorial is in the data/ directory of the
+The data required for this tutorial is in the `data/` directory of the
 PTB dataset from Tomas Mikolov's webpage:
 http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
 
@@ -57,7 +57,7 @@ process data in mini-batches of size `batch_size`.
 The basic pseudocode is as follows:
 
 ```python
-lstm = rnn_cell.BasicLSTMCell(lstm_size)
+lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 state = tf.zeros([batch_size, lstm.state_size])
 probabilities = []
@@ -90,7 +90,7 @@ truncated backpropagation:
 # Placeholder for the inputs in a given iteration.
 words = tf.placeholder(tf.int32, [batch_size, num_steps])
 
-lstm = rnn_cell.BasicLSTMCell(lstm_size)
+lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 initial_state = state = tf.zeros([batch_size, lstm.state_size])
 
@@ -157,8 +157,8 @@ the second and so on.
 We have a class called `MultiRNNCell` that makes the implementation seamless:
 
 ```python
-lstm = rnn_cell.BasicLSTMCell(lstm_size, state_is_tuple=False)
-stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers,
+lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size, state_is_tuple=False)
+stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm] * number_of_layers,
     state_is_tuple=False)
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
@@ -174,11 +174,15 @@ final_state = state
 
 ## Run the Code
 
-Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. Run the following commands:
+Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub.
+You'll also need to download the PTB dataset, as discussed at the beginning of
+this tutorial; we'll assume the dataset is located in `/tmp/simple-examples/data`.
+
+Run the following commands:
 
 ```bash
 cd models/tutorials/rnn/ptb
-python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model small
+python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model=small
 ```
 
 There are 3 supported model configurations in the tutorial code: "small",
