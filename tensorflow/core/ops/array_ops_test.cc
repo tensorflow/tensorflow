@@ -139,8 +139,8 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "CheckNumerics", "Identity", "RefIdentity", "StopGradient",
-           "ZerosLike",
+           "CheckNumerics", "Identity", "QuantizeAndDequantize", "RefIdentity",
+           "StopGradient", "ZerosLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
@@ -1173,17 +1173,6 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
       "ExtractImagePatches requires the ksizes attribute to contain 4 values, "
       "but got: 5",
       op, "[1,7,7,2]");
-}
-
-TEST(ArrayOpsTest, QuantizeAndDequantize_ShapeFn) {
-  ShapeInferenceTestOp op("QuantizeAndDequantize");
-  INFER_OK(op, "?;?;?", "in0");
-  INFER_OK(op, "[];?;?", "in0");
-  INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
-
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[]");
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[];[1]");
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[1]");
 }
 
 TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
