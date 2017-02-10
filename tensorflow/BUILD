@@ -200,6 +200,7 @@ filegroup(
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
         "//tensorflow/core/platform/hadoop:all_files",
+        "//tensorflow/core/user_ops:all_files",
         "//tensorflow/core/util/ctc:all_files",
         "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
