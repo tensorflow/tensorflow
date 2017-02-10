@@ -60,7 +60,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
   Status status = gt->DryRunInferenceForAllNode(
       def, inputs, false /* initialize_by_zero */, &output_tensor_info);
   CHECK(status.ok());
-  status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs,
+  status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs, false,
                                   output_tensor_info.output_tensor_map);
 
   Scope root = Scope::NewRootScope();

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for contrib.seq2seq.python.seq2seq.sampling_decoder."""
+"""Tests for contrib.seq2seq.python.seq2seq.basic_decoder."""
 # pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +30,8 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
 import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell
-from tensorflow.contrib.seq2seq.python.ops import sampling_decoder
+from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
+from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -39,9 +40,9 @@ from tensorflow.python.platform import test
 # pylint: enable=g-import-not-at-top
 
 
-class BasicSamplingDecoderTest(test.TestCase):
+class BasicDecoderTest(test.TestCase):
 
-  def testStepWithBasicTrainingSampler(self):
+  def testStepWithTrainingHelper(self):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
@@ -52,21 +53,21 @@ class BasicSamplingDecoderTest(test.TestCase):
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(cell_depth)
-      sampler = sampling_decoder.BasicTrainingSampler(
+      helper = helper_py.TrainingHelper(
           inputs, sequence_length, time_major=False)
-      my_decoder = sampling_decoder.BasicSamplingDecoder(
+      my_decoder = basic_decoder.BasicDecoder(
           cell=cell,
-          sampler=sampler,
+          helper=helper,
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
       output_size = my_decoder.output_size
       output_dtype = my_decoder.output_dtype
       self.assertEqual(
-          sampling_decoder.SamplingDecoderOutput(cell_depth,
-                                                 tensor_shape.TensorShape([])),
+          basic_decoder.BasicDecoderOutput(cell_depth,
+                                           tensor_shape.TensorShape([])),
           output_size)
       self.assertEqual(
-          sampling_decoder.SamplingDecoderOutput(dtypes.float32, dtypes.int32),
+          basic_decoder.BasicDecoderOutput(dtypes.float32, dtypes.int32),
           output_dtype)
 
       (first_finished, first_inputs, first_state) = my_decoder.initialize()
@@ -78,7 +79,7 @@ class BasicSamplingDecoderTest(test.TestCase):
       self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(
-          isinstance(step_outputs, sampling_decoder.SamplingDecoderOutput))
+          isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, cell_depth), step_outputs[0].get_shape())
       self.assertEqual((batch_size,), step_outputs[1].get_shape())
       self.assertEqual((batch_size, cell_depth), first_state[0].get_shape())
@@ -106,7 +107,7 @@ class BasicSamplingDecoderTest(test.TestCase):
           np.argmax(sess_results["step_outputs"].rnn_output, -1),
           sess_results["step_outputs"].sample_id)
 
-  def testStepWithGreedyEmbeddingSampler(self):
+  def testStepWithGreedyEmbeddingHelper(self):
     batch_size = 5
     vocabulary_size = 7
     cell_depth = vocabulary_size  # cell's logits must match vocabulary size
@@ -118,21 +119,21 @@ class BasicSamplingDecoderTest(test.TestCase):
       embeddings = np.random.randn(vocabulary_size,
                                    input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(vocabulary_size)
-      sampler = sampling_decoder.GreedyEmbeddingSampler(
-          embeddings, start_tokens, end_token)
-      my_decoder = sampling_decoder.BasicSamplingDecoder(
+      helper = helper_py.GreedyEmbeddingHelper(embeddings, start_tokens,
+                                               end_token)
+      my_decoder = basic_decoder.BasicDecoder(
           cell=cell,
-          sampler=sampler,
+          helper=helper,
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
       output_size = my_decoder.output_size
       output_dtype = my_decoder.output_dtype
       self.assertEqual(
-          sampling_decoder.SamplingDecoderOutput(cell_depth,
-                                                 tensor_shape.TensorShape([])),
+          basic_decoder.BasicDecoderOutput(cell_depth,
+                                           tensor_shape.TensorShape([])),
           output_size)
       self.assertEqual(
-          sampling_decoder.SamplingDecoderOutput(dtypes.float32, dtypes.int32),
+          basic_decoder.BasicDecoderOutput(dtypes.float32, dtypes.int32),
           output_dtype)
 
       (first_finished, first_inputs, first_state) = my_decoder.initialize()
@@ -144,7 +145,7 @@ class BasicSamplingDecoderTest(test.TestCase):
       self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(
-          isinstance(step_outputs, sampling_decoder.SamplingDecoderOutput))
+          isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, cell_depth), step_outputs[0].get_shape())
       self.assertEqual((batch_size,), step_outputs[1].get_shape())
       self.assertEqual((batch_size, cell_depth), first_state[0].get_shape())
@@ -176,7 +177,7 @@ class BasicSamplingDecoderTest(test.TestCase):
       self.assertAllEqual(expected_step_next_inputs,
                           sess_results["step_next_inputs"])
 
-  def testStepWithScheduledEmbeddingTrainingSampler(self):
+  def testStepWithScheduledEmbeddingTrainingHelper(self):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
@@ -190,23 +191,25 @@ class BasicSamplingDecoderTest(test.TestCase):
           vocabulary_size, input_depth).astype(np.float32)
       half = constant_op.constant(0.5)
       cell = core_rnn_cell.LSTMCell(vocabulary_size)
-      sampler = sampling_decoder.ScheduledEmbeddingTrainingSampler(
-          inputs=inputs, sequence_length=sequence_length,
-          embedding=embeddings, sampling_probability=half,
+      helper = helper_py.ScheduledEmbeddingTrainingHelper(
+          inputs=inputs,
+          sequence_length=sequence_length,
+          embedding=embeddings,
+          sampling_probability=half,
           time_major=False)
-      my_decoder = sampling_decoder.BasicSamplingDecoder(
+      my_decoder = basic_decoder.BasicDecoder(
           cell=cell,
-          sampler=sampler,
+          helper=helper,
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
       output_size = my_decoder.output_size
       output_dtype = my_decoder.output_dtype
       self.assertEqual(
-          sampling_decoder.SamplingDecoderOutput(vocabulary_size,
-                                                 tensor_shape.TensorShape([])),
+          basic_decoder.BasicDecoderOutput(vocabulary_size,
+                                           tensor_shape.TensorShape([])),
           output_size)
       self.assertEqual(
-          sampling_decoder.SamplingDecoderOutput(dtypes.float32, dtypes.int32),
+          basic_decoder.BasicDecoderOutput(dtypes.float32, dtypes.int32),
           output_dtype)
 
       (first_finished, first_inputs, first_state) = my_decoder.initialize()
@@ -218,7 +221,7 @@ class BasicSamplingDecoderTest(test.TestCase):
       self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(
-          isinstance(step_outputs, sampling_decoder.SamplingDecoderOutput))
+          isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, vocabulary_size),
                        step_outputs[0].get_shape())
       self.assertEqual((batch_size,), step_outputs[1].get_shape())
