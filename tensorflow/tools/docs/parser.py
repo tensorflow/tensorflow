@@ -27,8 +27,12 @@ import re
 import codegen
 import six
 
+
 # A regular expression capturing a python indentifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
+# A regular expression for capturing a @{symbol} reference.
+_FULL_NAME_RE = '%s(.%s)*' % (IDENTIFIER_RE, IDENTIFIER_RE)
+SYMBOL_REFERENCE_RE = re.compile(r'@\{(' + _FULL_NAME_RE + r')\}')
 
 
 def documentation_path(full_name):
@@ -136,16 +140,14 @@ def replace_references(string, relative_path_to_root, duplicate_of):
 
   Args:
     string: A string in which "@{symbol}" references should be replaced.
-    relative_path_to_root: The relative path from the contianing document to the
+    relative_path_to_root: The relative path from the containing document to the
       root of the API documentation that is being linked to.
     duplicate_of: A map from duplicate names to preferred names of API symbols.
 
   Returns:
     `string`, with "@{symbol}" references replaced by Markdown links.
   """
-  full_name_re = '%s(.%s)*' % (IDENTIFIER_RE, IDENTIFIER_RE)
-  symbol_reference_re = re.compile(r'@\{(' + full_name_re + r')\}')
-  return re.sub(symbol_reference_re,
+  return re.sub(SYMBOL_REFERENCE_RE,
                 lambda match: _markdown_link(match.group(1), match.group(1),  # pylint: disable=g-long-lambda
                                              relative_path_to_root,
                                              duplicate_of),
@@ -384,8 +386,21 @@ def _generate_signature(func, reverse_index):
   return '(%s)' % ', '.join(args_list)
 
 
+def _get_guides_markdown(duplicate_names, guide_index, relative_path):
+  all_guides = []
+  for name in duplicate_names:
+    all_guides.extend(guide_index.get(name, []))
+  if not all_guides: return ''
+  prefix = '../' * (relative_path.count('/') + 3)
+  links = sorted(set([guide_ref.make_md_link(prefix)
+                      for guide_ref in all_guides]))
+  return 'See the guide%s: %s\n\n' % (
+      's' if len(links) > 1 else '', ', '.join(links))
+
+
 def _generate_markdown_for_function(full_name, duplicate_names,
-                                    function, duplicate_of, reverse_index):
+                                    function, duplicate_of, reverse_index,
+                                    guide_index):
   """Generate Markdown docs for a function or method.
 
   This function creates a documentation page for a function. It uses the
@@ -401,6 +416,8 @@ def _generate_markdown_for_function(full_name, duplicate_names,
     duplicate_of: A map of duplicate full names to master names. Used to resolve
       @{symbol} references in the docstring.
     reverse_index: A map from object ids in the index to full names.
+    guide_index: A `dict` mapping symbol name strings to objects with a
+      `make_md_link()` method.
 
   Returns:
     A string that can be written to a documentation file for this function.
@@ -410,6 +427,7 @@ def _generate_markdown_for_function(full_name, duplicate_names,
       os.path.dirname(documentation_path(full_name)) or '.', '.')
   docstring = _md_docstring(function, relative_path, duplicate_of)
   signature = _generate_signature(function, reverse_index)
+  guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
 
   if duplicate_names:
     aliases = '\n'.join(['### `%s`' % (name + signature)
@@ -418,11 +436,13 @@ def _generate_markdown_for_function(full_name, duplicate_names,
   else:
     aliases = ''
 
-  return '#`%s%s`\n\n%s%s' % (full_name, signature, aliases, docstring)
+  return '# `%s%s`\n\n%s%s%s' % (
+      full_name, signature, aliases, guides, docstring)
 
 
 def _generate_markdown_for_class(full_name, duplicate_names, py_class,
-                                 duplicate_of, index, tree, reverse_index):
+                                 duplicate_of, index, tree,
+                                 reverse_index, guide_index):
   """Generate Markdown docs for a class.
 
   This function creates a documentation page for a class. It uses the
@@ -442,6 +462,8 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
     index: A map from full names to python object references.
     tree: A map from full names to the names of all documentable child objects.
     reverse_index: A map from object ids in the index to full names.
+    guide_index: A `dict` mapping symbol name strings to objects with a
+      `make_md_link()` method.
 
   Returns:
     A string that can be written to a documentation file for this class.
@@ -449,13 +471,14 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
   relative_path = os.path.relpath(
       os.path.dirname(documentation_path(full_name)) or '.', '.')
   docstring = _md_docstring(py_class, relative_path, duplicate_of)
+  guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
   if duplicate_names:
     aliases = '\n'.join(['### `class %s`' % name for name in duplicate_names])
     aliases += '\n\n'
   else:
     aliases = ''
 
-  docs = '# `%s`\n\n%s%s\n\n' % (full_name, aliases, docstring)
+  docs = '# `%s`\n\n%s%s%s\n\n' % (full_name, aliases, guides, docstring)
 
   field_names = []
   properties = []
@@ -576,9 +599,8 @@ _CODE_URL_PREFIX = (
     'https://www.tensorflow.org/code/tensorflow/')
 
 
-def generate_markdown(full_name, py_object,
-                      duplicate_of, duplicates,
-                      index, tree, reverse_index, base_dir):
+def generate_markdown(full_name, py_object, duplicate_of, duplicates,
+                      index, tree, reverse_index, guide_index, base_dir):
   """Generate Markdown docs for a given object that's part of the TF API.
 
   This function uses _md_docstring to obtain the docs pertaining to
@@ -610,6 +632,8 @@ def generate_markdown(full_name, py_object,
     tree: A `dict` mapping a fully qualified name to the names of all its
       members. Used to populate the members section of a class or module page.
     reverse_index: A `dict` mapping objects in the index to full names.
+    guide_index: A `dict` mapping symbol name strings to objects with a
+      `make_md_link()` method.
     base_dir: A base path that is stripped from file locations written to the
       docs.
 
@@ -629,13 +653,13 @@ def generate_markdown(full_name, py_object,
   if (inspect.ismethod(py_object) or inspect.isfunction(py_object) or
       # Some methods in classes from extensions come in as routines.
       inspect.isroutine(py_object)):
-    markdown = _generate_markdown_for_function(master_name, duplicate_names,
-                                               py_object, duplicate_of,
-                                               reverse_index)
+    markdown = _generate_markdown_for_function(
+        master_name, duplicate_names, py_object, duplicate_of,
+        reverse_index, guide_index)
   elif inspect.isclass(py_object):
-    markdown = _generate_markdown_for_class(master_name, duplicate_names,
-                                            py_object, duplicate_of,
-                                            index, tree, reverse_index)
+    markdown = _generate_markdown_for_class(
+        master_name, duplicate_names, py_object, duplicate_of, index, tree,
+        reverse_index, guide_index)
   elif inspect.ismodule(py_object):
     markdown = _generate_markdown_for_module(master_name, duplicate_names,
                                              py_object, duplicate_of,

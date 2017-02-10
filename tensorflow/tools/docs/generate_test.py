@@ -91,7 +91,7 @@ class GenerateTest(googletest.TestCase):
 
     generate.write_docs(output_dir, base_dir,
                         duplicate_of, duplicates,
-                        index, tree, reverse_index={})
+                        index, tree, reverse_index={}, guide_index={})
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
