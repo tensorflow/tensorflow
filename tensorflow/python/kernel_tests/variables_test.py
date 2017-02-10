@@ -409,7 +409,9 @@ class VariablesTestCase(test.TestCase):
 
   def testRepr(self):
     var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
-    self.assertEqual("<tf.Variable 'noop' shape=(5, 5) dtype=float32>", repr(var))
+    self.assertEqual(
+        "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
+        repr(var))
 
 
 class IsInitializedTest(test.TestCase):
