@@ -57,3 +57,12 @@ make_host_protoc() {
   fi
   make install
 }
+
+download_and_push() {
+    URL="$1"
+    LOCAL_DEST="$2"
+    ANDROID_DEST="$3"
+    curl -Ls "${URL}" -o "${LOCAL_DEST}"
+    adb shell mkdir -p "${ANDROID_DEST}"
+    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
+}

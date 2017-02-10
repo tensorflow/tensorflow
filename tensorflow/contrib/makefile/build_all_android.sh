@@ -27,15 +27,6 @@ usage() {
   exit 1
 }
 
-download_and_push() {
-    URL="$1"
-    LOCAL_DEST="$2"
-    ANDROID_DEST="$3"
-    curl -Ls "${URL}" -o "${LOCAL_DEST}"
-    adb shell mkdir -p "${ANDROID_DEST}"
-    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
-}
-
 if [[ -z "${NDK_ROOT}" ]]; then
     echo "NDK_ROOT should be set as an environment variable" 1>&2
     exit 1
@@ -55,7 +46,7 @@ shift $((OPTIND - 1))
 
 # Make sure we're in the correct directory, at the root of the source tree.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd ${SCRIPT_DIR}/../../../
+cd "${SCRIPT_DIR}"/../../../
 
 source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
