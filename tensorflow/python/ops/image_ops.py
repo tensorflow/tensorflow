@@ -242,6 +242,25 @@ def _CheckAtLeast3DImage(image):
                      image.get_shape())
 
 
+def _slice_channels(image):
+  """Slices a tensor into one tensor for each 'channel' (the last dimension).
+
+  Args:
+    images: Tensor containing the images to be sliced.
+
+  Returns:
+    list of tensor, one for each channel.
+  """
+
+  image_rank = array_ops.rank(image)
+
+  begin = [0] * (image_rank - 1)
+  size = [-1] * (image_rank - 1) + [1]
+
+  channels = [array_ops.slice(image, begin + [i], size) for i in range(3)]
+  return channels
+
+
 def random_flip_up_down(image, seed=None):
   """Randomly flips an image vertically (upside down).
 
@@ -1126,15 +1145,13 @@ def adjust_hue(image, delta, name=None):
 
     hsv = gen_image_ops.rgb_to_hsv(flt_image)
 
-    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+    hue, saturation, value = _slice_channels(hsv)
 
     # Note that we add 2*pi to guarantee that the resulting hue is a positive
     # floating point number since delta is [-0.5, 0.5].
     hue = math_ops.mod(hue + (delta + 1.), 1.)
 
-    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    hsv_altered = array_ops.concat(array_ops.rank(image) - 1, [hue, saturation, value])
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
@@ -1201,14 +1218,12 @@ def adjust_saturation(image, saturation_factor, name=None):
 
     hsv = gen_image_ops.rgb_to_hsv(flt_image)
 
-    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+    hue, saturation, value = _slice_channels(hsv)
 
     saturation *= saturation_factor
     saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
 
-    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    hsv_altered = array_ops.concat(array_ops.rank(image) - 1, [hue, saturation, value])
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
