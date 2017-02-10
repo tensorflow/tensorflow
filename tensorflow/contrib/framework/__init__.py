@@ -57,6 +57,7 @@
 @@get_unique_variable
 @@get_variables_by_name
 @@get_variables_by_suffix
+@@get_variable_full_name
 @@get_variables_to_restore
 @@get_variables
 @@local_variable
