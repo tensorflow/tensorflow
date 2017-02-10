@@ -835,6 +835,7 @@
   * [`get_model_variables`](../../api_docs/python/contrib.framework.md#get_model_variables)
   * [`get_or_create_global_step`](../../api_docs/python/contrib.framework.md#get_or_create_global_step)
   * [`get_unique_variable`](../../api_docs/python/contrib.framework.md#get_unique_variable)
+  * [`get_variable_full_name`](../../api_docs/python/contrib.framework.md#get_variable_full_name)
   * [`get_variables`](../../api_docs/python/contrib.framework.md#get_variables)
   * [`get_variables_by_name`](../../api_docs/python/contrib.framework.md#get_variables_by_name)
   * [`get_variables_by_suffix`](../../api_docs/python/contrib.framework.md#get_variables_by_suffix)
