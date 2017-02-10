@@ -669,8 +669,6 @@ def train(train_op,
     if summary_writer == _USE_DEFAULT:
       summary_writer = supervisor.Supervisor.USE_DEFAULT
 
-    cleanup_op = None
-
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
                         (sync_replicas_optimizer.SyncReplicasOptimizer)):
@@ -680,9 +678,6 @@ def train(train_op,
       # Need to create these BEFORE the supervisor finalizes the graph:
       init_tokens_op = sync_optimizer.get_init_tokens_op()
       chief_queue_runner = sync_optimizer.get_chief_queue_runner()
-      if isinstance(sync_optimizer,
-                    sync_replicas_optimizer.SyncReplicasOptimizer):
-        cleanup_op = sync_optimizer.get_clean_up_op()
 
     if train_step_kwargs == _USE_DEFAULT:
       with ops.name_scope('train_step'):
@@ -740,25 +735,19 @@ def train(train_op,
           sv.start_queue_runners(sess, [chief_queue_runner])
           sess.run(init_tokens_op)
         try:
-          try:
-            while not sv.should_stop():
-              total_loss, should_stop = train_step_fn(
-                  sess, train_op, global_step, train_step_kwargs)
-              if should_stop:
-                logging.info('Stopping Training.')
-                break
-          except errors.OutOfRangeError:
-            # OutOfRangeError is thrown when epoch limit per
-            # tf.train.limit_epochs is reached.
-            logging.info('Caught OutOfRangeError. Stopping Training.')
-          if logdir and sv.is_chief:
-            logging.info('Finished training! Saving model to disk.')
-            sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-        except:
-          if sv.is_chief and cleanup_op is not None:
-            logging.info('About to execute sync_clean_up_op!')
-            sess.run(cleanup_op)
-          raise
+          while not sv.should_stop():
+            total_loss, should_stop = train_step_fn(
+                sess, train_op, global_step, train_step_kwargs)
+            if should_stop:
+              logging.info('Stopping Training.')
+              break
+        except errors.OutOfRangeError:
+          # OutOfRangeError is thrown when epoch limit per
+          # tf.train.limit_epochs is reached.
+          logging.info('Caught OutOfRangeError. Stopping Training.')
+        if logdir and sv.is_chief:
+          logging.info('Finished training! Saving model to disk.')
+          sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the
