@@ -161,10 +161,10 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
     // be dereferenced again after this statement
     auto sizes = allocator_pair.second->GetSizesAndUnRef();
     memory->set_allocator_name(allocator_pair.first->Name());
-    int tb = sizes.first;
-    memory->set_total_bytes(tb);
+    memory->set_total_bytes(std::get<0>(sizes));
     if (allocator_pair.first->TracksAllocationSizes()) {
-      memory->set_peak_bytes(sizes.second);
+      memory->set_peak_bytes(std::get<1>(sizes));
+      memory->set_live_bytes(std::get<2>(sizes));
     }
   }
 }
