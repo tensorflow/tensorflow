@@ -109,7 +109,7 @@ filegroup(
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
         "@org_html5lib//:LICENSE",
         "@org_mozilla_bleach//:LICENSE",

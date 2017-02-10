@@ -318,7 +318,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   patched_http_archive(
-      name = "protobuf",
+      name = "protobuf_archive",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
           "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
@@ -430,24 +430,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # to point to the protobuf's compiler library.
   native.bind(
       name = "protobuf_clib",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@protobuf_archive//:protoc_lib",
   )
 
   native.bind(
       name = "protobuf_compiler",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@protobuf_archive//:protoc_lib",
   )
 
-  native.new_http_archive(
+  native.bind(
+      name = "protobuf",
+      actual = "@protobuf_archive//:protobuf",
+  )
+
+  native.bind(
+      name = "libssl",
+      actual = "@boringssl//:ssl",
+  )
+
+  native.new_git_repository(
       name = "grpc",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
-          "https://github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
-      ],
-      sha256 = "a15f352436ab92c521b1ac11e729e155ace38d0856380cf25048c5d1d9ba8e31",
-      strip_prefix = "grpc-d7ff4ff40071d2b486a052183e3e9f9382afb745",
+      remote = "https://github.com/llhe/grpc.git",
+      commit = "cc7caf86af55801e143d3836c216dee942635f79",
       build_file = str(Label("//third_party:grpc.BUILD")),
   )
+
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
   # C++ plugin code generator.

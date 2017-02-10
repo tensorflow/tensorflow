@@ -137,8 +137,14 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
   for (int i = 0; i < num_stages; i++) {
     std::vector<Output> this_stage;
     for (int j = 0; j < width; j++) {
+      int device_idx = 0;
+      if (use_multiple_devices) {
+        // Make sure the Ops are allocated on different devices even the
+        // width is 1 (to avoid the overhead of computation)
+        device_idx = (i + j) % cluster->devices.size();
+      }
       Output combine = AddN(
-          s.WithDevice(cluster->devices[use_multiple_devices ? j : 0].name()),
+          s.WithDevice(cluster->devices[device_idx].name()),
           last_stage);
       this_stage.push_back(combine);
     }
@@ -234,7 +240,11 @@ BENCHMARK(BM_ShardedProgram)
 static void BM_RPC(int iters, int width, int tensor_size) {
   BM_Helper(iters, width, 2 /*num_stages*/, tensor_size, true /*multi-device*/);
 }
-BENCHMARK(BM_RPC)->ArgPair(30, 2)->ArgPair(30, 1000)->ArgPair(30, 100000);
+BENCHMARK(BM_RPC)
+    ->ArgPair(30, 2)
+    ->ArgPair(30, 1000)
+    ->ArgPair(30, 100000)
+    ->ArgPair(1, 100000000);
 
 static void BM_SingleDevice(int iters, int width, int num_stages) {
   BM_Helper(iters, width, num_stages, 2 /*tensor_size*/,
