@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -388,9 +389,10 @@ Status HloCostAnalysis::HandleCustomCall(
 Status HloCostAnalysis::HandleSort(HloInstruction* sort,
                                    HloInstruction* operand_instruction) {
   // The cost of sort is implementation dependent, so cannot determine at HLO
-  // level. Maybe just assume the comparison based N*log(N) sorting?
-  // TODO(b/26346211): Implement the cost model for sort.
-  return Unimplemented("HandleSort");
+  // level. Assume comparison based N*log(N) sorting.
+  int64 elements = ShapeUtil::ElementsIn(operand_instruction->shape());
+  current_flop_count_ = elements * tensorflow::Log2Ceiling(elements);
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while,

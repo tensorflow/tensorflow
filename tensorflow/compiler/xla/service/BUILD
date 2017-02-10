@@ -1002,6 +1002,42 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_rematerialization",
+    srcs = ["hlo_rematerialization.cc"],
+    hdrs = ["hlo_rematerialization.h"],
+    deps = [
+        ":buffer_liveness",
+        ":hlo",
+        ":hlo_cost_analysis",
+        ":hlo_ordering",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "hlo_rematerialization_test",
+    srcs = ["hlo_rematerialization_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":hlo",
+        ":hlo_ordering",
+        ":hlo_rematerialization",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_test(
     name = "hlo_dce_test",
     srcs = ["hlo_dce_test.cc"],
