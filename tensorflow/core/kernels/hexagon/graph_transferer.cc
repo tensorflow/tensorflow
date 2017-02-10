@@ -19,6 +19,7 @@ limitations under the License.
 #include <cinttypes>
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
@@ -65,6 +66,7 @@ Status GraphTransferer::LoadGraphFromProto(
     const GraphDef& graph_def,
     const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names,
+    const bool shape_inference_for_unknown_shape,
     const OutputTensorMap& output_tensor_map) {
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
@@ -74,6 +76,45 @@ Status GraphTransferer::LoadGraphFromProto(
   if (!status.ok()) {
     VLOG(1) << "Failed to import graph " << status.ToString();
     return status;
+  }
+
+  if (shape_inference_for_unknown_shape && !input_node_info_list.empty()) {
+    auto visit = [&shape_refiner, &input_node_info_list, &status](Node* node) {
+      CHECK_NE(node, nullptr);
+      // If we visit an input node, we use the shape provided and set the
+      // shape accordingly.
+      bool is_input_node = false;
+      for (const InputNodeInfo& input_node_info : input_node_info_list) {
+        if (node->name() == input_node_info.name) {
+          shape_inference::InferenceContext* context =
+              shape_refiner.GetContext(node);
+          TensorShapeProto proto;
+          input_node_info.tensor.shape().AsProto(&proto);
+          shape_inference::ShapeHandle handle;
+          context->MakeShapeFromShapeProto(proto, &handle);
+          shape_refiner.SetShape(node, 0, handle);
+          is_input_node = true;
+        }
+      }
+      // If not an input node call AddNode() that recomputes the shape.
+      if (!is_input_node) {
+        status = shape_refiner.AddNode(node);
+        if (!status.ok()) {
+          VLOG(1) << "Shape inference failed for node: " << node->name();
+        }
+      }
+    };
+
+    // Runs a reverse DFS over the entire graph setting the shape for the input
+    // nodes provided and then recomputing the shape of all the nodes downstream
+    // from them. The "visit" function is executed for each node after all its
+    // parents have been visited.
+    ReverseDFS(graph, {}, visit);
+
+    if (!status.ok()) {
+      VLOG(1) << "Failed to run shape inference: " << status.ToString();
+      return status;
+    }
   }
 
   std::unordered_multimap<string, const Node*> op_name_to_node_multimap(
@@ -145,6 +186,7 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     const string& graph_def_path,
     const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names, const bool is_text_proto,
+    const bool shape_inference_for_unknown_shape,
     const bool dry_run_for_unknown_shape,
     OutputTensorInfo* output_tensor_info) {
   GraphDef graph_def;
@@ -172,9 +214,9 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     }
   }
   VLOG(1) << "Load graph with output tensors";
-  return LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
-                            output_node_names,
-                            output_tensor_info->output_tensor_map);
+  return LoadGraphFromProto(
+      ops_definitions, graph_def, input_node_info_list, output_node_names,
+      shape_inference_for_unknown_shape, output_tensor_info->output_tensor_map);
 }
 
 /**
