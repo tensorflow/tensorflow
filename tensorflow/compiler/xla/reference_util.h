@@ -156,6 +156,13 @@ class ReferenceUtil {
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
 
+  // Performs a 4D window reduction with a generic reduce function.
+  static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
+      const Array4D<float>& operand, float init,
+      const std::function<float(float, float)>& reduce_func,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+
   // Performs select and scatter with Greater Than or equal as the select, plus
   // as the scatter, and Same Padding.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(

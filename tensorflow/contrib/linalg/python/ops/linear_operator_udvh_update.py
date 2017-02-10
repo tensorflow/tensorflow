@@ -306,10 +306,17 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     return self._base_operator
 
   def _shape(self):
-    return self.base_operator.shape
+    batch_shape = array_ops.broadcast_static_shape(
+        self.base_operator.batch_shape,
+        self.u.get_shape()[:-2])
+    return batch_shape.concatenate(self.base_operator.shape[-2:])
 
   def _shape_tensor(self):
-    return self.base_operator.shape_tensor()
+    batch_shape = array_ops.broadcast_dynamic_shape(
+        self.base_operator.batch_shape_tensor(),
+        array_ops.shape(self.u)[:-2])
+    return array_ops.concat(
+        [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
   def _apply(self, x, adjoint=False):
     u = self.u

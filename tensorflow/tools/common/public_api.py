@@ -40,7 +40,7 @@ class PublicAPIVisitor(object):
   # Each entry maps a module path to a name to ignore in traversal.
   _do_not_descend_map = {
       # TODO(drpng): This can be removed once sealed off.
-      '': ['platform', 'pywrap_tensorflow', 'user_ops', 'python'],
+      '': ['platform', 'pywrap_tensorflow', 'user_ops', 'python', 'tools'],
 
       # Exclude protos, they leak a lot.
       'core': ['protobuf'],
