@@ -24,12 +24,14 @@ import os
 
 from tensorflow.tools.docs import generate
 from tensorflow.tools.docs import parser
+from tensorflow.tools.docs import py_guide_parser
 
 
-def _md_files_in_dir(input_dir):
-  all_in_dir = [(os.path.join(input_dir, f), f) for f in os.listdir(input_dir)]
-  return [(full, f) for full, f in all_in_dir
-          if os.path.isfile(full) and f.endswith('.md')]
+class UpdateTags(py_guide_parser.PyGuideParser):
+  """Rewrites a Python guide so that each section has an explicit tag."""
+
+  def process_section(self, line_number, section_title, tag):
+    self.replace_line(line_number, '## %s {#%s}' % (section_title, tag))
 
 
 def _main(input_dir, output_dir):
@@ -48,9 +50,10 @@ def _main(input_dir, output_dir):
   relative_path_to_root = '../../api_docs/python/'
 
   # Iterate through all the source files and process them.
-  for full_path, base_name in _md_files_in_dir(input_dir):
+  tag_updater = UpdateTags()
+  for full_path, base_name in py_guide_parser.md_files_in_dir(input_dir):
     print('Processing %s...' % base_name)
-    md_string = open(full_path).read()
+    md_string = tag_updater.process(full_path)
     output = parser.replace_references(
         md_string, relative_path_to_root, visitor.duplicate_of)
     open(os.path.join(output_dir, base_name), 'w').write(output)

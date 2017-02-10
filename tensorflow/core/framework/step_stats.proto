@@ -17,6 +17,8 @@ message AllocatorMemoryUsed {
   string allocator_name = 1;
   int64 total_bytes = 2;
   int64 peak_bytes = 3;
+  // The bytes that are not deallocated.
+  int64 live_bytes = 4;
 }
 
 // Output sizes recorded for a single execution of a graph node.
