@@ -657,7 +657,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "shape_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/shape_test.py"],
     additional_deps = [
         ":distributions_py",

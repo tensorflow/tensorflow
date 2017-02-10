@@ -381,6 +381,7 @@ class _DistributionShape(object):
     """
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
+      # x.shape: S+B+E
       sample_shape, batch_shape, event_shape = self.get_shape(x)
       event_shape = distribution_util.pick_vector(
           self._event_ndims_is_0, [1], event_shape)
@@ -389,7 +390,9 @@ class _DistributionShape(object):
             self._batch_ndims_is_0, [1], batch_shape)
       new_shape = array_ops.concat([[-1], batch_shape, event_shape], 0)
       x = array_ops.reshape(x, shape=new_shape)
+      # x.shape: [prod(S)]+B_+E_
       x = distribution_util.rotate_transpose(x, shift=-1)
+      # x.shape: B_+E_+[prod(S)]
       return x, sample_shape
 
   # TODO(jvdillon): Make remove expand_batch_dim and make expand_batch_dim=False
@@ -418,14 +421,20 @@ class _DistributionShape(object):
     """
     with self._name_scope(name, values=[x, sample_shape]):
       x = ops.convert_to_tensor(x, name="x")
+      # x.shape: _B+_E+[prod(S)]
       sample_shape = ops.convert_to_tensor(sample_shape, name="sample_shape")
       x = distribution_util.rotate_transpose(x, shift=1)
+      # x.shape: [prod(S)]+_B+_E
       if self._is_all_constant_helper(self.batch_ndims, self.event_ndims):
         if self._batch_ndims_is_0 or self._event_ndims_is_0:
-          b = ([min(-2, -1 - self._event_ndims_static)]
-               if self._batch_ndims_is_0 and expand_batch_dim else [])
-          e = [-1] if self._event_ndims_is_0 else []
-          x = array_ops.squeeze(x, squeeze_dims=b + e)
+          squeeze_dims = []
+          if self._event_ndims_is_0:
+            squeeze_dims += [-1]
+          if self._batch_ndims_is_0 and expand_batch_dim:
+            squeeze_dims += [1]
+          if squeeze_dims:
+            x = array_ops.squeeze(x, squeeze_dims=squeeze_dims)
+            # x.shape: [prod(S)]+B+E
         _, batch_shape, event_shape = self.get_shape(x)
       else:
         s = (x.get_shape().as_list() if x.get_shape().is_fully_defined()
@@ -437,8 +446,9 @@ class _DistributionShape(object):
             math_ops.logical_and(expand_batch_dim, self._batch_ndims_is_0),
             2, 1 + self.batch_ndims)
         event_shape = s[event_start:event_start+self.event_ndims]
-      new_shape = array_ops.concat((sample_shape, batch_shape, event_shape), 0)
+      new_shape = array_ops.concat([sample_shape, batch_shape, event_shape], 0)
       x = array_ops.reshape(x, shape=new_shape)
+      # x.shape: S+B+E
       return x
 
   @contextlib.contextmanager
