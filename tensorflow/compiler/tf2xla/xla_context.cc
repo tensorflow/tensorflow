@@ -131,8 +131,6 @@ Status XlaContext::CollectResults(
     xla::Computation* computation, bool* requires_runtime_context,
     std::vector<ConstRetVal>* compile_time_constants,
     int* num_nonconst_outputs) {
-  mutex_lock l(mu_);
-
   xla::ComputationDataHandle handle;
   if (retval_.empty() && has_side_effects_) {
     // Build a empty tuple return value for computations that have side effects
@@ -200,7 +198,6 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::Client* client,
 
 const xla::ComputationDataHandle&
 XlaContext::GetOrCreateRuntimeContextParameter() {
-  mutex_lock lock(mu_);
   CHECK(allow_cpu_custom_calls_);
   CHECK(!use_tuple_arg_);
   if (has_context_parameter_) return context_parameter_;
@@ -220,7 +217,6 @@ void XlaContext::AddRetval(int retval_index,
   // Add the return value to the list being built up. The executor
   // is multi-threaded so this has to happen under the
   // lock.
-  mutex_lock l(mu_);
   retval_.emplace_back(retval_index, handle);
 }
 
@@ -232,17 +228,14 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
     ConstRetVal value;
     value.index = retval_index;
     TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value.value));
-    mutex_lock l(mu_);
     compile_time_constant_.push_back(std::move(value));
   } else {
-    mutex_lock l(mu_);
     retval_.emplace_back(retval_index, xla_builder_.ConstantLiteral(literal));
   }
   return Status::OK();
 }
 
 void XlaContext::AddSideEffects() {
-  mutex_lock lock(mu_);
   has_side_effects_ = true;
 }
 
@@ -323,7 +316,6 @@ const xla::Computation* XlaContext::LookupOrCreate(
     DataType type, ComputationMap* out,
     const std::function<xla::Computation()>& create) {
   {
-    mutex_lock l(mu_);
     const auto& entry = (*out)[type];
     if (!entry.IsNull()) {
       return &entry;
@@ -331,7 +323,6 @@ const xla::Computation* XlaContext::LookupOrCreate(
   }
   auto new_entry = create();
   {
-    mutex_lock l(mu_);
     // Somebody else might have made one concurrently.
     auto& entry = (*out)[type];
     if (entry.IsNull()) {

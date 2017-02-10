@@ -135,7 +135,7 @@ Asserts that two numpy arrays have near values.
 
 - - -
 
-#### `tf.test.TestCase.assertAllCloseAccordingToType(a, b, rtol=1e-06, atol=1e-06)` {#TestCase.assertAllCloseAccordingToType}
+#### `tf.test.TestCase.assertAllCloseAccordingToType(a, b, rtol=1e-06, atol=1e-06, float_rtol=1e-06, float_atol=1e-06, half_rtol=0.001, half_atol=0.001)` {#TestCase.assertAllCloseAccordingToType}
 
 Like assertAllClose, but also suitable for comparing fp16 arrays.
 
@@ -149,6 +149,10 @@ one of the arguments is of type float16.
 *  <b>`b`</b>: a numpy ndarray or anything can be converted to one.
 *  <b>`rtol`</b>: relative tolerance
 *  <b>`atol`</b>: absolute tolerance
+*  <b>`float_rtol`</b>: relative tolerance for float32
+*  <b>`float_atol`</b>: absolute tolerance for float32
+*  <b>`half_rtol`</b>: relative tolerance for float16
+*  <b>`half_atol`</b>: absolute tolerance for float16
 
 
 - - -

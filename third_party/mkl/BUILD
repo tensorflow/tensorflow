@@ -10,7 +10,10 @@ config_setting(
 
 cc_library(
     name = "intel_binary_blob",
+    srcs = [
+        "libiomp5.so",
+        "libmklml_intel.so",
+    ],
     includes = ["."],
-    srcs = ["libmklml_intel.so", "libiomp5.so"],
     visibility = ["//visibility:public"],
 )

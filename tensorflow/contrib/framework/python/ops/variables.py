@@ -53,6 +53,7 @@ __all__ = ['add_model_variable',
            'get_or_create_global_step',
            'get_local_variables',
            'get_model_variables',
+           'get_trainable_variables',
            'get_unique_variable',
            'get_variables_by_name',
            'get_variables_by_suffix',
@@ -326,6 +327,19 @@ def get_local_variables(scope=None, suffix=None):
     a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.LOCAL_VARIABLES)
+
+
+def get_trainable_variables(scope=None, suffix=None):
+  """Gets the list of trainable variables, filtered by scope and/or suffix.
+
+  Args:
+    scope: an optional scope for filtering the variables to return.
+    suffix: an optional suffix for filtering the variables to return.
+
+  Returns:
+    a list of variables in the trainable collection with scope and suffix.
+  """
+  return get_variables(scope, suffix, ops.GraphKeys.TRAINABLE_VARIABLES)
 
 
 def get_variables_to_restore(include=None, exclude=None):

@@ -50,15 +50,18 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
 }
 
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
+    const IGraphTransferOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<GraphTransferer::InputNodeInfo>& inputs,
     const std::vector<string>& outputs, const GraphDef& def,
     GraphTransferer* const gt) {
   CHECK(gt != nullptr);
-  std::vector<tensorflow::Tensor> output_tensors;
-  Status status = gt->DryRunInference(
-      def, inputs, outputs, false /* initialize_by_zero */, &output_tensors);
+  GraphTransferer::OutputTensorInfo output_tensor_info;
+  Status status = gt->DryRunInferenceForAllNode(
+      def, inputs, false /* initialize_by_zero */, &output_tensor_info);
   CHECK(status.ok());
+  status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs,
+                                  output_tensor_info.output_tensor_map);
 
   Scope root = Scope::NewRootScope();
   std::vector<Output> output_list;
@@ -77,6 +80,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
   string serialized_graph = gt->GetGraphTransferInfo().SerializeAsString();
 
   const Scope& scope = root.WithOpName(remote_graph_execute_name);
+  CHECK(scope.ok());
   auto node_out_list = ops::AsNodeOutList(scope, InputList(output_list));
   Node* node;
   const auto unique_name = scope.GetUniqueNameForOp("RemoteFusedGraphExecute");
@@ -85,6 +89,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
                      .Attr("N", static_cast<int64>(outputs.size()))
                      .Attr("serialized_graph_transfer_info",
                            StringPiece(serialized_graph));
+  CHECK(scope.ok());
   scope.UpdateBuilder(&builder);
   scope.UpdateStatus(builder.Finalize(scope.graph(), &node));
   CHECK(scope.ok());

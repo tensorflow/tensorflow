@@ -2113,6 +2113,21 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "random_poisson_test",
+    size = "medium",
+    srcs = ["random_poisson_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
+cuda_py_test(
     name = "rnn_test",
     size = "medium",
     srcs = ["rnn_test.py"],

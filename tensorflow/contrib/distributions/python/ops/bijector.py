@@ -443,7 +443,7 @@ class Bijector(object):
       def camel_to_snake(name):
         s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
         return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
-      self._name = camel_to_snake(type(self).__name__)
+      self._name = camel_to_snake(type(self).__name__.lstrip("_"))
 
   @property
   def event_ndims(self):
@@ -483,6 +483,7 @@ class Bijector(object):
 
   def _forward_event_shape_tensor(self, input_shape):
     """Subclass implementation for `forward_event_shape_tensor` function."""
+    # By default, we assume event_shape is unchanged.
     return input_shape
 
   def forward_event_shape_tensor(self,
@@ -506,6 +507,7 @@ class Bijector(object):
 
   def _forward_event_shape(self, input_shape):
     """Subclass implementation for `forward_event_shape` public function."""
+    # By default, we assume event_shape is unchanged.
     return input_shape
 
   def forward_event_shape(self, input_shape):
@@ -525,6 +527,7 @@ class Bijector(object):
 
   def _inverse_event_shape_tensor(self, output_shape):
     """Subclass implementation for `inverse_event_shape_tensor` function."""
+    # By default, we assume event_shape is unchanged.
     return output_shape
 
   def inverse_event_shape_tensor(self,
@@ -548,7 +551,8 @@ class Bijector(object):
 
   def _inverse_event_shape(self, output_shape):
     """Subclass implementation for `inverse_event_shape` public function."""
-    return self._inverse_event_shape(tensor_shape.TensorShape(output_shape))
+    # By default, we assume event_shape is unchanged.
+    return tensor_shape.TensorShape(output_shape)
 
   def inverse_event_shape(self, output_shape):
     """Shape of a single sample from a single batch as a `TensorShape`.
@@ -996,8 +1000,8 @@ class Invert(Bijector):
 
   ```python
   exp_gamma_distribution = TransformedDistribution(
-    Gamma(alpha=1., beta=2.),
-    bijector.Invert(bijector.Exp())
+    distribution=Gamma(concentration=1., rate=2.),
+    bijector=bijector.Invert(bijector.Exp())
   ```
 
   """
@@ -2354,10 +2358,10 @@ class CholeskyOuterProduct(Bijector):
 
   ```python
   bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-  # Result: [[1, 1], [1, 5]], i.e., x x.T
+  # Result: [[1., 2], [2, 5]], i.e., x @ x.T
 
-  bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
-  # Result: [[1, 0], [2, 1]], i.e., chol(y).
+  bijector.CholeskyOuterProduct(event_ndims=2).inverse(y=[[1., 2], [2, 5]])
+  # Result: [[1., 0], [2, 1]], i.e., cholesky(y).
   ```
 
   """
@@ -2456,6 +2460,12 @@ class CholeskyOuterProduct(Bijector):
       return math.log(2.) + math_ops.log(x)
 
     diag = array_ops.matrix_diag_part(x)
+
+    # We now ensure diag is columnar. Eg, if `diag = [1, 2, 3]` then the output
+    # is `[[1], [2], [3]]` and if `diag = [[1, 2, 3], [4, 5, 6]]` then the
+    # output is unchanged.
+    diag = self._make_columnar(diag)
+
     if self.validate_args:
       is_matrix = check_ops.assert_rank_at_least(
           x, 2, message="Input must be a (batch of) matrix.")
@@ -2469,20 +2479,49 @@ class CholeskyOuterProduct(Bijector):
       x = control_flow_ops.with_dependencies(
           [is_matrix, is_square, is_positive_definite], x)
 
-    # Create a column vector equal to: [p, p-1, ..., 2, 1].T.
+    # Create a vector equal to: [p, p-1, ..., 2, 1].
     if x.get_shape().ndims is None or x.get_shape()[-1].value is None:
-      p = array_ops.shape(x)[-1]
+      p_int = array_ops.shape(x)[-1]
+      p_float = math_ops.cast(p_int, dtype=x.dtype)
     else:
-      p = x.get_shape()[-1].value
-    exponents = array_ops.expand_dims(
-        math_ops.linspace(math_ops.cast(p, dtype=x.dtype), 1., p),
-        dim=1)
+      p_int = x.get_shape()[-1].value
+      p_float = np.array(p_int, dtype=x.dtype.as_numpy_dtype)
+    exponents = math_ops.linspace(p_float, 1., p_int)
 
     sum_weighted_log_diag = array_ops.squeeze(
-        math_ops.matmul(math_ops.log(diag), exponents), squeeze_dims=-1)
-    fldj = p * math.log(2.) + sum_weighted_log_diag
-
-    if x.get_shape().ndims is not None:
-      fldj.set_shape(x.get_shape()[:-2])
+        math_ops.matmul(math_ops.log(diag),
+                        exponents[..., array_ops.newaxis]),
+        squeeze_dims=-1)
+    fldj = p_float * math.log(2.) + sum_weighted_log_diag
 
     return fldj
+
+  def _make_columnar(self, x):
+    """Ensures non-scalar input has at least one column.
+
+    Example:
+      If `x = [1, 2, 3]` then the output is `[[1], [2], [3]]`.
+
+      If `x = [[1, 2, 3], [4, 5, 6]]` then the output is unchanged.
+
+      If `x = 1` then the output is unchanged.
+
+    Args:
+      x: `Tensor`.
+
+    Returns:
+      columnar_x: `Tensor` with at least two dimensions.
+    """
+    if x.get_shape().ndims is not None:
+      if x.get_shape().ndims == 1:
+        x = x[array_ops.newaxis, :]
+      return x
+    shape = array_ops.shape(x)
+    maybe_expanded_shape = array_ops.concat([
+        shape[:-1],
+        distribution_util.pick_vector(
+            math_ops.equal(array_ops.rank(x), 1),
+            [1], np.array([], dtype=np.int32)),
+        shape[-1:],
+    ], 0)
+    return array_ops.reshape(x, maybe_expanded_shape)
