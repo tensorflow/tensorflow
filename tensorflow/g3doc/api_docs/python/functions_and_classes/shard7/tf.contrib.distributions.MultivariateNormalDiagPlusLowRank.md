@@ -25,13 +25,16 @@ where:
 A (non-batch) `scale` matrix is:
 
 ```none
-scale = diag(scale_diag + scale_identity_multiplier * ones(k))
+scale = diag(scale_diag + scale_identity_multiplier ones(k)) +
+      scale_perturb_factor @ diag(scale_perturb_diag) @ scale_perturb_factor.T
 ```
 
 where:
 
-* `scale_diag.shape = [k]`, and,
-* `scale_identity_multiplier.shape = []`.
+* `scale_diag.shape = [k]`,
+* `scale_identity_multiplier.shape = []`,
+* `scale_perturb_factor.shape = [k, r]`, typically `k >> r`, and,
+* `scale_perturb_diag.shape = [r]`.
 
 Additional leading dimensions (if any) will index batches.
 
@@ -52,54 +55,59 @@ Y = scale @ X + loc
 ```python
 ds = tf.contrib.distributions
 
-# Initialize a single 2-variate Gaussian.
-mvn = ds.MultivariateNormalDiag(
-    loc=[1., -1],
-    scale_diag=[1, 2.])
+# Initialize a single 3-variate Gaussian with covariance `cov = S @ S.T`,
+# `S = diag(d) + U @ diag(m) @ U.T`. The perturbation, `U @ diag(m) @ U.T`, is
+# a rank-2 update.
+mu = [-0.5., 0, 0.5]   # shape: [3]
+d = [1.5, 0.5, 2]      # shape: [3]
+U = [[1., 2],
+     [-1, 1],
+     [2, -0.5]]        # shape: [3, 2]
+m = [4., 5]            # shape: [2]
+mvn = ds.MultivariateNormalDiagPlusLowRank(
+    loc=mu
+    scale_diag=d
+    scale_perturb_factor=U,
+    scale_perturb_diag=m)
 
-mvn.mean().eval()
-# ==> [1., -1]
+# Evaluate this on an observation in `R^3`, returning a scalar.
+mvn.prob([-1, 0, 1]).eval()  # shape: []
 
-mvn.stddev().eval()
-# ==> [1., 2]
+# Initialize a 2-batch of 3-variate Gaussians; `S = diag(d) + U @ U.T`.
+mu = [[1.,  2,  3],
+      [11, 22, 33]]      # shape: [b, k] = [2, 3]
+U = [[[1., 2],
+      [3,  4],
+      [5,  6]],
+     [[0.5, 0.75],
+      [1,0, 0.25],
+      [1.5, 1.25]]]      # shape: [b, k, r] = [2, 3, 2]
+m = [[0.1, 0.2],
+     [0.4, 0.5]]         # shape: [b, r] = [2, 2]
 
-# Evaluate this on an observation in `R^2`, returning a scalar.
-mvn.prob([-1., 0]).eval()  # shape: []
+mvn = ds.MultivariateNormalDiagPlusLowRank(
+    loc=mu,
+    scale_perturb_factor=U,
+    scale_perturb_diag=m)
 
-# Initialize a 3-batch, 2-variate scaled-identity Gaussian.
-mvn = ds.MultivariateNormalDiag(
-    loc=[1., -1],
-    scale_identity_multiplier=[1, 2., 3])
+mvn.covariance().eval()   # shape: [2, 3, 3]
+# ==> [[[  15.63   31.57    48.51]
+#       [  31.57   69.31   105.05]
+#       [  48.51  105.05   162.59]]
+#
+#      [[   2.59    1.41    3.35]
+#       [   1.41    2.71    3.34]
+#       [   3.35    3.34    8.35]]]
 
-mvn.mean().eval()  # shape: [3, 2]
-# ==> [[1., -1]
-#      [1, -1],
-#      [1, -1]]
-
-mvn.stddev().eval()  # shape: [3, 2]
-# ==> [[1., 1],
-#      [2, 2],
-#      [3, 3]]
-
-# Evaluate this on an observation in `R^2`, returning a length-3 vector.
-mvn.prob([-1., 0]).eval()  # shape: [3]
-
-# Initialize a 2-batch of 3-variate Gaussians.
-mvn = ds.MultivariateNormalDiag(
-    loc=[[1., 2, 3],
-         [11, 22, 33]]           # shape: [2, 3]
-    scale_diag=[[1., 2, 3],
-                [0.5, 1, 1.5]])  # shape: [2, 3]
-
-# Evaluate this on a two observations, each in `R^3`, returning a length-2
-# vector.
-x = [[-1., 0, 1],
-     [-11, 0, 11.]]   # shape: [2, 3].
+# Compute the pdf of two `R^3` observations (one from each batch);
+# return a length-2 vector.
+x = [[-0.9, 0, 0.1],
+     [-10, 0, 9]]     # shape: [2, 3]
 mvn.prob(x).eval()    # shape: [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(loc=None, scale_diag=None, scale_identity_multiplier=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.__init__(loc=None, scale_diag=None, scale_identity_multiplier=None, scale_perturb_factor=None, scale_perturb_diag=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagPlusLowRank')` {#MultivariateNormalDiagPlusLowRank.__init__}
 
 Construct Multivariate Normal distribution on `R^k`.
 
@@ -109,17 +117,19 @@ arguments.
 The `event_shape` is given by the last dimension of `loc` or the last
 dimension of the matrix implied by `scale`.
 
-Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix
-is:
+Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix is:
 
 ```none
-scale = diag(scale_diag + scale_identity_multiplier * ones(k))
+scale = diag(scale_diag + scale_identity_multiplier ones(k)) +
+    scale_perturb_factor @ diag(scale_perturb_diag) @ scale_perturb_factor.T
 ```
 
 where:
 
-* `scale_diag.shape = [k]`, and,
-* `scale_identity_multiplier.shape = []`.
+* `scale_diag.shape = [k]`,
+* `scale_identity_multiplier.shape = []`,
+* `scale_perturb_factor.shape = [k, r]`, typically `k >> r`, and,
+* `scale_perturb_diag.shape = [r]`.
 
 Additional leading dimensions (if any) will index batches.
 
@@ -143,6 +153,16 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
     `k x k` identity matrices added to `scale`. When both
     `scale_identity_multiplier` and `scale_diag` are `None` then `scale` is
     the `Identity`.
+*  <b>`scale_perturb_factor`</b>: Floating-point `Tensor` representing a rank-`r`
+    perturbation added to `scale`. May have shape `[B1, ..., Bb, k, r]`,
+    `b >= 0`, and characterizes `b`-batches of rank-`r` updates to `scale`.
+    When `None`, no rank-`r` update is added to `scale`.
+*  <b>`scale_perturb_diag`</b>: Floating-point `Tensor` representing a diagonal matrix
+    inside the rank-`r` perturbation added to `scale`. May have shape
+    `[B1, ..., Bb, r]`, `b >= 0`, and characterizes `b`-batches of `r x r`
+    diagonal matrices inside the perturbation added to `scale`.  When
+    `None`, an identity matrix is used inside the perturbation. Can only be
+    specified if `scale_perturb_factor` is also specified.
 *  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
@@ -161,7 +181,7 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.allow_nan_stats` {#MultivariateNormalDiag.allow_nan_stats}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.allow_nan_stats` {#MultivariateNormalDiagPlusLowRank.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -182,7 +202,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.batch_shape` {#MultivariateNormalDiag.batch_shape}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.batch_shape` {#MultivariateNormalDiagPlusLowRank.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -199,7 +219,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalDiag.batch_shape_tensor}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalDiagPlusLowRank.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -219,14 +239,14 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.bijector` {#MultivariateNormalDiag.bijector}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.bijector` {#MultivariateNormalDiagPlusLowRank.bijector}
 
 Function transforming x => y.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.cdf(value, name='cdf')` {#MultivariateNormalDiag.cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.cdf(value, name='cdf')` {#MultivariateNormalDiagPlusLowRank.cdf}
 
 Cumulative distribution function.
 
@@ -251,7 +271,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.copy(**override_parameters_kwargs)` {#MultivariateNormalDiag.copy}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.copy(**override_parameters_kwargs)` {#MultivariateNormalDiagPlusLowRank.copy}
 
 Creates a deep copy of the distribution.
 
@@ -274,7 +294,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.covariance(name='covariance')` {#MultivariateNormalDiag.covariance}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.covariance(name='covariance')` {#MultivariateNormalDiagPlusLowRank.covariance}
 
 Covariance.
 
@@ -318,35 +338,35 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.det_covariance(name='det_covariance')` {#MultivariateNormalDiag.det_covariance}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.det_covariance(name='det_covariance')` {#MultivariateNormalDiagPlusLowRank.det_covariance}
 
 Determinant of covariance matrix.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.distribution` {#MultivariateNormalDiag.distribution}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.distribution` {#MultivariateNormalDiagPlusLowRank.distribution}
 
 Base distribution, p(x).
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.dtype` {#MultivariateNormalDiag.dtype}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.dtype` {#MultivariateNormalDiagPlusLowRank.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.entropy(name='entropy')` {#MultivariateNormalDiag.entropy}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.entropy(name='entropy')` {#MultivariateNormalDiagPlusLowRank.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.event_shape` {#MultivariateNormalDiag.event_shape}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.event_shape` {#MultivariateNormalDiagPlusLowRank.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -360,7 +380,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalDiag.event_shape_tensor}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalDiagPlusLowRank.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -377,14 +397,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_continuous` {#MultivariateNormalDiag.is_continuous}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.is_continuous` {#MultivariateNormalDiagPlusLowRank.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiag.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagPlusLowRank.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -401,7 +421,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiag.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagPlusLowRank.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -418,14 +438,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.loc` {#MultivariateNormalDiag.loc}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.loc` {#MultivariateNormalDiagPlusLowRank.loc}
 
 The `loc` `Tensor` in `Y = scale @ X + loc`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiag.log_cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiagPlusLowRank.log_cdf}
 
 Log cumulative distribution function.
 
@@ -454,14 +474,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_det_covariance(name='log_det_covariance')` {#MultivariateNormalDiag.log_det_covariance}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.log_det_covariance(name='log_det_covariance')` {#MultivariateNormalDiagPlusLowRank.log_det_covariance}
 
 Log of determinant of covariance matrix.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_prob(value, name='log_prob')` {#MultivariateNormalDiag.log_prob}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.log_prob(value, name='log_prob')` {#MultivariateNormalDiagPlusLowRank.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -496,7 +516,7 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiag.log_survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiagPlusLowRank.log_survival_function}
 
 Log survival function.
 
@@ -525,28 +545,28 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.mean(name='mean')` {#MultivariateNormalDiag.mean}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.mean(name='mean')` {#MultivariateNormalDiagPlusLowRank.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.mode(name='mode')` {#MultivariateNormalDiag.mode}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.mode(name='mode')` {#MultivariateNormalDiagPlusLowRank.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.name` {#MultivariateNormalDiag.name}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.name` {#MultivariateNormalDiagPlusLowRank.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#MultivariateNormalDiag.param_shapes}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#MultivariateNormalDiagPlusLowRank.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -570,7 +590,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiag.param_static_shapes}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiagPlusLowRank.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -600,14 +620,14 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.parameters` {#MultivariateNormalDiag.parameters}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.parameters` {#MultivariateNormalDiagPlusLowRank.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.prob(value, name='prob')` {#MultivariateNormalDiag.prob}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.prob(value, name='prob')` {#MultivariateNormalDiagPlusLowRank.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -642,7 +662,7 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.reparameterization_type` {#MultivariateNormalDiag.reparameterization_type}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.reparameterization_type` {#MultivariateNormalDiagPlusLowRank.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -657,7 +677,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiag.sample}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiagPlusLowRank.sample}
 
 Generate samples of the specified shape.
 
@@ -679,14 +699,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.scale` {#MultivariateNormalDiag.scale}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.scale` {#MultivariateNormalDiagPlusLowRank.scale}
 
 The `scale` `LinearOperator` in `Y = scale @ X + loc`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.stddev(name='stddev')` {#MultivariateNormalDiag.stddev}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.stddev(name='stddev')` {#MultivariateNormalDiagPlusLowRank.stddev}
 
 Standard deviation.
 
@@ -713,7 +733,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.survival_function(value, name='survival_function')` {#MultivariateNormalDiag.survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.survival_function(value, name='survival_function')` {#MultivariateNormalDiagPlusLowRank.survival_function}
 
 Survival function.
 
@@ -739,14 +759,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.validate_args` {#MultivariateNormalDiag.validate_args}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.validate_args` {#MultivariateNormalDiagPlusLowRank.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.variance(name='variance')` {#MultivariateNormalDiag.variance}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.variance(name='variance')` {#MultivariateNormalDiagPlusLowRank.variance}
 
 Variance.
 

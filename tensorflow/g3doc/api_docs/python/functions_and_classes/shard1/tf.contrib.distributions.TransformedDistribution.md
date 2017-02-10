@@ -77,7 +77,7 @@ distribution:
 ```python
 ds = tf.contrib.distributions
 log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
+  distribution=ds.Normal(loc=mu, scale=sigma),
   bijector=ds.bijector.Exp(),
   name="LogNormalTransformedDistribution")
 ```
@@ -87,7 +87,7 @@ A `LogNormal` made from callables:
 ```python
 ds = tf.contrib.distributions
 log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
+  distribution=ds.Normal(loc=mu, scale=sigma),
   bijector=ds.bijector.Inline(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
@@ -101,7 +101,7 @@ Another example constructing a Normal from a StandardNormal:
 ```python
 ds = tf.contrib.distributions
 normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=0, sigma=1),
+  distribution=ds.Normal(loc=0, scale=1),
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
@@ -125,11 +125,11 @@ chol_cov = [[[1., 0],
             [[1, 0],
              [2, 2]]]  # batch:1
 mvn1 = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=0., sigma=1.),
+    distribution=ds.Normal(loc=0., scale=1.),
     bijector=bs.Affine(shift=mean, tril=chol_cov),
     batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
     event_shape=[2])  # Valid because base_distribution.event_shape == [].
-mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+mvn2 = ds.MultivariateNormalTriL(loc=mean, scale_tril=chol_cov)
 # mvn1.log_prob(x) == mvn2.log_prob(x)
 ```
 - - -
@@ -442,15 +442,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Log probability density/mass function (depending on `is_continuous`).
 
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
-where `g^{-1}` is the inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
-
 ##### Args:
 
 
@@ -580,15 +571,6 @@ Dictionary of parameters used to instantiate this `Distribution`.
 #### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
-inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
 
 ##### Args:
 

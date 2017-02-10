@@ -230,6 +230,13 @@ Determinant for every batch member.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorDiag.diag` {#LinearOperatorDiag.diag}
+
+
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorDiag.domain_dimension` {#LinearOperatorDiag.domain_dimension}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.

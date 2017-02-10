@@ -112,7 +112,7 @@ specified then `scale += IdentityMatrix`. Otherwise specifying a
 *  <b>`shift`</b>: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
 *  <b>`scale_identity_multiplier`</b>: floating point rank 0 `Tensor` representing a
     scaling done to the identity matrix.
-    When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+    When `scale_identity_multiplier = scale_diag = scale_tril = None` then
     `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
     to `scale`.
 *  <b>`scale_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
@@ -405,14 +405,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.Affine.scale` {#Affine.scale}
 
-
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.Affine.shift` {#Affine.shift}
 
-
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -
@@ -427,7 +427,7 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.AffineLinearOperator` {#AffineLinearOperator}
 
-Compute `Y = g(X; shift, scale) = scale(X.T) + shift`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
 `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
@@ -467,7 +467,7 @@ diag = [1., 2, 3]
 scale = linalg.LinearOperatorDiag(diag)
 affine = AffineLinearOperator(shift, scale)
 # In this case, `forward` is equivalent to:
-# diag * scale + shift
+# y = scale @ x + shift
 y = affine.forward(x)  # [0., 4, 10]
 
 shift = [2., 3, 1]
@@ -767,14 +767,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
 
-The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
 
-The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -

@@ -1,110 +1,146 @@
 The multivariate normal distribution on `R^k`.
 
-Every batch member of this distribution is defined by a mean and a lightweight
-covariance matrix `C`.
+The Multivariate Normal distribution is defined over `R^k` and parameterized
+by a (batch of) length-`k` `loc` vector (aka "mu") and a (batch of) `k x k`
+`scale` matrix; `covariance = scale @ scale.T` where `@` denotes
+matrix-multiplication.
 
-#### Mathematical details
+#### Mathematical Details
 
-The PDF of this distribution in terms of the mean `mu` and covariance `C` is:
+The probability density function (pdf) is,
 
-```
-f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
-```
-
-For every batch member, this distribution represents `k` random variables
-`(X_1,...,X_k)`, with mean `E[X_i] = mu[i]`, and covariance matrix
-`C_{ij} := E[(X_i - mu[i])(X_j - mu[j])]`
-
-The user initializes this class by providing the mean `mu`, and a lightweight
-definition of `C`:
-
-```
-C = SS^T = SS = (M + V D V^T) (M + V D V^T)
-M is diagonal (k x k)
-V = is shape (k x r), typically r << k
-D = is diagonal (r x r), optional (defaults to identity).
+```none
+pdf(x; loc, scale) = exp(-0.5 ||y||**2) / Z,
+y = inv(scale) @ (x - loc),
+Z = (2 pi)**(0.5 k) |det(scale)|,
 ```
 
-This allows for `O(kr + r^3)` pdf evaluation and determinant, and `O(kr)`
-sampling and storage (per batch member).
+where:
+
+* `loc` is a vector in `R^k`,
+* `scale` is a linear operator in `R^{k x k}`, `cov = scale @ scale.T`,
+* `Z` denotes the normalization constant, and,
+* `||y||**2` denotes the squared Euclidean norm of `y`.
+
+A (non-batch) `scale` matrix is:
+
+```none
+scale = scale_tril
+```
+
+where `scale_tril` is lower-triangular `k x k` matrix with non-zero diagonal,
+i.e., `tf.diag_part(scale_tril) != 0`.
+
+Additional leading dimensions (if any) will index batches.
+
+The MultivariateNormal distribution is a member of the [location-scale
+family](https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ MultivariateNormal(loc=0, scale=1)   # Identity scale, zero shift.
+Y = scale @ X + loc
+```
+
+Trainable (batch) Cholesky matrices can be created with
+`ds.matrix_diag_transform()` and/or `ds.fill_lower_triangular()`
 
 #### Examples
 
-A single multi-variate Gaussian distribution is defined by a vector of means
-of length `k`, and square root of the covariance `S = M + V D V^T`.  Extra
-leading dimensions, if provided, allow for batches.
-
 ```python
-# Initialize a single 3-variate Gaussian with covariance square root
-# S = M + V D V^T, where V D V^T is a matrix-rank 2 update.
-mu = [1, 2, 3.]
-diag_large = [1.1, 2.2, 3.3]
-v = ... # shape 3 x 2
-diag_small = [4., 5.]
-dist = tf.contrib.distributions.MultivariateNormalDiagPlusVDVT(
-    mu, diag_large, v, diag_small=diag_small)
+ds = tf.contrib.distributions
 
-# Evaluate this on an observation in R^3, returning a scalar.
-dist.pdf([-1, 0, 1])
+# Initialize a single 3-variate Gaussian.
+mu = [1., 2, 3]
+cov = [[ 0.36,  0.12,  0.06],
+       [ 0.12,  0.29, -0.13],
+       [ 0.06, -0.13,  0.26]]
+scale = tf.cholesky(cov)
+# ==> [[ 0.6,  0. ,  0. ],
+#      [ 0.2,  0.5,  0. ],
+#      [ 0.1, -0.3,  0.4]])
+mvn = ds.MultivariateNormalTriL(
+    loc=mu,
+    scale_tril=scale)
 
-# Initialize a batch of two 3-variate Gaussians.  This time, don't provide
-# diag_small.  This means S = M + V V^T.
-mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
-diag_large = ... # shape 2 x 3
-v = ... # shape 2 x 3 x 1, a matrix-rank 1 update.
-dist = tf.contrib.distributions.MultivariateNormalDiagPlusVDVT(
-    mu, diag_large, v)
+mvn.mean().eval()
+# ==> [1., 2, 3]
 
-# Evaluate this on a two observations, each in R^3, returning a length two
-# tensor.
-x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
-dist.pdf(x)
+# Covariance agrees with cholesky(cov) parameterization.
+mvn.covariance().eval()
+# ==> [[ 0.36,  0.12,  0.06],
+#      [ 0.12,  0.29, -0.13],
+#      [ 0.06, -0.13,  0.26]]
+
+# Compute the pdf of an observation in `R^3` ; return a scalar.
+mvn.prob([-1., 0, 1]).eval()  # shape: []
+
+# Initialize a 2-batch of 3-variate Gaussians.
+mu = [[1., 2, 3],
+      [11, 22, 33]]              # shape: [2, 3]
+tril = ...  # shape: [2, 3, 3], lower triangular, non-zero diagonal.
+mvn = ds.MultivariateNormalTriL(
+    loc=mu,
+    scale_tril=tril)
+
+# Compute the pdf of two `R^3` observations; return a length-2 vector.
+x = [[-0.9, 0, 0.1],
+     [-10, 0, 9]]     # shape: [2, 3]
+mvn.prob(x).eval()    # shape: [2]
+
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.__init__(mu, diag_large, v, diag_small=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagPlusVDVT')` {#MultivariateNormalDiagPlusVDVT.__init__}
+#### `tf.contrib.distributions.MultivariateNormalTriL.__init__(loc=None, scale_tril=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalTriL')` {#MultivariateNormalTriL.__init__}
 
-Multivariate Normal distributions on `R^k`.
+Construct Multivariate Normal distribution on `R^k`.
 
-For every batch member, this distribution represents `k` random variables
-`(X_1,...,X_k)`, with mean `E[X_i] = mu[i]`, and covariance matrix
-`C_{ij} := E[(X_i - mu[i])(X_j - mu[j])]`
+The `batch_shape` is the broadcast shape between `loc` and `scale`
+arguments.
 
-The user initializes this class by providing the mean `mu`, and a
-lightweight definition of `C`:
+The `event_shape` is given by the last dimension of `loc` or the last
+dimension of the matrix implied by `scale`.
 
+Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix
+is:
+
+```none
+scale = scale_tril
 ```
-C = SS^T = SS = (M + V D V^T) (M + V D V^T)
-M is diagonal (k x k)
-V = is shape (k x r), typically r << k
-D = is diagonal (r x r), optional (defaults to identity).
-```
+
+where `scale_tril` is lower-triangular `k x k` matrix with non-zero
+diagonal, i.e., `tf.diag_part(scale_tril) != 0`.
+
+Additional leading dimensions (if any) will index batches.
 
 ##### Args:
 
 
-*  <b>`mu`</b>: Rank `n + 1` floating point tensor with shape `[N1,...,Nn, k]`,
-    `n >= 0`.  The means.
-*  <b>`diag_large`</b>: Optional rank `n + 1` floating point tensor, shape
-    `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `M`.
-*  <b>`v`</b>: Rank `n + 1` floating point tensor, shape `[N1,...,Nn, k, r]`
-    `n >= 0`.  Defines the matrix `V`.
-*  <b>`diag_small`</b>: Rank `n + 1` floating point tensor, shape
-    `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `D`.  Default
-    is `None`, which means `D` will be the identity matrix.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
-    with asserts.  If `validate_args` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`loc`</b>: Floating-point `Tensor`. If this is set to `None`, `loc` is
+    implicitly `0`. When specified, may have shape `[B1, ..., Bb, k]` where
+    `b >= 0` and `k` is the event size.
+*  <b>`scale_tril`</b>: Floating-point, lower-triangular `Tensor` with non-zero
+    diagonal elements. `scale_tril` has shape `[B1, ..., Bb, k, k]` where
+    `b >= 0` and `k` is the event size.
+*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined. When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if neither `loc` nor `scale_tril` are specified.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.allow_nan_stats` {#MultivariateNormalDiagPlusVDVT.allow_nan_stats}
+#### `tf.contrib.distributions.MultivariateNormalTriL.allow_nan_stats` {#MultivariateNormalTriL.allow_nan_stats}
 
 Python boolean describing behavior when a stat is undefined.
 
@@ -125,7 +161,7 @@ undefined.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.batch_shape` {#MultivariateNormalDiagPlusVDVT.batch_shape}
+#### `tf.contrib.distributions.MultivariateNormalTriL.batch_shape` {#MultivariateNormalTriL.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -142,7 +178,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalDiagPlusVDVT.batch_shape_tensor}
+#### `tf.contrib.distributions.MultivariateNormalTriL.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalTriL.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -162,7 +198,14 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.cdf(value, name='cdf')` {#MultivariateNormalDiagPlusVDVT.cdf}
+#### `tf.contrib.distributions.MultivariateNormalTriL.bijector` {#MultivariateNormalTriL.bijector}
+
+Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalTriL.cdf(value, name='cdf')` {#MultivariateNormalTriL.cdf}
 
 Cumulative distribution function.
 
@@ -187,7 +230,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.copy(**override_parameters_kwargs)` {#MultivariateNormalDiagPlusVDVT.copy}
+#### `tf.contrib.distributions.MultivariateNormalTriL.copy(**override_parameters_kwargs)` {#MultivariateNormalTriL.copy}
 
 Creates a deep copy of the distribution.
 
@@ -210,7 +253,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.covariance(name='covariance')` {#MultivariateNormalDiagPlusVDVT.covariance}
+#### `tf.contrib.distributions.MultivariateNormalTriL.covariance(name='covariance')` {#MultivariateNormalTriL.covariance}
 
 Covariance.
 
@@ -254,21 +297,35 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.dtype` {#MultivariateNormalDiagPlusVDVT.dtype}
+#### `tf.contrib.distributions.MultivariateNormalTriL.det_covariance(name='det_covariance')` {#MultivariateNormalTriL.det_covariance}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalTriL.distribution` {#MultivariateNormalTriL.distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalTriL.dtype` {#MultivariateNormalTriL.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.entropy(name='entropy')` {#MultivariateNormalDiagPlusVDVT.entropy}
+#### `tf.contrib.distributions.MultivariateNormalTriL.entropy(name='entropy')` {#MultivariateNormalTriL.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.event_shape` {#MultivariateNormalDiagPlusVDVT.event_shape}
+#### `tf.contrib.distributions.MultivariateNormalTriL.event_shape` {#MultivariateNormalTriL.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -282,7 +339,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalDiagPlusVDVT.event_shape_tensor}
+#### `tf.contrib.distributions.MultivariateNormalTriL.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalTriL.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -299,14 +356,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_continuous` {#MultivariateNormalDiagPlusVDVT.is_continuous}
+#### `tf.contrib.distributions.MultivariateNormalTriL.is_continuous` {#MultivariateNormalTriL.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagPlusVDVT.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalTriL.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalTriL.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -323,7 +380,7 @@ Indicates that `batch_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagPlusVDVT.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalTriL.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalTriL.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -340,7 +397,14 @@ Indicates that `event_shape == []`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiagPlusVDVT.log_cdf}
+#### `tf.contrib.distributions.MultivariateNormalTriL.loc` {#MultivariateNormalTriL.loc}
+
+The `loc` `Tensor` in `Y = scale @ X + loc`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalTriL.log_cdf(value, name='log_cdf')` {#MultivariateNormalTriL.log_cdf}
 
 Log cumulative distribution function.
 
@@ -369,24 +433,31 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_prob(value, name='log_prob')` {#MultivariateNormalDiagPlusVDVT.log_prob}
+#### `tf.contrib.distributions.MultivariateNormalTriL.log_det_covariance(name='log_det_covariance')` {#MultivariateNormalTriL.log_det_covariance}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalTriL.log_prob(value, name='log_prob')` {#MultivariateNormalTriL.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalOperatorPD`:
+Additional documentation from `_MultivariateNormalLinearOperator`:
 
-`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+`value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
 
-```
+```python
 self.batch_shape + self.event_shape
 ```
 
 or
 
-```
-[M1,...,Mm] + self.batch_shape + self.event_shape
+```python
+[M1, ..., Mm] + self.batch_shape + self.event_shape
 ```
 
 ##### Args:
@@ -404,14 +475,7 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalDiagPlusVDVT.log_sigma_det}
-
-Log of determinant of covariance matrix.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiagPlusVDVT.log_survival_function}
+#### `tf.contrib.distributions.MultivariateNormalTriL.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalTriL.log_survival_function}
 
 Log survival function.
 
@@ -440,35 +504,28 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.mean(name='mean')` {#MultivariateNormalDiagPlusVDVT.mean}
+#### `tf.contrib.distributions.MultivariateNormalTriL.mean(name='mean')` {#MultivariateNormalTriL.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.mode(name='mode')` {#MultivariateNormalDiagPlusVDVT.mode}
+#### `tf.contrib.distributions.MultivariateNormalTriL.mode(name='mode')` {#MultivariateNormalTriL.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.mu` {#MultivariateNormalDiagPlusVDVT.mu}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.name` {#MultivariateNormalDiagPlusVDVT.name}
+#### `tf.contrib.distributions.MultivariateNormalTriL.name` {#MultivariateNormalTriL.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#MultivariateNormalDiagPlusVDVT.param_shapes}
+#### `tf.contrib.distributions.MultivariateNormalTriL.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#MultivariateNormalTriL.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -492,7 +549,7 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiagPlusVDVT.param_static_shapes}
+#### `tf.contrib.distributions.MultivariateNormalTriL.param_static_shapes(cls, sample_shape)` {#MultivariateNormalTriL.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
@@ -522,31 +579,31 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.parameters` {#MultivariateNormalDiagPlusVDVT.parameters}
+#### `tf.contrib.distributions.MultivariateNormalTriL.parameters` {#MultivariateNormalTriL.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.prob(value, name='prob')` {#MultivariateNormalDiagPlusVDVT.prob}
+#### `tf.contrib.distributions.MultivariateNormalTriL.prob(value, name='prob')` {#MultivariateNormalTriL.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalOperatorPD`:
+Additional documentation from `_MultivariateNormalLinearOperator`:
 
-`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+`value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
 
-```
+```python
 self.batch_shape + self.event_shape
 ```
 
 or
 
-```
-[M1,...,Mm] + self.batch_shape + self.event_shape
+```python
+[M1, ..., Mm] + self.batch_shape + self.event_shape
 ```
 
 ##### Args:
@@ -564,7 +621,7 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.reparameterization_type` {#MultivariateNormalDiagPlusVDVT.reparameterization_type}
+#### `tf.contrib.distributions.MultivariateNormalTriL.reparameterization_type` {#MultivariateNormalTriL.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -579,7 +636,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiagPlusVDVT.sample}
+#### `tf.contrib.distributions.MultivariateNormalTriL.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalTriL.sample}
 
 Generate samples of the specified shape.
 
@@ -601,21 +658,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sigma` {#MultivariateNormalDiagPlusVDVT.sigma}
+#### `tf.contrib.distributions.MultivariateNormalTriL.scale` {#MultivariateNormalTriL.scale}
 
-Dense (batch) covariance matrix, if available.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.sigma_det(name='sigma_det')` {#MultivariateNormalDiagPlusVDVT.sigma_det}
-
-Determinant of covariance matrix.
+The `scale` `LinearOperator` in `Y = scale @ X + loc`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.stddev(name='stddev')` {#MultivariateNormalDiagPlusVDVT.stddev}
+#### `tf.contrib.distributions.MultivariateNormalTriL.stddev(name='stddev')` {#MultivariateNormalTriL.stddev}
 
 Standard deviation.
 
@@ -642,7 +692,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.survival_function(value, name='survival_function')` {#MultivariateNormalDiagPlusVDVT.survival_function}
+#### `tf.contrib.distributions.MultivariateNormalTriL.survival_function(value, name='survival_function')` {#MultivariateNormalTriL.survival_function}
 
 Survival function.
 
@@ -668,14 +718,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.validate_args` {#MultivariateNormalDiagPlusVDVT.validate_args}
+#### `tf.contrib.distributions.MultivariateNormalTriL.validate_args` {#MultivariateNormalTriL.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.variance(name='variance')` {#MultivariateNormalDiagPlusVDVT.variance}
+#### `tf.contrib.distributions.MultivariateNormalTriL.variance(name='variance')` {#MultivariateNormalTriL.variance}
 
 Variance.
 

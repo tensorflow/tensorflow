@@ -1,4 +1,4 @@
-Compute `Y = g(X; shift, scale) = scale(X.T) + shift`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
 `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
@@ -38,7 +38,7 @@ diag = [1., 2, 3]
 scale = linalg.LinearOperatorDiag(diag)
 affine = AffineLinearOperator(shift, scale)
 # In this case, `forward` is equivalent to:
-# diag * scale + shift
+# y = scale @ x + shift
 y = affine.forward(x)  # [0., 4, 10]
 
 shift = [2., 3, 1]
@@ -338,14 +338,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
 
-The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
 
-The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -

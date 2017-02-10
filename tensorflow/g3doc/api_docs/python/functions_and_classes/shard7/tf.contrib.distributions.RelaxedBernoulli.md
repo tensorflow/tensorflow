@@ -417,15 +417,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Log probability density/mass function (depending on `is_continuous`).
 
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
-where `g^{-1}` is the inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
-
 ##### Args:
 
 
@@ -562,15 +553,6 @@ Dictionary of parameters used to instantiate this `Distribution`.
 #### `tf.contrib.distributions.RelaxedBernoulli.prob(value, name='prob')` {#RelaxedBernoulli.prob}
 
 Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
-inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
