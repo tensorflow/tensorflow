@@ -221,3 +221,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     x_diag = array_ops.matrix_diag_part(x)
     new_diag = self._diag + x_diag
     return array_ops.matrix_set_diag(x, new_diag)
+
+  @property
+  def diag(self):
+    return self._diag

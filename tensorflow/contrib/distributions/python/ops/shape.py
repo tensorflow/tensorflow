@@ -77,7 +77,7 @@ class _DistributionShape(object):
 
       ```python
       sample_dims = [0]
-      tf.reduce_mean(Normal(mu=1.3, sigma=1.).sample_n(1000),
+      tf.reduce_mean(Normal(loc=1.3, scale=1.).sample_n(1000),
                      reduction_indices=sample_dims)  # ~= 1.3
       ```
 
@@ -91,8 +91,8 @@ class _DistributionShape(object):
       ```
       P(X=x) = integral P(X=x|y) P(Y=y) dy
             ~= 1/n sum_{i=1}^n P(X=x|y_i),   y_i ~iid Laplace(0,1)
-             = tf.reduce_mean(Normal(mu=Laplace(0., 1.).sample_n(n=1000),
-                                     sigma=tf.ones(1000)).prob(x),
+             = tf.reduce_mean(Normal(loc=Laplace(0., 1.).sample_n(n=1000),
+                                     scale=tf.ones(1000)).prob(x),
                               reduction_indices=batch_dims)
       ```
 

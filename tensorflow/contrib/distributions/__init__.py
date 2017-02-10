@@ -55,10 +55,9 @@ initialized with parameters that define the distributions.
 ### Multivariate normal
 
 @@MultivariateNormalDiag
-@@MultivariateNormalFull
-@@MultivariateNormalCholesky
-@@MultivariateNormalDiagPlusVDVT
-@@MultivariateNormalDiagWithSoftplusStDev
+@@MultivariateNormalTriL
+@@MultivariateNormalDiagPlusLowRank
+@@MultivariateNormalDiagWithSoftplusScale
 
 ### Other multivariate distributions
 

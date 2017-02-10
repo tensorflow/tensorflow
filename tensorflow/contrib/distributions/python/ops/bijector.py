@@ -1594,7 +1594,7 @@ class Affine(Bijector):
       shift: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
       scale_identity_multiplier: floating point rank 0 `Tensor` representing a
         scaling done to the identity matrix.
-        When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+        When `scale_identity_multiplier = scale_diag = scale_tril = None` then
         `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
         to `scale`.
       scale_diag: Numeric `Tensor` representing the diagonal matrix.
@@ -1680,6 +1680,7 @@ class Affine(Bijector):
               else self._scale.inputs +
               [self._shift] if self._shift is not None else []),
           is_constant_jacobian=True,
+          dtype=self._scale.dtype,
           validate_args=validate_args,
           name=name)
 
@@ -1832,10 +1833,12 @@ class Affine(Bijector):
 
   @property
   def shift(self):
+    """The `shift` `Tensor` in `Y = scale @ X + shift`."""
     return self._shift
 
   @property
   def scale(self):
+    """The `scale` `LinearOperator` in `Y = scale @ X + shift`."""
     # TODO(srvasude): Remove this exception once TriLPlusVDVT is properly
     # implemented.
     if isinstance(self._scale, _TriLPlusVDVTLightweightOperatorPD):
@@ -1884,7 +1887,7 @@ class Affine(Bijector):
 
 
 class AffineLinearOperator(Bijector):
-  """Compute `Y = g(X; shift, scale) = scale(X.T) + shift`.
+  """Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
   `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
@@ -1924,7 +1927,7 @@ class AffineLinearOperator(Bijector):
   scale = linalg.LinearOperatorDiag(diag)
   affine = AffineLinearOperator(shift, scale)
   # In this case, `forward` is equivalent to:
-  # diag * scale + shift
+  # y = scale @ x + shift
   y = affine.forward(x)  # [0., 4, 10]
 
   shift = [2., 3, 1]
@@ -1983,9 +1986,13 @@ class AffineLinearOperator(Bijector):
               event_ndims)
         graph_parents += [event_ndims]
 
+      # In the absence of `loc` and `scale`, we'll assume `dtype` is `float32`.
+      dtype = dtypes.float32
+
       if shift is not None:
         shift = ops.convert_to_tensor(shift, name="shift")
         graph_parents += [shift]
+        dtype = shift.dtype.base_dtype
       self._shift = shift
 
       if scale is not None:
@@ -2004,6 +2011,8 @@ class AffineLinearOperator(Bijector):
         else:
           batch_ndims = scale.tensor_rank_tensor() - 2
           graph_parents += [batch_ndims]
+        if scale.dtype is not None:
+          dtype = scale.dtype.base_dtype
       else:
         batch_ndims = 0  # We won't need shape inference when scale is None.
       self._scale = scale
@@ -2015,17 +2024,18 @@ class AffineLinearOperator(Bijector):
           event_ndims=event_ndims,
           graph_parents=graph_parents,
           is_constant_jacobian=True,
+          dtype=dtype,
           validate_args=validate_args,
           name=name)
 
   @property
   def shift(self):
-    """The `shift` `Tensor` in `Y = scale @ X.T + shift`."""
+    """The `shift` `Tensor` in `Y = scale @ X + shift`."""
     return self._shift
 
   @property
   def scale(self):
-    """The `scale` `LinearOperator` in `Y = scale @ X.T + shift`."""
+    """The `scale` `LinearOperator` in `Y = scale @ X + shift`."""
     return self._scale
 
   def _forward(self, x):
@@ -2033,7 +2043,7 @@ class AffineLinearOperator(Bijector):
     if self.scale is not None:
       y, sample_shape = self._shaper.make_batch_of_event_sample_matrices(
           y, expand_batch_dim=False)
-      with ops.control_dependencies([self.scale.assert_non_singular()] if
+      with ops.control_dependencies(self._maybe_collect_assertions() if
                                     self.validate_args else []):
         y = self.scale.apply(y)
       y = self._shaper.undo_make_batch_of_event_sample_matrices(
@@ -2061,9 +2071,16 @@ class AffineLinearOperator(Bijector):
   def _forward_log_det_jacobian(self, x):  # pylint: disable=unused-argument
     if self.scale is None:
       return constant_op.constant(0, dtype=x.dtype.base_dtype)
-    with ops.control_dependencies([self.scale.assert_non_singular()] if
+    with ops.control_dependencies(self._maybe_collect_assertions() if
                                   self.validate_args else []):
       return self.scale.log_abs_determinant()
+
+  def _maybe_collect_assertions(self):
+    try:
+      return [self.scale.assert_non_singular()]
+    except NotImplementedError:
+      pass
+    return []
 
 
 class Softplus(Bijector):

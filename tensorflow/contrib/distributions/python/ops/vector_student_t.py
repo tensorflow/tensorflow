@@ -262,7 +262,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
         # pseudocode the basic procedure is:
         #   if df.batch_shape is scalar:
         #     if affine.batch_shape is not scalar:
-        #       # broadcast self._distribution.sample so
+        #       # broadcast distribution.sample so
         #       # it has affine.batch_shape.
         #     self.batch_shape = affine.batch_shape
         #   else:
@@ -273,8 +273,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
         # Here we really only need to collect the affine.batch_shape and decide
         # what we're going to pass in to TransformedDistribution's
         # (override) batch_shape arg.
-        self._distribution = student_t.StudentT(df=df, loc=0., scale=1.)
-        self._affine = bijectors.Affine(
+        affine = bijectors.Affine(
             shift=loc,
             scale_identity_multiplier=scale_identity_multiplier,
             scale_diag=scale_diag,
@@ -282,17 +281,21 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
             scale_perturb_factor=scale_perturb_factor,
             scale_perturb_diag=scale_perturb_diag,
             validate_args=validate_args)
-        self._batch_shape, self._override_event_shape = _infer_shapes(
-            self._affine.scale, self._affine.shift)
-        self._override_batch_shape = distribution_util.pick_vector(
-            self._distribution.is_scalar_batch(),
-            self._batch_shape,
+        distribution = student_t.StudentT(
+            df=df,
+            loc=array_ops.zeros([], dtype=affine.dtype),
+            scale=array_ops.ones([], dtype=affine.dtype))
+        batch_shape, override_event_shape = _infer_shapes(
+            affine.scale, affine.shift)
+        override_batch_shape = distribution_util.pick_vector(
+            distribution.is_scalar_batch(),
+            batch_shape,
             constant_op.constant([], dtype=dtypes.int32))
         super(_VectorStudentT, self).__init__(
-            distribution=self._distribution,
-            bijector=self._affine,
-            batch_shape=self._override_batch_shape,
-            event_shape=self._override_event_shape,
+            distribution=distribution,
+            bijector=affine,
+            batch_shape=override_batch_shape,
+            event_shape=override_event_shape,
             validate_args=validate_args,
             name=ns)
         self._parameters = parameters
@@ -300,14 +303,14 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   @property
   def df(self):
     """Degrees of freedom in these Student's t distribution(s)."""
-    return self._distribution.df
+    return self.distribution.df
 
   @property
   def loc(self):
     """Locations of these Student's t distribution(s)."""
-    return self._affine.shift
+    return self.bijector.shift
 
   @property
   def scale(self):
     """Dense (batch) covariance matrix, if available."""
-    return self._affine.scale
+    return self.bijector.scale
