@@ -424,6 +424,34 @@ class ScatterNdTest(test.TestCase):
       val = array_ops.scatter_nd(indices, values, shape).eval()
     self.assertAllClose([np.sum(values)], val)
 
+  def testSmokeScatterNdBatch2DSliceDim2(self):
+    with self.test_session():
+      indices = array_ops.zeros([3, 5, 2], dtype=dtypes.int32)
+      values = array_ops.zeros([3, 5, 7])
+      shape = [4, 6, 7]
+      array_ops.scatter_nd(indices, values, shape).eval()
+
+  def testSmokeScatterNdBatch1DSliceDim2(self):
+    with self.test_session():
+      indices = array_ops.zeros([0, 2], dtype=dtypes.int32)
+      values = array_ops.zeros([0, 7])
+      shape = [4, 6, 7]
+      array_ops.scatter_nd(indices, values, shape).eval()
+
+  def testSmokeScatterNdBatch1DSliceDim3ShapeRank7(self):
+    with self.test_session():
+      indices = array_ops.zeros([1, 3], dtype=dtypes.int32)
+      values = array_ops.zeros([1, 6, 7, 8, 9])
+      shape = [3, 4, 5, 6, 7, 8, 9]
+      array_ops.scatter_nd(indices, values, shape).eval()
+
+  def testSmokeScatterNdBatch2DSliceDim3ShapeRank7(self):
+    with self.test_session():
+      indices = array_ops.zeros([1, 2, 3], dtype=dtypes.int32)
+      values = array_ops.zeros([1, 2, 6, 7, 8, 9])
+      shape = [3, 4, 5, 6, 7, 8, 9]
+      array_ops.scatter_nd(indices, values, shape).eval()
+
 
 if __name__ == "__main__":
   test.main()
