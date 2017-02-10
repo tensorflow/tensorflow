@@ -798,7 +798,7 @@ class Distribution(_BaseDistribution):
         return self._log_survival_function(value, **kwargs)
       except NotImplementedError as original_exception:
         try:
-          return math_ops.log(1. - self.cdf(value, **kwargs))
+          return math_ops.log1p(-self.cdf(value, **kwargs))
         except NotImplementedError:
           raise original_exception
 

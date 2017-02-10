@@ -177,7 +177,7 @@ class Logistic(distribution.Distribution):
                                         maxval=1,
                                         dtype=self.dtype,
                                         seed=seed)
-    sampled = math_ops.log(uniform) - math_ops.log(1-uniform)
+    sampled = math_ops.log(uniform) - math_ops.log1p(-1. * uniform)
     return sampled * self.scale + self.loc
 
   def _log_prob(self, x):

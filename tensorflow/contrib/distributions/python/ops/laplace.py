@@ -157,7 +157,7 @@ class Laplace(distribution.Distribution):
         dtype=self.dtype,
         seed=seed)
     return (self.loc - self.scale * math_ops.sign(uniform_samples) *
-            math_ops.log(1. - math_ops.abs(uniform_samples)))
+            math_ops.log1p(-math_ops.abs(uniform_samples)))
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
