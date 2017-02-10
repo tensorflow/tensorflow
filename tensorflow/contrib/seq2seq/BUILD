@@ -80,9 +80,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "sampling_decoder_test",
+    name = "basic_decoder_test",
     size = "medium",
-    srcs = ["python/kernel_tests/sampling_decoder_test.py"],
+    srcs = ["python/kernel_tests/basic_decoder_test.py"],
     additional_deps = [
         ":seq2seq_py",
         "//tensorflow/contrib/layers:layers_py",
