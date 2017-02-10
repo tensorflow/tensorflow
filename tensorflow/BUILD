@@ -248,7 +248,7 @@ filegroup(
 )
 
 load(
-    "//tensorflow/third_party/mkl:build_defs.bzl",
+    "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
 
@@ -256,7 +256,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl(
         [
-            "//tensorflow/third_party/mkl:intel_binary_blob",
+            "//third_party/mkl:intel_binary_blob",
         ],
     ),
 )
