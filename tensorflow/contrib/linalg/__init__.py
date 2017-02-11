@@ -54,3 +54,6 @@ from tensorflow.contrib.linalg.python.ops.linear_operator_matrix import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_tril import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)
