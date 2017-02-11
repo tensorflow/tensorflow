@@ -368,7 +368,7 @@ if __name__ == '__main__':
       type=str,
       default=None,
       required=True,
-      help='Directory to write docs to. Must not exist.'
+      help='Directory to write docs to.'
   )
 
   argument_parser.add_argument(
@@ -376,7 +376,7 @@ if __name__ == '__main__':
       type=str,
       default=None,
       required=True,
-      help='Directory with the source for the Python guides.'
+      help='Directory with the source docs.'
   )
 
   # This doc generator works on the TensorFlow codebase. Since this script lives
@@ -396,10 +396,4 @@ if __name__ == '__main__':
   )
 
   flags, _ = argument_parser.parse_known_args()
-
-  if os.path.exists(flags.output_dir):
-    raise RuntimeError('output_dir %s exists.\n'
-                       'Cowardly refusing to wipe it, please do that yourself.'
-                       % flags.output_dir)
-
   _main(flags.src_dir, flags.output_dir, flags.base_dir)
