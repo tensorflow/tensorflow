@@ -1848,10 +1848,8 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
-        "//tensorflow/contrib/compiler:compiler_py",
         "//third_party/py/numpy",
     ],
-    xla_enabled = True,
 )
 
 cuda_py_test(
