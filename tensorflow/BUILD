@@ -147,6 +147,7 @@ filegroup(
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/image:all_files",
+        "//tensorflow/contrib/imperative:all_files",
         "//tensorflow/contrib/input_pipeline:all_files",
         "//tensorflow/contrib/input_pipeline/kernels:all_files",
         "//tensorflow/contrib/integrate:all_files",
