@@ -618,8 +618,8 @@ class OpDefLibrary(object):
         if input_arg.is_ref:
           if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
-                "'%s' Op requires that input '%s' be tf.Variable" %
-                (op_type_name, input_name))
+                ("'%s' Op requires that input '%s' be a mutable tensor " +
+                "(e.g.: a tf.Variable)") % (op_type_name, input_name))
           input_types.extend(types)
         else:
           input_types.extend(base_types)
