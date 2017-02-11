@@ -623,7 +623,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     else:
       return x == y
 
-  _, height, width, _ = image.get_shape().as_list()
+  _, height, width, _ = _BatchImageDimensions(image)
   width_diff = target_width - width
   offset_crop_width = max_(-width_diff // 2, 0)
   offset_pad_width = max_(width_diff // 2, 0)
@@ -645,7 +645,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   if resized.get_shape().ndims is None:
     raise ValueError('resized contains no shape.')
 
-  _, resized_height, resized_width, _ = resized.get_shape().as_list()
+  _, resized_height, resized_width, _ = _BatchImageDimensions(resized)
 
   assert_ops = []
   assert_ops += _assert(equal_(resized_height, target_height), ValueError,
