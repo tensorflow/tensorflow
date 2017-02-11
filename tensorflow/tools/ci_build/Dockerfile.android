@@ -52,6 +52,7 @@ ENV PATH ${PATH}:${ANDROID_NDK_HOME}
 RUN cd ${ANDROID_DEV_HOME} && \
     wget -q ${ANDROID_NDK_URL} && \
     unzip ${ANDROID_NDK_FILENAME} -d ${ANDROID_DEV_HOME} && \
+    rm ${ANDROID_NDK_FILENAME} && \
     bash -c "ln -s ${ANDROID_DEV_HOME}/android-ndk-* ${ANDROID_NDK_HOME}"
 
 # Make android ndk executable to all users.
