@@ -61,6 +61,10 @@ def _main(input_dir, output_dir):
       full_in_path = os.path.join(dirpath, base_name)
       suffix = os.path.relpath(path=full_in_path, start=input_dir)
       full_out_path = os.path.join(output_dir, suffix)
+      if not base_name.endswith('.md'):
+        print('Copying non-md file %s...' % suffix)
+        open(full_out_path, 'w').write(open(full_in_path).read())
+        continue
       if dirpath.endswith('/api_guides/python'):
         print('Processing Python guide %s...' % base_name)
         md_string = tag_updater.process(full_in_path)
