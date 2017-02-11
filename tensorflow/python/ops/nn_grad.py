@@ -168,7 +168,7 @@ def _MaxPool3DGradGrad(op, grad):
 
 
 @ops.RegisterGradient("MaxPool3DGradGrad")
-def _MaxPoolGradGradGrad(op, grad):
+def _MaxPool3DGradGradGrad(op, grad):
   return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
                           dtype=op.inputs[0].dtype),
           array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
