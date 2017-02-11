@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.0.0-rc2'
+_VERSION = '1.0.0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
