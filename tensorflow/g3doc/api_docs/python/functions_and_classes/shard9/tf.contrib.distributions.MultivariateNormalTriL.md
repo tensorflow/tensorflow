@@ -42,7 +42,7 @@ X ~ MultivariateNormal(loc=0, scale=1)   # Identity scale, zero shift.
 Y = scale @ X + loc
 ```
 
-Trainable (batch) Cholesky matrices can be created with
+Trainable (batch) lower-triangular matrices can be created with
 `ds.matrix_diag_transform()` and/or `ds.fill_lower_triangular()`
 
 #### Examples
@@ -101,8 +101,7 @@ arguments.
 The `event_shape` is given by the last dimension of `loc` or the last
 dimension of the matrix implied by `scale`.
 
-Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix
-is:
+Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix is:
 
 ```none
 scale = scale_tril
@@ -445,7 +444,7 @@ Log of determinant of covariance matrix.
 Log probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalLinearOperator`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
 `value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
@@ -591,7 +590,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 Probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalLinearOperator`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
 `value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:

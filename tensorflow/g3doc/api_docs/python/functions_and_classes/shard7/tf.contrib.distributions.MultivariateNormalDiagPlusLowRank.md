@@ -141,7 +141,7 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
 
 *  <b>`loc`</b>: Floating-point `Tensor`. If this is set to `None`, `loc` is
     implicitly `0`. When specified, may have shape `[B1, ..., Bb, k]` where
-    `b >= 0` and `k` represents the event size.
+    `b >= 0` and `k` is the event size.
 *  <b>`scale_diag`</b>: Non-zero, floating-point `Tensor` representing a diagonal
     matrix added to `scale`. May have shape `[B1, ..., Bb, k]`, `b >= 0`,
     and characterizes `b`-batches of `k x k` diagonal matrices added to
@@ -486,7 +486,7 @@ Log of determinant of covariance matrix.
 Log probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalLinearOperator`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
 `value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
@@ -632,7 +632,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 Probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalLinearOperator`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
 `value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:

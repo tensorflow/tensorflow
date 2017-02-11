@@ -313,7 +313,7 @@ Log of determinant of covariance matrix.
 Log probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalLinearOperator`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
 `value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
@@ -459,7 +459,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 Probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalLinearOperator`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
 `value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
