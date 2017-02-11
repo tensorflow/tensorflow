@@ -109,8 +109,8 @@ py_test(
 )
 
 py_binary(
-    name = "make_py_guides",
-    srcs = ["make_py_guides.py"],
+    name = "substitute_links",
+    srcs = ["substitute_links.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":generate",

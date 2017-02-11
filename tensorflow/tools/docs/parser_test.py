@@ -92,13 +92,13 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('test/module.md', parser.documentation_path('test.module'))
 
   def test_replace_references(self):
-    string = 'A @{reference}, another @{reference}, and a @{third}.'
-    duplicate_of = {'third': 'fourth'}
+    string = 'A @{tf.reference}, another @{tf.reference}, and a @{tf.third}.'
+    duplicate_of = {'tf.third': 'tf.fourth'}
     result = parser.replace_references(string, '../..', duplicate_of)
     self.assertEqual(
-        'A [`reference`](../../reference.md), another '
-        '[`reference`](../../reference.md), '
-        'and a [`third`](../../fourth.md).',
+        'A [`tf.reference`](../../tf/reference.md), another '
+        '[`tf.reference`](../../tf/reference.md), '
+        'and a [`tf.third`](../../tf/fourth.md).',
         result)
 
   def test_generate_markdown_for_class(self):

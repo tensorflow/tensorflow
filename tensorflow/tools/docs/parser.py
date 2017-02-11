@@ -125,6 +125,44 @@ def _markdown_link(link_text, ref_full_name, relative_path_to_root,
       _reference_to_link(ref_full_name, relative_path_to_root, duplicate_of))
 
 
+def _one_ref(string, relative_path_to_root, duplicate_of):
+  """Return a link for a single "@{symbol}" reference."""
+  # Look for link text after $.
+  dollar = string.rfind('$')
+  if dollar > 0:  # Ignore $ in first character
+    link_text = string[dollar + 1:]
+    string = string[:dollar]
+  else:
+    link_text = string
+
+  # Handle different types of references.
+  if string.startswith('$'):  # Doc reference
+    print('ERROR: Handle doc reference "@{%s}"' % string)
+    return 'TODO'
+  elif string.startswith('tf'):  # Python symbol
+    # TODO(wicke): Figure out how to handle methods here.
+    return _markdown_link(
+        link_text, string, relative_path_to_root, duplicate_of)
+  elif string.startswith('tensorflow::'):  # C++ symbol
+    if string == 'tensorflow::ClientSession':
+      ret = 'GRAPH_URL'
+    elif string == 'tensorflow::Graph':
+      ret = 'GRAPH_URL'
+    elif string == 'tensorflow::Scope':
+      ret = 'SCOPE_URL'
+    elif string == 'tensorflow::Status':
+      ret = 'STATUS_URL'
+    elif string == 'tensorflow::ops::Const':
+      ret = 'CONST_URL'
+    else:
+      print('ERROR: Handle C++ reference "@{%s}"' % string)
+      return 'TODO_C++:%s' % string
+    return os.path.join(relative_path_to_root, ret)
+  # Error!
+  print('ERROR: Did not understand "@{%s}"' % string)
+  return 'ERROR:%s' % string
+
+
 def replace_references(string, relative_path_to_root, duplicate_of):
   """Replace "@{symbol}" references with links to symbol's documentation page.
 
@@ -148,9 +186,9 @@ def replace_references(string, relative_path_to_root, duplicate_of):
     `string`, with "@{symbol}" references replaced by Markdown links.
   """
   return re.sub(SYMBOL_REFERENCE_RE,
-                lambda match: _markdown_link(match.group(1), match.group(1),  # pylint: disable=g-long-lambda
-                                             relative_path_to_root,
-                                             duplicate_of),
+                lambda match: _one_ref(match.group(1),  # pylint: disable=g-long-lambda
+                                       relative_path_to_root,
+                                       duplicate_of),
                 string)
 
 

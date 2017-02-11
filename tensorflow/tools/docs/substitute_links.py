@@ -38,25 +38,40 @@ def _main(input_dir, output_dir):
   """Convert all the files in `input_dir` and write results to `output_dir`."""
   visitor = generate.extract()
 
-  # Make output_dir.
-  try:
-    if not os.path.exists(output_dir):
-      os.makedirs(output_dir)
-  except OSError as e:
-    print('Creating output dir "%s" failed: %s' % (output_dir, e))
-    raise
-
-  # How to get from api_guides/python/ to api_docs/python/
-  relative_path_to_root = '../../api_docs/python/'
+  header = '<!-- DO NOT EDIT! Automatically generated file. -->\n'
 
   # Iterate through all the source files and process them.
   tag_updater = UpdateTags()
-  for full_path, base_name in py_guide_parser.md_files_in_dir(input_dir):
-    print('Processing %s...' % base_name)
-    md_string = tag_updater.process(full_path)
-    output = parser.replace_references(
-        md_string, relative_path_to_root, visitor.duplicate_of)
-    open(os.path.join(output_dir, base_name), 'w').write(output)
+  for dirpath, _, filenames in os.walk(input_dir):
+    # How to get from `dirpath` to api_docs/python/
+    relative_path_to_root = os.path.relpath(
+        path=os.path.join(input_dir, 'api_docs/python'), start=dirpath)
+
+    # Make the directory under output_dir.
+    new_dir = os.path.join(output_dir,
+                           os.path.relpath(path=dirpath, start=input_dir))
+    try:
+      if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    except OSError as e:
+      print('Creating output dir "%s" failed: %s' % (new_dir, e))
+      raise
+
+    for base_name in filenames:
+      full_in_path = os.path.join(dirpath, base_name)
+      suffix = os.path.relpath(path=full_in_path, start=input_dir)
+      full_out_path = os.path.join(output_dir, suffix)
+      if dirpath.endswith('/api_guides/python'):
+        print('Processing Python guide %s...' % base_name)
+        md_string = tag_updater.process(full_in_path)
+      else:
+        print('Processing doc %s...' % suffix)
+        md_string = open(full_in_path).read()
+
+      output = parser.replace_references(
+          md_string, relative_path_to_root, visitor.duplicate_of)
+      open(full_out_path, 'w').write(header + output)
+
   print('Done.')
 
 
@@ -74,12 +89,7 @@ if __name__ == '__main__':
       type=str,
       default=None,
       required=True,
-      help='Directory to write docs to. Will be created, must not exist.'
+      help='Directory to write docs to.'
   )
   flags, _ = argument_parser.parse_known_args()
-  if os.path.exists(flags.output_dir):
-    raise RuntimeError('output_dir %s exists.\n'
-                       'Cowardly refusing to wipe it, please do that yourself.'
-                       % flags.output_dir)
-
   _main(flags.input_dir, flags.output_dir)
