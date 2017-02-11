@@ -1022,23 +1022,40 @@ def _kl_brute_force(a, b, name=None):
     # http://mathworld.wolfram.com/FrobeniusNorm.html
     return math_ops.square(linalg_ops.norm(x, ord="fro", axis=[-2, -1]))
 
+  # TODO(b/35041439): See also b/35040945. Remove this function once LinOp
+  # supports something like:
+  #   A.inverse().solve(B).norm(order='fro', axis=[-1, -2])
+  def is_diagonal(x):
+    """Helper to identify if `LinearOperator` has only a diagonal component."""
+    return (isinstance(x, linalg.LinearOperatorIdentity) or
+            isinstance(x, linalg.LinearOperatorScaledIdentity) or
+            isinstance(x, linalg.LinearOperatorDiag))
+
   with ops.name_scope(name, "kl_mvn", values=[a.loc, b.loc] +
                       a.scale.graph_parents + b.scale.graph_parents):
     # Calculation is based on:
     # http://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
-    # and the following observation:
+    # and,
+    # https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm
+    # i.e.,
     #   If Ca = AA', Cb = BB', then
     #   tr[inv(Cb) Ca] = tr[inv(B)' inv(B) A A']
     #                  = tr[inv(B) A A' inv(B)']
     #                  = tr[(inv(B) A) (inv(B) A)']
     #                  = sum_{ij} (inv(B) A)_{ij}^2
-    # where the second equality follows from the cyclic permutation property.
+    #                  = ||inv(B) A||_F**2
+    # where ||.||_F is the Frobenius norm and the second equality follows from
+    # the cyclic permutation property.
+    if is_diagonal(a.scale) and is_diagonal(b.scale):
+      # Using `stddev` because it handles expansion of Identity cases.
+      b_inv_a = (a.stddev() / b.stddev())[..., array_ops.newaxis]
+    else:
+      b_inv_a = b.scale.solve(a.scale.to_dense())
     kl_div = (b.scale.log_abs_determinant()
               - a.scale.log_abs_determinant()
               + 0.5 * (
                   - math_ops.cast(a.scale.domain_dimension_tensor(), a.dtype)
-                  + squared_frobenius_norm(
-                      b.scale.solve(a.scale.to_dense()))
+                  + squared_frobenius_norm(b_inv_a)
                   + squared_frobenius_norm(b.scale.solve(
                       (b.mean() - a.mean())[..., array_ops.newaxis]))))
     kl_div.set_shape(array_ops.broadcast_static_shape(

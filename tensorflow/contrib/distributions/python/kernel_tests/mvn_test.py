@@ -327,6 +327,8 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
                                [1, 3, 4]], dtype=np.float32) / 10.,
           validate_args=True)
 
+      scale = dist.scale.to_dense()
+
       n = int(30e3)
       samps = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(samps, 0)
@@ -349,7 +351,28 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
           dist.log_prob(samps) - mvn_chol.log_prob(samps), 0)
       analytical_kl_chol = ds.kl(dist, mvn_chol)
 
-      scale = dist.scale.to_dense()
+      n = int(10e3)
+      baseline = ds.MultivariateNormalDiag(
+          loc=np.array([-1., 0.25, 1.25], dtype=np.float32),
+          scale_diag=np.array([1.5, 0.5, 1.], dtype=np.float32),
+          validate_args=True)
+      samps = baseline.sample(n, seed=0)
+
+      sample_kl_identity_diag_baseline = math_ops.reduce_mean(
+          baseline.log_prob(samps) - mvn_identity.log_prob(samps), 0)
+      analytical_kl_identity_diag_baseline = ds.kl(baseline, mvn_identity)
+
+      sample_kl_scaled_diag_baseline = math_ops.reduce_mean(
+          baseline.log_prob(samps) - mvn_scaled.log_prob(samps), 0)
+      analytical_kl_scaled_diag_baseline = ds.kl(baseline, mvn_scaled)
+
+      sample_kl_diag_diag_baseline = math_ops.reduce_mean(
+          baseline.log_prob(samps) - mvn_diag.log_prob(samps), 0)
+      analytical_kl_diag_diag_baseline = ds.kl(baseline, mvn_diag)
+
+      sample_kl_chol_diag_baseline = math_ops.reduce_mean(
+          baseline.log_prob(samps) - mvn_chol.log_prob(samps), 0)
+      analytical_kl_chol_diag_baseline = ds.kl(baseline, mvn_chol)
 
       [
           sample_mean_,
@@ -360,11 +383,16 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
           analytical_stddev_,
           analytical_log_det_covariance_,
           analytical_det_covariance_,
+          scale_,
           sample_kl_identity_, analytical_kl_identity_,
           sample_kl_scaled_, analytical_kl_scaled_,
           sample_kl_diag_, analytical_kl_diag_,
           sample_kl_chol_, analytical_kl_chol_,
-          scale_,
+          sample_kl_identity_diag_baseline_,
+          analytical_kl_identity_diag_baseline_,
+          sample_kl_scaled_diag_baseline_, analytical_kl_scaled_diag_baseline_,
+          sample_kl_diag_diag_baseline_, analytical_kl_diag_diag_baseline_,
+          sample_kl_chol_diag_baseline_, analytical_kl_chol_diag_baseline_,
       ] = sess.run([
           sample_mean,
           dist.mean(),
@@ -374,11 +402,16 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
           dist.stddev(),
           dist.log_det_covariance(),
           dist.det_covariance(),
+          scale,
           sample_kl_identity, analytical_kl_identity,
           sample_kl_scaled, analytical_kl_scaled,
           sample_kl_diag, analytical_kl_diag,
           sample_kl_chol, analytical_kl_chol,
-          scale,
+          sample_kl_identity_diag_baseline,
+          analytical_kl_identity_diag_baseline,
+          sample_kl_scaled_diag_baseline, analytical_kl_scaled_diag_baseline,
+          sample_kl_diag_diag_baseline, analytical_kl_diag_diag_baseline,
+          sample_kl_chol_diag_baseline, analytical_kl_chol_diag_baseline,
       ])
 
       sample_variance_ = np.diag(sample_covariance_)
@@ -432,6 +465,22 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
       print("kl_chol:      analytical:{}  sample:{}".format(
           analytical_kl_chol_, sample_kl_chol_))
 
+      print("kl_identity_diag_baseline:  analytical:{}  sample:{}".format(
+          analytical_kl_identity_diag_baseline_,
+          sample_kl_identity_diag_baseline_))
+
+      print("kl_scaled_diag_baseline:  analytical:{}  sample:{}".format(
+          analytical_kl_scaled_diag_baseline_,
+          sample_kl_scaled_diag_baseline_))
+
+      print("kl_diag_diag_baseline:  analytical:{}  sample:{}".format(
+          analytical_kl_diag_diag_baseline_,
+          sample_kl_diag_diag_baseline_))
+
+      print("kl_chol_diag_baseline:  analytical:{}  sample:{}".format(
+          analytical_kl_chol_diag_baseline_,
+          sample_kl_chol_diag_baseline_))
+
       self.assertAllClose(true_mean, sample_mean_,
                           atol=0., rtol=0.02)
       self.assertAllClose(true_mean, analytical_mean_,
@@ -474,6 +523,23 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
                           atol=0., rtol=0.02)
       self.assertAllClose(sample_kl_chol_, analytical_kl_chol_,
                           atol=0., rtol=0.02)
+
+      self.assertAllClose(
+          sample_kl_identity_diag_baseline_,
+          analytical_kl_identity_diag_baseline_,
+          atol=0., rtol=0.02)
+      self.assertAllClose(
+          sample_kl_scaled_diag_baseline_,
+          analytical_kl_scaled_diag_baseline_,
+          atol=0., rtol=0.02)
+      self.assertAllClose(
+          sample_kl_diag_diag_baseline_,
+          analytical_kl_diag_diag_baseline_,
+          atol=0., rtol=0.04)
+      self.assertAllClose(
+          sample_kl_chol_diag_baseline_,
+          analytical_kl_chol_diag_baseline_,
+          atol=0., rtol=0.02)
 
   def testImplicitLargeDiag(self):
     mu = np.array([[1., 2, 3],
