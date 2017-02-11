@@ -3088,7 +3088,7 @@ bool CudnnSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<double>* output_data) {
   mutex_lock lock{dnn_handle_mutex_};
-  auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+  auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
@@ -3104,7 +3104,7 @@ bool CudnnSupport::DoPoolForward(
   ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
                                    CUDNN_DATA_DOUBLE};
   ScopedPoolingDescriptor pooling_desc{parent_, pooling_dimensions};
-  status = dynload::cudnnPoolingForward(
+  status = wrap::cudnnPoolingForward(
       parent_, ToHandle(dnn_handle_), pooling_desc.handle(), &alpha,
       src_desc.handle(), input_data.opaque(), &beta, dest_desc.handle(),
       output_data->opaque());
@@ -3194,7 +3194,7 @@ bool CudnnSupport::DoPoolBackward(
     const DeviceMemory<double>& input_diff_data,
     DeviceMemory<double>* output_diff_data) {
   mutex_lock lock{dnn_handle_mutex_};
-  auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+  auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                         AsCUDAStreamValue(stream));
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
@@ -3210,7 +3210,7 @@ bool CudnnSupport::DoPoolBackward(
   ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
                                    CUDNN_DATA_DOUBLE};
   ScopedPoolingDescriptor pooling_desc{parent_, pooling_dimensions};
-  status = dynload::cudnnPoolingBackward(
+  status = wrap::cudnnPoolingBackward(
       parent_, ToHandle(dnn_handle_), pooling_desc.handle(), &alpha,
       dest_desc.handle(), output_data.opaque(), dest_desc.handle(),
       input_diff_data.opaque(), src_desc.handle(), input_data.opaque(), &beta,
