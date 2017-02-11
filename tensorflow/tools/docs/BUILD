@@ -108,17 +108,6 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "substitute_links",
-    srcs = ["substitute_links.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":generate",
-        ":parser",
-        ":py_guide_parser",
-    ],
-)
-
 filegroup(
     name = "doxy_config",
     srcs = ["tf-doxy_for_md-config"],
