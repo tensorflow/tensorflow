@@ -110,6 +110,26 @@ def _ImageDimensions(image):
             for s, d in zip(static_shape, dynamic_shape)]
 
 
+def _BatchImageDimensions(image):
+  """Returns the dimensions of an batch of images tensor.
+
+  Args:
+    image: A 4-D Tensor of shape `[batch, height, width, channels]`.
+
+  Returns:
+    A list of `[batch, height, width, channels]` corresponding to the dimensions of the
+    input image.  Dimensions that are statically known are python integers,
+    otherwise they are integer scalar tensors.
+  """
+  if image.get_shape().is_fully_defined():
+    return image.get_shape().as_list()
+  else:
+    static_shape = image.get_shape().with_rank(4).as_list()
+    dynamic_shape = array_ops.unpack(array_ops.shape(image), 4)
+    return [s if s is not None else d
+            for s, d in zip(static_shape, dynamic_shape)]
+
+
 def _Check3DImage(image, require_static=True):
   """Assert that we are working with properly shaped image.
 
@@ -425,7 +445,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   elif image.get_shape().ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
-  num_channels, height, width, depth = image.get_shape().as_list()
+  batch, height, width, depth = _BatchImageDimensions(image)
 
   after_padding_width = target_width - offset_width - width
   after_padding_height = target_height - offset_height - height
@@ -449,7 +469,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   padded = array_ops.pad(image, paddings)
 
   padded_shape = [None if _is_tensor(i) else i
-                  for i in [num_channels, target_height, target_width, depth]]
+                  for i in [batch, target_height, target_width, depth]]
   padded.set_shape(padded_shape)
 
   if not is_batch:
@@ -500,7 +520,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   elif image.get_shape().ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
-  num_channels, height, width, depth = image.get_shape().as_list()
+  batch, height, width, depth = _BatchImageDimensions(image)
 
   assert_ops += _assert(offset_width >= 0, ValueError,
                         'offset_width must be >= 0.')
@@ -521,7 +541,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                             array_ops.stack([-1, target_height, target_width, -1]))
 
   cropped_shape = [None if _is_tensor(i) else i
-                   for i in [num_channels, target_height, target_width, depth]]
+                   for i in [batch, target_height, target_width, depth]]
   cropped.set_shape(cropped_shape)
 
   if not is_batch:
