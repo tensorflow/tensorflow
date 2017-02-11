@@ -65,7 +65,7 @@ filegroup(
         "@paper_toolbar//:paper_toolbar",
         "@paper_tooltip//:paper_tooltip",
         "@plottable//:plottable",
-        "@polymer_archive//:polymer",
+        "@polymer//:polymer",
         "@promise_polyfill//:promise_polyfill",
         "@three_js_orbitcontrols_js//file",
         "@three_js_three_min_js//file",

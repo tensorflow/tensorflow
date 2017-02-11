@@ -480,7 +480,7 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "polymer_archive",
+  name = "polymer",
   build_file = "bower.BUILD",
   url = "https://github.com/polymer/polymer/archive/v1.7.0.tar.gz",
   strip_prefix = "polymer-1.7.0",
