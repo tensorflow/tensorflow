@@ -25,7 +25,10 @@ import os
 import sys
 import tempfile
 
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
+# pylint: disable=g-bad-todo
+# TODO(#6568): Remove this hack that makes dlopen() not crash.
+# pylint: enable=g-bad-todo
+# pylint: disable=g-import-not-at-top
 if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
@@ -35,6 +38,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib import learn
+from tensorflow.contrib import lookup
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
@@ -48,7 +52,6 @@ from tensorflow.contrib.learn.python.learn.estimators import linear
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
-from tensorflow.contrib.lookup import lookup_ops
 from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.contrib.testing.python.framework import util_test
 from tensorflow.python.client import session as session_lib
@@ -221,8 +224,8 @@ def _build_estimator_for_export_tests(tmpdir):
     vocab_file = gfile.GFile(vocab_file_name, mode='w')
     vocab_file.write(VOCAB_FILE_CONTENT)
     vocab_file.close()
-    hashtable = lookup_ops.HashTable(
-        lookup_ops.TextFileStringTableInitializer(vocab_file_name), 'x')
+    hashtable = lookup.HashTable(
+        lookup.TextFileStringTableInitializer(vocab_file_name), 'x')
     features['bogus_lookup'] = hashtable.lookup(
         math_ops.to_int64(features['feature']))
 
@@ -878,8 +881,8 @@ class ReplicaDeviceSetterTest(test.TestCase):
 
     with ops.device(estimator._get_replica_device_setter(config)):
       default_val = constant_op.constant([-1, -1], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+      table = lookup.MutableHashTable(dtypes.string, dtypes.int64,
+                                      default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
     self.assertDeviceEqual('/job:ps/task:0', table._table_ref.device)
@@ -889,8 +892,8 @@ class ReplicaDeviceSetterTest(test.TestCase):
     with ops.device(
         estimator._get_replica_device_setter(run_config.RunConfig())):
       default_val = constant_op.constant([-1, -1], dtypes.int64)
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+      table = lookup.MutableHashTable(dtypes.string, dtypes.int64,
+                                      default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
     self.assertDeviceEqual('', table._table_ref.device)

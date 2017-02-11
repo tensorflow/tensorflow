@@ -24,6 +24,7 @@
 @@BasicLSTMCell
 @@GRUCell
 @@LSTMCell
+@@LayerNormBasicLSTMCell
 
 ## Classes storing split `RNNCell` state
 
@@ -32,6 +33,7 @@
 ## RNN Cell wrappers (RNNCells that wrap other RNNCells)
 
 @@MultiRNNCell
+@@LSTMBlockWrapper
 @@DropoutWrapper
 @@EmbeddingWrapper
 @@InputProjectionWrapper
@@ -86,10 +88,13 @@ from tensorflow.contrib.rnn.python.ops.core_rnn_cell import MultiRNNCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import OutputProjectionWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import RNNCell
 
-# pylint: disable=unused-import,wildcard-import, line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.rnn.python.ops.fused_rnn_cell import *
 from tensorflow.contrib.rnn.python.ops.gru_ops import *
 from tensorflow.contrib.rnn.python.ops.lstm_ops import *
 from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 # pylint: enable=unused-import,wildcard-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__, ['core_rnn_cell'])

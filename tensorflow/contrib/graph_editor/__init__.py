@@ -108,110 +108,11 @@ which to operate must always be given explicitly. This is the reason why
   *connect* or *bypass*.
 * transform: the Transformer class, which enables transforming
   (or simply copying) a subgraph into another one.
-
-## Module: util
-
-@@make_list_of_op
-@@get_tensors
-@@make_list_of_t
-@@get_generating_ops
-@@get_consuming_ops
-@@ControlOutputs
-@@placeholder_name
-@@make_placeholder_from_tensor
-@@make_placeholder_from_dtype_and_shape
-
-## Module: select
-
-@@filter_ts
-@@filter_ts_from_regex
-@@filter_ops
-@@filter_ops_from_regex
-@@get_name_scope_ops
-@@check_cios
-@@get_ops_ios
-@@compute_boundary_ts
-@@get_within_boundary_ops
-@@get_forward_walk_ops
-@@get_backward_walk_ops
-@@get_walks_intersection_ops
-@@get_walks_union_ops
-@@select_ops
-@@select_ts
-@@select_ops_and_ts
-
-## Module: subgraph
-
-@@SubGraphView
-@@make_view
-@@make_view_from_scope
-
-## Module: reroute
-
-@@swap_ts
-@@reroute_a2b_ts
-@@reroute_b2a_ts
-@@swap_inputs
-@@reroute_a2b_inputs
-@@reroute_b2a_inputs
-@@swap_outputs
-@@reroute_a2b_outputs
-@@reroute_b2a_outputs
-@@swap
-@@reroute_a2b
-@@reroute_b2a
-@@remove_control_inputs
-@@add_control_inputs
-
-## Module: edit
-
-@@detach_control_inputs
-@@detach_control_outputs
-@@detach_inputs
-@@detach_outputs
-@@detach
-@@connect
-@@bypass
-
-## Module: transform
-
-@@replace_t_with_placeholder_handler
-@@keep_t_if_possible_handler
-@@assign_renamed_collections_handler
-@@transform_op_if_inside_handler
-@@copy_op_handler
-@@transform_op_in_place
-@@Transformer
-@@copy
-@@copy_with_input_replacements
-@@graph_replace
-
-## Module: match
-
-@@op_type
-@@OpMatcher
-
-## Useful aliases
-
-@@ph
-@@sgv
-@@sgv_scope
-@@ts
-@@ops
-@@matcher
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.contrib.graph_editor import edit
-from tensorflow.contrib.graph_editor import match
-from tensorflow.contrib.graph_editor import reroute
-from tensorflow.contrib.graph_editor import select
-from tensorflow.contrib.graph_editor import subgraph
-from tensorflow.contrib.graph_editor import transform
-from tensorflow.contrib.graph_editor import util
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.graph_editor.edit import *
@@ -224,9 +125,14 @@ from tensorflow.contrib.graph_editor.util import *
 # pylint: enable=wildcard-import
 
 # some useful aliases
-ph = util.make_placeholder_from_dtype_and_shape
-sgv = subgraph.make_view
-sgv_scope = subgraph.make_view_from_scope
-ts = select.select_ts
-ops = select.select_ops
-matcher = match.OpMatcher
+# pylint: disable=g-bad-import-order
+from tensorflow.contrib.graph_editor import subgraph as _subgraph
+from tensorflow.contrib.graph_editor import util as _util
+# pylint: enable=g-bad-import-order
+ph = _util.make_placeholder_from_dtype_and_shape
+sgv = _subgraph.make_view
+sgv_scope = _subgraph.make_view_from_scope
+
+del absolute_import
+del division
+del print_function
