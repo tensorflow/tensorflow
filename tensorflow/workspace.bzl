@@ -214,11 +214,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.http_archive(
       name = "protobuf",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/9d3288e651700f3d52e6b4ead2a9f9ab02da53f4.tar.gz",
-          "https://github.com/google/protobuf/archive/9d3288e651700f3d52e6b4ead2a9f9ab02da53f4.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/ef927cc428db7bf41d3a593a16a8f1a0fe6306c5.tar.gz",
+          "https://github.com/google/protobuf/archive/ef927cc428db7bf41d3a593a16a8f1a0fe6306c5.tar.gz",
       ],
-      sha256 = "4663e886f9bbea0121ce424e1620997a37d38c6299dc82183223a0401bbf70ed",
-      strip_prefix = "protobuf-9d3288e651700f3d52e6b4ead2a9f9ab02da53f4",
+      sha256 = "8813a4ab27f7c61565d0db17d69236b4ec0b1404371efc728f15079b85e457ca",
+      strip_prefix = "protobuf-ef927cc428db7bf41d3a593a16a8f1a0fe6306c5",
   )
 
   native.new_http_archive(
