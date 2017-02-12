@@ -92,13 +92,24 @@ class ParserTest(googletest.TestCase):
     self.assertEqual('test/module.md', parser.documentation_path('test.module'))
 
   def test_replace_references(self):
-    string = 'A @{tf.reference}, another @{tf.reference}, and a @{tf.third}.'
+    class HasOneMember(object):
+
+      def foo(self):
+        pass
+
+    string = ('A @{tf.reference}, another @{tf.reference}, '
+              'a member @{tf.reference.foo}, and a @{tf.third}.')
     duplicate_of = {'tf.third': 'tf.fourth'}
+    index = {'tf.reference': HasOneMember,
+             'tf.reference.foo': HasOneMember.foo,
+             'tf.third': HasOneMember,
+             'tf.fourth': HasOneMember}
     result = parser.replace_references(
-        string, '../..', duplicate_of, doc_index={})
+        string, '../..', duplicate_of, doc_index={}, index=index)
     self.assertEqual(
         'A [`tf.reference`](../../tf/reference.md), another '
         '[`tf.reference`](../../tf/reference.md), '
+        'a member [`tf.reference.foo`](../../tf/reference.md#foo), '
         'and a [`tf.third`](../../tf/fourth.md).',
         result)
 
@@ -114,7 +125,8 @@ class ParserTest(googletest.TestCase):
     doc2.title = 'Two words'
     doc2.url = 'somewhere/else'
     doc_index = {'doc1': doc1, 'do/c2': doc2}
-    result = parser.replace_references(string, '..', {}, doc_index=doc_index)
+    result = parser.replace_references(string, '..', {}, doc_index=doc_index,
+                                       index={})
     self.assertEqual(
         '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
         '[zelda](../URL1#def) [Two words](../somewhere/else)',
@@ -257,7 +269,7 @@ class ParserTest(googletest.TestCase):
     # Make sure docstring shows up and is properly processed.
     expected_docs = parser.replace_references(
         inspect.getdoc(test_function_for_markdown_reference),
-        relative_path_to_root='.', duplicate_of={}, doc_index={})
+        relative_path_to_root='.', duplicate_of={}, doc_index={}, index={})
 
     self.assertTrue(expected_docs in docs)
 

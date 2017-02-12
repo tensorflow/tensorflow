@@ -74,16 +74,12 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
   for full_name, py_object in six.iteritems(index):
 
     if full_name in duplicate_of:
-      print('Not writing docs for %s, duplicate of %s.' % (
-          full_name, duplicate_of[full_name]))
       continue
 
     # Methods and some routines are documented only as part of their class.
     if not (inspect.ismodule(py_object) or
             inspect.isclass(py_object) or
             inspect.isfunction(py_object)):
-      print('Not writing docs for %s, not a class, module, or function.' % (
-          full_name))
       continue
 
     print('Writing docs for %s (%r).' % (full_name, py_object))
@@ -345,7 +341,8 @@ def other_docs(src_dir, output_dir, visitor, doc_index):
         md_string = open(full_in_path).read()
 
       output = parser.replace_references(
-          md_string, relative_path_to_root, visitor.duplicate_of, doc_index)
+          md_string, relative_path_to_root, visitor.duplicate_of,
+          visitor.index, doc_index)
       open(full_out_path, 'w').write(header + output)
 
   print('Done.')

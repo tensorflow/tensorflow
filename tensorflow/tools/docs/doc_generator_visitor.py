@@ -136,11 +136,7 @@ class DocGeneratorVisitor(object):
     self._index[parent_name] = parent
     self._tree[parent_name] = []
 
-    if inspect.ismodule(parent):
-      print('module %s: %r' % (parent_name, parent))
-    elif inspect.isclass(parent):
-      print('class %s: %r' % (parent_name, parent))
-    else:
+    if not (inspect.ismodule(parent) or inspect.isclass(parent)):
       raise RuntimeError('Unexpected type in visitor -- %s: %r' %
                          (parent_name, parent))
 
