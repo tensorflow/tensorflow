@@ -216,7 +216,8 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
-      is_text_proto, true /* dry_run_for_unknown_shape */, &output_tensor_info);
+      is_text_proto, false /* shape_inference_for_unknown_shape */,
+      true /* dry_run_for_unknown_shape */, &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
 
   std::vector<float> img_floats;
