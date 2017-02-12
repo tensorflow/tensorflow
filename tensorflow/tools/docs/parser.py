@@ -33,6 +33,14 @@ IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
 # A regular expression for capturing a @{symbol} reference.
 SYMBOL_REFERENCE_RE = re.compile(r'@\{([^}]+)\}')
 
+# Log of all reported errors
+all_errors = []
+
+
+def log_error(s):
+  all_errors.append(s)
+  print('ERROR:', s)
+
 
 def documentation_path(full_name):
   """Returns the file path for the documentation for the given API symbol.
@@ -185,7 +193,7 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
       return '[%s](%s%s)' % (
           link_text, os.path.join(relative_path_to_root, doc_index[string].url),
           hash_tag)
-    print('ERROR: Handle doc reference "@{%s}"' % string)
+    log_error('Handle doc reference "@{%s}"' % string)
     return 'TODO:%s' % string
 
   elif string.startswith('tf'):  # Python symbol
@@ -203,11 +211,11 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
     elif string == 'tensorflow::ops::Const':
       ret = 'CONST_URL'
     else:
-      print('ERROR: Handle C++ reference "@{%s}"' % string)
+      log_error('Handle C++ reference "@{%s}"' % string)
       return 'TODO_C++:%s' % string
     return '[`%s`](%s)' % (link_text, os.path.join(relative_path_to_root, ret))
   # Error!
-  print('ERROR: Did not understand "@{%s}"' % string)
+  log_error('Did not understand "@{%s}"' % string)
   return 'ERROR:%s' % string
 
 

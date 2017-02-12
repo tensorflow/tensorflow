@@ -21,6 +21,7 @@ from __future__ import print_function
 import argparse
 import inspect
 import os
+import sys
 
 import six
 import tensorflow as tf
@@ -301,7 +302,7 @@ class UpdateTags(py_guide_parser.PyGuideParser):
   """Rewrites a Python guide so that each section has an explicit tag."""
 
   def process_section(self, line_number, section_title, tag):
-    self.replace_line(line_number, '## %s {#%s}' % (section_title, tag))
+    self.replace_line(line_number, '## %s<a id="%s"/>' % (section_title, tag))
 
 
 def other_docs(src_dir, output_dir, visitor, doc_index):
@@ -342,7 +343,7 @@ def other_docs(src_dir, output_dir, visitor, doc_index):
 
       output = parser.replace_references(
           md_string, relative_path_to_root, visitor.duplicate_of,
-          visitor.index, doc_index)
+          doc_index=doc_index, index=visitor.index)
       open(full_out_path, 'w').write(header + output)
 
   print('Done.')
@@ -394,3 +395,6 @@ if __name__ == '__main__':
 
   flags, _ = argument_parser.parse_known_args()
   _main(flags.src_dir, flags.output_dir, flags.base_dir)
+  if parser.all_errors:
+    print('Errors during processing:' + '\n  '.join(parser.all_errors))
+    sys.exit(1)
