@@ -1119,7 +1119,7 @@ for ZeroOut:
 ```
 
 `c->set_output(0, c->input(0));` declares that the first output's shape should
-be set to the first input's shape. If the output is selected by its index as in the above example, the second parameter of `set_output` should be a `ShapeHandle` object. You can create an empty `ShapeHandle` object by its default constructor. The `ShapeHandle` object for an input with index `idx` can be gotten by `c->input(idx)`.
+be set to the first input's shape. If the output is selected by its index as in the above example, the second parameter of `set_output` should be a `ShapeHandle` object. You can create an empty `ShapeHandle` object by its default constructor. The `ShapeHandle` object for an input with index `idx` can be obtained by `c->input(idx)`.
 
 There are a number of common shape functions
 that apply to many ops, such as `shape_inference::UnchangedShape` which can be
@@ -1181,11 +1181,12 @@ particular dimension has a very specific value using `InferenceContext::Dim` and
 `InferenceContext::WithValue`; you can specify that an output dimension is the
 sum / product of two input dimensions using `InferenceContext::Add` and
 `InferenceContext::Multiply`. See the `InferenceContext` class for
-all of the various shape manipulations you can specify. The following example set the dimension of the first output to n*3, where n is the dimension of the first rank of the first input.
+all of the various shape manipulations you can specify. The following example sets
+shape of the first output to (n, 3), where first input has shape (n, ...)
 
 ```c++
 .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
-    c->set_output(0, c->Matrix(c->Dim(c->input(0),0),3));
+    c->set_output(0, c->Matrix(c->Dim(c->input(0), 0), 3));
     return Status::OK();
 });
 ```
