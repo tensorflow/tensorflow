@@ -1685,6 +1685,12 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
+  def testParamRegularizersFused(self):
+    with ops.Graph().as_default() as g, self.test_session(g):
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
+      with self.assertRaisesRegexp(ValueError, 'Regularizers are not currently'):
+        _layers.batch_norm(inputs, param_regularizers={}, fused=True)
+
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
