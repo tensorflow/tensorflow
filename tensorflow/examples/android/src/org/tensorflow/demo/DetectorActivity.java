@@ -79,7 +79,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final int CROP_SIZE = USE_YOLO ? YOLO_INPUT_SIZE : MB_INPUT_SIZE;
 
   // Minimum detection confidence to track a detection.
-  private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.0f : 0.1f;
+  private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.25f : 0.1f;
 
   private static final boolean MAINTAIN_ASPECT = USE_YOLO;
 
