@@ -50,7 +50,7 @@ class MakeBatchReadyTest(test.TestCase):
     return self._rng.random_sample(sample_shape).astype(dtype)
 
   def _get_expected(self, x, batch_ndims, event_ndims, expand_batch_dim):
-    n = x.ndim - batch_ndims - event_ndims
+    n = int(x.ndim - batch_ndims - event_ndims)
     sample_shape = x.shape[0:n]
     y = np.reshape(x, np.concatenate([[-1], x.shape[n:]], 0))
     y = np.transpose(y, np.roll(np.arange(y.ndim), -1))
