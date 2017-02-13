@@ -80,3 +80,8 @@ from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapper
 from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook
 from tensorflow.python.debug.wrappers.hooks import LocalCLIDebugHook
 from tensorflow.python.debug.wrappers.local_cli_wrapper import LocalCLIDebugWrapperSession
+
+from tensorflow.python.util import all_util as _all_util
+
+
+_all_util.remove_undocumented(__name__)

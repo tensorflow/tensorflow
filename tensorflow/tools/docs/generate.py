@@ -26,6 +26,8 @@ import sys
 import six
 import tensorflow as tf
 
+from tensorflow.python import debug as tf_debug
+
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 from tensorflow.tools.docs import doc_generator_visitor
@@ -180,6 +182,10 @@ def extract():
   })
 
   traverse.traverse(tf, api_visitor)
+
+  # tf_debug is not imported with tf, it's a separate module altogether
+  visitor.set_root_name('tfdbg')
+  traverse.traverse(tf_debug, api_visitor)
 
   return visitor
 
@@ -344,7 +350,8 @@ def other_docs(src_dir, output_dir, visitor, doc_index):
       output = parser.replace_references(
           md_string, relative_path_to_root, visitor.duplicate_of,
           doc_index=doc_index, index=visitor.index)
-      open(full_out_path, 'w').write(header + output)
+      with open(full_out_path, 'w') as f:
+        f.write(header + output)
 
   print('Done.')
 

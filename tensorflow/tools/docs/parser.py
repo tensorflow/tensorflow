@@ -196,7 +196,7 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
     log_error('Handle doc reference "@{%s}"' % string)
     return 'TODO:%s' % string
 
-  elif string.startswith('tf'):  # Python symbol
+  elif string.startswith('tf.') or string.startswith('tfdbg.'):  # Python symbol
     return _markdown_link(
         link_text, string, relative_path_to_root, duplicate_of, index)
   elif string.startswith('tensorflow::'):  # C++ symbol
