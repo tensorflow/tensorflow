@@ -199,18 +199,18 @@ class MultivariateNormalDiagPlusLowRank(
       scale_perturb_diag: Floating-point `Tensor` representing a diagonal matrix
         inside the rank-`r` perturbation added to `scale`. May have shape
         `[B1, ..., Bb, r]`, `b >= 0`, and characterizes `b`-batches of `r x r`
-        diagonal matrices inside the perturbation added to `scale`.  When
+        diagonal matrices inside the perturbation added to `scale`. When
         `None`, an identity matrix is used inside the perturbation. Can only be
         specified if `scale_perturb_factor` is also specified.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
         statistics (e.g., mean, mode, variance) use the value "`NaN`" to
         indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.

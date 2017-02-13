@@ -141,7 +141,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   [Student's t-distributions](
   https://en.wikipedia.org/wiki/Student%27s_t-distribution)
   and should not be confused with the [Multivate Student's t-distribution](
-  https://en.wikipedia.org/wiki/Multivariate_t-distribution).  The
+  https://en.wikipedia.org/wiki/Multivariate_t-distribution). The
   traditional Multivariate Student's t-distribution is type of
   [elliptical distribution](
   https://en.wikipedia.org/wiki/Elliptical_distribution); it has PDF:
@@ -215,42 +215,39 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
     The `event_shape` is the event shape of `Affine.event_shape`.
 
     Args:
-      df: Numeric `Tensor`. The degrees of freedom of the distribution(s).
-        `df` must contain only positive values.
-        Must be scalar if `loc`, `scale_*` imply non-scalar batch_shape or
-        must have the same `batch_shape` implied by `loc`, `scale_*`.
-      loc: Numeric `Tensor`.  If this is set to `None`, no `loc` is applied.
+      df: Floating-point `Tensor`. The degrees of freedom of the
+        distribution(s). `df` must contain only positive values. Must be
+        scalar if `loc`, `scale_*` imply non-scalar batch_shape or must have the
+        same `batch_shape` implied by `loc`, `scale_*`.
+      loc: Floating-point `Tensor`. If this is set to `None`, no `loc` is
+        applied.
       scale_identity_multiplier: floating point rank 0 `Tensor` representing a
-        scaling done to the identity matrix.
-        When `scale_identity_multiplier = scale_diag=scale_tril = None` then
-        `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
-        to `scale`.
-      scale_diag: Numeric `Tensor` representing the diagonal matrix.
-        `scale_diag` has shape [N1, N2, ... k], which represents a k x k
-        diagonal matrix.
-        When `None` no diagonal term is added to `scale`.
-      scale_tril: Numeric `Tensor` representing the diagonal matrix.
-        `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
-        lower triangular matrix.
-        When `None` no `scale_tril` term is added to `scale`.
-        The upper triangular elements above the diagonal are ignored.
-      scale_perturb_factor: Numeric `Tensor` representing factor matrix with
-        last two dimensions of shape `(k, r)`.
-        When `None`, no rank-r update is added to `scale`.
-      scale_perturb_diag: Numeric `Tensor` representing the diagonal matrix.
-        `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
-        r x r Diagonal matrix.
-        When `None` low rank updates will take the form `scale_perturb_factor *
-        scale_perturb_factor.T`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+        scaling done to the identity matrix. When `scale_identity_multiplier =
+        scale_diag=scale_tril = None` then `scale += IdentityMatrix`. Otherwise
+        no scaled-identity-matrix is added to `scale`.
+      scale_diag: Floating-point `Tensor` representing the diagonal matrix.
+        `scale_diag` has shape [N1, N2, ..., k], which represents a k x k
+        diagonal matrix. When `None` no diagonal term is added to `scale`.
+      scale_tril: Floating-point `Tensor` representing the diagonal matrix.
+        `scale_diag` has shape [N1, N2, ..., k, k], which represents a k x k
+        lower triangular matrix. When `None` no `scale_tril` term is added to
+        `scale`. The upper triangular elements above the diagonal are ignored.
+      scale_perturb_factor: Floating-point `Tensor` representing factor matrix
+        with last two dimensions of shape `(k, r)`. When `None`, no rank-r
+        update is added to `scale`.
+      scale_perturb_diag: Floating-point `Tensor` representing the diagonal
+        matrix. `scale_perturb_diag` has shape [N1, N2, ..., r], which
+        represents an r x r Diagonal matrix. When `None` low rank updates will
+        take the form `scale_perturb_factor * scale_perturb_factor.T`.
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
         statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-        indicate the result is undefined.  When `False`, an exception is raised
+        indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
     graph_parents = [df, loc, scale_identity_multiplier, scale_diag,

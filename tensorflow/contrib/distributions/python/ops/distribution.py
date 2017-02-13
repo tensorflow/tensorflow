@@ -63,8 +63,8 @@ def _copy_fn(fn):
   """
   if not callable(fn):
     raise TypeError("fn is not callable: %s" % fn)
-  # The blessed way to copy a function.  copy.deepcopy fails to create
-  # a non-reference copy.  Since:
+  # The blessed way to copy a function. copy.deepcopy fails to create a
+  # non-reference copy. Since:
   #   types.FunctionType == type(lambda: None),
   # and the docstring for the function type states:
   #
@@ -129,7 +129,7 @@ class _DistributionMeta(abc.ABCMeta):
       ValueError:  If a `Distribution` public method lacks a docstring.
     """
     if not baseclasses:  # Nothing to be done for Distribution
-      raise TypeError("Expected non-empty baseclass.  Does Distribution "
+      raise TypeError("Expected non-empty baseclass. Does Distribution "
                       "not subclass _BaseDistribution?")
     which_base = [
         base for base in baseclasses
@@ -185,7 +185,7 @@ class ReparameterizationType(object):
 
   `NOT_REPARAMETERIZED`: Samples from the distribution are not fully
     reparameterized, and straight-through gradients are either partially
-    unsupported or are not supported at all.  In this case, for purposes of
+    unsupported or are not supported at all. In this case, for purposes of
     e.g. RL or variational inference, it is generally safest to wrap the
     sample results in a `stop_gradients` call and instead use policy
     gradients / surrogate loss instead.
@@ -234,8 +234,8 @@ class Distribution(_BaseDistribution):
   ### Subclassing
 
   Subclasses are expected to implement a leading-underscore version of the
-  same-named function.  The argument signature should be identical except for
-  the omission of `name="..."`.  For example, to enable `log_prob(value,
+  same-named function. The argument signature should be identical except for
+  the omission of `name="..."`. For example, to enable `log_prob(value,
   name="log_prob")` a subclass should implement `_log_prob(value)`.
 
   Subclasses can append to public-level docstrings by providing
@@ -248,7 +248,7 @@ class Distribution(_BaseDistribution):
   ```
 
   would add the string "Some other details." to the `log_prob` function
-  docstring.  This is implemented as a simple decorator to avoid python
+  docstring. This is implemented as a simple decorator to avoid python
   linter complaining about missing Args/Returns/Raises sections in the
   partial docstrings.
 
@@ -261,7 +261,7 @@ class Distribution(_BaseDistribution):
   `log_prob` reflect this broadcasting, as does the return value of `sample` and
   `sample_n`.
 
-  `sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
+  `sample_n_shape = [n] + batch_shape + event_shape`, where `sample_n_shape` is
   the shape of the `Tensor` returned from `sample_n`, `n` is the number of
   samples, `batch_shape` defines how many independent distributions there are,
   and `event_shape` defines the shape of samples from each of those independent
@@ -286,19 +286,19 @@ class Distribution(_BaseDistribution):
   # `event_shape_t` is a `Tensor` which will evaluate to [].
   event_shape_t = u.event_shape_tensor()
 
-  # Sampling returns a sample per distribution.  `samples` has shape
-  # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
-  # batch_shape=(2, 2), and event_shape=().
+  # Sampling returns a sample per distribution. `samples` has shape
+  # [5, 2, 2], which is [n] + batch_shape + event_shape, where n=5,
+  # batch_shape=[2, 2], and event_shape=[].
   samples = u.sample_n(5)
 
   # The broadcasting holds across methods. Here we use `cdf` as an example. The
   # same holds for `log_cdf` and the likelihood functions.
 
-  # `cum_prob` has shape (2, 2) as the `value` argument was broadcasted to the
+  # `cum_prob` has shape [2, 2] as the `value` argument was broadcasted to the
   # shape of the `Uniform` instance.
   cum_prob_broadcast = u.cdf(4.0)
 
-  # `cum_prob`'s shape is (2, 2), one per distribution. No broadcasting
+  # `cum_prob`'s shape is [2, 2], one per distribution. No broadcasting
   # occurred.
   cum_prob_per_dist = u.cdf([[4.0, 5.0],
                              [6.0, 7.0]])
@@ -311,9 +311,9 @@ class Distribution(_BaseDistribution):
   ### Parameter values leading to undefined statistics or distributions.
 
   Some distributions do not have well-defined statistics for all initialization
-  parameter values.  For example, the beta distribution is parameterized by
-  positive real numbers `a` and `b`, and does not have well-defined mode if
-  `a < 1` or `b < 1`.
+  parameter values. For example, the beta distribution is parameterized by
+  positive real numbers `concentration1` and `concentration0`, and does not have
+  well-defined mode if `concentration1 < 1` or `concentration0 < 1`.
 
   The user is given the option of raising an exception or returning `NaN`.
 
@@ -356,25 +356,28 @@ class Distribution(_BaseDistribution):
 
     Args:
       dtype: The type of the event samples. `None` implies no type-enforcement.
-      is_continuous: Python boolean. If `True` this
-        `Distribution` is continuous over its supported domain.
+      is_continuous: Python `bool`. If `True` this `Distribution` is continuous
+        over its supported domain.
       reparameterization_type: Instance of `ReparameterizationType`.
         If `distributions.FULLY_REPARAMETERIZED`, this
         `Distribution` can be reparameterized in terms of some standard
         distribution with a function whose Jacobian is constant for the support
-        of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+        of the standard distribution. If `distributions.NOT_REPARAMETERIZED`,
         then no such reparameterization is available.
-      validate_args: Python boolean.  Whether to validate input with asserts.
-        If `validate_args` is `False`, and the inputs are invalid,
-        correct behavior is not guaranteed.
-      allow_nan_stats: Python boolean.  If `False`, raise an
-        exception if a statistic (e.g., mean, mode) is undefined for any batch
-        member. If True, batch members with valid parameters leading to
-        undefined statistics will return `NaN` for this statistic.
-      parameters: Python dictionary of parameters used to instantiate this
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      parameters: Python `dict` of parameters used to instantiate this
         `Distribution`.
-      graph_parents: Python list of graph prerequisites of this `Distribution`.
-      name: A name for this distribution. Default: subclass name.
+      graph_parents: Python `list` of graph prerequisites of this
+        `Distribution`.
+      name: Python `str` name prefixed to Ops created by this class. Default:
+        subclass name.
 
     Raises:
       ValueError: if any member of graph_parents is `None` or not a `Tensor`.
@@ -419,8 +422,8 @@ class Distribution(_BaseDistribution):
 
     This is a class method that describes what key/value arguments are required
     to instantiate the given `Distribution` so that a particular shape is
-    returned for that instance's call to `sample()`.  Assumes that
-    the sample's shape is known statically.
+    returned for that instance's call to `sample()`. Assumes that the sample's
+    shape is known statically.
 
     Subclasses should override class method `_param_shapes` to return
     constant-valued tensors when constant values are fed.
@@ -493,25 +496,24 @@ class Distribution(_BaseDistribution):
 
   @property
   def allow_nan_stats(self):
-    """Python boolean describing behavior when a stat is undefined.
+    """Python `bool` describing behavior when a stat is undefined.
 
-    Stats return +/- infinity when it makes sense.  E.g., the variance
-    of a Cauchy distribution is infinity.  However, sometimes the
-    statistic is undefined, e.g., if a distribution's pdf does not achieve a
-    maximum within the support of the distribution, the mode is undefined.
-    If the mean is undefined, then by definition the variance is undefined.
-    E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-    it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-    undefined.
+    Stats return +/- infinity when it makes sense. E.g., the variance of a
+    Cauchy distribution is infinity. However, sometimes the statistic is
+    undefined, e.g., if a distribution's pdf does not achieve a maximum within
+    the support of the distribution, the mode is undefined. If the mean is
+    undefined, then by definition the variance is undefined. E.g. the mean for
+    Student's T for df = 1 is undefined (no clear way to say it is either + or -
+    infinity), so the variance = E[(X - mean)**2] is also undefined.
 
     Returns:
-      allow_nan_stats: Python boolean.
+      allow_nan_stats: Python `bool`.
     """
     return self._allow_nan_stats
 
   @property
   def validate_args(self):
-    """Python boolean indicated possibly expensive checks are enabled."""
+    """Python `bool` indicating possibly expensive checks are enabled."""
     return self._validate_args
 
   def copy(self, **override_parameters_kwargs):
@@ -611,7 +613,7 @@ class Distribution(_BaseDistribution):
       name: The name to give this op.
 
     Returns:
-      is_scalar_event: `Boolean` `scalar` `Tensor`.
+      is_scalar_event: `bool` scalar `Tensor`.
     """
     with self._name_scope(name):
       return ops.convert_to_tensor(
@@ -625,7 +627,7 @@ class Distribution(_BaseDistribution):
       name: The name to give this op.
 
     Returns:
-      is_scalar_batch: `Boolean` `scalar` `Tensor`.
+      is_scalar_batch: `bool` scalar `Tensor`.
     """
     with self._name_scope(name):
       return ops.convert_to_tensor(

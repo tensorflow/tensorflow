@@ -139,7 +139,7 @@ class TransformedDistribution(distributions.Distribution):
   Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
   of random variable `Y`; write the probability density function `pdf(Y=y) :=
   d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-  `y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+  `y`. Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
   i.e., a non-random, continuous, differentiable, and invertible function.
   Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
   of `g` evaluated at `x`.
@@ -214,7 +214,7 @@ class TransformedDistribution(distributions.Distribution):
       forward_fn=tf.exp,
       inverse_fn=tf.log,
       inverse_log_det_jacobian_fn=(
-        lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+        lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
     name="LogNormalTransformedDistribution")
   ```
 
@@ -230,7 +230,7 @@ class TransformedDistribution(distributions.Distribution):
 
   A `TransformedDistribution`'s batch- and event-shape are implied by the base
   distribution unless explicitly overridden by `batch_shape` or `event_shape`
-  arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+  arguments. Specifying an overriding `batch_shape` (`event_shape`) is
   permitted only if the base distribution has scalar batch-shape (event-shape).
   The bijector is applied to the distribution as if the distribution possessed
   the overridden shape(s). The following example demonstrates how to construct a
@@ -275,11 +275,11 @@ class TransformedDistribution(distributions.Distribution):
         `batch_shape`; valid only if `distribution.is_scalar_batch()`.
       event_shape: `integer` vector `Tensor` which overrides `distribution`
         `event_shape`; valid only if `distribution.is_scalar_event()`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      name: `String` name prefixed to Ops created by this class. Default:
+      name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
     parameters = locals()
@@ -318,7 +318,7 @@ class TransformedDistribution(distributions.Distribution):
       # To convert a scalar distribution into a multivariate distribution we
       # will draw dims from the sample dims, which are otherwise iid. This is
       # easy to do except in the case that the base distribution has batch dims
-      # and we're overriding event shape.  When that case happens the event dims
+      # and we're overriding event shape. When that case happens the event dims
       # will incorrectly be to the left of the batch dims. In this case we'll
       # cyclically permute left the new dims.
       self._needs_rotation = _logical_and(
@@ -367,7 +367,7 @@ class TransformedDistribution(distributions.Distribution):
 
   def _event_shape(self):
     # If there's a chance that the event_shape has been overriden, we return
-    # what we statically know about the `event_shape_override`.  This works
+    # what we statically know about the `event_shape_override`. This works
     # because: `_is_maybe_event_override` means `static_override` is `None` or a
     # non-empty list, i.e., we don't statically know the `event_shape` or we do.
     #
@@ -388,12 +388,12 @@ class TransformedDistribution(distributions.Distribution):
 
   def _batch_shape(self):
     # If there's a chance that the batch_shape has been overriden, we return
-    # what we statically know about the `batch_shape_override`.  This works
+    # what we statically know about the `batch_shape_override`. This works
     # because: `_is_maybe_batch_override` means `static_override` is `None` or a
     # non-empty list, i.e., we don't statically know the `batch_shape` or we do.
     #
     # Notice that this implementation parallels the `_event_shape` except that
-    # the `bijector` doesn't get to alter the `batch_shape`.  Recall that
+    # the `bijector` doesn't get to alter the `batch_shape`. Recall that
     # `batch_shape` is a property of a distribution while `event_shape` is
     # shared between both the `distribution` instance and the `bijector`.
     static_override = tensor_util.constant_value(self._override_batch_shape)

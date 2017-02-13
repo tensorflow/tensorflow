@@ -160,10 +160,10 @@ class MultivariateNormalLinearOperator(
         `b >= 0` and `k` is the event size.
       scale: Instance of `LinearOperator` with same `dtype` as `loc` and shape
         `[B1, ..., Bb, k, k]`.
-      validate_args: `Boolean`, default `False`. Whether to validate input
+      validate_args: Python `bool`, default `False`. Whether to validate input
         with asserts. If `validate_args` is `False`, and the inputs are
         invalid, correct behavior is not guaranteed.
-      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
+      allow_nan_stats: Python `bool`, default `True`. If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -324,7 +324,7 @@ def _kl_brute_force(a, b, name=None):
 
   This `Op` computes the trace by solving `C_b^{-1} C_a`. Although efficient
   methods for solving systems with `C_b` may be available, a dense version of
-  (the square root of) `C_a` is used, so performance is `O(B s k^2)` where `B`
+  (the square root of) `C_a` is used, so performance is `O(B s k**2)` where `B`
   is the batch size, and `s` is the cost of solving `C_b x = y` for vectors `x`
   and `y`.
 
@@ -362,7 +362,7 @@ def _kl_brute_force(a, b, name=None):
     #   tr[inv(Cb) Ca] = tr[inv(B)' inv(B) A A']
     #                  = tr[inv(B) A A' inv(B)']
     #                  = tr[(inv(B) A) (inv(B) A)']
-    #                  = sum_{ij} (inv(B) A)_{ij}^2
+    #                  = sum_{ij} (inv(B) A)_{ij}**2
     #                  = ||inv(B) A||_F**2
     # where ||.||_F is the Frobenius norm and the second equality follows from
     # the cyclic permutation property.
