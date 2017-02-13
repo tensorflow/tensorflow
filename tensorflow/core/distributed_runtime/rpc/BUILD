@@ -169,6 +169,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "@grpc//:grpc++_unsecure",
     ],
+    linkopts = ["-lmpi"],
 )
 
 cc_library(

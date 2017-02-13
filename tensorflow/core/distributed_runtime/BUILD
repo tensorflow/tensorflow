@@ -84,6 +84,7 @@ cc_library(
     ],
     deps = [
         ":call_options",
+        ":worker_env",
         ":message_wrappers",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
