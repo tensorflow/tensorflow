@@ -460,6 +460,9 @@ class HloInstruction {
   // or "elementwise".
   string ToCategory() const;
 
+  // Returns the string concatenation of parent name and this instructions name.
+  string FullyQualifiedName() const;
+
   // Returns a logging instruction, if the output of this instruction is logged.
   //
   // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace

@@ -894,6 +894,7 @@ cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":instruction_fusion",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
