@@ -125,17 +125,6 @@ class EventAccumulator(object):
 
   Histograms, audio, and images are very large, so storing all of them is not
   recommended.
-
-  @@Reload
-  @@Tags
-  @@Scalars
-  @@Graph
-  @@MetaGraph
-  @@RunMetadata
-  @@Histograms
-  @@CompressedHistograms
-  @@Images
-  @@Audio
   """
 
   def __init__(self,
