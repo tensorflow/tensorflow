@@ -16,6 +16,109 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+py_library(
+    name = "doc_generator_visitor",
+    srcs = [
+        "doc_generator_visitor.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "doc_generator_visitor_test",
+    size = "small",
+    srcs = [
+        "doc_generator_visitor_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":doc_generator_visitor",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "parser",
+    srcs = [
+        "parser.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "parser_test",
+    size = "small",
+    srcs = [
+        "parser_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["manual"],
+    deps = [
+        ":parser",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_binary(
+    name = "generate",
+    srcs = ["generate.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":doc_generator_visitor",
+        ":parser",
+        ":py_guide_parser",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/tools/common:public_api",
+        "//tensorflow/tools/common:traverse",
+    ],
+)
+
+py_test(
+    name = "generate_test",
+    size = "small",
+    srcs = [
+        "generate_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["manual"],
+    deps = [
+        ":generate",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "py_guide_parser",
+    srcs = [
+        "py_guide_parser.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "py_guide_parser_test",
+    size = "small",
+    srcs = [
+        "py_guide_parser_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":py_guide_parser",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_binary(
+    name = "make_py_guides",
+    srcs = ["make_py_guides.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate",
+        ":parser",
+        ":py_guide_parser",
+    ],
+)
+
 filegroup(
     name = "doxy_config",
     srcs = ["tf-doxy_for_md-config"],

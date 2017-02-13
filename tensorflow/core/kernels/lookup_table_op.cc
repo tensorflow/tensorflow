@@ -861,7 +861,9 @@ REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(string, string);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 
@@ -878,6 +880,7 @@ REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 
@@ -894,6 +897,7 @@ REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 
@@ -911,6 +915,7 @@ REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 

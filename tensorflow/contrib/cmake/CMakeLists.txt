@@ -21,6 +21,7 @@ option(tensorflow_VERBOSE "Enable for verbose output" OFF)
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
+option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_BUILD_CC_EXAMPLE "Build the C++ tutorial example" ON)
 option(tensorflow_BUILD_PYTHON_BINDINGS "Build the Python bindings" ON)
 option(tensorflow_BUILD_ALL_KERNELS "Build all OpKernels" ON)
@@ -58,6 +59,7 @@ if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC -D__VERSION__=\"MSVC\")
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH -D_ITERATOR_DEBUG_LEVEL=0)
+  add_definitions(-DEIGEN_VECTORIZE_SSE3)  # Needed to suppress denormals without __SSE3__ in MSVC
   add_definitions(-DNDEBUG /O2)  # Equivalent of -c opt in Bazel.
   add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
   # Suppress warnings to reduce build log size.
@@ -161,13 +163,15 @@ if (tensorflow_ENABLE_GPU)
     # CUDA_NVCC_FLAGS and cuda_config.h below
     set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_30,code=\"sm_30,compute_30\";-gencode arch=compute_35,code=\"sm_35,compute_35\";-gencode arch=compute_52,code=\"sm_52,compute_52\")
     set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
+    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
     set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
     include_directories(${CUDA_INCLUDE})
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
 
     # add cudnn
     include_directories(${CUDNN_HOME})
-    set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDNN_HOME}/lib/x64/cudnn.lib)
+    set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
+      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
 
     # create cuda_config.h
     FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
@@ -176,6 +180,7 @@ if (tensorflow_ENABLE_GPU)
       "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
       "#define TF_CUDA_VERSION \"64_80\"\n"
       "#define TF_CUDNN_VERSION \"64_5\"\n"
+      "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
       "#endif  // CUDA_CUDA_CONFIG_H_\n"
     )
 

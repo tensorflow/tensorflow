@@ -205,6 +205,7 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/lib/python")
 add_python_module("tensorflow/tensorboard/plugins")
+add_python_module("tensorflow/tensorboard/plugins/debugger")
 add_python_module("tensorflow/tensorboard/plugins/projector")
 add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
@@ -263,6 +264,7 @@ add_python_module("tensorflow/contrib/grid_rnn")
 add_python_module("tensorflow/contrib/grid_rnn/python")
 add_python_module("tensorflow/contrib/grid_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/grid_rnn/python/ops")
+add_python_module("tensorflow/contrib/hooks")
 add_python_module("tensorflow/contrib/image")
 add_python_module("tensorflow/contrib/image/python")
 add_python_module("tensorflow/contrib/image/python/ops")
@@ -372,6 +374,9 @@ add_python_module("tensorflow/contrib/slim/python/slim/nets")
 add_python_module("tensorflow/contrib/solvers")
 add_python_module("tensorflow/contrib/solvers/python")
 add_python_module("tensorflow/contrib/solvers/python/ops")
+add_python_module("tensorflow/contrib/sparsemax")
+add_python_module("tensorflow/contrib/sparsemax/python")
+add_python_module("tensorflow/contrib/sparsemax/python/ops")
 add_python_module("tensorflow/contrib/specs")
 add_python_module("tensorflow/contrib/specs/python")
 add_python_module("tensorflow/contrib/stat_summarizer")
@@ -582,6 +587,7 @@ add_library(pywrap_tensorflow SHARED
     $<TARGET_OBJECTS:tf_core_framework>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
+    $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>

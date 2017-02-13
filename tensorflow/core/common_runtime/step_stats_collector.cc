@@ -139,6 +139,7 @@ void StepStatsCollector::BuildCostModel(
 
     const Graph* graph = itr.second;
     CostModel* cm = cost_model_manager->FindOrCreateCostModel(graph);
+    cm->IncrementUpdateTimes();
 
     std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
     for (Node* n : graph->nodes()) {
@@ -146,6 +147,29 @@ void StepStatsCollector::BuildCostModel(
     }
 
     const DeviceStats& dev_stats = per_device_stats.find(device)->second;
+
+    std::unordered_map<string, NodeExecStats> name_to_hw_node_stats;
+    if (dev_stats.hardware_stats) {
+      for (const auto& node_stats : dev_stats.hardware_stats->node_stats()) {
+        string node_name = node_stats.node_name();
+        // Remove the part of op name (e.g. :Conv2D) in the end of a node name.
+        size_t pos = node_name.find_first_of(":");
+        if (pos != std::string::npos) {
+          node_name = node_name.substr(0, pos);
+        }
+        // Certain ops (e.g. Conv2D) are implemented with multiple GPU kernels,
+        // which results in multiple NodeExecStats with the same node name. For
+        // such ops, we sum up the time for all its GPU kernels.
+        if (name_to_hw_node_stats.find(node_name) !=
+            name_to_hw_node_stats.end()) {
+          int64 time = name_to_hw_node_stats[node_name].op_end_rel_micros();
+          name_to_hw_node_stats[node_name].set_op_end_rel_micros(
+              time + node_stats.op_end_rel_micros());
+        } else {
+          name_to_hw_node_stats.emplace(node_name, node_stats);
+        }
+      }
+    }
 
     for (int i = 0; i < dev_stats.regular_stats->node_stats_size(); ++i) {
       const NodeExecStats& stats = dev_stats.regular_stats->node_stats(i);
@@ -162,12 +186,14 @@ void StepStatsCollector::BuildCostModel(
                                               .allocation_description()
                                               .allocation_id());
         }
+        cm->RecordAllocatorMemory(node, stats.memory());
         // Use hardware stats to record the execution time if they're available,
         // otherwise use the regular (less accurate) stats
+        string node_name = dev_stats.regular_stats->node_stats(i).node_name();
         if (dev_stats.hardware_stats &&
-            i < dev_stats.hardware_stats->node_stats_size()) {
-          const NodeExecStats& hw_stats =
-              dev_stats.hardware_stats->node_stats(i);
+            name_to_hw_node_stats.find(node_name) !=
+                name_to_hw_node_stats.end()) {
+          const NodeExecStats& hw_stats = name_to_hw_node_stats[node_name];
           cm->RecordMaxExecutionTime(
               node, Microseconds(hw_stats.op_end_rel_micros()));
         } else {

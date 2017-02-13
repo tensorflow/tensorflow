@@ -45,14 +45,13 @@ RUN cd ${ANDROID_DEV_HOME} && \
     echo y | android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 
 # Install Android NDK.
-ENV ANDROID_NDK_FILENAME android-ndk-r10e-linux-x86_64.bin
-ENV ANDROID_NDK_URL http://dl.google.com/android/ndk/${ANDROID_NDK_FILENAME}
+ENV ANDROID_NDK_FILENAME android-ndk-r12b-linux-x86_64.zip
+ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}
 RUN cd ${ANDROID_DEV_HOME} && \
     wget -q ${ANDROID_NDK_URL} && \
-    chmod +x ${ANDROID_NDK_FILENAME} && \
-    ./${ANDROID_NDK_FILENAME} -o${ANDROID_DEV_HOME} && \
+    unzip ${ANDROID_NDK_FILENAME} -d ${ANDROID_DEV_HOME} && \
     rm ${ANDROID_NDK_FILENAME} && \
     bash -c "ln -s ${ANDROID_DEV_HOME}/android-ndk-* ${ANDROID_NDK_HOME}"
 

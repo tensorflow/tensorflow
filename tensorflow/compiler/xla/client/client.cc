@@ -151,11 +151,16 @@ Status Client::ResetDevice() {
 StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout, ExecutionProfile* execution_profile,
-    uint64 seed) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
-                      Execute(computation, arguments, shape_with_output_layout,
-                              execution_profile, seed));
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GlobalData> data,
+      Execute(computation, arguments, execution_options, execution_profile));
+
+  const Shape* shape_with_output_layout = nullptr;
+  if (execution_options && execution_options->has_shape_with_output_layout()) {
+    shape_with_output_layout = &execution_options->shape_with_output_layout();
+  }
   return Transfer(*data, shape_with_output_layout);
 }
 
@@ -204,16 +209,15 @@ StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout, ExecutionProfile* execution_profile,
-    uint64 seed) {
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
-  request.set_seed(seed);
+  if (execution_options != nullptr) {
+    *request.mutable_execution_options() = *execution_options;
+  }
   for (GlobalData* argument : arguments) {
     *request.add_arguments() = argument->handle();
-  }
-  if (shape_with_output_layout != nullptr) {
-    *request.mutable_shape_with_output_layout() = *shape_with_output_layout;
   }
 
   ExecuteResponse response;
@@ -251,11 +255,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     if (computation.device_handle != nullptr) {
       *single_request.mutable_device_handle() = *computation.device_handle;
     }
-    if (computation.shape_with_output_layout != nullptr) {
-      *single_request.mutable_shape_with_output_layout() =
-          *computation.shape_with_output_layout;
-    }
-    single_request.set_seed(computation.seed);
+    *single_request.mutable_execution_options() = computation.execution_options;
     *request.add_requests() = single_request;
   }
 
@@ -308,15 +308,14 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 StatusOr<ExecutionHandle> Client::ExecuteAsync(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const Shape* shape_with_output_layout, uint64 seed) {
+    const ExecutionOptions* execution_options) {
   ExecuteAsyncRequest request;
   *request.mutable_computation() = computation.handle();
-  request.set_seed(seed);
   for (GlobalData* argument : arguments) {
     *request.add_arguments() = argument->handle();
   }
-  if (shape_with_output_layout != nullptr) {
-    *request.mutable_shape_with_output_layout() = *shape_with_output_layout;
+  if (execution_options != nullptr) {
+    *request.mutable_execution_options() = *execution_options;
   }
 
   ExecuteAsyncResponse response;

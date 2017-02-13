@@ -113,10 +113,13 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
 
     // Execute the computation.
     xla::ExecutionProfile profile;
+    xla::ExecutionOptions execution_options;
+    *execution_options.mutable_shape_with_output_layout() =
+        kernel->xla_output_shape;
     Env* env = Env::Default();
     auto start_time = env->NowMicros();
-    auto result = compiler->client()->Execute(
-        kernel->computation, arg_ptrs, &kernel->xla_output_shape, &profile);
+    auto result = compiler->client()->Execute(kernel->computation, arg_ptrs,
+                                              &execution_options, &profile);
     auto elapsed = env->NowMicros() - start_time;
     OP_REQUIRES(ctx, result.ok(), result.status());
 

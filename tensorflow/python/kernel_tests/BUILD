@@ -829,6 +829,7 @@ tf_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
 )
@@ -2100,6 +2101,21 @@ cuda_py_test(
     name = "random_gamma_test",
     size = "medium",
     srcs = ["random_gamma_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "random_poisson_test",
+    size = "medium",
+    srcs = ["random_poisson_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",

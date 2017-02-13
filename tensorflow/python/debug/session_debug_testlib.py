@@ -18,14 +18,18 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+import glob
 import os
 import shutil
 import tempfile
+import threading
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug import debug_utils
@@ -36,6 +40,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -132,6 +137,15 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
     results = self._generate_dump_from_simple_addition_graph()
     self.assertTrue(results.dump.loaded_partition_graphs())
+
+    # Since global_step is not explicitly specified, it should take its default
+    # value: -1.
+    self.assertEqual(-1, results.dump.core_metadata.global_step)
+    self.assertGreaterEqual(results.dump.core_metadata.session_run_count, 0)
+    self.assertGreaterEqual(results.dump.core_metadata.executor_step_count, 0)
+    self.assertEqual([], results.dump.core_metadata.input_names)
+    self.assertEqual([results.w.name], results.dump.core_metadata.output_names)
+    self.assertEqual([], results.dump.core_metadata.target_nodes)
 
     # Verify the dumped tensor values for u and v.
     self.assertEqual(2, results.dump.size)
@@ -868,6 +882,63 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertAllClose([0, 0, 1, 2, 2],
                           unique_x_slot_1_dumps[0].get_tensor())
 
+  def testSuccessiveDebuggingRunsIncreasesCounters(self):
+    """Test repeated Session.run() calls with debugger increments counters."""
+
+    with session.Session() as sess:
+      ph = array_ops.placeholder(dtypes.float32, name="successive/ph")
+      x = array_ops.transpose(ph, name="mismatch/x")
+      y = array_ops.squeeze(ph, name="mismatch/y")
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options, sess.graph, debug_urls=self._debug_urls(), global_step=1)
+
+      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
+      dump1 = debug_data.DebugDumpDir(self._dump_root)
+      self.assertEqual(1, dump1.core_metadata.global_step)
+      self.assertGreaterEqual(dump1.core_metadata.session_run_count, 0)
+      self.assertEqual(0, dump1.core_metadata.executor_step_count)
+      self.assertEqual([ph.name], dump1.core_metadata.input_names)
+      self.assertEqual([x.name], dump1.core_metadata.output_names)
+      self.assertEqual([], dump1.core_metadata.target_nodes)
+      shutil.rmtree(self._dump_root)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options, sess.graph, debug_urls=self._debug_urls(), global_step=2)
+
+      # Calling run() with the same feed, same output and same debug watch
+      # options should increment both session_run_count and
+      # executor_step_count.
+      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
+      dump2 = debug_data.DebugDumpDir(self._dump_root)
+      self.assertEqual(2, dump2.core_metadata.global_step)
+      self.assertEqual(dump1.core_metadata.session_run_count + 1,
+                       dump2.core_metadata.session_run_count)
+      self.assertEqual(dump1.core_metadata.executor_step_count + 1,
+                       dump2.core_metadata.executor_step_count)
+      self.assertEqual([ph.name], dump2.core_metadata.input_names)
+      self.assertEqual([x.name], dump2.core_metadata.output_names)
+      self.assertEqual([], dump2.core_metadata.target_nodes)
+      shutil.rmtree(self._dump_root)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options, sess.graph, debug_urls=self._debug_urls(), global_step=3)
+
+      # Calling run() with a different output should increment
+      # session_run_count, but not executor_step_count.
+      sess.run(y, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
+      dump3 = debug_data.DebugDumpDir(self._dump_root)
+      self.assertEqual(3, dump3.core_metadata.global_step)
+      self.assertEqual(dump2.core_metadata.session_run_count + 1,
+                       dump3.core_metadata.session_run_count)
+      self.assertEqual(0, dump3.core_metadata.executor_step_count)
+      self.assertEqual([ph.name], dump3.core_metadata.input_names)
+      self.assertEqual([y.name], dump3.core_metadata.output_names)
+      self.assertEqual([], dump3.core_metadata.target_nodes)
+
   def testDebuggingDuringOpError(self):
     """Test the debug tensor dumping when error occurs in graph runtime."""
 
@@ -892,6 +963,12 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                  feed_dict={ph: np.array([[-3.0], [0.0]])})
 
       dump = debug_data.DebugDumpDir(self._dump_root)
+
+      self.assertGreaterEqual(dump.core_metadata.session_run_count, 0)
+      self.assertGreaterEqual(dump.core_metadata.executor_step_count, 0)
+      self.assertEqual([ph.name], dump.core_metadata.input_names)
+      self.assertEqual([y.name], dump.core_metadata.output_names)
+      self.assertEqual([], dump.core_metadata.target_nodes)
 
       # Despite the fact that the run() call errored out and partition_graphs
       # are not available via run_metadata, the partition graphs should still
@@ -972,6 +1049,29 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertTrue(np.isnan(numeric_summary[10]))
       self.assertTrue(np.isnan(numeric_summary[11]))
 
+  def testDebugQueueOpsDoesNotoErrorOut(self):
+    with session.Session() as sess:
+      q = data_flow_ops.FIFOQueue(3, "float", name="fifo_queue")
+      q_init = q.enqueue_many(([101.0, 202.0, 303.0],), name="enqueue_many")
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_urls=self._debug_urls())
+
+      sess.run(q_init, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertTrue(dump.loaded_partition_graphs())
+
+      self.assertIsNone(dump.get_tensors("fifo_queue", 0, "DebugIdentity")[0])
+      self.assertAllClose(
+          [101.0, 202.0, 303.0],
+          dump.get_tensors("enqueue_many/component_0", 0, "DebugIdentity")[0])
+
   def testLookUpNodePythonTracebackWorks(self):
     with session.Session() as sess:
       u_init = constant_op.constant(10.0)
@@ -1019,6 +1119,97 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertGreater(len(traceback), 0)
       for trace in traceback:
         self.assertIsInstance(trace, tuple)
+
+
+class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
+  """Test for debugging concurrent Session.run() calls."""
+
+  def _get_concurrent_debug_urls(self):
+    """Abstract method to generate debug URLs for concurrent debugged runs."""
+    raise NotImplementedError(
+        "_get_concurrent_debug_urls is not implemented in the base test class")
+
+  def testDebugConcurrentVariableUpdates(self):
+    if test.is_gpu_available():
+      self.skipTest("No testing concurrent runs on a single GPU.")
+
+    with session.Session() as sess:
+      v = variables.Variable(30.0, name="v")
+      constants = []
+      for i in xrange(self._num_concurrent_runs):
+        constants.append(constant_op.constant(1.0, name="c%d" % i))
+      incs = [
+          state_ops.assign_add(
+              v, c, use_locking=True, name=("inc%d" % i))
+          for (i, c) in enumerate(constants)
+      ]
+      sess.run(v.initializer)
+
+      concurrent_debug_urls = self._get_concurrent_debug_urls()
+
+      def inc_job(index):
+        run_options = config_pb2.RunOptions(output_partition_graphs=True)
+        debug_utils.watch_graph(
+            run_options, sess.graph, debug_urls=concurrent_debug_urls[index])
+        for _ in xrange(100):
+          sess.run(incs[index], options=run_options)
+
+      inc_threads = []
+      for index in xrange(self._num_concurrent_runs):
+        inc_thread = threading.Thread(target=functools.partial(inc_job, index))
+        inc_thread.start()
+        inc_threads.append(inc_thread)
+      for inc_thread in inc_threads:
+        inc_thread.join()
+
+      self.assertAllClose(30.0 + 1.0 * self._num_concurrent_runs * 100,
+                          sess.run(v))
+
+      all_session_run_counts = []
+      for index in xrange(self._num_concurrent_runs):
+        dump = debug_data.DebugDumpDir(self._dump_roots[index])
+        self.assertTrue(dump.loaded_partition_graphs())
+
+        v_data = dump.get_tensors("v", 0, "DebugIdentity")
+        self.assertEqual(100, len(v_data))
+
+        # Examine all the core metadata files
+        core_metadata_files = glob.glob(
+            os.path.join(self._dump_roots[index], "_tfdbg_core*"))
+
+        timestamps = []
+        session_run_counts = []
+        executor_step_counts = []
+        for core_metadata_file in core_metadata_files:
+          with open(core_metadata_file, "rb") as f:
+            event = event_pb2.Event()
+            event.ParseFromString(f.read())
+            core_metadata = (
+                debug_data.extract_core_metadata_from_event_proto(event))
+            timestamps.append(event.wall_time)
+            session_run_counts.append(core_metadata.session_run_count)
+            executor_step_counts.append(core_metadata.executor_step_count)
+
+        all_session_run_counts.extend(session_run_counts)
+
+        # Assert that executor_step_count increases by one at a time.
+        executor_step_counts = zip(timestamps, executor_step_counts)
+        executor_step_counts = sorted(executor_step_counts, key=lambda x: x[0])
+        for i in xrange(len(executor_step_counts) - 1):
+          self.assertEquals(executor_step_counts[i][1] + 1,
+                            executor_step_counts[i + 1][1])
+
+        # Assert that session_run_count increase monotonically.
+        session_run_counts = zip(timestamps, session_run_counts)
+        session_run_counts = sorted(session_run_counts, key=lambda x: x[0])
+        for i in xrange(len(session_run_counts) - 1):
+          self.assertGreater(session_run_counts[i + 1][1],
+                             session_run_counts[i][1])
+
+      # Assert that the session_run_counts from the concurrent run() calls are
+      # all unique.
+      self.assertEqual(len(all_session_run_counts),
+                       len(set(all_session_run_counts)))
 
 
 if __name__ == "__main__":

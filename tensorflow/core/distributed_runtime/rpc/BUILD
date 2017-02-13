@@ -281,6 +281,15 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "grpc_runtime",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_server_lib",
+        ":grpc_session",
+    ],
+)
+
 cc_binary(
     name = "grpc_tensorflow_server",
     srcs = [

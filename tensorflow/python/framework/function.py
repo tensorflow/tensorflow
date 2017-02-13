@@ -222,9 +222,9 @@ def _call(sig, *inputs, **kwargs):
         'noinline'.
 
   Returns:
-     A Tensor if the function returns a single value; a list of Tensors
-     if the functio returns multiple value; the Operation if the function
-     returns no values.
+     A 2-element tuple. First element: a Tensor if the function returns a single
+     value; a list of Tensors if the function returns multiple value; the
+     Operation if the function returns no values. Second element: the Operation.
 
   Raises:
     ValueError: if the arguments are invalid.
@@ -248,11 +248,12 @@ def _call(sig, *inputs, **kwargs):
   setattr(op, "_sig", sig)  # Remember the signature.
   if op.outputs:
     if len(op.outputs) == 1:
-      return op.outputs[0]
+      ret = op.outputs[0]
     else:
-      return tuple(op.outputs)
+      ret = tuple(op.outputs)
   else:
-    return op
+    ret = op
+  return ret, op
 
 
 def _get_func_name(func):
@@ -298,6 +299,7 @@ class _FuncGraph(ops.Graph):
              initializer=None,
              trainable=True,
              collections=None,
+             use_resource=None,
              **kwargs):
     """A custom variable getter."""
     # Here, we switch the default graph to the outer graph and ask the
@@ -316,7 +318,8 @@ class _FuncGraph(ops.Graph):
           dtype=dtype,
           initializer=initializer,
           trainable=trainable,
-          collections=collections)
+          collections=collections,
+          use_resource=use_resource)
       self.extra_vars.append(var)
       return var
 
@@ -404,6 +407,7 @@ class _DefinedFunction(object):
                grad_func=None,
                python_grad_func=None,
                out_names=None,
+               shape_func=None,
                **kwargs):
     """Creates _DefinedFunction.
 
@@ -420,6 +424,8 @@ class _DefinedFunction(object):
         the function python-side.
       out_names: An optional list of strings for the function return value
         names.
+      shape_func: An optional function mapping an op to a list of static
+        output shapes.
       **kwargs: The keyword arguments. **kwargs is passed to every call
         site of this function.
 
@@ -433,6 +439,7 @@ class _DefinedFunction(object):
     self._grad_func = grad_func
     self._python_grad_func = python_grad_func
     self._out_names = out_names
+    self._shape_func = shape_func
     self._extra_kwargs = kwargs
     self._definition = None  # Constructed lazily.
 
@@ -479,6 +486,7 @@ class _DefinedFunction(object):
   @property
   def captured_inputs(self):
     """Returns the list of implicitly captured inputs."""
+    self._create_definition_if_needed()
     return self._extra_inputs
 
   def _create_definition_if_needed(self):
@@ -599,7 +607,16 @@ class _DefinedFunction(object):
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
     args = [ops.convert_to_tensor(_) for _ in args] + self._extra_inputs
-    return _call(self._definition.signature, *args, **kwargs)
+    ret, op = _call(self._definition.signature, *args, **kwargs)
+    if self._shape_func is not None:
+      shapes = self._shape_func(op)
+      if len(shapes) != len(op.outputs):
+        raise ValueError("shape_func produced %d shapes for %d outputs" %
+                         (len(shapes), len(op.outputs)))
+      for (t, shape) in zip(op.outputs, shapes):
+        t.set_shape(shape)
+    return ret
+
 
 # NOTE: The list needs to be extended when more data types are added.
 _DTYPE_TO_STR = {
@@ -748,6 +765,10 @@ class Defun(object):
   default graph and adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
+  
+  Definitions of functions are frozen in a graph as soon as the graph is used to
+  create a session. Therefore, nodes using the function must be created in the
+  graph before the corresponding session is created.
 
   Example, but also see the [How To on functions](link_needed).
 
@@ -793,6 +814,9 @@ class Defun(object):
 
          out_names = (optional). A list of strings, one per output
            tensor.
+
+         shape_func - (optional). A function taking the op and returning a list
+           of static shapes to set for the function's outputs.
     """
     self._input_types = input_types
     self._func_name = kwargs.pop("func_name", None)
@@ -897,4 +921,4 @@ class Declare(object):
 
   def __call__(self, *inputs, **kwargs):
     inputs = [ops.convert_to_tensor(_) for _ in inputs]
-    return _call(self._sig, *inputs, **kwargs)
+    return _call(self._sig, *inputs, **kwargs)[0]

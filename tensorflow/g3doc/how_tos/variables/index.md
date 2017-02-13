@@ -131,8 +131,8 @@ w_twice = tf.Variable(weights.initialized_value() * 2.0, name="w_twice")
 ### Custom Initialization
 
 The convenience function `tf.global_variables_initializer()` adds an op to
-initialize *all variables* in the model.  You can also pass it an explicit list
-of variables to initialize.  See the
+initialize *all variables* in the model.  You can also pass an explicit list of
+variables to initialize to `tf.variables_initializer`.  See the
 [Variables Documentation](../../api_docs/python/state_ops.md) for more options,
 including checking if variables are initialized.
 
@@ -238,7 +238,7 @@ Notes:
 
 *  If you only restore a subset of the model variables at the start
    of a session, you have to run an initialize op for the other variables.  See
-   [`tf.initialize_variables()`](../../api_docs/python/state_ops.md#initialize_variables)
+   [`tf.variables_initializer()`](../../api_docs/python/state_ops.md#variables_initializer)
    for more information.
 
 ```python

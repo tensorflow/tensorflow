@@ -257,7 +257,7 @@ class CTCLossTest(test.TestCase):
       # Taking ths second gradient should fail, since it is not
       # yet supported.
       with self.assertRaisesRegexp(LookupError,
-                                   ".*No gradient defined.*PreventGradient.*"):
+                                   "explicitly disabled"):
         _ = gradients_impl._hessian_vector_product(loss, [inputs_t], v)
 
 

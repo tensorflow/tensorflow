@@ -28,7 +28,8 @@ Example:
     `sparse_column_with_*` functions.
 *  <b>`weight_column_name`</b>: A string defining a sparse column name which represents
     weight or value of the corresponding sparse id feature.
-*  <b>`dtype`</b>: Type of weights, such as `tf.float32`
+*  <b>`dtype`</b>: Type of weights, such as `tf.float32`. Only floating and integer
+    weights are supported.
 
 ##### Returns:
 

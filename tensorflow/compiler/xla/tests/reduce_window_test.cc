@@ -424,6 +424,40 @@ XLA_TEST_F(ReduceWindowTest, Add1x1x2In2x1x3SamePad) {
   ComputeAndCompareR3<float>(&builder_, expected, {}, ErrorSpec(0.0001));
 }
 
+// Tests a reduction function that is not a simple add/min/max/etc.
+XLA_TEST_F(ReduceWindowTest, NonstandardReduceFunction) {
+  Array4D<float> input_array(1, 2, 2, 1);
+  input_array(0, 0, 0, 0) = 1;
+  input_array(0, 0, 1, 0) = 2;
+  input_array(0, 1, 0, 0) = 3;
+  input_array(0, 1, 1, 0) = 4;
+
+  const auto input = builder_.ConstantR4FromArray4D<float>(input_array);
+  Padding padding = Padding::kValid;
+
+  const Shape scalar = ShapeUtil::MakeShape(F32, {});
+  auto b = builder_.CreateSubBuilder("unusual");
+  auto lhs = b->Parameter(0, scalar, "lhs");
+  auto rhs = b->Parameter(1, scalar, "rhs");
+  b->Min(b->Add(lhs, rhs), b->ConstantR0<float>(8.0f));
+  Computation reduce_fn = b->BuildAndNoteError();
+
+  builder_.ReduceWindow(input, builder_.ConstantR0<float>(3.0f), reduce_fn,
+                        /*window_dimensions=*/{1, 1, 2, 1},
+                        /*window_strides=*/{1, 1, 1, 1}, padding);
+
+  const auto reduce_func = [](float arg1, float arg2) {
+    return std::min<float>(arg1 + arg2, 8.0f);
+  };
+
+  auto expected =
+      ReferenceUtil::ReduceWindow4DGeneric(input_array, 3.0f, reduce_func,
+                                           /*window=*/{1, 1, 2, 1},
+                                           /*stride=*/{1, 1, 1, 1}, padding);
+
+  ComputeAndCompareR4<float>(&builder_, *expected, {}, ErrorSpec(1e-3, 1e-3));
+}
+
 }  // namespace
 }  // namespace xla
 

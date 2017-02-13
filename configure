@@ -41,8 +41,16 @@ function bazel_clean_and_fetch() {
   if ! is_windows; then
     bazel clean --expunge
   fi
-  bazel fetch "//tensorflow/... -//tensorflow/examples/android/..."
+  bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... \
+      -//tensorflow/examples/android/..."
 }
+
+# Delete any leftover BUILD files from the Makefile build, which would interfere
+# with Bazel parsing.
+MAKEFILE_DOWNLOAD_DIR=tensorflow/contrib/makefile/downloads
+if [ -d "${MAKEFILE_DOWNLOAD_DIR}" ]; then
+  find ${MAKEFILE_DOWNLOAD_DIR} -type f -name '*BUILD' -delete
+fi
 
 ## Set up python-related environment settings
 while true; do
@@ -66,10 +74,77 @@ while true; do
   # Retry
 done
 
+## Set up MKL related environment settings
+if false; then # Disable building with MKL for now
+  while [ "$TF_NEED_MKL" == "" ]; do
+    fromuser=""
+    read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
+    fromuser="1"
+    case $INPUT in
+      [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
+      [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
+      "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
+      * ) echo "Invalid selection: " $INPUT;;
+    esac
+  done
+
+  OSNAME=`uname -s`
+
+  if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
+    DST=`dirname $0`
+    ARCHIVE_BASENAME=mklml_lnx_2017.0.2.20170110.tgz
+    GITHUB_RELEASE_TAG=v0.3
+    MKLURL="https://github.com/01org/mkl-dnn/releases/download/$GITHUB_RELEASE_TAG/$ARCHIVE_BASENAME"
+    if ! [ -e "$DST/third_party/mkl/$ARCHIVE_BASENAME" ]; then
+      wget --no-check-certificate -P $DST/third_party/mkl/ $MKLURL
+    fi
+    tar -xzf $DST/third_party/mkl/$ARCHIVE_BASENAME -C $DST/third_party/mkl/
+    extracted_dir_name="${ARCHIVE_BASENAME%.*}"
+    MKL_INSTALL_PATH=$DST/third_party/mkl/$extracted_dir_name
+    MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
+
+    if [ "$OSNAME" == "Linux" ]; then
+      # Full MKL configuration
+      MKL_RT_LIB_PATH="lib/intel64/libmkl_rt.so" #${TF_MKL_EXT}#TODO version?
+      MKL_RT_OMP_LIB_PATH="../compiler/lib/intel64/libiomp5.so" #TODO VERSION?
+
+      # MKL-ML configuration
+      MKL_ML_LIB_PATH="lib/libmklml_intel.so" #${TF_MKL_EXT}#TODO version?
+      MKL_ML_OMP_LIB_PATH="lib/libiomp5.so" #TODO VERSION?
+    elif [ "$OSNAME" == "Darwin" ]; then
+      echo "Darwin is unsupported yet";
+      exit 1
+    fi
+
+    if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
+      ln -sf $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/${MKL_ML_OMP_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
+    else
+      echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} does not exist";
+      exit 1
+    fi
+
+    if [ -z "$fromuser" ]; then
+      exit 1
+    fi
+
+cat > third_party/mkl/mkl.config <<EOF
+# MKL_INSTALL_PATH refers to the location of MKL root folder. The MKL header and library
+# files can be either in this directory, or under include/ and lib64/
+MKL_INSTALL_PATH=$MKL_INSTALL_PATH
+EOF
+
+  fi # TF_NEED_MKL
+  ################## MKL
+fi # Disable building with MKL for now
+
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
   default_cc_opt_flags="-march=native"
-  read -p "Please specify optimization flags to use during compilation [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
+  read -p "Please specify optimization flags to use during compilation when bazel option "\
+"\"--config=opt\" is specified [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
   if [ -z "$CC_OPT_FLAGS" ]; then
     CC_OPT_FLAGS=$default_cc_opt_flags
   fi
@@ -168,10 +243,10 @@ done
 
 if [ "$TF_ENABLE_XLA" == "1" ]; then
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = True/" tensorflow/core/platform/default/build_config_root.bzl
 else
   # Update Bazel build configuration.
-  perl -pi -e "s,WITH_XLA_SUPPORT = (False|True),WITH_XLA_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+  sed -i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = False/" tensorflow/core/platform/default/build_config_root.bzl
 fi
 
 
@@ -321,46 +396,8 @@ while true; do
 
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
     TF_CUDNN_EXT=""
-    cudnn_lib_path=""
-    cudnn_alt_lib_path=""
-    if is_windows; then
-      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
-      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/lib/x64/cudnn.lib"
-    elif is_linux; then
-      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib64/libcudnn.so"
-      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.so"
-    elif is_macos; then
-      cudnn_lib_path="${CUDNN_INSTALL_PATH}/lib/libcudnn.dylib"
-      cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.dylib"
-    fi
-    # Resolve to the SONAME of the symlink.  Use readlink without -f
-    # to resolve exactly once to the SONAME.  E.g, libcudnn.so ->
-    # libcudnn.so.4.
-    # If the path is not a symlink, readlink will exit with an error code, so
-    # in that case, we return the path itself.
-    if [ -f "$cudnn_lib_path" ]; then
-      REALVAL=`readlink "${cudnn_lib_path}" || echo "${cudnn_lib_path}"`
-    else
-      REALVAL=`readlink "${cudnn_alt_lib_path}" || echo "${cudnn_alt_lib_path}"`
-    fi
-
-    # Extract the version of the SONAME, if it was indeed symlinked to
-    # the SONAME version of the file.
-    if [[ "$REALVAL" =~ .so[.]+([0-9]*) ]]; then
-      TF_CUDNN_EXT="."${BASH_REMATCH[1]}
-      TF_CUDNN_VERSION=${BASH_REMATCH[1]}
-      echo "libcudnn.so resolves to libcudnn${TF_CUDNN_EXT}"
-    elif [[ "$REALVAL" =~ ([0-9]*).dylib ]]; then
-      TF_CUDNN_EXT=${BASH_REMATCH[1]}".dylib"
-      TF_CUDNN_VERSION=${BASH_REMATCH[1]}
-      echo "libcudnn.dylib resolves to libcudnn${TF_CUDNN_EXT}"
-    fi
   else
-    if is_macos; then
-      TF_CUDNN_EXT=".${TF_CUDNN_VERSION}.dylib"
-    else
-      TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
-    fi
+    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
 
   if is_windows; then
@@ -370,8 +407,8 @@ while true; do
     CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
     CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   elif is_macos; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then

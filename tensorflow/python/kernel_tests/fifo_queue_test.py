@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -124,6 +125,13 @@ class FIFOQueueTest(test.TestCase):
           10, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
+
+  def testMultipleDequeues(self):
+    with self.test_session() as session:
+      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+      q.enqueue_many([[1, 2, 3]]).run()
+      a, b, c = session.run([q.dequeue(), q.dequeue(), q.dequeue()])
+      self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
 
   def testEnqueueDictWithoutNames(self):
     with self.test_session():
@@ -1388,6 +1396,18 @@ class FIFOQueueTest(test.TestCase):
 
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
+
+  def testDequeueEnqueueFail(self):
+    with self.test_session() as session:
+      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+      a = q.dequeue()
+      b = control_flow_ops.Assert(False, ["Before enqueue"])
+      with ops.control_dependencies([b]):
+        c = q.enqueue(33)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          lambda e: "Before enqueue" in str(e)):
+        session.run([a, c])
 
 
 class FIFOQueueDictTest(test.TestCase):

@@ -28,11 +28,9 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
-using Index = BufferAllocation::Index;
-
-KernelThunk::KernelThunk(tensorflow::gtl::ArraySlice<Index> io_buffers,
-                         const string& kernel_name,
-                         const HloInstruction* hlo_instruction)
+KernelThunk::KernelThunk(
+    tensorflow::gtl::ArraySlice<BufferAllocation::Slice> io_buffers,
+    const string& kernel_name, const HloInstruction* hlo_instruction)
     : Thunk(Kind::kKernel, hlo_instruction),
       io_buffers_(io_buffers.begin(), io_buffers.end()),
       kernel_name_(kernel_name) {}
@@ -75,7 +73,7 @@ tensorflow::Status KernelThunk::ExecuteOnStream(
   // Launch the kernel with potentially multiple blocks and threads.
   static constexpr int kKernelArgsLimit = 1024;
   auto kernel_args = MakeUnique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (BufferAllocation::Index io_buffer : io_buffers_) {
+  for (const BufferAllocation::Slice io_buffer : io_buffers_) {
     kernel_args->add_device_memory_argument(
         buffer_allocations.GetDeviceAddress(io_buffer));
   }

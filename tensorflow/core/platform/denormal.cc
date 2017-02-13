@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/denormal.h"
-#ifdef __SSE3__
+#include "third_party/eigen3/Eigen/Core"
+// Check EIGEN_VECTORIZE_SSE3 since Windows doesn't define __SSE3__ properly
+#ifdef EIGEN_VECTORIZE_SSE3
 #include <pmmintrin.h>
 #endif
 
@@ -24,7 +26,7 @@ namespace port {
 ScopedFlushDenormal::ScopedFlushDenormal() {
 // For now, we flush denormals only on SSE 3.  Other architectures such as ARM
 // can be added as needed.
-#ifdef __SSE3__
+#ifdef EIGEN_VECTORIZE_SSE3
   // Save existing flags
   flush_zero_mode_ = _MM_GET_FLUSH_ZERO_MODE() == _MM_FLUSH_ZERO_ON;
   denormals_zero_mode_ = _MM_GET_DENORMALS_ZERO_MODE() == _MM_DENORMALS_ZERO_ON;
@@ -38,7 +40,7 @@ ScopedFlushDenormal::ScopedFlushDenormal() {
 }
 
 ScopedFlushDenormal::~ScopedFlushDenormal() {
-#ifdef __SSE3__
+#ifdef EIGEN_VECTORIZE_SSE3
   // Restore flags
   _MM_SET_FLUSH_ZERO_MODE(flush_zero_mode_ ? _MM_FLUSH_ZERO_ON
                                            : _MM_FLUSH_ZERO_OFF);

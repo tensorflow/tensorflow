@@ -70,7 +70,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",
@@ -284,7 +284,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
     ],
@@ -295,7 +294,6 @@ tf_cuda_cc_test(
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "manual",
-        "noguitar",
         "notap",
     ],
     deps = [":randomized_tests_library"],

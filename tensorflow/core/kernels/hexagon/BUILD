@@ -64,6 +64,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:reshape_op",
         "//tensorflow/core/kernels:softmax_op",
     ],
@@ -88,6 +89,9 @@ tf_kernel_library(
     ],
     data = ["//tensorflow/core:example_parser_configuration_testdata"],
     deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:remote_fused_graph_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

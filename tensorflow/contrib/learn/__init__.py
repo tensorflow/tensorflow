@@ -24,12 +24,23 @@ Train and evaluate TensorFlow models.
 @@Estimator
 @@Trainable
 @@Evaluable
+@@KMeansClustering
 @@ModeKeys
+@@ModelFnOps
+@@MetricSpec
+@@PredictionKey
 @@DNNClassifier
 @@DNNRegressor
+@@DNNLinearCombinedRegressor
+@@DNNLinearCombinedClassifier
 @@LinearClassifier
 @@LinearRegressor
 @@LogisticRegressor
+
+## Distributed training utilities
+@@Experiment
+@@ExportStrategy
+@@TaskType
 
 ## Graph actions
 
@@ -58,6 +69,12 @@ Queue and read batched input data.
 @@read_batch_features
 @@read_batch_record_features
 
+Export utilities
+
+@@InputFnOps
+@@ProblemType
+@@build_parsing_serving_input_fn
+@@make_export_strategy
 """
 
 from __future__ import absolute_import
@@ -67,7 +84,11 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import make_all
 
-__all__ = make_all(__name__)
-__all__.append('datasets')
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['datasets', 'head', 'io', 'models',
+                    'monitors', 'NotFittedError', 'ops', 'preprocessing',
+                    'utils', 'graph_actions']
+
+remove_undocumented(__name__, _allowed_symbols)

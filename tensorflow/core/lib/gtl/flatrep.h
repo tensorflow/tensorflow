@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string.h>
 #include <utility>
+#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -134,8 +135,7 @@ class FlatRep {
       } else if (x == kEmpty) {
         return {false, nullptr, 0};
       }
-      // Quadratic probing.
-      index = (index + num_probes) & mask_;
+      index = NextIndex(index, num_probes);
       num_probes++;
     }
   }
@@ -176,8 +176,7 @@ class FlatRep {
         new (&b->key(bi)) Key(std::forward<KeyType>(k));
         return {false, b, bi};
       }
-      // Quadratic probing.
-      index = (index + num_probes) & mask_;
+      index = NextIndex(index, num_probes);
       num_probes++;
     }
   }
@@ -194,12 +193,8 @@ class FlatRep {
     size_t index = (h >> 8) & mask_;  // Holds bucket num and index-in-bucket
     uint32 bi = index & (kWidth - 1);
     Bucket* b = &array_[index >> kBase];
-    prefetch(&b->storage.key[bi]);
-  }
-  void prefetch(const void* ptr) const {
-    // TODO(jeff,sanjay): Remove this routine when we add a
-    // prefetch(...) call to platform so that the Prefetch routine
-    // actually does something
+    port::prefetch<port::PREFETCH_HINT_T0>(&b->marker[bi]);
+    port::prefetch<port::PREFETCH_HINT_T0>(&b->storage.key[bi]);
   }
 
   inline void MaybeResize() {
@@ -318,10 +313,14 @@ class FlatRep {
         copier(b, bi, src, src_index);
         return;
       }
-      // Quadratic probing.
-      index = (index + num_probes) & mask_;
+      index = NextIndex(index, num_probes);
       num_probes++;
     }
+  }
+
+  inline size_t NextIndex(size_t i, uint32 num_probes) const {
+    // Quadratic probing.
+    return (i + num_probes) & mask_;
   }
 };
 

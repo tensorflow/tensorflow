@@ -1370,7 +1370,8 @@ class ControlFlowContext(object):
     g = ops.get_default_graph()
     self._external_values = {}
     for k, v in values_def.external_values.items():
-      self._external_values[k] = g.as_graph_element(v)
+      self._external_values[k] = g.as_graph_element(
+          ops.prepend_name_scope(v, import_scope))
     op_names = set([op.split(":")[0]
                     for op in self._values - set(self._external_values)])
     for op in op_names:
@@ -1702,9 +1703,9 @@ def cond(pred, fn1, fn2, name=None):
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the `tf.add` operation will be executed and tf.square
+  If x < y, the `tf.add` operation will be executed and `tf.square`
   operation will not be executed. Since z is needed for at least one
-  branch of the cond, the tf.mul operation is always executed, unconditionally.
+  branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
   it has occasionally surprised some users who expected a lazier semantics.
 

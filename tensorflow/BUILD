@@ -24,7 +24,7 @@ config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
-        "android_cpu": "armeabi-v7a",
+        "cpu": "armeabi-v7a",
     },
     visibility = ["//visibility:public"],
 )
@@ -33,7 +33,7 @@ config_setting(
     name = "android_arm64",
     values = {
         "crosstool_top": "//external:android/crosstool",
-        "android_cpu": "arm64-v8a",
+        "cpu": "arm64-v8a",
     },
     visibility = ["//visibility:public"],
 )
@@ -67,6 +67,22 @@ config_setting(
 config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "debug",
+    values = {
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -138,6 +154,7 @@ filegroup(
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
+        "//tensorflow/contrib/hooks:all_files",
         "//tensorflow/contrib/image:all_files",
         "//tensorflow/contrib/input_pipeline:all_files",
         "//tensorflow/contrib/input_pipeline/kernels:all_files",
@@ -163,6 +180,7 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/solvers:all_files",
+        "//tensorflow/contrib/sparsemax:all_files",
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
@@ -210,7 +228,11 @@ filegroup(
         "//tensorflow/tensorboard/backend:all_files",
         "//tensorflow/tensorboard/components:all_files",
         "//tensorflow/tensorboard/components/vz_data_summary:all_files",
+        "//tensorflow/tensorboard/components/vz_line_chart:all_files",
+        "//tensorflow/tensorboard/components/vz_line_chart/demo:all_files",
         "//tensorflow/tensorboard/components/vz_projector:all_files",
+        "//tensorflow/tensorboard/components/vz_sorting:all_files",
+        "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
@@ -232,6 +254,20 @@ filegroup(
         "//third_party/sycl/sycl:all_files",
     ],
     visibility = [":__subpackages__"],
+)
+
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+
+filegroup(
+    name = "intel_binary_blob",
+    data = if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 # -------------------------------------------

@@ -480,6 +480,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -504,6 +505,27 @@ py_test(
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "estimator_input_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/estimator_input_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -674,6 +696,30 @@ py_test(
     name = "dynamic_rnn_estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/dynamic_rnn_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "state_saving_rnn_estimator_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/state_saving_rnn_estimator_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",

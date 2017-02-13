@@ -7,16 +7,16 @@ Flattens the input while maintaining the batch_size.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, ...].
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`inputs`</b>: A tensor of size [batch_size, ...].
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
-  a flattened tensor with shape [batch_size, k].
+  A flattened tensor with shape [batch_size, k].
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if inputs.dense_shape is wrong.
+*  <b>`ValueError`</b>: If inputs rank is unknown or less than 2.
 

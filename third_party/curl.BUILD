@@ -232,7 +232,7 @@ cc_library(
     ],
     copts = select({
         ":windows": [
-            "/Iexternal/curl/lib",
+            "/I%prefix%/curl/lib",
             "/DHAVE_CONFIG_H",
             "/DCURL_DISABLE_FTP",
             "/DCURL_DISABLE_NTLM",
@@ -245,7 +245,7 @@ cc_library(
             "/D_USING_V110_SDK71_",
         ],
         "//conditions:default": [
-            "-Iexternal/curl/lib",
+            "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
@@ -387,12 +387,12 @@ cc_binary(
     ],
     copts = select({
         ":windows": [
-            "/Iexternal/curl/lib",
+            "/I%prefix%/curl/lib",
             "/DHAVE_CONFIG_H",
             "/DCURL_DISABLE_LIBCURL_OPTION",
         ],
         "//conditions:default": [
-            "-Iexternal/curl/lib",
+            "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",

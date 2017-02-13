@@ -92,18 +92,31 @@ class ExampleParserOp : public OpKernel {
 
     for (int d = 0; d < static_cast<int>(attrs_.num_dense); ++d) {
       const Tensor& def_value = dense_defaults[d];
-      if (def_value.NumElements() > 0) {
-        OP_REQUIRES(ctx, def_value.shape() == attrs_.dense_shapes[d],
+      if (attrs_.variable_length[d]) {
+        OP_REQUIRES(ctx, def_value.NumElements() == 1,
                     errors::InvalidArgument(
-                        "def_value[", d, "].shape() == ",
-                        def_value.shape().DebugString(), " != dense_shapes_[",
-                        d, "] == ", attrs_.dense_shapes[d].DebugString()));
-        OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
+                        "dense_shape[", d, "] is a variable length shape: ",
+                        attrs_.dense_shapes[d].DebugString(),
+                        ", therefore "
+                        "def_value[",
+                        d,
+                        "] must contain a single element ("
+                        "the padding element).  But its shape is: ",
+                        def_value.shape().DebugString()));
+      } else if (def_value.NumElements() > 0) {
+        OP_REQUIRES(ctx,
+                    attrs_.dense_shapes[d].IsCompatibleWith(def_value.shape()),
                     errors::InvalidArgument(
-                        "dense_defaults[", d, "].dtype() == ",
-                        DataTypeString(def_value.dtype()), " != dense_types_[",
-                        d, "] == ", DataTypeString(attrs_.dense_types[d])));
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " is not compatible with dense_shapes_[", d,
+                        "] == ", attrs_.dense_shapes[d].DebugString()));
       }
+      OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
+                  errors::InvalidArgument(
+                      "dense_defaults[", d, "].dtype() == ",
+                      DataTypeString(def_value.dtype()), " != dense_types_[", d,
+                      "] == ", DataTypeString(attrs_.dense_types[d])));
     }
 
     example::Result result;
@@ -111,7 +124,9 @@ class ExampleParserOp : public OpKernel {
     example::FastParseExampleConfig config;
     for (int d = 0; d < attrs_.num_dense; ++d) {
       config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
-                              attrs_.dense_shapes[d], dense_defaults[d]});
+                              attrs_.dense_shapes[d], dense_defaults[d],
+                              attrs_.variable_length[d],
+                              attrs_.elements_per_stride[d]});
     }
     for (int d = 0; d < attrs_.num_sparse; ++d) {
       config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});

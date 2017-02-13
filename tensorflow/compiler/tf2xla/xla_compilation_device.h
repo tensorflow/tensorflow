@@ -97,14 +97,17 @@ class XlaOpRegistry {
   // exists.
   static void RegisterJitDevice(const string& device_name,
                                 const string& jit_device_name,
-                                bool requires_jit);
+                                bool requires_jit, bool enable_jit_by_default);
 
   // Returns the JIT device name associated with 'device_name', setting
-  // 'jit_device_name' and 'requires_jit', if they are not null. Returns false
-  // and leaves 'jit_device_name' and 'requires_jit' unchanged if no matching
+  // 'jit_device_name', 'requires_jit', and 'enabled_jit_by_default', if they
+  // are not null. Returns false and leaves the outputs unchanged if no matching
   // JIT device is registered.
+  // '*enable_jit_by_default' is set to true if we should try to JIT using this
+  // device when the JIT is enabled via the Session OptimizerOptions.
   static bool GetJitDevice(const string& device_name,
-                           const string** jit_device_name, bool* requires_jit);
+                           const string** jit_device_name, bool* requires_jit,
+                           bool* enable_jit_by_default);
 
   // Registers all JIT kernels on JIT devices, if not already registered.
   // Does nothing otherwise.
@@ -126,9 +129,13 @@ class XlaOpRegistry {
 
   mutex mutex_;
 
-  // Map from Tensorflow device names to the corresponding JIT device names.
-  std::unordered_map<string, std::pair<string, bool>> jit_devices_
-      GUARDED_BY(mutex_);
+  // Map from Tensorflow device names to the corresponding JIT device metadata.
+  struct JitDevice {
+    string jit_device_name;
+    bool requires_jit;
+    bool enable_jit_by_default;
+  };
+  std::unordered_map<string, JitDevice> jit_devices_ GUARDED_BY(mutex_);
 
   // Map from operator name to OpKernel factory, populated by REGISTER_XLA_OP.
   std::unordered_map<string, Factory> ops_ GUARDED_BY(mutex_);

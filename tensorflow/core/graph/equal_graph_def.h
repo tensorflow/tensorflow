@@ -22,20 +22,27 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct EqualGraphDefOptions {
+  // Should internal attributes (attribute names that start with '_') be
+  // ignored?
+  bool ignore_internal_attrs = true;
+};
+
 // Determines if actual and expected are equal, ignoring versions and ordering
 // of nodes, attrs, and control inputs.  If the GraphDefs are different and
 // diff != nullptr, *diff is set to an explanation of the difference.  Note that
 // we use node names to match up nodes between the graphs, and so the naming of
 // nodes must be consistent.
 bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
-                   string* diff);
+                   string* diff, const EqualGraphDefOptions& options = {});
 
 // Determines if actual and expected are equal, ignoring: ordering of
-// attrs, internal attributes, and control inputs.
+// attrs, internal attributes (if set in `options`), and control inputs.
 //
 // If the NodeDefs are different and
 // diff != nullptr, *diff is set to an explanation of the difference.
-bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff);
+bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
+                  const EqualGraphDefOptions& options = {});
 
 #define TF_EXPECT_GRAPH_EQ(expected, actual)                  \
   do {                                                        \

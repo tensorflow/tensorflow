@@ -33,4 +33,4 @@ export TF_NEED_OPENCL=0
 export COMPUTECPP_PATH="/usr/local"
 
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-build_libtensorflow_tarball "-darwin-cpu-$(uname -m)"
+build_libtensorflow_tarball "-cpu-darwin-$(uname -m)"

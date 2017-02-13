@@ -80,6 +80,11 @@ class MockCursesUI(curses_ui.CursesUI):
 
     curses_ui.CursesUI.__init__(self)
 
+    # Override the default path to the command history file to avoid test
+    # concurrency issues.
+    self._command_history_store = debugger_cli_common.CommandHistory(
+        history_file_path=tempfile.mktemp())
+
   # Below, override the _screen_ prefixed member methods that interact with the
   # actual terminal, so that the mock can run in a terminal-less environment.
 
@@ -873,7 +878,7 @@ class CursesTest(test_util.TensorFlowTestCase):
   def testRegexSearchUnderLineWrapping(self):
     ui = MockCursesUI(
         40,
-        5,  # Use a narrow window to trigger line wrapping
+        6,  # Use a narrow window to trigger line wrapping
         command_sequence=[
             string_to_codes("babble -n 3 -l foo-bar-baz-qux\n"),
             string_to_codes("/foo\n"),  # Regex search and highlight.
@@ -1210,7 +1215,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.unwrapped_outputs))
 
     with gfile.Open(output_path, "r") as f:
-      self.assertEqual(b"bar\nbar\n", f.read())
+      self.assertEqual("bar\nbar\n", f.read())
 
     # Clean up output file.
     gfile.Remove(output_path)
@@ -1362,6 +1367,124 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(1, len(ui.unwrapped_outputs))
     self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+
+
+class ScrollBarTest(test_util.TensorFlowTestCase):
+
+  def testConstructorRaisesExceptionForNotEnoughHeight(self):
+    with self.assertRaisesRegexp(
+        ValueError, r"Insufficient height for ScrollBar \(2\)"):
+      curses_ui.ScrollBar(0, 0, 1, 1, 0, 0)
+
+  def testLayoutIsEmptyForZeroRow(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 0)
+    layout = scroll_bar.layout()
+    self.assertEqual(["  "] * 8, layout.lines)
+    self.assertEqual({}, layout.font_attr_segs)
+
+  def testLayoutIsEmptyFoOneRow(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 1)
+    layout = scroll_bar.layout()
+    self.assertEqual(["  "] * 8, layout.lines)
+    self.assertEqual({}, layout.font_attr_segs)
+
+  def testClickCommandForOneRowIsNone(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 1)
+    self.assertIsNone(scroll_bar.get_click_command(0))
+    self.assertIsNone(scroll_bar.get_click_command(3))
+    self.assertIsNone(scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testLayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP"] + ["  "] * 6 + ["DN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testWidth1LayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 0, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["U"] + [" "] * 6 + ["D"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 1, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 1, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 1, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testWidth3LayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 2, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP "] + ["   "] * 6 + ["DN "], layout.lines)
+    self.assertEqual(
+        {0: [(0, 3, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 3, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 3, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testWidth4LayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 3, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual([" UP "] + ["    "] * 6 + ["DOWN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 4, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 4, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 4, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testLayoutIsCorrectForBottomPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 19, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP"] + ["  "] * 6 + ["DN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         6: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testLayoutIsCorrectForMiddlePosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 10, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP"] + ["  "] * 6 + ["DN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         3: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testClickCommandsAreCorrectForMiddlePosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 10, 20)
+    self.assertIsNone(scroll_bar.get_click_command(-1))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(0))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(1))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(2))
+    self.assertIsNone(scroll_bar.get_click_command(3))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(5))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testClickCommandsAreCorrectForBottomPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 19, 20)
+    self.assertIsNone(scroll_bar.get_click_command(-1))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(0))
+    for i in range(1, 6):
+      self.assertEqual(curses_ui._SCROLL_UP,
+                       scroll_bar.get_click_command(i))
+    self.assertIsNone(scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
 
 
 if __name__ == "__main__":

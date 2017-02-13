@@ -37,13 +37,6 @@ namespace tensorflow {
 
 namespace {
 
-bool HasRetval(const Graph& graph) {
-  for (const Node* n : graph.nodes()) {
-    if (n->type_string() == "_Retval") return true;
-  }
-  return false;
-}
-
 Status CheckSignature(const DataTypeVector& tf_types,
                       const xla::Shape& xla_shape) {
   if (xla::ShapeUtil::IsTuple(xla_shape)) {
@@ -86,6 +79,7 @@ XlaCompiler::XlaCompiler(const XlaCompiler::Options& options)
       allow_cpu_custom_calls_(options.allow_cpu_custom_calls),
       local_executable_has_hybrid_result_(
           options.local_executable_has_hybrid_result),
+      resolve_compile_time_constants_(options.resolve_compile_time_constants),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options.device_type)),
       device_mgr_({device_}) {}
@@ -176,14 +170,9 @@ Status XlaCompiler::CompileFunctionBody(
         strings::StrCat("xla_jit_raw_input_", function_id), *graph);
   }
 
-  if (!HasRetval(*graph)) {
-    VLOG(1) << "Graph has no retvals. Skipping compilation.";
-    return Status::OK();
-  }
-
-  // Optimize the graph to before running throught the translator.
-  // TODO(pbar) The constant folder currently does not simplify int32 operations
-  // for devices other than CPU.
+  // Optimize the graph before running the compiler.
+  // TODO(pbar): The constant folder currently does not simplify int32
+  // operations for devices other than CPU.
   OptimizerOptions opts;
   GraphOptimizer optimizer(opts);
   OptimizeGraph(flr, &graph);
@@ -267,24 +256,12 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   std::unique_ptr<Executor> exec(exec_ptr);
   // At this point ownership of the graph has been transferred to exec.
 
-  auto runner = [](Executor::Args::Closure c) {
-    // TODO(misard) Temporarily just schedule c eagerly while we
-    // decide what to do about the fact that the ComputationBuilder is
-    // thread-compatible, but we don't really want Op writers to have
-    // to remember to acquire a lock around every call to
-    // ComputationBuilder. One possibility is to add the (generally
-    // useful) ability to run a single-threaded Executor based on an
-    // option in LocalExecutorParams. Another is to automagically
-    // acquire a lock around ComputationBuilder calls using some
-    // wrapper or RAII funny business.
-    c();
-  };
-
   // Run the graph symbolically, turning the graph into an XLA computation.
   Executor::Args exec_args;
   exec_args.step_id = step_id;
   exec_args.step_container = step_container.get();
-  exec_args.runner = runner;
+  // Run all compilation kernels on the main thread.
+  exec_args.runner = [](Executor::Args::Closure c) { c(); };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       exec->Run(exec_args),
       "Conversion from TensorFlow graph to XLA computation failed.");
@@ -316,7 +293,8 @@ Status XlaCompiler::CompileGraph(string const& name,
   }
 
   XlaContext* xla_context =
-      new XlaContext(this, client(), name, allow_cpu_custom_calls_);
+      new XlaContext(this, client(), name, allow_cpu_custom_calls_,
+                     resolve_compile_time_constants_);
   core::ScopedUnref xla_context_unref(xla_context);
 
   TF_RETURN_IF_ERROR(xla_context->BuildArguments(args, use_tuple_arg));
@@ -410,6 +388,7 @@ Status XlaCompiler::GetChannelHandle(const string& key,
     TF_ASSIGN_OR_RETURN(result.first->second, client_->CreateChannelHandle());
   }
   *channel = result.first->second;
+  VLOG(1) << "Channel: " << key << " " << channel->DebugString();
   return Status::OK();
 }
 

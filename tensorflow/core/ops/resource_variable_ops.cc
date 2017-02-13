@@ -13,6 +13,7 @@
 // limitations under the License.
 // ============================================================================
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -83,6 +84,22 @@ resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
 )");
 
+REGISTER_OP("DestroyResourceOp")
+    .Input("resource: resource")
+    .Attr("ignore_lookup_error: bool = true")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"(
+Deletes the resource specified by the handle.
+
+All subsequent operations using the resource will result in a NotFound
+error status.
+
+resource: handle to the resource to delete.
+ignore_lookup_error: whether to ignore the error when the resource
+  doesn't exist.
+)");
+
 Status CreateAssignShapeFn(InferenceContext* c) {
   DataType handle_dtype = c->input_handle_dtype(0);
   DataType value_dtype;
@@ -123,6 +140,25 @@ REGISTER_OP("AssignAddVariableOp")
     .SetShapeFn(CreateAssignShapeFn)
     .Doc(R"(
 Adds a value to the current value of a variable.
+
+Any ReadVariableOp which depends directly or indirectly on this assign is
+guaranteed to see the incremented value or a subsequent newer one.
+
+Outputs the incremented value, which can be used to totally order the
+increments to this variable.
+
+resource: handle to the resource in which to store the variable.
+value: the value by which the variable will be incremented.
+dtype: the dtype of the value.
+)");
+
+REGISTER_OP("AssignSubVariableOp")
+    .Input("resource: resource")
+    .Input("value: dtype")
+    .Attr("dtype: type")
+    .SetShapeFn(CreateAssignShapeFn)
+    .Doc(R"(
+Subtracts a value from the current value of a variable.
 
 Any ReadVariableOp which depends directly or indirectly on this assign is
 guaranteed to see the incremented value or a subsequent newer one.

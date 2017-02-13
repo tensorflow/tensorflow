@@ -14,6 +14,7 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
@@ -46,9 +47,15 @@ cuda_py_test(
     srcs = ["python/kernel_tests/loss_test.py"],
     additional_deps = [
         ":seq2seq_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -73,9 +80,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "sampling_decoder_test",
+    name = "basic_decoder_test",
     size = "medium",
-    srcs = ["python/kernel_tests/sampling_decoder_test.py"],
+    srcs = ["python/kernel_tests/basic_decoder_test.py"],
     additional_deps = [
         ":seq2seq_py",
         "//tensorflow/contrib/layers:layers_py",

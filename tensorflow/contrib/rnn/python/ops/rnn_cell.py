@@ -21,10 +21,12 @@ from __future__ import print_function
 import collections
 import math
 
+from tensorflow.contrib.compiler import jit
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -1250,3 +1252,42 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
 
       new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
       return new_h, new_state
+
+
+_REGISTERED_OPS = None
+
+
+class CompiledWrapper(core_rnn_cell.RNNCell):
+  """Wraps step execution in an XLA JIT scope."""
+
+  def __init__(self, cell, compile_stateful=False):
+    """Create CompiledWrapper cell.
+
+    Args:
+      cell: Instance of `RNNCell`.
+      compile_stateful: Whether to compile stateful ops like initializers
+        and random number generators (default: False).
+    """
+    self._cell = cell
+    self._compile_stateful = compile_stateful
+
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  @property
+  def output_size(self):
+    return self._cell.output_size
+
+  def __call__(self, inputs, state, scope=None):
+    if self._compile_stateful:
+      compile_ops = True
+    else:
+      def compile_ops(node_def):
+        global _REGISTERED_OPS
+        if _REGISTERED_OPS is None:
+          _REGISTERED_OPS = op_def_registry.get_registered_ops()
+        return not _REGISTERED_OPS[node_def.op].is_stateful
+
+    with jit.experimental_jit_scope(compile_ops=compile_ops):
+      return self._cell(inputs, state, scope=scope)

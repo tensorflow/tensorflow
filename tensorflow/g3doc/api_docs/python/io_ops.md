@@ -2822,7 +2822,7 @@ Once successful, the following actions are also triggered:
 
 ### `tf.matching_files(pattern, name=None)` {#matching_files}
 
-Returns the set of files matching a pattern.
+Returns the set of files matching one or more glob patterns.
 
 Note that this routine only supports wildcard characters in the
 basename portion of the pattern, not in the directory portion.
@@ -2830,7 +2830,8 @@ basename portion of the pattern, not in the directory portion.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A `Tensor` of type `string`. A (scalar) shell wildcard pattern.
+*  <b>`pattern`</b>: A `Tensor` of type `string`.
+    Shell wildcard pattern(s). Scalar or vector of type string.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2896,12 +2897,12 @@ Save the list of files matching pattern, so it is only computed once.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A file pattern (glob).
+*  <b>`pattern`</b>: A file pattern (glob), or 1D tensor of file patterns.
 *  <b>`name`</b>: A name for the operations (optional).
 
 ##### Returns:
 
-  A variable that is initialized to the list of files matching pattern.
+  A variable that is initialized to the list of files matching the pattern(s).
 
 
 - - -
@@ -3201,10 +3202,12 @@ See docstring in `batch` for more details.
 
 
 *  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
@@ -3334,10 +3337,12 @@ See docstring in `batch_join` for more details.
 
 
 *  <b>`tensors_list`</b>: A list of tuples or dictionaries of tensors to enqueue.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`batch_size`</b>: An integer. The new batch size pulled from the queue.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
@@ -3470,10 +3475,12 @@ See docstring in `shuffle_batch` for more details.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
     dequeue, used to ensure a level of mixing of elements.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensor_list`.
 *  <b>`seed`</b>: Seed for the random shuffling within the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
@@ -3592,10 +3599,12 @@ See docstring in `shuffle_batch_join` for more details.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
     dequeue, used to ensure a level of mixing of elements.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
-    whether the input is added to the queue or not.  If it evaluates `True`,
-    then `tensors_list` are added to the queue; otherwise they are dropped.
-    This tensor essentially acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`seed`</b>: Seed for the random shuffling within the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
     example.

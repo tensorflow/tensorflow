@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
@@ -46,7 +47,7 @@ Status PackGrad(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
 
   grad_outputs->reserve(N);
-  auto grad_op = Unpack(scope, grad_inputs[0], N, Unpack::Axis(axis));
+  auto grad_op = Unstack(scope, grad_inputs[0], N, Unstack::Axis(axis));
   for (const Output& o : grad_op.output) {
     grad_outputs->emplace_back(o);
   }
@@ -59,7 +60,7 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
                   std::vector<Output>* grad_outputs) {
   int axis;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
-  grad_outputs->push_back(Pack(scope, grad_inputs, Pack::Axis(axis)));
+  grad_outputs->push_back(Stack(scope, grad_inputs, Stack::Axis(axis)));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Unpack", UnpackGrad);
@@ -80,11 +81,19 @@ Status RefIdentityGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("RefIdentity", RefIdentityGrad);
 
+Status QuantizeAndDequantizeGrad(const Scope& scope, const Operation& op,
+                                 const std::vector<Output>& grad_inputs,
+                                 std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("QuantizeAndDequantize", QuantizeAndDequantizeGrad);
+
 Status SplitGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
                  std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(NoGradient());
-  grad_outputs->push_back(Concat(scope, op.input(0), grad_inputs));
+  grad_outputs->push_back(Concat(scope, grad_inputs, op.input(0)));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Split", SplitGrad);
@@ -211,7 +220,124 @@ Status ReverseGrad(const Scope& scope, const Operation& op,
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
-REGISTER_GRADIENT_OP("Reverse", ReverseGrad);
+REGISTER_GRADIENT_OP("ReverseV2", ReverseGrad);
+
+Status ScatterNdGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
+  auto indices = op.input(0);
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(GatherNd(scope, grad_inputs[0], indices));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("ScatterNd", ScatterNdGrad);
+
+Status PadGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto x = op.input(0);
+  auto a = op.input(1);  // [Rank(x), 2]
+  // Takes a slice of a. The 1st column. [Rank(x), 1].
+  auto size = Stack(scope, {Rank(scope, x), 1});
+  auto pad_before = Slice(scope, a, {0, 0}, size);
+  // Make it a 1-D tensor.
+  auto begin = Reshape(scope, pad_before, {-1});
+  grad_outputs->push_back(Slice(scope, grad_inputs[0], begin, Shape(scope, x)));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Pad", PadGrad);
+
+Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
+  int block_size;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  grad_outputs->push_back(
+      BatchToSpace(scope, grad_inputs[0], op.input(1), block_size));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("SpaceToBatch", SpaceToBatchGrad);
+
+Status SpaceToBatchNDGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(
+      BatchToSpaceND(scope, grad_inputs[0], op.input(1), op.input(2)));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("SpaceToBatchND", SpaceToBatchNDGrad);
+
+Status BatchToSpaceGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
+  int block_size;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  grad_outputs->push_back(
+      SpaceToBatch(scope, grad_inputs[0], op.input(1), block_size));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("BatchToSpace", BatchToSpaceGrad);
+
+Status BatchToSpaceNDGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(
+      SpaceToBatchND(scope, grad_inputs[0], op.input(1), op.input(2)));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("BatchToSpaceND", BatchToSpaceNDGrad);
+
+Status SpaceToDepthGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
+  int block_size;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  grad_outputs->push_back(DepthToSpace(scope, grad_inputs[0], block_size));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("SpaceToDepth", SpaceToDepthGrad);
+
+Status DepthToSpaceGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
+  int block_size;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "block_size", &block_size));
+  grad_outputs->push_back(SpaceToDepth(scope, grad_inputs[0], block_size));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("DepthToSpace", DepthToSpaceGrad);
+
+Status MirrorPadGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
+  string mode;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "mode", &mode));
+  grad_outputs->push_back(tensorflow::ops::internal::MirrorPadGrad(
+      scope, grad_inputs[0], op.input(1), mode));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MirrorPad", MirrorPadGrad);
+
+// TODO(suharshs): b/34770860. This gradient was within 1e-3 but not 1e-4.
+Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
+  string mode;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "mode", &mode));
+  grad_outputs->push_back(MirrorPad(scope, grad_inputs[0], op.input(1), mode));
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MirrorPadGrad", MirrorPadGradGrad);
 
 }  // anonymous namespace
 }  // namespace ops

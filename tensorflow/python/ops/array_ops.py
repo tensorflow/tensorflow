@@ -979,12 +979,6 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
-# concat_v2 is an alias for concat. concat_v2 will be deprecated and removed
-# soon, please use concat.
-def concat_v2(values, axis, name="concat_v2"):
-  return concat(values, axis, name)
-
-
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
 
@@ -1370,7 +1364,12 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "zeros", [shape]) as name:
-    zero = False if dtype == dtypes.bool else 0
+    if dtype == dtypes.bool:
+      zero = False
+    elif dtype == dtypes.string:
+      zero = ""
+    else:
+      zero = 0
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)

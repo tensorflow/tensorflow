@@ -4,7 +4,7 @@ Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits. (dep
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.sigmoid_cross_entropy instead.
+Use tf.losses.sigmoid_cross_entropy instead. Note that the order of the predictions and labels arguments was changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided,
 then the loss is simply scaled by the given value. If `weights` is a

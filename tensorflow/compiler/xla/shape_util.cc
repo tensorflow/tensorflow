@@ -365,10 +365,9 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     string layout;
     if (!IsScalar(shape) && !IsOpaque(shape)) {
       if (LayoutUtil::HasLayout(shape)) {
-        layout = tensorflow::strings::StrCat(
-            " ", LayoutUtil::HumanString(shape.layout()));
+        layout = LayoutUtil::HumanString(shape.layout());
       } else {
-        layout = " (no layout)";
+        layout = "{no layout}";
       }
     }
     return tensorflow::strings::StrCat(
@@ -511,6 +510,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   TF_DCHECK_OK(ValidateShape(shape));
   DCHECK_NE(OPAQUE, shape.element_type());
   if (shape.element_type() == TUPLE) {
+    CHECK_GT(pointer_size, 0);
     return pointer_size * shape.tuple_shapes_size();
   }
   int64 allocated_element_count;
@@ -525,10 +525,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
-}
-
-/* static */ int64 ShapeUtil::ByteSizeOf(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(

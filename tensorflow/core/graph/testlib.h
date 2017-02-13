@@ -113,6 +113,10 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 // Output dtype determined by alpha.
 Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
 
+// Generates random poisson distribution with the given shape and lam[s].
+// Output dtype determined by lam.
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
+
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);

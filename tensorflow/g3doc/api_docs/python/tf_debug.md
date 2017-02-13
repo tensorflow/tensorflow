@@ -12,7 +12,7 @@ be watched when the TensorFlow graph is executed at runtime.
 
 - - -
 
-### `tf_debug.add_debug_tensor_watch(run_options, node_name, output_slot=0, debug_ops='DebugIdentity', debug_urls=None)` {#add_debug_tensor_watch}
+### `tf_debug.add_debug_tensor_watch(run_options, node_name, output_slot=0, debug_ops='DebugIdentity', debug_urls=None, global_step=-1)` {#add_debug_tensor_watch}
 
 Add watch on a `Tensor` to `RunOptions`.
 
@@ -30,11 +30,13 @@ N.B.: Under certain circumstances, the `Tensor` may not be actually watched
     `list` of `str` with only one element.
 *  <b>`debug_urls`</b>: (`str` or `list` of `str`) URL(s) to send debug values to,
     e.g., `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 
 
 - - -
 
-### `tf_debug.watch_graph(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_whitelist=None, op_type_regex_whitelist=None)` {#watch_graph}
+### `tf_debug.watch_graph(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_whitelist=None, op_type_regex_whitelist=None, global_step=-1)` {#watch_graph}
 
 Add debug watches to `RunOptions` for a TensorFlow graph.
 
@@ -63,11 +65,13 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
     are set, the two filtering operations will occur in a logical `AND`
     relation. In other words, a node will be included if and only if it
     hits both whitelists.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 
 
 - - -
 
-### `tf_debug.watch_graph_with_blacklists(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_blacklist=None, op_type_regex_blacklist=None)` {#watch_graph_with_blacklists}
+### `tf_debug.watch_graph_with_blacklists(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_blacklist=None, op_type_regex_blacklist=None, global_step=-1)` {#watch_graph_with_blacklists}
 
 Add debug tensor watches, blacklisting nodes and op types.
 
@@ -95,6 +99,8 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
     relation. In other words, a node will be excluded if it hits either of
     the two blacklists; a node will be included if and only if it hits
     neither of the blacklists.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 
 
 
@@ -282,6 +288,38 @@ in a tfdbg dump root directory.
 
 
 *  <b>`IOError`</b>: If dump_root does not exist as a directory.
+
+
+- - -
+
+#### `tf_debug.DebugDumpDir.core_metadata` {#DebugDumpDir.core_metadata}
+
+Metadata about the `Session.run()` call from the core runtime.
+
+Of the three counters available in the return value, `global_step` is
+supplied by the caller of the debugged `Session.run()`, while
+`session_run_count` and `executor_step_count` are determined by the state
+of the core runtime, automatically. For the same fetch list, feed keys and
+debug tensor watch options, the same executor will be used and
+`executor_step_count` should increase by one at a time. However, runs with
+different fetch lists, feed keys and debug_tensor watch options that all
+share the same `Session` object can lead to gaps in `session_run_count`.
+
+##### Returns:
+
+  If core metadata are loaded, a `namedtuple` with the fields:
+    `global_step`: A global step count supplied by the caller of
+      `Session.run()`. It is optional to the caller. If the caller did not
+      supply this parameter, its value will be -1.
+    `session_run_count`: A counter for Run() calls to the underlying
+      TensorFlow `Session` object.
+    `executor_step_count`: A counter for invocations of a given runtime
+      executor. The same executor is re-used for the same fetched tensors,
+      target nodes, input feed keys and debug tensor watch options.
+    `input_names`: Names of the input (feed) Tensors.
+    `output_names`: Names of the output (fetched) Tensors.
+    `target_nodes`: Names of the target nodes.
+  If the core metadata have not been loaded, `None`.
 
 
 - - -
@@ -797,7 +835,9 @@ protobuf contains a `Tensor` value.
 ##### Returns:
 
   The tensor value loaded from the event file, as a `numpy.ndarray`. For
-  uninitialized tensors, returns None.
+  uninitialized Tensors, returns `None`. For Tensors of data types that
+  cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
+  `None`.
 
 
 

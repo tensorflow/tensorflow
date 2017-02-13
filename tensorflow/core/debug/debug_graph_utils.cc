@@ -75,6 +75,16 @@ Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
   return status;
 }
 
+Status DebuggerState::PublishDebugMetadata(
+    const int64 global_step, const int64 session_run_count,
+    const int64 executor_step_count, const std::vector<string>& input_names,
+    const std::vector<string>& output_names,
+    const std::vector<string>& target_nodes) {
+  return DebugIO::PublishDebugMetadata(global_step, session_run_count,
+                                       executor_step_count, input_names,
+                                       output_names, target_nodes, debug_urls_);
+}
+
 // static
 Status DebugNodeInserter::InsertNodes(
     const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,

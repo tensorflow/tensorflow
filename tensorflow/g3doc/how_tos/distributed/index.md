@@ -7,7 +7,7 @@ writing TensorFlow programs.
 
 ## Hello distributed TensorFlow!
 
- To see a simple TensorFlow cluster in action, execute the following:
+To see a simple TensorFlow cluster in action, execute the following:
 
 ```shell
 # Start a TensorFlow server as a single-process "cluster".
@@ -48,8 +48,9 @@ the following:
 ### Create a `tf.train.ClusterSpec` to describe the cluster
 
 The cluster specification dictionary maps job names to lists of network
-adresses. Pass this dictionary to the `tf.train.ClusterSpec` constructor.  For
-example:
+adresses. Pass this dictionary to
+the [`tf.train.ClusterSpec`](../../api_docs/python/train.md#ClusterSpec)
+constructor.  For example:
 
 <table>
   <tr><th><code>tf.train.ClusterSpec</code> construction</th><th>Available tasks</th>
@@ -144,7 +145,7 @@ applying gradients).
 
 A common training configuration, called "data parallelism," involves multiple
 tasks in a `worker` job training the same model on different mini-batches of
-data, updating shared parameters hosted in a one or more tasks in a `ps`
+data, updating shared parameters hosted in one or more tasks in a `ps`
 job. All tasks typically run on different machines. There are many ways to
 specify this structure in TensorFlow, and we are building libraries that will
 simplify the work of specifying a replicated model. Possible approaches include:
@@ -173,7 +174,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   gradient averaging as in the
   [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
-  `tf.train.SyncReplicasOptimizer`).
+  [`tf.train.SyncReplicasOptimizer`](../../api_docs/python/train.md#SyncReplicasOptimizer)).
 
 ### Putting it all together: example trainer program
 
@@ -213,37 +214,28 @@ def main(_):
 
       # Build model...
       loss = ...
-      global_step = tf.Variable(0)
+      global_step = tf.contrib.framework.get_or_create_global_step()
 
       train_op = tf.train.AdagradOptimizer(0.01).minimize(
           loss, global_step=global_step)
 
-      saver = tf.train.Saver()
-      summary_op = tf.summary.merge_all()
-      init_op = tf.global_variables_initializer()
+    # The StopAtStepHook handles stopping after running given steps.
+    hooks=[tf.train.StopAtStepHook(last_step=1000000)]
 
-    # Create a "supervisor", which oversees the training process.
-    sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0),
-                             logdir="/tmp/train_logs",
-                             init_op=init_op,
-                             summary_op=summary_op,
-                             saver=saver,
-                             global_step=global_step,
-                             save_model_secs=600)
-
-    # The supervisor takes care of session initialization, restoring from
-    # a checkpoint, and closing when done or an error occurs.
-    with sv.managed_session(server.target) as sess:
-      # Loop until the supervisor shuts down or 1000000 steps have completed.
-      step = 0
-      while not sv.should_stop() and step < 1000000:
+    # The MonitoredTrainingSession takes care of session initialization,
+    # restoring from a checkpoint, saving to a checkpoint, and closing when done
+    # or an error occurs.
+    with tf.train.MonitoredTrainingSession(master=server.target,
+                                           is_chief=(FLAGS.task_index == 0),
+                                           checkpoint_dir="/tmp/train_logs",
+                                           hooks=hooks) as mon_sess:
+      while not mon_sess.should_stop():
         # Run a training step asynchronously.
         # See `tf.train.SyncReplicasOptimizer` for additional details on how to
         # perform *synchronous* training.
-        _, step = sess.run([train_op, global_step])
+        # mon_sess.run handles AbortedError in case of preempted PS.
+        mon_sess.run(train_op)
 
-    # Ask for all the services to stop.
-    sv.stop()
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
@@ -316,10 +308,11 @@ serve multiple clients.
 
 **Cluster**
 
-A TensorFlow cluster comprises a one or more "jobs", each divided into lists
-of one or more "tasks". A cluster is typically dedicated to a particular
-high-level objective, such as training a neural network, using many machines in
-parallel. A cluster is defined by a `tf.train.ClusterSpec` object.
+A TensorFlow cluster comprises a one or more "jobs", each divided into lists of
+one or more "tasks". A cluster is typically dedicated to a particular high-level
+objective, such as training a neural network, using many machines in parallel. A
+cluster is defined by
+a [`tf.train.ClusterSpec`](../../api_docs/python/train.md#ClusterSpec) object.
 
 **Job**
 
@@ -344,9 +337,9 @@ A task corresponds to a specific TensorFlow server, and typically corresponds
 to a single process. A task belongs to a particular "job" and is identified by
 its index within that job's list of tasks.
 
-**TensorFlow server**
-A process running a `tf.train.Server` instance, which is a member of a cluster,
-and exports a "master service" and "worker service".
+**TensorFlow server** A process running
+a [`tf.train.Server`](../../api_docs/python/train.md#Server) instance, which is
+a member of a cluster, and exports a "master service" and "worker service".
 
 **Worker service**
 

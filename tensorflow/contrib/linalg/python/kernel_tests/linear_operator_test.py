@@ -37,14 +37,16 @@ class LinearOperatorShape(linalg.LinearOperator):
                shape,
                is_non_singular=None,
                is_self_adjoint=None,
-               is_positive_definite=None):
+               is_positive_definite=None,
+               is_square=None):
     self._stored_shape = shape
     super(LinearOperatorShape, self).__init__(
         dtype=dtypes.float32,
         graph_parents=None,
         is_non_singular=is_non_singular,
         is_self_adjoint=is_self_adjoint,
-        is_positive_definite=is_positive_definite,)
+        is_positive_definite=is_positive_definite,
+        is_square=is_square)
 
   def _shape(self):
     return tensor_shape.TensorShape(self._stored_shape)
@@ -60,13 +62,15 @@ class LinearOperatorApplyOnly(linalg.LinearOperator):
                matrix,
                is_non_singular=None,
                is_self_adjoint=None,
-               is_positive_definite=None):
+               is_positive_definite=None,
+               is_square=None):
     self._matrix = ops.convert_to_tensor(matrix, name="matrix")
     super(LinearOperatorApplyOnly, self).__init__(
         dtype=matrix.dtype,
         is_non_singular=is_non_singular,
         is_self_adjoint=is_self_adjoint,
-        is_positive_definite=is_positive_definite,)
+        is_positive_definite=is_positive_definite,
+        is_square=is_square)
 
   def _shape(self):
     return self._matrix.get_shape()
@@ -128,6 +132,51 @@ class LinearOperatorTest(test.TestCase):
       operator_dense = operator.to_dense()
       self.assertAllClose(
           matrix, operator_dense.eval(feed_dict={matrix_ph: matrix}))
+
+  def test_is_square_set_to_true_for_square_static_shapes(self):
+    operator = LinearOperatorShape(shape=(2, 4, 4))
+    self.assertTrue(operator.is_square)
+
+  def test_is_square_set_to_false_for_square_static_shapes(self):
+    operator = LinearOperatorShape(shape=(2, 3, 4))
+    self.assertFalse(operator.is_square)
+
+  def test_is_square_set_incorrectly_to_false_raises(self):
+    with self.assertRaisesRegexp(ValueError, "but.*was square"):
+      _ = LinearOperatorShape(shape=(2, 4, 4), is_square=False).is_square
+
+  def test_is_square_set_inconsistent_with_other_hints_raises(self):
+    with self.assertRaisesRegexp(ValueError, "is always square"):
+      matrix = array_ops.placeholder(dtypes.float32)
+      LinearOperatorApplyOnly(matrix, is_non_singular=True, is_square=False)
+
+    with self.assertRaisesRegexp(ValueError, "is always square"):
+      matrix = array_ops.placeholder(dtypes.float32)
+      LinearOperatorApplyOnly(
+          matrix, is_positive_definite=True, is_square=False)
+
+  def test_non_square_operators_raise_on_determinant_and_solve(self):
+    operator = LinearOperatorShape((2, 3))
+    with self.assertRaisesRegexp(NotImplementedError, "not be square"):
+      operator.determinant()
+    with self.assertRaisesRegexp(NotImplementedError, "not be square"):
+      operator.log_abs_determinant()
+    with self.assertRaisesRegexp(NotImplementedError, "not be square"):
+      operator.solve(rng.rand(2, 2))
+
+    with self.assertRaisesRegexp(ValueError, "is always square"):
+      matrix = array_ops.placeholder(dtypes.float32)
+      LinearOperatorApplyOnly(
+          matrix, is_positive_definite=True, is_square=False)
+
+  def test_is_square_manual_set_works(self):
+    matrix = array_ops.placeholder(dtypes.float32)
+    # Default is None.
+    operator = LinearOperatorApplyOnly(matrix)
+    self.assertEqual(None, operator.is_square)
+    # Set to True
+    operator = LinearOperatorApplyOnly(matrix, is_square=True)
+    self.assertTrue(operator.is_square)
 
 
 if __name__ == "__main__":

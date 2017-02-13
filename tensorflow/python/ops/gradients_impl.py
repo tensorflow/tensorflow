@@ -222,13 +222,17 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     grad_y = grad_ys[i]
     y = ys[i]
     if grad_y is None:
+      if y.dtype.is_complex:
+        raise TypeError(
+            "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
+            y.dtype)
       with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y), constant_op.constant(
                 1, dtype=y.dtype))
       continue
-    if y.dtype.is_real or y.dtype.is_integer:
-      if not grad_y.dtype.is_real and not grad_y.dtype.is_integer:
+    if y.dtype.is_floating or y.dtype.is_integer:
+      if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
         raise TypeError("Gradient type %s generated for real or "
                          "integer-valued tensor %s with type %s must be "
                          "real or integer" %
@@ -272,8 +276,8 @@ def _VerifyGeneratedGradients(grads, op):
       inp = op.inputs[i]
       if grad is None:
         continue
-      if grad.dtype.is_real:
-        if not inp.dtype.is_real:
+      if grad.dtype.is_floating:
+        if not inp.dtype.is_floating:
           raise TypeError("Gradient type %s generated for real-valued op %s "
                            "with type %s must be real" %
                            (dtypes.as_dtype(grad.dtype).name, op.node_def,
@@ -342,6 +346,22 @@ def _SymGrad(op, out_grads):
   in_grads = functional_ops._symbolic_gradient(input=f_in, Tout=f_types, f=f)
   # pylint: enable=protected-access
   return in_grads
+
+
+def _MaybeCompile(op, is_func, grad_fn):
+  """Compile the calculation in grad_fn if op was marked as compiled."""
+  if is_func:
+    # Functions handle their own gradient compilation
+    return grad_fn()
+  try:
+    xla_compile = op.get_attr("_XlaCompile")
+    attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile)}
+    with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
+      return grad_fn()
+  except ValueError as e:
+    if "No attr named" in str(e):
+      return grad_fn()
+    raise e
 
 
 def gradients(ys,
@@ -506,11 +526,13 @@ def gradients(ys,
               if grad_fn:
                 # If grad_fn was found, do not use SymbolicGradient even for
                 # functions.
-                in_grads = grad_fn(op, *out_grads)
+                in_grads = _MaybeCompile(
+                    op, is_func_call, lambda: grad_fn(op, *out_grads))
               else:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
-                in_grads = _SymGrad(op, out_grads)
+                in_grads = _MaybeCompile(
+                    op, is_func_call, lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(

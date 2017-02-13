@@ -24,7 +24,8 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
-import tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source as rs
+# pylint: disable=g-import-not-at-top
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source as rs
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test

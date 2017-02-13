@@ -80,7 +80,7 @@ py_binary(
 
 tf_cc_logged_benchmark(
     name = "cast_op_benchmark",
-    target = "//tensorflow/core/kernels:cast_op_test",
+    target = "//tensorflow/core/kernels:cast_op_test_gpu",
 )
 
 tf_py_logged_benchmark(

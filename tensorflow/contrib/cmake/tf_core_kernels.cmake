@@ -42,17 +42,17 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/ops/tensor_forest_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/best_splits_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/count_extremely_random_stats_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/finished_nodes_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/grow_tree_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/reinterpret_string_to_float_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/sample_inputs_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/scatter_add_ndim_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/topn_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/tree_predictions_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/tree_utils.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/core/ops/update_fertile_slots_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/best_splits_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/count_extremely_random_stats_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/finished_nodes_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/grow_tree_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/reinterpret_string_to_float_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/sample_inputs_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/scatter_add_ndim_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/topn_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_predictions_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_utils.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/update_fertile_slots_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/hard_routing_function_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/k_feature_gradient_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/k_feature_routing_function_op.cc"
@@ -84,6 +84,8 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.h"  # stream_executor dependency
    "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.cc"  # stream_executor dependency
+   "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/*"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute*.cc"
 )
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 

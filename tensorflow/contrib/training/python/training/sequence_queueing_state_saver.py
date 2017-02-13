@@ -33,9 +33,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.summary import summary
@@ -791,9 +793,15 @@ class SequenceQueueingStateSaver(object):
       not enough shape information is available from inputs to build
       the state saver.
     """
-
-    if capacity is not None and capacity < batch_size:
-      raise ValueError("capacity must be larger or equal to batch_size")
+    if capacity is not None and isinstance(batch_size, ops.Tensor):
+      with ops.control_dependencies([check_ops.assert_greater_equal(
+          math_ops.cast(capacity, dtype=dtypes.int64),
+          math_ops.cast(batch_size, dtype=dtypes.int64),
+          message="capacity needs to be >= batch_size.")]):
+        input_key = array_ops.identity(input_key)
+    elif capacity is not None and capacity < batch_size:
+      raise ValueError("capacity %d needs to be >= batch_size %d" % (
+          capacity, batch_size))
     # The barrier is ignorant of the number of actual examples, since a long
     # example that requires many iterations produces more elements in the
     # barrier than a short example. Furthermore, we don't have an upper bound
@@ -1267,6 +1275,8 @@ def batch_sequences_with_states(input_key,
                                 capacity=1000,
                                 allow_small_batch=True,
                                 pad=True,
+                                make_keys_unique=False,
+                                make_keys_unique_seed=None,
                                 name=None):
   """Creates batches of segments of sequential input.
 
@@ -1352,7 +1362,10 @@ def batch_sequences_with_states(input_key,
       input example.  This is used to keep track of the split minibatch elements
       of this input.  Batched keys of the current iteration are made
       accessible via the `key` property.  The shape of `input_key` (scalar) must
-      be fully specified.
+      be fully specified.  Consider setting `make_keys_unique` to True when
+      iterating over the same input multiple times.
+
+      **Note**: if `make_keys_unique=False` then `input_key`s must be unique.
     input_sequences: A dict mapping string names to `Tensor` values.  The values
       must all have matching first dimension, called `value_length`. They may
       vary from input to input. The remainder of the shape (other than the first
@@ -1404,6 +1417,11 @@ def batch_sequences_with_states(input_key,
       `num_unroll`. In that case `input_length` may be `None` and is assumed to
       be the length of first dimension of values in `input_sequences`
       (i.e. `value_length`).
+    make_keys_unique: Whether to append a random integer to the `input_key` in
+      an effort to make it unique. The seed can be set via
+      `make_keys_unique_seed`.
+    make_keys_unique_seed: If `make_keys_unique=True` this fixes the seed with
+      which a random postfix is generated.
     name: An op name string (optional).
 
   Returns:
@@ -1479,6 +1497,14 @@ def batch_sequences_with_states(input_key,
     (transformed_input_seq,
      sparse_tensor_keys,
      tensor_list) = _deconstruct_sparse_tensor_seq(input_sequences)
+
+    if make_keys_unique:
+      input_key = string_ops.string_join([
+          input_key,
+          string_ops.as_string(
+              random_ops.random_uniform(
+                  (), minval=0, maxval=100000000, dtype=dtypes.int32,
+                  seed=make_keys_unique_seed))])
 
     # setup stateful queue reader
     stateful_reader = SequenceQueueingStateSaver(
@@ -1691,13 +1717,19 @@ def _reconstruct_sparse_tensor_seq(sequence,
     Returns:
       A SparseTensor with a +1 higher rank than the input.
     """
-    idx_batch = math_ops.to_int64(math_ops.floor(s.indices[:, 0] / num_unroll))
-    idx_time = math_ops.mod(s.indices[:, 0], num_unroll)
-    indices = array_ops.concat_v2([array_ops.expand_dims(idx_batch, 1),
-                                   array_ops.expand_dims(idx_time, 1),
-                                   s.indices[:, 1:]], axis=1)
-    dense_shape = array_ops.concat_v2(
-        [[batch_size], [num_unroll], s.dense_shape[1:]], axis=0)
+    idx_batch = math_ops.to_int64(
+        math_ops.floor(sp_tensor.indices[:, 0] / num_unroll))
+    idx_time = math_ops.mod(sp_tensor.indices[:, 0], num_unroll)
+    indices = array_ops.concat(
+        [
+            array_ops.expand_dims(idx_batch, 1),
+            array_ops.expand_dims(idx_time, 1), sp_tensor.indices[:, 1:]
+        ],
+        axis=1)
+    dense_shape = array_ops.concat(
+        [[math_ops.cast(batch_size, dtype=dtypes.int64)],
+         [math_ops.cast(num_unroll, dtype=dtypes.int64)],
+         sp_tensor.dense_shape[1:]], axis=0)
     return sparse_tensor.SparseTensor(
         indices=indices,
         values=sp_tensor.values,

@@ -76,8 +76,9 @@ class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
   def logits_dimension(self):
     return 1
 
-  def head_ops(self, features, labels, mode, train_op_fn, logits=None,
-               logits_input=None, scope=None):
+  def create_model_fn_ops(
+      self, mode, features, labels=None, train_op_fn=None, logits=None,
+      logits_input=None, scope=None):
     """See `_Head`."""
     self._head_ops_called_times += 1
     loss = losses.mean_squared_error(labels, logits)
@@ -239,6 +240,26 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
           linear_feature_columns=None,
           dnn_feature_columns=None,
           dnn_hidden_units=[3, 3])
+
+  def testNoDnnHiddenUnits(self):
+    def _input_fn():
+      return {
+          'age':
+              constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[1]])
+
+    language = feature_column.sparse_column_with_hash_bucket('language', 100)
+    age = feature_column.real_valued_column('age')
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'dnn_hidden_units must be defined when dnn_feature_columns is specified'):
+      classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        dnn_feature_columns=[age, language])
+      classifier.fit(input_fn=_input_fn, steps=2)
 
   def testEmbeddingMultiplier(self):
     embedding_language = feature_column.embedding_column(
@@ -795,10 +816,13 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         enable_centered_bias=True)
 
     classifier.fit(input_fn=_input_fn_train, steps=1000)
+    self.assertIn('binary_logistic_head/centered_bias_weight',
+                  classifier.get_variable_names())
     # logodds(0.75) = 1.09861228867
     self.assertAlmostEqual(
         1.0986,
-        float(classifier.get_variable_value('centered_bias_weight')[0]),
+        float(classifier.get_variable_value(
+            'binary_logistic_head/centered_bias_weight')[0]),
         places=2)
 
   def testDisableCenteredBias(self):

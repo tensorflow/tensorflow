@@ -7,7 +7,6 @@ load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 # configure may change the following lines
 WITH_GCP_SUPPORT = False
 WITH_HDFS_SUPPORT = False
-WITH_XLA_SUPPORT = False
 WITH_JEMALLOC = True
 
 # Appends a suffix to a list of deps.
@@ -145,6 +144,23 @@ def tf_additional_proto_srcs():
       "platform/default/protobuf.cc",
   ]
 
+def tf_env_time_hdrs():
+  return [
+      "platform/env_time.h",
+  ]
+
+def tf_env_time_srcs():
+  return select({
+    "//tensorflow:windows" : native.glob([
+        "platform/windows/env_time.cc",
+        "platform/env_time.cc",
+      ], exclude = []),
+    "//conditions:default" : native.glob([
+        "platform/posix/env_time.cc",
+        "platform/env_time.cc",
+      ], exclude = []),
+  })
+
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]
 
@@ -152,10 +168,10 @@ def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
 def tf_additional_libdevice_data():
-  return ["@local_config_cuda//cuda:libdevice_root"]
+  return []
 
 def tf_additional_libdevice_deps():
-  return []
+  return ["@local_config_cuda//cuda:cuda_headers"]
 
 def tf_additional_libdevice_srcs():
   return ["platform/default/cuda_libdevice_path.cc"]
@@ -225,15 +241,3 @@ def tf_additional_cloud_kernel_deps():
   #if WITH_GCP_SUPPORT:
   #  deps = if_not_mobile(["//tensorflow/core:cloud_ops_op_lib"])
   return deps
-
-def tf_additional_plugin_deps():
-  deps = []
-  if WITH_XLA_SUPPORT:
-    deps.append("//tensorflow/compiler/jit")
-  return deps
-
-def tf_additional_license_deps():
-  licenses = []
-  if WITH_XLA_SUPPORT:
-    licenses.append("@llvm//:LICENSE.TXT")
-  return licenses

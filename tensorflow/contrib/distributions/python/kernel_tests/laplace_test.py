@@ -35,10 +35,10 @@ class LaplaceTest(test.TestCase):
       scale = constant_op.constant(11.0)
       laplace = laplace_lib.Laplace(loc=loc, scale=scale)
 
-      self.assertEqual(laplace.batch_shape().eval(), (5,))
-      self.assertEqual(laplace.get_batch_shape(), tensor_shape.TensorShape([5]))
-      self.assertAllEqual(laplace.event_shape().eval(), [])
-      self.assertEqual(laplace.get_event_shape(), tensor_shape.TensorShape([]))
+      self.assertEqual(laplace.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(laplace.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(laplace.event_shape_tensor().eval(), [])
+      self.assertEqual(laplace.event_shape, tensor_shape.TensorShape([]))
 
   def testLaplaceLogPDF(self):
     with self.test_session():
@@ -50,11 +50,11 @@ class LaplaceTest(test.TestCase):
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
       laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_log_pdf = stats.laplace.logpdf(x, loc_v, scale=scale_v)
-      log_pdf = laplace.log_pdf(x)
+      log_pdf = laplace.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = laplace.pdf(x)
+      pdf = laplace.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
@@ -68,12 +68,12 @@ class LaplaceTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_log_pdf = stats.laplace.logpdf(x, loc_v, scale=scale_v)
-      log_pdf = laplace.log_pdf(x)
+      log_pdf = laplace.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = laplace.pdf(x)
+      pdf = laplace.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -88,12 +88,12 @@ class LaplaceTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_log_pdf = stats.laplace.logpdf(x, loc_v, scale=scale_v)
-      log_pdf = laplace.log_pdf(x)
+      log_pdf = laplace.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = laplace.pdf(x)
+      pdf = laplace.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -113,6 +113,38 @@ class LaplaceTest(test.TestCase):
       cdf = laplace.cdf(x)
       self.assertEqual(cdf.get_shape(), (6,))
       self.assertAllClose(cdf.eval(), expected_cdf)
+
+  def testLaplaceLogCDF(self):
+    with self.test_session():
+      batch_size = 6
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
+      loc_v = 2.0
+      scale_v = 3.0
+      x = np.array([-2.5, 2.5, -4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      expected_cdf = stats.laplace.logcdf(x, loc_v, scale=scale_v)
+
+      cdf = laplace.log_cdf(x)
+      self.assertEqual(cdf.get_shape(), (6,))
+      self.assertAllClose(cdf.eval(), expected_cdf)
+
+  def testLaplaceLogSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 6
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
+      loc_v = 2.0
+      scale_v = 3.0
+      x = np.array([-2.5, 2.5, -4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      expected_sf = stats.laplace.logsf(x, loc_v, scale=scale_v)
+
+      sf = laplace.log_survival_function(x)
+      self.assertEqual(sf.get_shape(), (6,))
+      self.assertAllClose(sf.eval(), expected_sf)
 
   def testLaplaceMean(self):
     with self.test_session():
@@ -145,9 +177,9 @@ class LaplaceTest(test.TestCase):
       loc_v = np.array([1.0, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
       laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
-      expected_std = stats.laplace.std(loc_v, scale=scale_v)
-      self.assertEqual(laplace.std().get_shape(), (3,))
-      self.assertAllClose(laplace.std().eval(), expected_std)
+      expected_stddev = stats.laplace.std(loc_v, scale=scale_v)
+      self.assertEqual(laplace.stddev().get_shape(), (3,))
+      self.assertAllClose(laplace.stddev().eval(), expected_stddev)
 
   def testLaplaceEntropy(self):
     with self.test_session():
@@ -227,7 +259,7 @@ class LaplaceTest(test.TestCase):
       laplace = laplace_lib.Laplace(loc=[7., 11.], scale=[[5.], [6.]])
       num = 50000
       samples = laplace.sample(num, seed=137)
-      pdfs = laplace.pdf(samples)
+      pdfs = laplace.prob(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))

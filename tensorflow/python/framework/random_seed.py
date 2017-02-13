@@ -39,7 +39,7 @@ def get_seed(op_seed):
   graph, or for only specific operations.
 
   For details on how the graph-level seed interacts with op seeds, see
-  [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed).
+  @{tf.set_random_seed}.
 
   Args:
     op_seed: integer.

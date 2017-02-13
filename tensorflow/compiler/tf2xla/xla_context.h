@@ -29,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -133,7 +131,8 @@ class XlaContext : public ResourceBase {
 
   // Create a new XlaContext.
   XlaContext(XlaCompiler* compiler, xla::Client* client,
-             const string& computation_name, bool allow_cpu_custom_calls);
+             const string& computation_name, bool allow_cpu_custom_calls,
+             bool resolve_compile_time_constants);
 
   // Builds XLA computations for each of the arguments.
   // Should only be called once to initialize the arguments. Not thread-safe.
@@ -222,11 +221,9 @@ class XlaContext : public ResourceBase {
 
   XlaCompiler* const compiler_;
 
-  mutable mutex mu_;
-
   // The ComputationBuilder used to construct the subgraph's compiled
   // representation.
-  xla::ComputationBuilder xla_builder_ GUARDED_BY(mu_);
+  xla::ComputationBuilder xla_builder_;
 
   // Number of XLA Parameters, not counting the context parameter, if any.
   int num_parameters_;
@@ -243,22 +240,25 @@ class XlaContext : public ResourceBase {
   // Allow ops to emit CustomCall operations for CPU.
   const bool allow_cpu_custom_calls_;
 
+  // If true, constant return values are returned as Tensors instead of
+  // run-time computation outptus.
+  const bool resolve_compile_time_constants_;
+
   // When 'has_context_parameter_' is true, this is the computation handle
   // for an additional final parameter to the computation, through which will be
   // passed a XlaLocalRuntimeContext* at runtime. Created on demand by
   // GetOrCreateRuntimeContextParameter().
-  bool has_context_parameter_ GUARDED_BY(mu_) = false;
-  xla::ComputationDataHandle context_parameter_ GUARDED_BY(mu_);
+  bool has_context_parameter_ = false;
+  xla::ComputationDataHandle context_parameter_;
 
   // The data-dependent return values of the computation.
-  std::vector<std::pair<int, xla::ComputationDataHandle>> retval_
-      GUARDED_BY(mu_);
+  std::vector<std::pair<int, xla::ComputationDataHandle>> retval_;
 
   // The non-data-dependent return values of the computation.
-  std::vector<ConstRetVal> compile_time_constant_ GUARDED_BY(mu_);
+  std::vector<ConstRetVal> compile_time_constant_;
 
   // Does the computation have side effects, i.e., Send() calls?
-  bool has_side_effects_ GUARDED_BY(mu_) = false;
+  bool has_side_effects_ = false;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::Computation>;
@@ -268,16 +268,16 @@ class XlaContext : public ResourceBase {
   // map. The returned value != nullptr and is owned by the map.
   const xla::Computation* LookupOrCreate(
       DataType type, ComputationMap* out,
-      const std::function<xla::Computation()>& create) LOCKS_EXCLUDED(mu_);
+      const std::function<xla::Computation()>& create);
 
   // Cached computation to compute Max of two elements, specialized by type.
-  ComputationMap max_func_ GUARDED_BY(mu_);
+  ComputationMap max_func_;
 
   // Cached computation to compute Sum of two elements, specialized by type.
-  ComputationMap add_func_ GUARDED_BY(mu_);
+  ComputationMap add_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
-  ComputationMap sigmoid_func_ GUARDED_BY(mu_);
+  ComputationMap sigmoid_func_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaContext);
 };

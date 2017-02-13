@@ -17,6 +17,7 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="tf-multi-checkbox.html">
 <link rel="import" href="scrollbar-style.html">
@@ -35,6 +36,11 @@ Properties out:
 -->
 <dom-module id="tf-run-selector">
   <template>
+    <paper-dialog with-backdrop
+                  id="logdir-dialog">
+      <h2>logdir</h2>
+      <div inner-h-t-m-l="{{_breakString(logdir)}}"></div>
+    </paper-dialog>
     <div id="top-text">
       <h3 id="tooltip-help" class="tooltip-container">
         Runs
@@ -56,7 +62,15 @@ Properties out:
     <template
       is="dom-if"
       if="[[logdir]]">
-      <div id="logdir" inner-h-t-m-l="{{_breakString(logdir)}}"></div>
+      <div id="logdir">
+        <span id="clipped-logdir" inner-h-t-m-l="[[_clippedLogdir]]"></span><!--
+          We use HTML comments to remove spaces before the ellipsis.
+        --><template
+                     is="dom-if"
+                     if="[[_shouldShowExpandLogdirButton(logdir, _logdirClipLength)]]"><!--
+          --><a href="" on-click="_openLogdirDialog">…</a>
+        </template>
+      </div>
     </template>
     <style>
       :host {
@@ -114,7 +128,19 @@ Properties out:
         type: String,
         notify: true,
       },
+      // This is the potentially clipped portion of the logdir we show at the bottom of the sidebar.
+      _clippedLogdir: {
+        type: String,
+      },
+      _logdirClipLength: {
+        type: Number,
+        value: 250,
+        readOnly: true,
+      },
     },
+    observers: [
+      "_logdirSet(logdir)",
+    ],
     ready: function() {
       // Populate the logdir.
       this.backend.logdir().then(logdirObject => {
@@ -129,7 +155,30 @@ Properties out:
     },
     // Break the string at natural points, including commas, equals, and slashes
     _breakString: function(originalString) {
-      return originalString.replace(/([\/=-_,])/g, "$1<wbr>")
+      return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
+    },
+    _logdirSet: function(logdir) {
+      if (!logdir) {
+        // The logdir has not been set yet.
+        return;
+      }
+
+      var lineBrokenText;
+      if (logdir.length > this._logdirClipLength) {
+        // Clip the logdir to avoid blocking the runs selector. Let the user view a more full
+        // version of the logdir.
+        lineBrokenText = this._breakString(logdir.substring(0, this._logdirClipLength));
+      } else {
+        lineBrokenText = this._breakString(logdir);
+      }
+      this.set('_clippedLogdir', lineBrokenText);
+    },
+    _openLogdirDialog: function(event) {
+      event.preventDefault();
+      this.$$('#logdir-dialog').open();
+    },
+    _shouldShowExpandLogdirButton(logdir, _logdirClipLength) {
+      return logdir && logdir.length > _logdirClipLength;
     },
   });
   </script>
