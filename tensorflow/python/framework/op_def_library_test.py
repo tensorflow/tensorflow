@@ -1462,7 +1462,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("RefIn", a=2)
     self.assertEqual(str(cm.exception),
-                     "Input 'a' of 'RefIn' Op requires l-value input")
+                     "'RefIn' Op requires that input 'a' be a mutable tensor " +
+                     "(e.g.: a tf.Variable)")
 
     input_a = self._lib.apply_op("RefOut", T=dtypes.int32, name="t")
     input_b = self._lib.apply_op("RefOut", T=dtypes.int32, name="u")
