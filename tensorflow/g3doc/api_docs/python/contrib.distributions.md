@@ -26,7 +26,7 @@ one of two possible properties for samples from a distribution:
 
 `NOT_REPARAMETERIZED`: Samples from the distribution are not fully
   reparameterized, and straight-through gradients are either partially
-  unsupported or are not supported at all.  In this case, for purposes of
+  unsupported or are not supported at all. In this case, for purposes of
   e.g. RL or variational inference, it is generally safest to wrap the
   sample results in a `stop_gradients` call and instead use policy
   gradients / surrogate loss instead.
@@ -76,8 +76,8 @@ A generic probability distribution base class.
 ### Subclassing
 
 Subclasses are expected to implement a leading-underscore version of the
-same-named function.  The argument signature should be identical except for
-the omission of `name="..."`.  For example, to enable `log_prob(value,
+same-named function. The argument signature should be identical except for
+the omission of `name="..."`. For example, to enable `log_prob(value,
 name="log_prob")` a subclass should implement `_log_prob(value)`.
 
 Subclasses can append to public-level docstrings by providing
@@ -90,7 +90,7 @@ def _log_prob(self, value):
 ```
 
 would add the string "Some other details." to the `log_prob` function
-docstring.  This is implemented as a simple decorator to avoid python
+docstring. This is implemented as a simple decorator to avoid python
 linter complaining about missing Args/Returns/Raises sections in the
 partial docstrings.
 
@@ -103,7 +103,7 @@ The shape of arguments to `__init__`, `cdf`, `log_cdf`, `prob`, and
 `log_prob` reflect this broadcasting, as does the return value of `sample` and
 `sample_n`.
 
-`sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
+`sample_n_shape = [n] + batch_shape + event_shape`, where `sample_n_shape` is
 the shape of the `Tensor` returned from `sample_n`, `n` is the number of
 samples, `batch_shape` defines how many independent distributions there are,
 and `event_shape` defines the shape of samples from each of those independent
@@ -128,19 +128,19 @@ event_shape = u.event_shape
 # `event_shape_t` is a `Tensor` which will evaluate to [].
 event_shape_t = u.event_shape_tensor()
 
-# Sampling returns a sample per distribution.  `samples` has shape
-# (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
-# batch_shape=(2, 2), and event_shape=().
+# Sampling returns a sample per distribution. `samples` has shape
+# [5, 2, 2], which is [n] + batch_shape + event_shape, where n=5,
+# batch_shape=[2, 2], and event_shape=[].
 samples = u.sample_n(5)
 
 # The broadcasting holds across methods. Here we use `cdf` as an example. The
 # same holds for `log_cdf` and the likelihood functions.
 
-# `cum_prob` has shape (2, 2) as the `value` argument was broadcasted to the
+# `cum_prob` has shape [2, 2] as the `value` argument was broadcasted to the
 # shape of the `Uniform` instance.
 cum_prob_broadcast = u.cdf(4.0)
 
-# `cum_prob`'s shape is (2, 2), one per distribution. No broadcasting
+# `cum_prob`'s shape is [2, 2], one per distribution. No broadcasting
 # occurred.
 cum_prob_per_dist = u.cdf([[4.0, 5.0],
                            [6.0, 7.0]])
@@ -153,9 +153,9 @@ cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
 ### Parameter values leading to undefined statistics or distributions.
 
 Some distributions do not have well-defined statistics for all initialization
-parameter values.  For example, the beta distribution is parameterized by
-positive real numbers `a` and `b`, and does not have well-defined mode if
-`a < 1` or `b < 1`.
+parameter values. For example, the beta distribution is parameterized by
+positive real numbers `concentration1` and `concentration0`, and does not have
+well-defined mode if `concentration1 < 1` or `concentration0 < 1`.
 
 The user is given the option of raising an exception or returning `NaN`.
 
@@ -192,25 +192,28 @@ Constructs the `Distribution`.
 
 
 *  <b>`dtype`</b>: The type of the event samples. `None` implies no type-enforcement.
-*  <b>`is_continuous`</b>: Python boolean. If `True` this
-    `Distribution` is continuous over its supported domain.
+*  <b>`is_continuous`</b>: Python `bool`. If `True` this `Distribution` is continuous
+    over its supported domain.
 *  <b>`reparameterization_type`</b>: Instance of `ReparameterizationType`.
     If `distributions.FULLY_REPARAMETERIZED`, this
     `Distribution` can be reparameterized in terms of some standard
     distribution with a function whose Jacobian is constant for the support
-    of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+    of the standard distribution. If `distributions.NOT_REPARAMETERIZED`,
     then no such reparameterization is available.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Python boolean.  If `False`, raise an
-    exception if a statistic (e.g., mean, mode) is undefined for any batch
-    member. If True, batch members with valid parameters leading to
-    undefined statistics will return `NaN` for this statistic.
-*  <b>`parameters`</b>: Python dictionary of parameters used to instantiate this
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined. When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`parameters`</b>: Python `dict` of parameters used to instantiate this
     `Distribution`.
-*  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Distribution`.
-*  <b>`name`</b>: A name for this distribution. Default: subclass name.
+*  <b>`graph_parents`</b>: Python `list` of graph prerequisites of this
+    `Distribution`.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class. Default:
+    subclass name.
 
 ##### Raises:
 
@@ -222,21 +225,20 @@ Constructs the `Distribution`.
 
 #### `tf.contrib.distributions.Distribution.allow_nan_stats` {#Distribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -434,7 +436,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -451,7 +453,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -584,8 +586,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -726,7 +728,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Distribution.validate_args` {#Distribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -838,7 +840,7 @@ Initialize a batch of Binomial distributions.
 
 *  <b>`total_count`</b>: Non-negative floating point tensor with shape broadcastable
     to `[N1,..., Nm]` with `m >= 0` and the same dtype as `probs` or
-    `logits`.  Defines this as a batch of `N1 x ... x Nm` different Binomial
+    `logits`. Defines this as a batch of `N1 x ...  x Nm` different Binomial
     distributions. Its components should be equal to integer values.
 *  <b>`logits`</b>: Floating point tensor representing the log-odds of a
     positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
@@ -849,36 +851,35 @@ Initialize a batch of Binomial distributions.
     `[N1,..., Nm]` `m >= 0`, `probs in [0, 1]`. Each entry represents the
     probability of success for independent Binomial distributions. Only one
     of `logits` or `probs` should be passed in.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Binomial.allow_nan_stats` {#Binomial.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -1076,7 +1077,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -1093,7 +1094,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -1209,7 +1210,7 @@ Mode.
 Additional documentation from `Binomial`:
 
 Note that when `(1 + total_count) * probs` is an integer, there are
-actually two modes.  Namely, `(1 + total_count) * probs` and
+actually two modes. Namely, `(1 + total_count) * probs` and
 `(1 + total_count) * probs - 1` are both modes. Here we return only the
 larger of the two modes.
 
@@ -1253,8 +1254,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -1422,7 +1423,7 @@ Number of trials.
 
 #### `tf.contrib.distributions.Binomial.validate_args` {#Binomial.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -1479,15 +1480,15 @@ Construct Bernoulli distributions.
     Bernoulli distribution. Only one of `logits` or `probs` should be passed
     in.
 *  <b>`dtype`</b>: The type of the event samples. Default: `int32`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-    indicate the result is undefined.  When `False`, an exception is raised
+    indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -1499,21 +1500,20 @@ Construct Bernoulli distributions.
 
 #### `tf.contrib.distributions.Bernoulli.allow_nan_stats` {#Bernoulli.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -1711,7 +1711,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -1728,7 +1728,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -1872,8 +1872,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -2021,7 +2021,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Bernoulli.validate_args` {#Bernoulli.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -2068,21 +2068,20 @@ Bernoulli with `probs = nn.sigmoid(logits)`.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidProbs.allow_nan_stats` {#BernoulliWithSigmoidProbs.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -2280,7 +2279,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -2297,7 +2296,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -2441,8 +2440,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -2590,7 +2589,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidProbs.validate_args` {#BernoulliWithSigmoidProbs.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -2714,36 +2713,35 @@ Initialize a batch of Beta distributions.
 *  <b>`concentration0`</b>: Positive floating-point `Tensor` indicating mean
     number of failures; aka "beta". Otherwise has same semantics as
     `concentration1`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Beta.allow_nan_stats` {#Beta.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -2961,7 +2959,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -2978,7 +2976,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -3087,7 +3085,7 @@ Additional documentation from `Beta`:
 
 Note: The mode is undefined when `concentration1 <= 1` or
 `concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
-is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+is used for undefined modes. If `self.allow_nan_stats` is `False` an
 exception is raised when one or more modes are undefined.
 
 
@@ -3130,8 +3128,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -3285,7 +3283,7 @@ Sum of concentration parameters.
 
 #### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -3332,21 +3330,20 @@ Beta with softplus transform of `concentration1` and `concentration0`.
 
 #### `tf.contrib.distributions.BetaWithSoftplusConcentration.allow_nan_stats` {#BetaWithSoftplusConcentration.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -3564,7 +3561,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -3581,7 +3578,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -3690,7 +3687,7 @@ Additional documentation from `Beta`:
 
 Note: The mode is undefined when `concentration1 <= 1` or
 `concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
-is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+is used for undefined modes. If `self.allow_nan_stats` is `False` an
 exception is raised when one or more modes are undefined.
 
 
@@ -3733,8 +3730,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -3888,7 +3885,7 @@ Sum of concentration parameters.
 
 #### `tf.contrib.distributions.BetaWithSoftplusConcentration.validate_args` {#BetaWithSoftplusConcentration.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -3983,36 +3980,35 @@ Initialize Categorical distributions using class log-probabilities.
     represents a vector of probabilities for each class. Only one of
     `logits` or `probs` should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Categorical.allow_nan_stats` {#Categorical.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -4217,7 +4213,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -4234,7 +4230,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -4374,8 +4370,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -4523,7 +4519,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Categorical.validate_args` {#Categorical.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -4594,37 +4590,36 @@ Construct Chi2 distributions with parameter `df`.
 
 
 *  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
-    distribution(s).  `df` must contain only positive values.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+    distribution(s). `df` must contain only positive values.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.allow_nan_stats` {#Chi2.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -4836,7 +4831,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -4853,7 +4848,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -4949,7 +4944,7 @@ Mode.
 Additional documentation from `Gamma`:
 
 The mode of a gamma distribution is `(shape - 1) / rate` when
-`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+`shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -4992,8 +4987,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -5141,7 +5136,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Chi2.validate_args` {#Chi2.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -5188,21 +5183,20 @@ Chi2 with parameter transform `df = floor(abs(df))`.
 
 #### `tf.contrib.distributions.Chi2WithAbsDf.allow_nan_stats` {#Chi2WithAbsDf.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -5414,7 +5408,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -5431,7 +5425,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -5527,7 +5521,7 @@ Mode.
 Additional documentation from `Gamma`:
 
 The mode of a gamma distribution is `(shape - 1) / rate` when
-`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+`shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -5570,8 +5564,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -5719,7 +5713,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Chi2WithAbsDf.validate_args` {#Chi2WithAbsDf.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -5794,36 +5788,35 @@ Construct Exponential distribution with parameter `rate`.
 
 *  <b>`rate`</b>: Floating point tensor, equivalent to `1 / mean`. Must contain only
     positive values.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Exponential.allow_nan_stats` {#Exponential.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -6028,7 +6021,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -6045,7 +6038,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -6141,7 +6134,7 @@ Mode.
 Additional documentation from `Gamma`:
 
 The mode of a gamma distribution is `(shape - 1) / rate` when
-`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+`shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -6184,8 +6177,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -6333,7 +6326,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Exponential.validate_args` {#Exponential.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -6380,21 +6373,20 @@ Exponential with softplus transform on `rate`.
 
 #### `tf.contrib.distributions.ExponentialWithSoftplusRate.allow_nan_stats` {#ExponentialWithSoftplusRate.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -6599,7 +6591,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -6616,7 +6608,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -6712,7 +6704,7 @@ Mode.
 Additional documentation from `Gamma`:
 
 The mode of a gamma distribution is `(shape - 1) / rate` when
-`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+`shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -6755,8 +6747,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -6904,7 +6896,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.ExponentialWithSoftplusRate.validate_args` {#ExponentialWithSoftplusRate.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -7005,15 +6997,15 @@ supports broadcasting (e.g. `concentration + rate` is a valid operation).
     distribution(s). Must contain only positive values.
 *  <b>`rate`</b>: Floating point tensor, the inverse scale params of the
     distribution(s). Must contain only positive values.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -7025,21 +7017,20 @@ supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
 #### `tf.contrib.distributions.Gamma.allow_nan_stats` {#Gamma.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -7244,7 +7235,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -7261,7 +7252,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -7357,7 +7348,7 @@ Mode.
 Additional documentation from `Gamma`:
 
 The mode of a gamma distribution is `(shape - 1) / rate` when
-`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+`shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -7400,8 +7391,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -7549,7 +7540,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Gamma.validate_args` {#Gamma.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -7596,21 +7587,20 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 #### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.allow_nan_stats` {#GammaWithSoftplusConcentrationRate.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -7815,7 +7805,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -7832,7 +7822,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -7928,7 +7918,7 @@ Mode.
 Additional documentation from `Gamma`:
 
 The mode of a gamma distribution is `(shape - 1) / rate` when
-`shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+`shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
 an exception will be raised rather than returning `NaN`.
 
 
@@ -7971,8 +7961,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -8120,7 +8110,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.GammaWithSoftplusConcentrationRate.validate_args` {#GammaWithSoftplusConcentrationRate.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -8221,15 +8211,15 @@ supports broadcasting (e.g. `concentration + rate` is a valid operation).
     distribution(s). Must contain only positive values.
 *  <b>`rate`</b>: Floating point tensor, the inverse scale params of the
     distribution(s). Must contain only positive values.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 ##### Raises:
@@ -8242,21 +8232,20 @@ supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
 #### `tf.contrib.distributions.InverseGamma.allow_nan_stats` {#InverseGamma.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -8461,7 +8450,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -8478,7 +8467,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -8568,7 +8557,7 @@ Additional documentation from `InverseGamma`:
 
 The mean of an inverse gamma distribution is
 `rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
-otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+otherwise. If `self.allow_nan_stats` is `False`, an exception will be
 raised rather than returning `NaN`
 
 
@@ -8623,8 +8612,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -8772,7 +8761,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.InverseGamma.validate_args` {#InverseGamma.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -8826,21 +8815,20 @@ than returning `NaN`.
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.allow_nan_stats` {#InverseGammaWithSoftplusConcentrationRate.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -9045,7 +9033,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -9062,7 +9050,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -9152,7 +9140,7 @@ Additional documentation from `InverseGamma`:
 
 The mean of an inverse gamma distribution is
 `rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
-otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+otherwise. If `self.allow_nan_stats` is `False`, an exception will be
 raised rather than returning `NaN`
 
 
@@ -9207,8 +9195,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -9356,7 +9344,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusConcentrationRate.validate_args` {#InverseGammaWithSoftplusConcentrationRate.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -9438,15 +9426,15 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
     the distribution.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-    indicate the result is undefined.  When `False`, an exception is raised
+    indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -9458,21 +9446,20 @@ broadcasting (e.g., `loc / scale` is a valid operation).
 
 #### `tf.contrib.distributions.Laplace.allow_nan_stats` {#Laplace.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -9670,7 +9657,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -9687,7 +9674,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -9827,8 +9814,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -9976,7 +9963,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Laplace.validate_args` {#Laplace.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -10023,21 +10010,20 @@ Laplace with softplus applied to `scale`.
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.allow_nan_stats` {#LaplaceWithSoftplusScale.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -10235,7 +10221,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -10252,7 +10238,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -10392,8 +10378,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -10541,7 +10527,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.LaplaceWithSoftplusScale.validate_args` {#LaplaceWithSoftplusScale.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -10646,13 +10632,13 @@ broadcasting (e.g. `loc + scale` is a valid operation).
 *  <b>`loc`</b>: Floating point tensor, the means of the distribution(s).
 *  <b>`scale`</b>: Floating point tensor, the scales of the distribution(s). Must
     contain only positive values.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -10666,21 +10652,20 @@ broadcasting (e.g. `loc + scale` is a valid operation).
 
 #### `tf.contrib.distributions.Logistic.allow_nan_stats` {#Logistic.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -10878,7 +10863,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -10895,7 +10880,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -11035,8 +11020,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -11184,7 +11169,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Logistic.validate_args` {#Logistic.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -11291,15 +11276,15 @@ broadcasting (e.g. `loc + scale` is a valid operation).
 *  <b>`loc`</b>: Floating point tensor; the means of the distribution(s).
 *  <b>`scale`</b>: Floating point tensor; the stddevs of the distribution(s).
     Must contain only positive values.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-    indicate the result is undefined.  When `False`, an exception is raised
+    indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -11311,21 +11296,20 @@ broadcasting (e.g. `loc + scale` is a valid operation).
 
 #### `tf.contrib.distributions.Normal.allow_nan_stats` {#Normal.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -11523,7 +11507,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -11540,7 +11524,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -11680,8 +11664,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -11829,7 +11813,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Normal.validate_args` {#Normal.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -11876,21 +11860,20 @@ Normal with softplus applied to `scale`.
 
 #### `tf.contrib.distributions.NormalWithSoftplusScale.allow_nan_stats` {#NormalWithSoftplusScale.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -12088,7 +12071,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -12105,7 +12088,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -12245,8 +12228,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -12394,7 +12377,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.NormalWithSoftplusScale.validate_args` {#NormalWithSoftplusScale.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -12454,36 +12437,35 @@ Initialize a batch of Poisson distributions.
 
 *  <b>`rate`</b>: Floating point tensor, the rate parameter of the
     distribution(s). `rate` must be positive.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Poisson.allow_nan_stats` {#Poisson.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -12688,7 +12670,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -12705,7 +12687,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -12857,8 +12839,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -13013,7 +12995,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Poisson.validate_args` {#Poisson.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -13078,7 +13060,7 @@ Y = loc + scale * X
 ```
 
 Notice that `scale` has semantics more similar to standard deviation than
-variance.  However it is not actually the std. deviation; the Student's
+variance. However it is not actually the std. deviation; the Student's
 t-distribution std. dev. is `scale sqrt(df / (df - 2))` when `df > 2`.
 
 #### Examples
@@ -13133,22 +13115,22 @@ supports broadcasting (e.g. `df + loc + scale` is a valid operation).
 ##### Args:
 
 
-*  <b>`df`</b>: Numeric `Tensor`. The degrees of freedom of the distribution(s).
-    `df` must contain only positive values.
-*  <b>`loc`</b>: Numeric `Tensor`. The mean(s) of the distribution(s).
-*  <b>`scale`</b>: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
-    Note that `scale` is not technically the standard deviation of this
-    distribution but has semantics more similar to standard deviation than
-    variance.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`df`</b>: Floating-point `Tensor`. The degrees of freedom of the
+    distribution(s). `df` must contain only positive values.
+*  <b>`loc`</b>: Floating-point `Tensor`. The mean(s) of the distribution(s).
+*  <b>`scale`</b>: Floating-point `Tensor`. The scaling factor(s) for the
+    distribution(s). Note that `scale` is not technically the standard
+    deviation of this distribution but has semantics more similar to
+    standard deviation than variance.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-    indicate the result is undefined.  When `False`, an exception is raised
+    indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -13160,21 +13142,20 @@ supports broadcasting (e.g. `df + loc + scale` is a valid operation).
 
 #### `tf.contrib.distributions.StudentT.allow_nan_stats` {#StudentT.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -13379,7 +13360,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -13396,7 +13377,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -13492,7 +13473,7 @@ Mean.
 Additional documentation from `StudentT`:
 
 The mean of Student's T equals `loc` if `df > 1`, otherwise it is
-`NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+`NaN`. If `self.allow_nan_stats=True`, then an exception will be raised
 rather than returning `NaN`.
 
 
@@ -13542,8 +13523,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -13691,7 +13672,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -13749,21 +13730,20 @@ StudentT with `df = floor(abs(df))` and `scale = softplus(scale)`.
 
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.allow_nan_stats` {#StudentTWithAbsDfSoftplusScale.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -13968,7 +13948,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -13985,7 +13965,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -14081,7 +14061,7 @@ Mean.
 Additional documentation from `StudentT`:
 
 The mean of Student's T equals `loc` if `df > 1`, otherwise it is
-`NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+`NaN`. If `self.allow_nan_stats=True`, then an exception will be raised
 rather than returning `NaN`.
 
 
@@ -14131,8 +14111,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -14280,7 +14260,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusScale.validate_args` {#StudentTWithAbsDfSoftplusScale.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -14377,15 +14357,15 @@ Initialize a batch of Uniform distributions.
     have `low < high`.
 *  <b>`high`</b>: Floating point tensor, upper boundary of the output interval. Must
     have `low < high`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -14397,21 +14377,20 @@ Initialize a batch of Uniform distributions.
 
 #### `tf.contrib.distributions.Uniform.allow_nan_stats` {#Uniform.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -14616,7 +14595,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -14633,7 +14612,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -14773,8 +14752,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -14922,7 +14901,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Uniform.validate_args` {#Uniform.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -15106,15 +15085,15 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
     `k x k` identity matrices added to `scale`. When both
     `scale_identity_multiplier` and `scale_diag` are `None` then `scale` is
     the `Identity`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
     indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -15126,21 +15105,20 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.allow_nan_stats` {#MultivariateNormalDiag.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -15359,7 +15337,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -15376,7 +15354,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -15539,8 +15517,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -15704,7 +15682,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.validate_args` {#MultivariateNormalDiag.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -15862,15 +15840,15 @@ Additional leading dimensions (if any) will index batches.
 *  <b>`scale_tril`</b>: Floating-point, lower-triangular `Tensor` with non-zero
     diagonal elements. `scale_tril` has shape `[B1, ..., Bb, k, k]` where
     `b >= 0` and `k` is the event size.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
     indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -15882,21 +15860,20 @@ Additional leading dimensions (if any) will index batches.
 
 #### `tf.contrib.distributions.MultivariateNormalTriL.allow_nan_stats` {#MultivariateNormalTriL.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -16115,7 +16092,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -16132,7 +16109,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -16295,8 +16272,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -16460,7 +16437,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.MultivariateNormalTriL.validate_args` {#MultivariateNormalTriL.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -16657,18 +16634,18 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
 *  <b>`scale_perturb_diag`</b>: Floating-point `Tensor` representing a diagonal matrix
     inside the rank-`r` perturbation added to `scale`. May have shape
     `[B1, ..., Bb, r]`, `b >= 0`, and characterizes `b`-batches of `r x r`
-    diagonal matrices inside the perturbation added to `scale`.  When
+    diagonal matrices inside the perturbation added to `scale`. When
     `None`, an identity matrix is used inside the perturbation. Can only be
     specified if `scale_perturb_factor` is also specified.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`,
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
     statistics (e.g., mean, mode, variance) use the value "`NaN`" to
     indicate the result is undefined. When `False`, an exception is raised
     if one or more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -16680,21 +16657,20 @@ If both `scale_diag` and `scale_identity_multiplier` are `None`, then
 
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.allow_nan_stats` {#MultivariateNormalDiagPlusLowRank.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -16913,7 +16889,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -16930,7 +16906,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -17093,8 +17069,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -17258,7 +17234,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusLowRank.validate_args` {#MultivariateNormalDiagPlusLowRank.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -17305,21 +17281,20 @@ MultivariateNormalDiag with `diag_stddev = softplus(diag_stddev)`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.allow_nan_stats` {#MultivariateNormalDiagWithSoftplusScale.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -17538,7 +17513,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -17555,7 +17530,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -17718,8 +17693,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -17883,7 +17858,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.validate_args` {#MultivariateNormalDiagWithSoftplusScale.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -18018,36 +17993,35 @@ Initialize a batch of Dirichlet distributions.
     `concentration.shape = [N1, N2, ..., Nm, k]` then
     `batch_shape = [N1, N2, ..., Nm]` and
     `event_shape = [k]`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Dirichlet.allow_nan_stats` {#Dirichlet.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -18252,7 +18226,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -18269,7 +18243,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -18373,7 +18347,7 @@ Mode.
 Additional documentation from `Dirichlet`:
 
 Note: The mode is undefined when any `concentration <= 1`. If
-`self.allow_nan_stats` is `True`, `NaN` is used for undefined modes.  If
+`self.allow_nan_stats` is `True`, `NaN` is used for undefined modes. If
 `self.allow_nan_stats` is `False` an exception is raised when one or more
 modes are undefined.
 
@@ -18417,8 +18391,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -18574,7 +18548,7 @@ Sum of last dim of concentration parameter.
 
 #### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -18707,43 +18681,42 @@ Initialize a batch of DirichletMultinomial distributions.
 
 *  <b>`total_count`</b>: Non-negative floating point tensor, whose dtype is the same
     as `concentration`. The shape is broadcastable to `[N1,..., Nm]` with
-    `m >= 0`.  Defines this as a batch of `N1 x ... x Nm` different
+    `m >= 0`. Defines this as a batch of `N1 x ... x Nm` different
     Dirichlet multinomial distributions. Its components should be equal to
     integer values.
 *  <b>`concentration`</b>: Positive floating point tensor, whose dtype is the
     same as `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.
     Defines this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
     multinomial distributions.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.DirichletMultinomial.allow_nan_stats` {#DirichletMultinomial.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -18968,7 +18941,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -18985,7 +18958,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -19027,10 +19000,10 @@ Log probability density/mass function (depending on `is_continuous`).
 Additional documentation from `DirichletMultinomial`:
 
 For each batch of counts,
-`value = [n_0, ... ,n_{k-1}]`, `P[value]` is the probability that after sampling
-`self.total_count` draws from this Dirichlet-Multinomial distribution, the
-number of draws falling in class `j` is `n_j`. Since this definition is
-[exchangeable]( https://en.wikipedia.org/wiki/Exchangeable_random_variables);
+`value = [n_0, ..., n_{k-1}]`, `P[value]` is the probability that after
+sampling `self.total_count` draws from this Dirichlet-Multinomial distribution,
+the number of draws falling in class `j` is `n_j`. Since this definition is
+[exchangeable](https://en.wikipedia.org/wiki/Exchangeable_random_variables);
 different sequences have the same counts so the probability includes a
 combinatorial coefficient.
 
@@ -19134,8 +19107,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -19173,10 +19146,10 @@ Probability density/mass function (depending on `is_continuous`).
 Additional documentation from `DirichletMultinomial`:
 
 For each batch of counts,
-`value = [n_0, ... ,n_{k-1}]`, `P[value]` is the probability that after sampling
-`self.total_count` draws from this Dirichlet-Multinomial distribution, the
-number of draws falling in class `j` is `n_j`. Since this definition is
-[exchangeable]( https://en.wikipedia.org/wiki/Exchangeable_random_variables);
+`value = [n_0, ..., n_{k-1}]`, `P[value]` is the probability that after
+sampling `self.total_count` draws from this Dirichlet-Multinomial distribution,
+the number of draws falling in class `j` is `n_j`. Since this definition is
+[exchangeable](https://en.wikipedia.org/wiki/Exchangeable_random_variables);
 different sequences have the same counts so the probability includes a
 combinatorial coefficient.
 
@@ -19306,7 +19279,7 @@ Number of trials used to construct a sample.
 
 #### `tf.contrib.distributions.DirichletMultinomial.validate_args` {#DirichletMultinomial.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -19425,7 +19398,7 @@ Initialize a batch of Multinomial distributions.
 
 *  <b>`total_count`</b>: Non-negative floating point tensor with shape broadcastable
     to `[N1,..., Nm]` with `m >= 0`. Defines this as a batch of
-    `N1 x ... x Nm` different Multinomial distributions.  Its components
+    `N1 x ... x Nm` different Multinomial distributions. Its components
     should be equal to integer values.
 *  <b>`logits`</b>: Floating point tensor representing the log-odds of a
     positive event with shape broadcastable to `[N1,..., Nm, k], m >= 0`,
@@ -19433,40 +19406,39 @@ Initialize a batch of Multinomial distributions.
     `N1 x ... x Nm` different `k` class Multinomial distributions. Only one
     of `logits` or `probs` should be passed in.
 *  <b>`probs`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm, k]` `m >= 0` and same dtype as `total_count`.  Defines
+    `[N1,..., Nm, k]` `m >= 0` and same dtype as `total_count`. Defines
     this as a batch of `N1 x ... x Nm` different `k` class Multinomial
     distributions. `probs`'s components in the last portion of its shape
     should sum to `1`. Only one of `logits` or `probs` should be passed in.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Multinomial.allow_nan_stats` {#Multinomial.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -19664,7 +19636,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -19681,7 +19653,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -19837,8 +19809,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -20009,7 +19981,7 @@ Number of trials used to construct a sample.
 
 #### `tf.contrib.distributions.Multinomial.validate_args` {#Multinomial.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -20082,7 +20054,7 @@ chol_scale = tf.cholesky(...)  # Shape is [3, 3].
 dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
 
 # Evaluate this on an observation in R^3, returning a scalar.
-x = ... # A 3x3 positive definite matrix.
+x = ...  # A 3x3 positive definite matrix.
 dist.prob(x)  # Shape is [], a scalar.
 
 # Evaluate this on a two observations, each in R^{3x3}, returning a length two
@@ -20115,41 +20087,40 @@ Construct Wishart distributions.
     or equal to dimension of the scale matrix.
 *  <b>`scale`</b>: `float` or `double` `Tensor`. The Cholesky factorization of
     the symmetric positive definite scale matrix of the distribution.
-*  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
-    or output is a matrix assumes the input is Cholesky and returns a
+*  <b>`cholesky_input_output_matrices`</b>: Python `bool`. Any function which whose
+    input or output is a matrix assumes the input is Cholesky and returns a
     Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartCholesky.allow_nan_stats` {#WishartCholesky.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -20368,7 +20339,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -20385,7 +20356,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -20532,8 +20503,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -20688,7 +20659,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.WishartCholesky.validate_args` {#WishartCholesky.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -20757,7 +20728,7 @@ scale = ...  # Shape is [3, 3]; positive definite.
 dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
 
 # Evaluate this on an observation in R^3, returning a scalar.
-x = ... # A 3x3 positive definite matrix.
+x = ...  # A 3x3 positive definite matrix.
 dist.prob(x)  # Shape is [], a scalar.
 
 # Evaluate this on a two observations, each in R^{3x3}, returning a length two
@@ -20790,41 +20761,40 @@ Construct Wishart distributions.
     or equal to dimension of the scale matrix.
 *  <b>`scale`</b>: `float` or `double` `Tensor`. The symmetric positive definite
     scale matrix of the distribution.
-*  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
-    or output is a matrix assumes the input is Cholesky and returns a
+*  <b>`cholesky_input_output_matrices`</b>: Python `bool`. Any function which whose
+    input or output is a matrix assumes the input is Cholesky and returns a
     Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.allow_nan_stats` {#WishartFull.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -21043,7 +21013,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -21060,7 +21030,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -21207,8 +21177,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -21363,7 +21333,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.WishartFull.validate_args` {#WishartFull.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -21410,7 +21380,7 @@ Create a trainable covariance defined by a Cholesky factor:
 matrix_values = tf.contrib.layers.fully_connected(activations, 4)
 matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
 
-# Make the diagonal positive.  If the upper triangle was zero, this would be a
+# Make the diagonal positive. If the upper triangle was zero, this would be a
 # valid Cholesky factor.
 chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
@@ -21432,7 +21402,7 @@ mu = tf.contrib.layers.fully_connected(activations, 2)
 # This is a fully trainable multivariate normal!
 dist = tf.contrib.distributions.MVNCholesky(mu, chol)
 
-# Standard log loss.  Minimizing this will "train" mu and chol, and then dist
+# Standard log loss. Minimizing this will "train" mu and chol, and then dist
 # will be a distribution predicting labels as multivariate Gaussians.
 loss = -1 * tf.reduce_mean(dist.log_prob(labels))
 ```
@@ -21442,9 +21412,9 @@ loss = -1 * tf.reduce_mean(dist.log_prob(labels))
 
 *  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
     equal.
-*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
-    be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
-    unchanged.  Defaults to `None`.
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`. To
+    be applied to the diagonal of `matrix`. If `None`, `matrix` is returned
+    unchanged. Defaults to `None`.
 *  <b>`name`</b>: A name to give created ops.
     Defaults to "matrix_diag_transform".
 
@@ -21479,7 +21449,7 @@ We now describe how a `TransformedDistribution` alters the input/outputs of a
 Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
 of random variable `Y`; write the probability density function `pdf(Y=y) :=
 d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+`y`. Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
 i.e., a non-random, continuous, differentiable, and invertible function.
 Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
 of `g` evaluated at `x`.
@@ -21554,7 +21524,7 @@ log_normal = ds.TransformedDistribution(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+      lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
   name="LogNormalTransformedDistribution")
 ```
 
@@ -21570,7 +21540,7 @@ normal = ds.TransformedDistribution(
 
 A `TransformedDistribution`'s batch- and event-shape are implied by the base
 distribution unless explicitly overridden by `batch_shape` or `event_shape`
-arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+arguments. Specifying an overriding `batch_shape` (`event_shape`) is
 permitted only if the base distribution has scalar batch-shape (event-shape).
 The bijector is applied to the distribution as if the distribution possessed
 the overridden shape(s). The following example demonstrates how to construct a
@@ -21611,11 +21581,11 @@ Construct a Transformed Distribution.
     `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
     `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class. Default:
     `bijector.name + distribution.name`.
 
 
@@ -21623,21 +21593,20 @@ Construct a Transformed Distribution.
 
 #### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -21849,7 +21818,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -21866,7 +21835,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -21999,8 +21968,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -22141,7 +22110,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -22242,19 +22211,19 @@ the `distribution`.
 *  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
 *  <b>`low`</b>: `Tensor` with same `dtype` as this distribution and shape
-    able to be added to samples.  Should be a whole number.  Default `None`.
+    able to be added to samples. Should be a whole number. Default `None`.
     If provided, base distribution's `prob` should be defined at
     `low`.
 *  <b>`high`</b>: `Tensor` with same `dtype` as this distribution and shape
-    able to be added to samples.  Should be a whole number.  Default `None`.
+    able to be added to samples. Should be a whole number. Default `None`.
     If provided, base distribution's `prob` should be defined at
     `high - 1`.
     `high` must be strictly greater than `low`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -22268,21 +22237,20 @@ the `distribution`.
 
 #### `tf.contrib.distributions.QuantizedDistribution.allow_nan_stats` {#QuantizedDistribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -22505,7 +22473,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -22522,7 +22490,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -22591,7 +22559,7 @@ P[Y = y] := P[X <= low],  if y == low,
 ```
 
 
-The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+The base distribution's `log_cdf` method must be defined on `y - 1`. If the
 base distribution has a `log_survival_function` method results will be more
 accurate for large values of `y`, and in this case the `log_survival_function`
 must also be defined on `y - 1`.
@@ -22709,8 +22677,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -22757,7 +22725,7 @@ P[Y = y] := P[X <= low],  if y == low,
 ```
 
 
-The base distribution's `cdf` method must be defined on `y - 1`.  If the
+The base distribution's `cdf` method must be defined on `y - 1`. If the
 base distribution has a `survival_function` method, results will be more
 accurate for large values of `y`, and in this case the `survival_function` must
 also be defined on `y - 1`.
@@ -22887,7 +22855,7 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 #### `tf.contrib.distributions.QuantizedDistribution.validate_args` {#QuantizedDistribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -22955,13 +22923,13 @@ time and match `len(components)`.
 *  <b>`components`</b>: A list or tuple of `Distribution` instances.
     Each instance must have the same type, be defined on the same domain,
     and have matching `event_shape` and `batch_shape`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  If `True`, raise a runtime
+*  <b>`validate_args`</b>: Python `bool`, default `False`. If `True`, raise a runtime
     error if batch or event ranks are inconsistent between cat and any of
-    the distributions.  This is only checked if the ranks cannot be
+    the distributions. This is only checked if the ranks cannot be
     determined statically at graph construction time.
-*  <b>`allow_nan_stats`</b>: Boolean, default `True`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: Boolean, default `True`. If `False`, raise an
    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
+    batch member. If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
 
@@ -22984,21 +22952,20 @@ time and match `len(components)`.
 
 #### `tf.contrib.distributions.Mixture.allow_nan_stats` {#Mixture.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -23175,7 +23142,7 @@ distribution:
 \\)
 
 where \\( p \\) is the prior distribution, \\( q \\) is the variational,
-and \\( H[q] \\) is the entropy of \\( q \\).  If there is a lower bound
+and \\( H[q] \\) is the entropy of \\( q \\). If there is a lower bound
 \\( G[q] \\) such that \\( H[q] \geq G[q] \\) then it can be used in
 place of \\( H[q] \\).
 
@@ -23256,7 +23223,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -23273,7 +23240,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -23413,8 +23380,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -23555,7 +23522,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Mixture.validate_args` {#Mixture.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -23602,7 +23569,7 @@ Posterior Normal distribution with conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
 Normal with unknown mean `loc` (described by the Normal `prior`)
-and known variance `scale^2`.  The "known scale posterior" is
+and known variance `scale**2`. The "known scale posterior" is
 the distribution of the unknown `loc`.
 
 Accepts a prior Normal distribution object, having parameters
@@ -23612,12 +23579,12 @@ and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
 
 Returns a posterior (also Normal) distribution object, with parameters
-`(loc', scale'^2)`, where:
+`(loc', scale'**2)`, where:
 
 ```
-mu ~ N(mu', sigma'^2)
-sigma'^2 = 1/(1/sigma0^2 + n/sigma^2),
-mu' = (mu0/sigma0^2 + s/sigma^2) * sigma'^2.
+mu ~ N(mu', sigma'**2)
+sigma'**2 = 1/(1/sigma0**2 + n/sigma**2),
+mu' = (mu0/sigma0**2 + s/sigma**2) * sigma'**2.
 ```
 
 Distribution parameters from `prior`, as well as `scale`, `s`, and `n`.
@@ -23630,8 +23597,8 @@ will broadcast in the case of multidimensional sets of parameters.
     the prior distribution having parameters `(loc0, scale0)`.
 *  <b>`scale`</b>: tensor of type `dtype`, taking values `scale > 0`.
     The known stddev parameter(s).
-*  <b>`s`</b>: Tensor of type `dtype`.  The sum(s) of observations.
-*  <b>`n`</b>: Tensor of type `int`.  The number(s) of observations.
+*  <b>`s`</b>: Tensor of type `dtype`. The sum(s) of observations.
+*  <b>`n`</b>: Tensor of type `int`. The number(s) of observations.
 
 ##### Returns:
 
@@ -23653,7 +23620,7 @@ Posterior predictive Normal distribution w. conjugate prior on the mean.
 
 This model assumes that `n` observations (with sum `s`) come from a
 Normal with unknown mean `loc` (described by the Normal `prior`)
-and known variance `scale^2`.  The "known scale predictive"
+and known variance `scale**2`. The "known scale predictive"
 is the distribution of new observations, conditioned on the existing
 observations and our prior.
 
@@ -23663,20 +23630,20 @@ distribution(s) (also assumed Normal),
 and statistical estimates `s` (the sum(s) of the observations) and
 `n` (the number(s) of observations).
 
-Calculates the Normal distribution(s) `p(x | sigma^2)`:
+Calculates the Normal distribution(s) `p(x | sigma**2)`:
 
 ```
-p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.loc, prior.scale**2) dmu
-               = N(x | prior.loc, 1/(sigma^2 + prior.scale**2))
+p(x | sigma**2) = int N(x | mu, sigma**2)N(mu | prior.loc, prior.scale**2) dmu
+                = N(x | prior.loc, 1 / (sigma**2 + prior.scale**2))
 ```
 
 Returns the predictive posterior distribution object, with parameters
-`(loc', scale'^2)`, where:
+`(loc', scale'**2)`, where:
 
 ```
-sigma_n^2 = 1/(1/sigma0^2 + n/sigma^2),
-mu' = (mu0/sigma0^2 + s/sigma^2) * sigma_n^2.
-sigma'^2 = sigma_n^2 + sigma^2,
+sigma_n**2 = 1/(1/sigma0**2 + n/sigma**2),
+mu' = (mu0/sigma0**2 + s/sigma**2) * sigma_n**2.
+sigma'**2 = sigma_n**2 + sigma**2,
 ```
 
 Distribution parameters from `prior`, as well as `scale`, `s`, and `n`.
@@ -23689,8 +23656,8 @@ will broadcast in the case of multidimensional sets of parameters.
     the prior distribution having parameters `(loc0, scale0)`.
 *  <b>`scale`</b>: tensor of type `dtype`, taking values `scale > 0`.
     The known stddev parameter(s).
-*  <b>`s`</b>: Tensor of type `dtype`.  The sum(s) of observations.
-*  <b>`n`</b>: Tensor of type `int`.  The number(s) of observations.
+*  <b>`s`</b>: Tensor of type `dtype`. The sum(s) of observations.
+*  <b>`n`</b>: Tensor of type `int`. The number(s) of observations.
 
 ##### Returns:
 
@@ -23732,7 +23699,7 @@ identified in the search is used (favoring a shorter MRO distance to
 *  <b>`dist_b`</b>: The second distribution.
 *  <b>`allow_nan`</b>: If `False` (default), a runtime error is raised
     if the KL returns NaN values for any batch entry of the given
-    distributions.  If `True`, the KL may return a NaN for the given entry.
+    distributions. If `True`, the KL may return a NaN for the given entry.
 *  <b>`name`</b>: (optional) Name scope to use for created operations.
 
 ##### Returns:
@@ -23939,36 +23906,35 @@ Initialize ExpRelaxedOneHotCategorical using class log-probabilities.
     the last dimension represents a vector of probabilities for each
     class. Only one of `logits` or `probs` should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.allow_nan_stats` {#ExpRelaxedOneHotCategorical.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -24173,7 +24139,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -24190,7 +24156,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -24330,8 +24296,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -24486,7 +24452,7 @@ Batchwise temperature tensor of a RelaxedCategorical.
 
 #### `tf.contrib.distributions.ExpRelaxedOneHotCategorical.validate_args` {#ExpRelaxedOneHotCategorical.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -24532,11 +24498,11 @@ Categorical has event_dim=() while OneHotCategorical has event_dim=K, where
 K is the number of classes.
 
 This class provides methods to create indexed batches of OneHotCategorical
-distributions.  If the provided `logits` or `probs` is rank 2 or higher, for
+distributions. If the provided `logits` or `probs` is rank 2 or higher, for
 every fixed set of leading dimensions, the last dimension represents one
-single OneHotCategorical distribution.  When calling distribution
+single OneHotCategorical distribution. When calling distribution
 functions (e.g. `dist.prob(x)`), `logits` and `x` are broadcast to the
-same shape (if possible).  In all cases, the last dimension of `logits,x`
+same shape (if possible). In all cases, the last dimension of `logits,x`
 represents single OneHotCategorical distributions.
 
 #### Examples
@@ -24589,36 +24555,35 @@ Initialize OneHotCategorical distributions using class log-probabilities.
     vector of probabilities for each class. Only one of `logits` or `probs`
     should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.OneHotCategorical.allow_nan_stats` {#OneHotCategorical.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -24823,7 +24788,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -24840,7 +24805,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -24980,8 +24945,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -25129,7 +25094,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.OneHotCategorical.validate_args` {#OneHotCategorical.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -25282,15 +25247,15 @@ Construct RelaxedBernoulli distributions.
 *  <b>`probs`</b>: An N-D `Tensor` representing the probability of a positive event.
     Each entry in the `Tensor` parameterizes an independent Bernoulli
     distribution. Only one of `logits` or `probs` should be passed in.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`allow_nan_stats`</b>: Python `Boolean`, default `True`. When `True`, statistics
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
     (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-    result is undefined.  When `False`, an exception is raised if one or
+    result is undefined. When `False`, an exception is raised if one or
     more of the statistic's batch members are undefined.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -25302,21 +25267,20 @@ Construct RelaxedBernoulli distributions.
 
 #### `tf.contrib.distributions.RelaxedBernoulli.allow_nan_stats` {#RelaxedBernoulli.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -25528,7 +25492,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -25545,7 +25509,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -25685,8 +25649,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -25841,7 +25805,7 @@ Distribution parameter for the location.
 
 #### `tf.contrib.distributions.RelaxedBernoulli.validate_args` {#RelaxedBernoulli.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -25968,9 +25932,9 @@ Initialize RelaxedOneHotCategorical using class log-probabilities.
     of `logits` or `probs` should be passed in.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
 *  <b>`validate_args`</b>: Unused in this distribution.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
+    batch member. If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
 
@@ -25979,21 +25943,20 @@ Initialize RelaxedOneHotCategorical using class log-probabilities.
 
 #### `tf.contrib.distributions.RelaxedOneHotCategorical.allow_nan_stats` {#RelaxedOneHotCategorical.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -26205,7 +26168,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -26222,7 +26185,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -26355,8 +26318,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -26497,7 +26460,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.RelaxedOneHotCategorical.validate_args` {#RelaxedOneHotCategorical.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -26550,25 +26513,28 @@ Constructs the `Distribution`.
 
 
 *  <b>`dtype`</b>: The type of the event samples. `None` implies no type-enforcement.
-*  <b>`is_continuous`</b>: Python boolean. If `True` this
-    `Distribution` is continuous over its supported domain.
+*  <b>`is_continuous`</b>: Python `bool`. If `True` this `Distribution` is continuous
+    over its supported domain.
 *  <b>`reparameterization_type`</b>: Instance of `ReparameterizationType`.
     If `distributions.FULLY_REPARAMETERIZED`, this
     `Distribution` can be reparameterized in terms of some standard
     distribution with a function whose Jacobian is constant for the support
-    of the standard distribution.  If `distributions.NOT_REPARAMETERIZED`,
+    of the standard distribution. If `distributions.NOT_REPARAMETERIZED`,
     then no such reparameterization is available.
-*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
-    If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Python boolean.  If `False`, raise an
-    exception if a statistic (e.g., mean, mode) is undefined for any batch
-    member. If True, batch members with valid parameters leading to
-    undefined statistics will return `NaN` for this statistic.
-*  <b>`parameters`</b>: Python dictionary of parameters used to instantiate this
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined. When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`parameters`</b>: Python `dict` of parameters used to instantiate this
     `Distribution`.
-*  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Distribution`.
-*  <b>`name`</b>: A name for this distribution. Default: subclass name.
+*  <b>`graph_parents`</b>: Python `list` of graph prerequisites of this
+    `Distribution`.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class. Default:
+    subclass name.
 
 ##### Raises:
 
@@ -26580,21 +26546,20 @@ Constructs the `Distribution`.
 
 #### `tf.contrib.distributions.ConditionalDistribution.allow_nan_stats` {#ConditionalDistribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -26776,7 +26741,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -26793,7 +26758,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -26876,8 +26841,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -26978,7 +26943,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 #### `tf.contrib.distributions.ConditionalDistribution.validate_args` {#ConditionalDistribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -27031,11 +26996,11 @@ Construct a Transformed Distribution.
     `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
     `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class. Default:
     `bijector.name + distribution.name`.
 
 
@@ -27043,21 +27008,20 @@ Construct a Transformed Distribution.
 
 #### `tf.contrib.distributions.ConditionalTransformedDistribution.allow_nan_stats` {#ConditionalTransformedDistribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -27256,7 +27220,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -27273,7 +27237,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -27365,8 +27329,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -27473,7 +27437,7 @@ Additional documentation from `ConditionalTransformedDistribution`:
 
 #### `tf.contrib.distributions.ConditionalTransformedDistribution.validate_args` {#ConditionalTransformedDistribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -

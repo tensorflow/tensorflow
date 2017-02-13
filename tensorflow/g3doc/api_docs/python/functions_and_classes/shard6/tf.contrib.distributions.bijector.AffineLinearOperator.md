@@ -6,7 +6,7 @@ If `X` is a scalar then the forward transformation is: `scale * X + shift`
 where `*` denotes the scalar product.
 
 Note: we don't always simply transpose `X` (but write it this way for
-brevity).  Actually the input `X` undergoes the following transformation
+brevity). Actually the input `X` undergoes the following transformation
 before being premultiplied by `scale`:
 
 1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
@@ -21,8 +21,8 @@ before being premultiplied by `scale`:
 (For more details see `shape.make_batch_of_event_sample_matrices`.)
 
 The result of the above transformation is that `X` can be regarded as a batch
-of matrices where each column is a draw from the distribution.  After
-premultiplying by `scale`, we take the inverse of this procedure.  The input
+of matrices where each column is a draw from the distribution. After
+premultiplying by `scale`, we take the inverse of this procedure. The input
 `Y` also undergoes the same transformation before/after premultiplying by
 `inv(scale)`.
 
@@ -60,14 +60,14 @@ Instantiates the `AffineLinearOperator` bijector.
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.
-*  <b>`scale`</b>: Subclass of `LinearOperator`.  Represents the (batch) positive
+*  <b>`shift`</b>: Floating-point `Tensor`.
+*  <b>`scale`</b>: Subclass of `LinearOperator`. Represents the (batch) positive
     definite matrix `M` in `R^{k x k}`.
 *  <b>`event_ndims`</b>: Scalar `integer` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -324,7 +324,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
