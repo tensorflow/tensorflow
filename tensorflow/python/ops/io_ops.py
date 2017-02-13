@@ -14,52 +14,19 @@
 # ==============================================================================
 
 # pylint: disable=line-too-long
-"""## Placeholders
-
-TensorFlow provides a placeholder operation that must be fed with data
-on execution.  For more info, see the section on [Feeding
-data](../../how_tos/reading_data/index.md#feeding).
+"""Inputs and Readers. See the @{$python/io_ops} guide.
 
 @@placeholder
 @@placeholder_with_default
-
-For feeding `SparseTensor`s which are composite type,
-there is a convenience function:
-
 @@sparse_placeholder
-
-## Readers
-
-TensorFlow provides a set of Reader classes for reading data formats.
-For more information on inputs and readers, see [Reading
-data](../../how_tos/reading_data/index.md).
-
 @@ReaderBase
 @@TextLineReader
 @@WholeFileReader
 @@IdentityReader
 @@TFRecordReader
 @@FixedLengthRecordReader
-
-## Converting
-
-TensorFlow provides several operations that you can use to convert various data
-formats into tensors.
-
 @@decode_csv
 @@decode_raw
-
-- - -
-
-### Example protocol buffer
-
-TensorFlow's [recommended format for training
-examples](../../how_tos/reading_data/index.md#standard-tensorflow-format)
-is serialized `Example` protocol buffers, [described
-here](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
-They contain `Features`, [described
-here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
-
 @@VarLenFeature
 @@FixedLenFeature
 @@FixedLenSequenceFeature
@@ -68,71 +35,23 @@ here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 @@parse_single_example
 @@parse_tensor
 @@decode_json_example
-
-## Queues
-
-TensorFlow provides several implementations of 'Queues', which are
-structures within the TensorFlow computation graph to stage pipelines
-of tensors together. The following describe the basic Queue interface
-and some implementations.  To see an example use, see [Threading and
-Queues](../../how_tos/threading_and_queues/index.md).
-
 @@QueueBase
 @@FIFOQueue
 @@PaddingFIFOQueue
 @@RandomShuffleQueue
 @@PriorityQueue
-
-## Conditional Accumulators
-
 @@ConditionalAccumulatorBase
 @@ConditionalAccumulator
 @@SparseConditionalAccumulator
-
-## Dealing with the filesystem
-
 @@matching_files
 @@read_file
 @@write_file
-
-## Input pipeline
-
-TensorFlow functions for setting up an input-prefetching pipeline.
-Please see the [reading data how-to](../../how_tos/reading_data/index.md)
-for context.
-
-### Beginning of an input pipeline
-
-The "producer" functions add a queue to the graph and a corresponding
-`QueueRunner` for running the subgraph that fills that queue.
-
 @@match_filenames_once
 @@limit_epochs
 @@input_producer
 @@range_input_producer
 @@slice_input_producer
 @@string_input_producer
-
-### Batching at the end of an input pipeline
-
-These functions add a queue to the graph to assemble a batch of
-examples, with possible shuffling.  They also add a `QueueRunner` for
-running the subgraph that fills that queue.
-
-Use [`batch`](#batch) or [`batch_join`](#batch_join) for batching
-examples that have already been well shuffled.  Use
-[`shuffle_batch`](#shuffle_batch) or
-[`shuffle_batch_join`](#shuffle_batch_join) for examples that would
-benefit from additional shuffling.
-
-Use [`batch`](#batch) or [`shuffle_batch`](#shuffle_batch) if you want a
-single thread producing examples to batch, or if you have a
-single subgraph producing examples but you want to run it in *N* threads
-(where you increase *N* until it can keep the queue full).  Use
-[`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
-if you have *N* different subgraphs producing examples to batch and you
-want them run by *N* threads. Use `maybe_*` to enqueue conditionally.
-
 @@batch
 @@maybe_batch
 @@batch_join
