@@ -201,19 +201,22 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
         link_text, string, relative_path_to_root, duplicate_of, index)
   elif string.startswith('tensorflow::'):  # C++ symbol
     if string == 'tensorflow::ClientSession':
-      ret = 'CLIENT_SESSION_URL'
-    elif string == 'tensorflow::Graph':
-      ret = 'GRAPH_URL'
+      ret = 'class/tensorflow/client-session.md'
     elif string == 'tensorflow::Scope':
-      ret = 'SCOPE_URL'
+      ret = 'class/tensorflow/scope.md'
     elif string == 'tensorflow::Status':
-      ret = 'STATUS_URL'
+      ret = 'class/tensorflow/status.md'
     elif string == 'tensorflow::ops::Const':
-      ret = 'CONST_URL'
+      ret = 'namespace/tensorflow/ops.md#const'
     else:
       log_error('Handle C++ reference "@{%s}"' % string)
       return 'TODO_C++:%s' % string
-    return '[`%s`](%s)' % (link_text, os.path.join(relative_path_to_root, ret))
+    # TODO(josh11b): Get rid of this hack!
+    # Rewrite e.g. ../../api_docs/python -> ['..', '..', 'api_docs', 'cc', ret]
+    cc_relative_path = relative_path_to_root.split('/')
+    cc_relative_path[-1] = 'cc'
+    cc_relative_path.append(ret)
+    return '[`%s`](%s)' % (link_text, os.path.join(*cc_relative_path))
   # Error!
   log_error('Did not understand "@{%s}"' % string)
   return 'ERROR:%s' % string
