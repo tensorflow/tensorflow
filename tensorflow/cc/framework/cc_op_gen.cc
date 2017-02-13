@@ -57,6 +57,16 @@ string GetPath(const string& dot_h_fname) {
   return result;
 }
 
+// Converts: some/path/to/file.xx
+// to: file
+// (note that suffix is removed)
+string GetFilename(const string& path) {
+  size_t slash_pos = path.rfind('/');
+  if (slash_pos == path.npos) slash_pos = -1;
+  size_t dot_pos = path.rfind('.');
+  return path.substr(slash_pos + 1, dot_pos - (slash_pos + 1));
+}
+
 // Converts:
 //   cc/ops/gen_foo_ops.h
 // to:
@@ -75,6 +85,17 @@ string ToGuard(const string& path) {
   }
   guard += '_';
   return guard;
+}
+
+// Converts: some_name_xyz
+// to: Some Name Xyz
+string ToTitle(const string& name) {
+  string title = name;
+  for (int i = 0; i < title.size(); ++i) {
+    if (title[i] == '_') title[i] = ' ';
+  }
+  str_util::TitlecaseString(&title, " ");
+  return title;
 }
 
 // Change:     Into:
@@ -841,6 +862,10 @@ namespace ops {
 )include",
       "#include \"", op_header, "\"\n", namespace_begin);
 
+  const string filename = GetFilename(dot_h_fname);
+  const string doxygen = strings::StrCat("/// @defgroup ", filename, " ",
+                                         ToTitle(filename), "\n", "/// @{\n\n");
+
   TF_CHECK_OK(h->Append(
       strings::StrCat("// This file is MACHINE GENERATED! Do not edit.\n\n"
                       "#ifndef ",
@@ -850,6 +875,7 @@ namespace ops {
                       *op_header_guard, "\n\n")));
   TF_CHECK_OK(h->Append(header));
   TF_CHECK_OK(h->Append(namespace_begin));
+  TF_CHECK_OK(h->Append(doxygen));
   TF_CHECK_OK(cc->Append(cc_header));
 }
 
@@ -860,7 +886,9 @@ void FinishFiles(bool internal, WritableFile* h, WritableFile* cc,
 }  // namespace tensorflow
 )footer"
                                  :
-                                 R"footer(}  // namespace ops
+                                 R"footer(/// @}
+
+}  // namespace ops
 }  // namespace tensorflow
 )footer";
 
