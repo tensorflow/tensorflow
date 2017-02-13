@@ -39,7 +39,6 @@ load(
     "tf_proto_library",
     "tf_kernel_tests_linkstatic",
 )
-
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
@@ -4241,12 +4240,14 @@ tf_cc_test(
 )
 
 if_mkl(
-  tf_kernel_library(
-      name = "mkl_ops",
-      prefix = "mkl_matmul",
-      deps = [":math",
-            "//third_party/mkl:intel_binary_blob",],
-  )
+    tf_kernel_library(
+        name = "mkl_ops",
+        prefix = "mkl_matmul",
+        deps = [
+            ":math",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 # -----------------------------------------------------------------------------
