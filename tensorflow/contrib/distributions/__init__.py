@@ -55,10 +55,9 @@ initialized with parameters that define the distributions.
 ### Multivariate normal
 
 @@MultivariateNormalDiag
-@@MultivariateNormalFull
-@@MultivariateNormalCholesky
-@@MultivariateNormalDiagPlusVDVT
-@@MultivariateNormalDiagWithSoftplusStDev
+@@MultivariateNormalTriL
+@@MultivariateNormalDiagPlusLowRank
+@@MultivariateNormalDiagWithSoftplusScale
 
 ### Other multivariate distributions
 
@@ -135,7 +134,9 @@ from tensorflow.contrib.distributions.python.ops.laplace import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.multinomial import *
-from tensorflow.contrib.distributions.python.ops.mvn import *
+from tensorflow.contrib.distributions.python.ops.mvn_diag import *
+from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
+from tensorflow.contrib.distributions.python.ops.mvn_tril import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.onehot_categorical import *

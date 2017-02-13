@@ -45,7 +45,7 @@ LOGNDTR_FLOAT32_LOWER = -10
 
 # Upper bound values were chosen by examining for which values of 'x'
 # Log[cdf(x)] is 0, after which point we need to use the approximation
-# Log[cdf(x)] = Log[1 - cdf(-x)] approx -cdf(-x).  We chose a value slightly
+# Log[cdf(x)] = Log[1 - cdf(-x)] approx -cdf(-x). We chose a value slightly
 # conservative, meaning we use the approximation earlier than needed.
 LOGNDTR_FLOAT64_UPPER = 8
 LOGNDTR_FLOAT32_UPPER = 5
@@ -59,7 +59,7 @@ def ndtr(x, name="ndtr"):
 
   ```
                     1       / x
-     ndtr(x)  = ----------  |    exp(-0.5 t^2) dt
+     ndtr(x)  = ----------  |    exp(-0.5 t**2) dt
                 sqrt(2 pi)  /-inf
 
               = 0.5 (1 + erf(x / sqrt(2)))
@@ -106,7 +106,7 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
   For details of the Normal distribution function see `ndtr`.
 
   This function calculates `(log o ndtr)(x)` by either calling `log(ndtr(x))` or
-  using an asymptotic series.  Specifically:
+  using an asymptotic series. Specifically:
   - For `x > upper_segment`, use the approximation `-ndtr(-x)` based on
     `log(1-x) ~= -x, x << 1`.
   - For `lower_segment < x <= upper_segment`, use the existing `ndtr` technique
@@ -127,19 +127,19 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
 
   ```
      ndtr(x) = scale * (1 + sum) + R_N
-     scale   = exp(-0.5 x^2) / (-x sqrt(2 pi))
-     sum     = Sum{(-1)^n (2n-1)!! / (x^2)^n, n=1:N}
-     R_N     = O(exp(-0.5 x^2) (2N+1)!! / |x|^{2N+3})
+     scale   = exp(-0.5 x**2) / (-x sqrt(2 pi))
+     sum     = Sum{(-1)^n (2n-1)!! / (x**2)^n, n=1:N}
+     R_N     = O(exp(-0.5 x**2) (2N+1)!! / |x|^{2N+3})
   ```
 
-  where `(2n-1)!! = (2n-1) (2n-3) (2n-5) ... (3) (1)` is a
+  where `(2n-1)!! = (2n-1) (2n-3) (2n-5) ...  (3) (1)` is a
   [double-factorial](https://en.wikipedia.org/wiki/Double_factorial).
 
 
   Args:
     x: `Tensor` of type `float32`, `float64`.
     series_order: Positive Python `integer`. Maximum depth to
-      evaluate the asymptotic expansion.  This is the `N` above.
+      evaluate the asymptotic expansion. This is the `N` above.
     name: Python string. A name for the operation (default="log_ndtr").
 
   Returns:
@@ -176,7 +176,7 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     #     which extends the range of validity of this function.
     # * We use one fixed series_order for all of 'x', rather than adaptive.
     # * Our docstring properly reflects that this is an asymptotic series, not a
-    #   Tayor series.  We also provided a correct bound on the remainder.
+    #   Taylor series. We also provided a correct bound on the remainder.
     # * We need to use the max/min in the _log_ndtr_lower arg to avoid nan when
     #   x=0. This happens even though the branch is unchosen because when x=0
     #   the gradient of a select involves the calculation 1*dy+0*(-inf)=nan
@@ -262,7 +262,7 @@ def log_cdf_laplace(x, name="log_cdf_laplace"):
     #   exp{-x} --> inf, for x << -1
     safe_exp_neg_x = math_ops.exp(-math_ops.abs(x))
 
-    # log1p(z) = log(1 + z) approx z for |z| << 1.  This approxmation is used
+    # log1p(z) = log(1 + z) approx z for |z| << 1. This approxmation is used
     # internally by log1p, rather than being done explicitly here.
     upper_solution = math_ops.log1p(-0.5 * safe_exp_neg_x)
 

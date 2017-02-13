@@ -89,9 +89,9 @@ class GenerateTest(googletest.TestCase):
     output_dir = tempfile.mkdtemp()
     base_dir = os.path.dirname(__file__)
 
-    generate.write_docs(output_dir, base_dir,
-                        duplicate_of, duplicates,
-                        index, tree, reverse_index={}, guide_index={})
+    generate.write_docs(output_dir, base_dir, duplicate_of, duplicates,
+                        index, tree, reverse_index={}, doc_index={},
+                        guide_index={})
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))

@@ -47,11 +47,11 @@ Status ParseTransformParameters(const string& transforms_string,
       // Reset the list of parameters.
       func_parameters.clear();
       // Eat up any leading spaces.
-      Scanner(remaining).Any(Scanner::SPACE).GetResult(&remaining, &match);
+      Scanner(remaining).AnySpace().GetResult(&remaining, &match);
       // See if we have a valid transform name.
       const bool found_transform_name =
           Scanner(remaining)
-              .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+              .Many(Scanner::LETTER_DIGIT_UNDERSCORE)
               .GetResult(&remaining, &transform_name);
       if (!found_transform_name) {
         return errors::InvalidArgument("Looking for transform name, but found ",
@@ -73,11 +73,11 @@ Status ParseTransformParameters(const string& transforms_string,
       } else {
         // Eat up any leading spaces or commas.
         Scanner(remaining).ZeroOrOneLiteral(",").GetResult(&remaining, &match);
-        Scanner(remaining).Any(Scanner::SPACE).GetResult(&remaining, &match);
+        Scanner(remaining).AnySpace().GetResult(&remaining, &match);
         // See if we have a valid parameter name.
         const bool found_parameter_name =
             Scanner(remaining)
-                .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+                .Many(Scanner::LETTER_DIGIT_UNDERSCORE)
                 .GetResult(&remaining, &parameter_name);
         if (!found_parameter_name) {
           return errors::InvalidArgument(
@@ -105,7 +105,7 @@ Status ParseTransformParameters(const string& transforms_string,
         // See if we have a valid parameter name.
         found_parameter_value =
             Scanner(remaining)
-                .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
+                .Many(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
                 .GetResult(&remaining, &parameter_value);
       }
       if (!found_parameter_value) {

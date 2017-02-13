@@ -60,16 +60,32 @@ string HloExecutionProfile::ToString(
     return cycles / clock_rate_ghz / 1000.0;
   };
 
-  auto append_item = [&](int64 cycles, int64 flops, const string& name) {
+  auto append_item = [&](int64 cycles, int64 flops, int64 bytes_accessed,
+                         const string& name) {
     double nsecs = cycles / clock_rate_ghz;
+    string bytes_per_sec;
+    string bytes_per_cycle;
+    if (bytes_accessed >= 0) {
+      bytes_per_sec = tensorflow::strings::HumanReadableNumBytes(
+          bytes_accessed / (nsecs / 1e9));
+      bytes_per_cycle =
+          tensorflow::strings::HumanReadableNumBytes(bytes_accessed / cycles);
+    } else {
+      bytes_per_sec = "<unknown>";
+      bytes_per_cycle = "<unknown>";
+    }
+
     tensorflow::strings::StrAppend(
         &result,
         tensorflow::strings::Printf(
-            "%15lld cycles (%6.2f%%) :: %12.1f usec @ f_nom :: %18s :: %s",
+            "%15lld cycles (%6.2f%%) :: %12.1f usec @ f_nom :: %18s :: %12s/s "
+            ":: "
+            "%12s/cycle :: "
+            "%s",
             cycles, cycles / static_cast<double>(total_cycles) * 100,
             cycles_to_microseconds(cycles),
             flops <= 0 ? "<none>" : HumanReadableNumFlops(flops, nsecs).c_str(),
-            name.c_str()));
+            bytes_per_sec.c_str(), bytes_per_cycle.c_str(), name.c_str()));
   };
   tensorflow::strings::StrAppend(
       &result,
@@ -77,13 +93,15 @@ string HloExecutionProfile::ToString(
                                   tensorflow::strings::HumanReadableElapsedTime(
                                       total_cycles / clock_rate_ghz / 1e9)
                                       .c_str()));
-  append_item(total_cycles, -1, "[total]");
+  append_item(total_cycles, -1, -1, "[total]");
   for (const auto& item : items) {
+    const HloInstruction* hlo = item.first;
     tensorflow::strings::StrAppend(&result, "\n\t");
-    auto flops =
-        item.first == nullptr ? -1 : cost_analysis.flop_count(*item.first);
-    string display = item.first == nullptr ? "<none>" : item.first->ToString();
-    append_item(item.second, flops, display);
+    int64 flops = hlo == nullptr ? -1 : cost_analysis.flop_count(*hlo);
+    int64 bytes_accessed =
+        hlo == nullptr ? -1 : cost_analysis.bytes_accessed(*hlo);
+    string display = hlo == nullptr ? "<none>" : hlo->ToString();
+    append_item(item.second, flops, bytes_accessed, display);
   }
 
   MetricTableReport table;

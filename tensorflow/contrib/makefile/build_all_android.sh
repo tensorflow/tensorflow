@@ -18,22 +18,13 @@
 set -e
 
 usage() {
-  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-t:]"
+  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-s:t:Tx:X]"
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
   echo "-T only build tensorflow"
-  echo "-x use hexagon library located at tensorflow/contrib/makefile/downloads/hexagon"
+  echo "-x [hexagon library path] copy and hexagon libraries in the specified path"
   echo "-X download hexagon deps and run hexagon_graph_execution"
   exit 1
-}
-
-download_and_push() {
-    URL="$1"
-    LOCAL_DEST="$2"
-    ANDROID_DEST="$3"
-    curl -Ls "${URL}" -o "${LOCAL_DEST}"
-    adb shell mkdir -p "${ANDROID_DEST}"
-    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
 }
 
 if [[ -z "${NDK_ROOT}" ]]; then
@@ -41,12 +32,12 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-while getopts "s:t:TxX" opt_name; do
+while getopts "s:t:Tx:X" opt_name; do
   case "$opt_name" in
     s) SUB_MAKEFILES="${OPTARG}";;
     t) BUILD_TARGET="${OPTARG}";;
     T) ONLY_MAKE_TENSORFLOW="true";;
-    x) USE_HEXAGON="true";;
+    x) HEXAGON_LIB_PATH="${OPTARG}";;
     X) DOWNLOAD_AND_USE_HEXAGON="true";;
     *) usage;;
   esac
@@ -55,7 +46,7 @@ shift $((OPTIND - 1))
 
 # Make sure we're in the correct directory, at the root of the source tree.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd ${SCRIPT_DIR}/../../../
+cd "${SCRIPT_DIR}"/../../../
 
 source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
@@ -77,6 +68,8 @@ else
 fi
 
 if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
+    echo "Download hexagon libraries and dependencies"
+
     URL_BASE="https://storage.googleapis.com/download.tensorflow.org"
 
     rm -rf "${HEXAGON_DOWNLOAD_PATH}"
@@ -94,6 +87,18 @@ if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
     USE_HEXAGON="true"
     SUB_MAKEFILES="$(pwd)/tensorflow/contrib/makefile/sub_makefiles/hexagon_graph_execution/Makefile.in"
     BUILD_TARGET="hexagon_graph_execution"
+fi
+
+if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
+    echo "Copy hexagon libraries"
+
+    mkdir -p "${HEXAGON_DOWNLOAD_PATH}/libs"
+    cp -fv "${HEXAGON_LIB_PATH}/libhexagon_controller.so" \
+"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_controller.so"
+    cp -fv "${HEXAGON_LIB_PATH}/libhexagon_nn_skel.so" \
+"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_nn_skel.so"
+
+    USE_HEXAGON="true"
 fi
 
 if [[ "${USE_HEXAGON}" == "true" ]]; then

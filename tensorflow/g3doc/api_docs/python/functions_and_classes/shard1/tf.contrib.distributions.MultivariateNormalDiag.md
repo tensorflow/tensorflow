@@ -1,100 +1,181 @@
 The multivariate normal distribution on `R^k`.
 
-This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
-`diag_stddev`, representing the standard deviations.  This distribution
-assumes the random variables, `(X_1,...,X_k)` are independent, thus no
-non-diagonal terms of the covariance matrix are needed.
+The Multivariate Normal distribution is defined over `R^k` and parameterized
+by a (batch of) length-`k` `loc` vector (aka "mu") and a (batch of) `k x k`
+`scale` matrix; `covariance = scale @ scale.T` where `@` denotes
+matrix-multiplication.
 
-This allows for `O(k)` pdf evaluation, sampling, and storage.
+#### Mathematical Details
 
-#### Mathematical details
+The probability density function (pdf) is,
 
-The PDF of this distribution is defined in terms of the diagonal covariance
-determined by `diag_stddev`: `C_{ii} = diag_stddev[i]**2`.
-
+```none
+pdf(x; loc, scale) = exp(-0.5 ||y||**2) / Z,
+y = inv(scale) @ (x - loc),
+Z = (2 pi)**(0.5 k) |det(scale)|,
 ```
-f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
+
+where:
+
+* `loc` is a vector in `R^k`,
+* `scale` is a linear operator in `R^{k x k}`, `cov = scale @ scale.T`,
+* `Z` denotes the normalization constant, and,
+* `||y||**2` denotes the squared Euclidean norm of `y`.
+
+A (non-batch) `scale` matrix is:
+
+```none
+scale = diag(scale_diag + scale_identity_multiplier * ones(k))
+```
+
+where:
+
+* `scale_diag.shape = [k]`, and,
+* `scale_identity_multiplier.shape = []`.
+
+Additional leading dimensions (if any) will index batches.
+
+If both `scale_diag` and `scale_identity_multiplier` are `None`, then
+`scale` is the Identity matrix.
+
+The MultivariateNormal distribution is a member of the [location-scale
+family](https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+constructed as,
+
+```none
+X ~ MultivariateNormal(loc=0, scale=1)   # Identity scale, zero shift.
+Y = scale @ X + loc
 ```
 
 #### Examples
 
-A single multi-variate Gaussian distribution is defined by a vector of means
-of length `k`, and the square roots of the (independent) random variables.
-
-Extra leading dimensions, if provided, allow for batches.
-
 ```python
-# Initialize a single 3-variate Gaussian with diagonal standard deviation.
-mu = [1, 2, 3.]
-diag_stddev = [4, 5, 6.]
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
+ds = tf.contrib.distributions
 
-# Evaluate this on an observation in R^3, returning a scalar.
-dist.pdf([-1, 0, 1])
+# Initialize a single 2-variate Gaussian.
+mvn = ds.MultivariateNormalDiag(
+    loc=[1., -1],
+    scale_diag=[1, 2.])
 
-# Initialize a batch of two 3-variate Gaussians.
-mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
-diag_stddev = ...  # shape 2 x 3, positive.
-dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stddev)
+mvn.mean().eval()
+# ==> [1., -1]
 
-# Evaluate this on a two observations, each in R^3, returning a length two
-# tensor.
-x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
-dist.pdf(x)
+mvn.stddev().eval()
+# ==> [1., 2]
+
+# Evaluate this on an observation in `R^2`, returning a scalar.
+mvn.prob([-1., 0]).eval()  # shape: []
+
+# Initialize a 3-batch, 2-variate scaled-identity Gaussian.
+mvn = ds.MultivariateNormalDiag(
+    loc=[1., -1],
+    scale_identity_multiplier=[1, 2., 3])
+
+mvn.mean().eval()  # shape: [3, 2]
+# ==> [[1., -1]
+#      [1, -1],
+#      [1, -1]]
+
+mvn.stddev().eval()  # shape: [3, 2]
+# ==> [[1., 1],
+#      [2, 2],
+#      [3, 3]]
+
+# Evaluate this on an observation in `R^2`, returning a length-3 vector.
+mvn.prob([-1., 0]).eval()  # shape: [3]
+
+# Initialize a 2-batch of 3-variate Gaussians.
+mvn = ds.MultivariateNormalDiag(
+    loc=[[1., 2, 3],
+         [11, 22, 33]]           # shape: [2, 3]
+    scale_diag=[[1., 2, 3],
+                [0.5, 1, 1.5]])  # shape: [2, 3]
+
+# Evaluate this on a two observations, each in `R^3`, returning a length-2
+# vector.
+x = [[-1., 0, 1],
+     [-11, 0, 11.]]   # shape: [2, 3].
+mvn.prob(x).eval()    # shape: [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stddev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(loc=None, scale_diag=None, scale_identity_multiplier=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
 
-Multivariate Normal distributions on `R^k`.
+Construct Multivariate Normal distribution on `R^k`.
 
-User must provide means `mu` and standard deviations `diag_stddev`.
-Each batch member represents a random vector `(X_1,...,X_k)` of independent
-random normals.
-The mean of `X_i` is `mu[i]`, and the standard deviation is
-`diag_stddev[i]`.
+The `batch_shape` is the broadcast shape between `loc` and `scale`
+arguments.
+
+The `event_shape` is given by the last dimension of `loc` or the last
+dimension of the matrix implied by `scale`.
+
+Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix is:
+
+```none
+scale = diag(scale_diag + scale_identity_multiplier * ones(k))
+```
+
+where:
+
+* `scale_diag.shape = [k]`, and,
+* `scale_identity_multiplier.shape = []`.
+
+Additional leading dimensions (if any) will index batches.
+
+If both `scale_diag` and `scale_identity_multiplier` are `None`, then
+`scale` is the Identity matrix.
 
 ##### Args:
 
 
-*  <b>`mu`</b>: Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
-    `b >= 0`.
-*  <b>`diag_stddev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
-    representing the standard deviations.  Must be positive.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate
-    input with asserts.  If `validate_args` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to give Ops created by the initializer.
+*  <b>`loc`</b>: Floating-point `Tensor`. If this is set to `None`, `loc` is
+    implicitly `0`. When specified, may have shape `[B1, ..., Bb, k]` where
+    `b >= 0` and `k` is the event size.
+*  <b>`scale_diag`</b>: Non-zero, floating-point `Tensor` representing a diagonal
+    matrix added to `scale`. May have shape `[B1, ..., Bb, k]`, `b >= 0`,
+    and characterizes `b`-batches of `k x k` diagonal matrices added to
+    `scale`. When both `scale_identity_multiplier` and `scale_diag` are
+    `None` then `scale` is the `Identity`.
+*  <b>`scale_identity_multiplier`</b>: Non-zero, floating-point `Tensor` representing
+    a scaled-identity-matrix added to `scale`. May have shape
+    `[B1, ..., Bb]`, `b >= 0`, and characterizes `b`-batches of scaled
+    `k x k` identity matrices added to `scale`. When both
+    `scale_identity_multiplier` and `scale_diag` are `None` then `scale` is
+    the `Identity`.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`,
+    statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+    indicate the result is undefined. When `False`, an exception is raised
+    if one or more of the statistic's batch members are undefined.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If `mu` and `diag_stddev` are different dtypes.
+*  <b>`ValueError`</b>: if at most `scale_identity_multiplier` is specified.
 
 
 - - -
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.allow_nan_stats` {#MultivariateNormalDiag.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -132,6 +213,13 @@ parameterizations of this distribution.
 
 
 *  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.bijector` {#MultivariateNormalDiag.bijector}
+
+Function transforming x => y.
 
 
 - - -
@@ -228,6 +316,20 @@ length-`k'` vector.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiag.det_covariance(name='det_covariance')` {#MultivariateNormalDiag.det_covariance}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.distribution` {#MultivariateNormalDiag.distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiag.dtype` {#MultivariateNormalDiag.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -292,7 +394,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -309,7 +411,14 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.loc` {#MultivariateNormalDiag.loc}
+
+The `loc` `Tensor` in `Y = scale @ X + loc`.
 
 
 - - -
@@ -343,24 +452,31 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_det_covariance(name='log_det_covariance')` {#MultivariateNormalDiag.log_det_covariance}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiag.log_prob(value, name='log_prob')` {#MultivariateNormalDiag.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalOperatorPD`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
-`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+`value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
 
-```
+```python
 self.batch_shape + self.event_shape
 ```
 
 or
 
-```
-[M1,...,Mm] + self.batch_shape + self.event_shape
+```python
+[M1, ..., Mm] + self.batch_shape + self.event_shape
 ```
 
 ##### Args:
@@ -374,13 +490,6 @@ or
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiag.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalDiag.log_sigma_det}
-
-Log of determinant of covariance matrix.
 
 
 - - -
@@ -428,13 +537,6 @@ Mode.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.mu` {#MultivariateNormalDiag.mu}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.MultivariateNormalDiag.name` {#MultivariateNormalDiag.name}
 
 Name prepended to all ops created by this `Distribution`.
@@ -472,8 +574,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -508,19 +610,19 @@ Dictionary of parameters used to instantiate this `Distribution`.
 Probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalOperatorPD`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
-`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+`value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
 
-```
+```python
 self.batch_shape + self.event_shape
 ```
 
 or
 
-```
-[M1,...,Mm] + self.batch_shape + self.event_shape
+```python
+[M1, ..., Mm] + self.batch_shape + self.event_shape
 ```
 
 ##### Args:
@@ -575,16 +677,9 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.sigma` {#MultivariateNormalDiag.sigma}
+#### `tf.contrib.distributions.MultivariateNormalDiag.scale` {#MultivariateNormalDiag.scale}
 
-Dense (batch) covariance matrix, if available.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiag.sigma_det(name='sigma_det')` {#MultivariateNormalDiag.sigma_det}
-
-Determinant of covariance matrix.
+The `scale` `LinearOperator` in `Y = scale @ X + loc`.
 
 
 - - -
@@ -644,7 +739,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.validate_args` {#MultivariateNormalDiag.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -

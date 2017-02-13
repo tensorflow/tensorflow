@@ -1,6 +1,6 @@
-Variable scope object to carry defaults to provide to get_variable.
+Variable scope object to carry defaults to provide to `get_variable`.
 
-Many of the arguments we need for get_variable in a variable store are most
+Many of the arguments we need for `get_variable` in a variable store are most
 easily handled with a context. This object is used for the defaults.
 
 Attributes:

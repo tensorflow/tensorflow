@@ -78,15 +78,15 @@ class Exponential(gamma.Gamma):
     Args:
       rate: Floating point tensor, equivalent to `1 / mean`. Must contain only
         positive values.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
     # Even though all statistics of are defined for valid inputs, this is not
@@ -96,7 +96,7 @@ class Exponential(gamma.Gamma):
     with ops.name_scope(name, values=[rate]) as ns:
       self._rate = ops.convert_to_tensor(rate, name="rate")
     super(Exponential, self).__init__(
-        concentration=array_ops.ones((), dtype=self._rate.dtype),
+        concentration=array_ops.ones([], dtype=self._rate.dtype),
         rate=self._rate,
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
@@ -116,13 +116,13 @@ class Exponential(gamma.Gamma):
     return self._rate
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], array_ops.shape(self._rate)), 0)
+    shape = array_ops.concat([[n], array_ops.shape(self._rate)], 0)
     # Sample uniformly-at-random from the open-interval (0, 1).
     sampled = random_ops.random_uniform(
         shape,
         minval=np.nextafter(self.dtype.as_numpy_dtype(0.),
                             self.dtype.as_numpy_dtype(1.)),
-        maxval=array_ops.ones((), dtype=self.dtype),
+        maxval=array_ops.ones([], dtype=self.dtype),
         seed=seed,
         dtype=self.dtype)
     return -math_ops.log(sampled) / self._rate

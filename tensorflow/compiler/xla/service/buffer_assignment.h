@@ -383,7 +383,7 @@ class BufferAssigner {
   // and assigns buffers to all HLO instructions in the module.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      int64 pointer_size, int64 alignment);
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment);
 
  private:
   explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,

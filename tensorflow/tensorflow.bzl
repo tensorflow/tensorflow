@@ -118,7 +118,6 @@ def tf_copts():
                 "/DPLATFORM_WINDOWS",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-                "/DEIGEN_VECTORIZE_SSE3",  # To flush denormals without __SSE3__ set.
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
@@ -672,7 +671,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 
 def tf_custom_op_library_additional_deps():
   return [
-      "@protobuf//:protobuf",
+      "//:protobuf_headers",
       "//third_party/eigen3",
       "//tensorflow/core:framework_headers_lib",
   ]

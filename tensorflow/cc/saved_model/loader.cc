@@ -121,8 +121,9 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
   if (!Env::Default()->FileExists(variables_index_path).ok()) {
-    return errors::NotFound(
-        "Checkpoint index file not found in SavedModel directory.");
+    LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
+                 "were restored.";
+    return Status::OK();
   }
   const string variables_path =
       io::JoinPath(variables_directory, kSavedModelVariablesFilename);
