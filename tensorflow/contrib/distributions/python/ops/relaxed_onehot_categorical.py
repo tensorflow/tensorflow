@@ -233,22 +233,19 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
     sample_shape = array_ops.concat([[n], array_ops.shape(self.logits)], 0)
     logits = self.logits * array_ops.ones(sample_shape)
     logits_2d = array_ops.reshape(logits, [-1, self.event_size])
-    np_dtype = self.dtype.as_numpy_dtype
-
-    # Uniform variates must be sampled from the interval (0,1] rather than
-    # [0,1], as they are passed through log() to compute Gumbel variates.
-    # We need to use np.finfo(np_dtype).tiny because it is the smallest,
-    # positive, "normal" number. A "normal" number is such that the mantissa
-    # has an implicit leading 1. Normal, positive numbers x, y have the
-    # reasonable property that: x + y >= max(x, y).
-    # minval=np.nextafter(np.float32(0),1)) can cause
-    # tf.random_uniform(dtype=tf.float32) to sample 0.
-
-    uniform = random_ops.random_uniform(shape=array_ops.shape(logits_2d),
-                                        minval=np.finfo(np_dtype).tiny,
-                                        maxval=1,
-                                        dtype=self.dtype,
-                                        seed=seed)
+    # Uniform variates must be sampled from the open-interval `(0, 1)` rather
+    # than `[0, 1)`. To do so, we use `np.finfo(self.dtype.as_numpy_dtype).tiny`
+    # because it is the smallest, positive, "normal" number. A "normal" number
+    # is such that the mantissa has an implicit leading 1. Normal, positive
+    # numbers x, y have the reasonable property that, `x + y >= max(x, y)`. In
+    # this case, a subnormal number (i.e., np.nextafter) can cause us to sample
+    # 0.
+    uniform = random_ops.random_uniform(
+        shape=array_ops.shape(logits_2d),
+        minval=np.finfo(self.dtype.as_numpy_dtype).tiny,
+        maxval=1.,
+        dtype=self.dtype,
+        seed=seed)
     gumbel = -math_ops.log(-math_ops.log(uniform))
     noisy_logits = math_ops.div(gumbel + logits_2d, self._temperature_2d)
     samples = nn_ops.log_softmax(noisy_logits)
