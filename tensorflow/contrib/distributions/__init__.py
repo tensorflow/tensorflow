@@ -14,17 +14,10 @@
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
 
-## Classes for statistical distributions.
-
-Classes that represent batches of statistical distributions.  Each class is
-initialized with parameters that define the distributions.
-
-## Base classes
+See the @{$python/contrib.distributions} guide.
 
 @@ReparameterizationType
 @@Distribution
-
-## Univariate (scalar) distributions
 
 @@Binomial
 @@Bernoulli
@@ -50,16 +43,10 @@ initialized with parameters that define the distributions.
 @@StudentTWithAbsDfSoftplusScale
 @@Uniform
 
-## Multivariate distributions
-
-### Multivariate normal
-
 @@MultivariateNormalDiag
 @@MultivariateNormalTriL
 @@MultivariateNormalDiagPlusLowRank
 @@MultivariateNormalDiagWithSoftplusScale
-
-### Other multivariate distributions
 
 @@Dirichlet
 @@DirichletMultinomial
@@ -67,39 +54,20 @@ initialized with parameters that define the distributions.
 @@WishartCholesky
 @@WishartFull
 
-### Multivariate Utilities
-
 @@matrix_diag_transform
-
-## Transformed distributions
 
 @@TransformedDistribution
 @@QuantizedDistribution
 
-## Mixture Models
-
 @@Mixture
-
-## Posterior inference with conjugate priors.
-
-Functions that transform conjugate prior/likelihood pairs to distributions
-representing the posterior or posterior predictive.
-
-## Normal likelihood with conjugate prior.
 
 @@normal_conjugates_known_scale_posterior
 @@normal_conjugates_known_scale_predictive
 
-## Kullback-Leibler Divergence
-
 @@kl
 @@RegisterKL
 
-## Utilities
-
 @@softplus_inverse
-
-## Relaxed Discrete Distributions
 
 @@ExpRelaxedOneHotCategorical
 @@OneHotCategorical
