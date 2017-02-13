@@ -40,8 +40,7 @@ class MultivariateNormalDiagTest(test.TestCase):
     mu = -1.
     diag = -5.
     with self.test_session():
-      # TODO(b/35244539): Choose better exception, once LinOp throws it.
-      with self.assertRaises(IndexError):
+      with self.assertRaisesRegexp(ValueError, "at least 1 dimension"):
         ds.MultivariateNormalDiag(mu, diag)
 
   def testVectorParams(self):

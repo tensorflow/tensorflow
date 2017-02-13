@@ -238,39 +238,19 @@ class MultivariateNormalLinearOperator(
     return array_ops.identity(self.loc)
 
   def _covariance(self):
-    # TODO(b/35041434): Remove special-case logic once LinOp supports
-    # `diag_part`.
     if (isinstance(self.scale, linalg.LinearOperatorIdentity) or
         isinstance(self.scale, linalg.LinearOperatorScaledIdentity) or
         isinstance(self.scale, linalg.LinearOperatorDiag)):
-      shape = array_ops.concat([self.batch_shape_tensor(),
-                                self.event_shape_tensor()], 0)
-      diag_part = array_ops.ones(shape, self.scale.dtype)
-      if isinstance(self.scale, linalg.LinearOperatorScaledIdentity):
-        diag_part *= math_ops.square(
-            self.scale.multiplier[..., array_ops.newaxis])
-      elif isinstance(self.scale, linalg.LinearOperatorDiag):
-        diag_part *= math_ops.square(self.scale.diag)
-      return array_ops.matrix_diag(diag_part)
+      return array_ops.matrix_diag(math_ops.square(self.scale.diag_part()))
     else:
       # TODO(b/35040238): Remove transpose once LinOp supports `transpose`.
       return self.scale.apply(array_ops.matrix_transpose(self.scale.to_dense()))
 
   def _variance(self):
-    # TODO(b/35041434): Remove special-case logic once LinOp supports
-    # `diag_part`.
     if (isinstance(self.scale, linalg.LinearOperatorIdentity) or
         isinstance(self.scale, linalg.LinearOperatorScaledIdentity) or
         isinstance(self.scale, linalg.LinearOperatorDiag)):
-      shape = array_ops.concat([self.batch_shape_tensor(),
-                                self.event_shape_tensor()], 0)
-      diag_part = array_ops.ones(shape, self.scale.dtype)
-      if isinstance(self.scale, linalg.LinearOperatorScaledIdentity):
-        diag_part *= math_ops.square(
-            self.scale.multiplier[..., array_ops.newaxis])
-      elif isinstance(self.scale, linalg.LinearOperatorDiag):
-        diag_part *= math_ops.square(self.scale.diag)
-      return diag_part
+      return math_ops.square(self.scale.diag_part())
     elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
           and self.scale.is_self_adjoint):
       return array_ops.matrix_diag_part(
@@ -281,19 +261,10 @@ class MultivariateNormalLinearOperator(
           self.scale.apply(array_ops.matrix_transpose(self.scale.to_dense())))
 
   def _stddev(self):
-    # TODO(b/35041434): Remove special-case logic once LinOp supports
-    # `diag_part`.
     if (isinstance(self.scale, linalg.LinearOperatorIdentity) or
         isinstance(self.scale, linalg.LinearOperatorScaledIdentity) or
         isinstance(self.scale, linalg.LinearOperatorDiag)):
-      shape = array_ops.concat([self.batch_shape_tensor(),
-                                self.event_shape_tensor()], 0)
-      diag_part = array_ops.ones(shape, self.scale.dtype)
-      if isinstance(self.scale, linalg.LinearOperatorScaledIdentity):
-        diag_part *= self.scale.multiplier[..., array_ops.newaxis]
-      elif isinstance(self.scale, linalg.LinearOperatorDiag):
-        diag_part *= self.scale.diag
-      return math_ops.abs(diag_part)
+      return math_ops.abs(self.scale.diag_part())
     elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
           and self.scale.is_self_adjoint):
       return math_ops.sqrt(array_ops.matrix_diag_part(
