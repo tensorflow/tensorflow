@@ -66,7 +66,7 @@ REGISTER_KERNEL_BUILDER(
           .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<SYCLDevice, type, Eigen::internal::MaxReducer<type>>);
-// REGISTER_SYCL_KERNELS(float);
+REGISTER_SYCL_KERNELS(float);
 #undef REGISTER_SYCL_KERNELS
 
 REGISTER_KERNEL_BUILDER(
