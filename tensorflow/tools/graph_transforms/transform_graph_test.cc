@@ -145,33 +145,34 @@ class TransformGraphTest : public ::testing::Test {
   void TestParseTransformParameters() {
     TransformParameters params_list;
 
-    ParseTransformParameters("foo", &params_list);
+    TF_EXPECT_OK(ParseTransformParameters("foo", &params_list));
     EXPECT_EQ(1, params_list.size());
     EXPECT_EQ("foo", params_list[0].first);
     EXPECT_TRUE(params_list[0].second.empty());
 
-    ParseTransformParameters("foo bar", &params_list);
+    TF_EXPECT_OK(ParseTransformParameters("foo bar", &params_list));
     EXPECT_EQ(2, params_list.size());
     EXPECT_EQ("foo", params_list[0].first);
     EXPECT_TRUE(params_list[0].second.empty());
     EXPECT_EQ("bar", params_list[1].first);
     EXPECT_TRUE(params_list[1].second.empty());
 
-    ParseTransformParameters("foo() bar()", &params_list);
+    TF_EXPECT_OK(ParseTransformParameters("foo() bar()", &params_list));
     EXPECT_EQ(2, params_list.size());
     EXPECT_EQ("foo", params_list[0].first);
     EXPECT_TRUE(params_list[0].second.empty());
     EXPECT_EQ("bar", params_list[1].first);
     EXPECT_TRUE(params_list[1].second.empty());
 
-    ParseTransformParameters("foo(bob_something=sue)", &params_list);
+    TF_EXPECT_OK(
+        ParseTransformParameters("foo(bob_something=sue)", &params_list));
     EXPECT_EQ(1, params_list.size());
     EXPECT_EQ("foo", params_list[0].first);
     EXPECT_EQ(1, params_list[0].second.count("bob_something"));
     EXPECT_EQ(1, params_list[0].second["bob_something"].size());
     EXPECT_EQ("sue", params_list[0].second["bob_something"][0]);
 
-    ParseTransformParameters("bar(a=1, b=2, a=3)", &params_list);
+    TF_EXPECT_OK(ParseTransformParameters("bar(a=1, b=2, a=3)", &params_list));
     EXPECT_EQ(1, params_list.size());
     EXPECT_EQ("bar", params_list[0].first);
     EXPECT_EQ(1, params_list[0].second.count("a"));
@@ -182,7 +183,8 @@ class TransformGraphTest : public ::testing::Test {
     EXPECT_EQ(1, params_list[0].second["b"].size());
     EXPECT_EQ("2", params_list[0].second["b"][0]);
 
-    ParseTransformParameters("bar(a=\"1\", b=\"1,2,3\", a=3)", &params_list);
+    TF_EXPECT_OK(ParseTransformParameters("bar(a=\"1\", b=\"1,2,3\", a=3)",
+                                          &params_list));
     EXPECT_EQ(1, params_list.size());
     EXPECT_EQ("bar", params_list[0].first);
     EXPECT_EQ(1, params_list[0].second.count("a"));

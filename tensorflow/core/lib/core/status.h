@@ -72,6 +72,11 @@ class Status {
   /// printing. Returns the string `"OK"` for success.
   string ToString() const;
 
+  // Ignores any errors. This method does nothing except potentially suppress
+  // complaints from any tools that are checking that errors are not dropped on
+  // the floor.
+  void IgnoreError() const;
+
  private:
   static const string& empty_string();
   struct State {

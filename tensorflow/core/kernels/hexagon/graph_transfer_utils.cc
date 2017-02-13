@@ -95,7 +95,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
   CHECK(scope.ok());
 
   GraphDef fusedGraphDef;
-  root.ToGraphDef(&fusedGraphDef);
+  TF_CHECK_OK(root.ToGraphDef(&fusedGraphDef));
   return fusedGraphDef;
 }
 

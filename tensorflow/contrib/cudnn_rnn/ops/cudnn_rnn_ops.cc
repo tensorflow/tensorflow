@@ -232,7 +232,7 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
       int num_params;
-      c->GetAttr("num_params", &num_params);
+      TF_RETURN_IF_ERROR(c->GetAttr("num_params", &num_params));
       // Set shape for weight matrices
       for (int i = 0; i < num_params; i++) {
         c->set_output(i,

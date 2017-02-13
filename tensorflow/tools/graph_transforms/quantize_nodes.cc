@@ -243,8 +243,9 @@ Status MergeDuplicateNodes(const GraphDef& input_graph_def,
     }
     // Update the graph so that any nodes that referred to removed inputs now
     // pull from the remaining duplicate.
-    RenameNodeInputs(merged_graph_def, inputs_to_rename,
-                     std::unordered_set<string>(), &current_graph_def);
+    TF_RETURN_IF_ERROR(RenameNodeInputs(merged_graph_def, inputs_to_rename,
+                                        std::unordered_set<string>(),
+                                        &current_graph_def));
   } while (any_duplicates_found);
 
   *output_graph_def = current_graph_def;
@@ -303,10 +304,8 @@ Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
       },
       {true}, &replaced_graph_def));
 
-  RenameNodeInputs(replaced_graph_def, inputs_to_rename,
-                   std::unordered_set<string>(), output_graph_def);
-
-  return Status::OK();
+  return RenameNodeInputs(replaced_graph_def, inputs_to_rename,
+                          std::unordered_set<string>(), output_graph_def);
 }
 
 // If the user has passed in the input_min and input_max args, then we need to
@@ -380,10 +379,12 @@ Status QuantizePlaceholders(const GraphDef& input_graph_def,
   }
 
   GraphDef first_pass_graph_def;
-  RenameNodeInputs(placeholder_graph_def, inputs_to_rename_first_pass,
-                   std::unordered_set<string>(), &first_pass_graph_def);
-  RenameNodeInputs(first_pass_graph_def, inputs_to_rename_second_pass,
-                   std::unordered_set<string>(), output_graph_def);
+  TF_RETURN_IF_ERROR(
+      RenameNodeInputs(placeholder_graph_def, inputs_to_rename_first_pass,
+                       std::unordered_set<string>(), &first_pass_graph_def));
+  TF_RETURN_IF_ERROR(
+      RenameNodeInputs(first_pass_graph_def, inputs_to_rename_second_pass,
+                       std::unordered_set<string>(), output_graph_def));
 
   return Status::OK();
 }

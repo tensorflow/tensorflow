@@ -172,7 +172,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       cost_graph, cm, in, [this, step_id, response, cm, out, token, collector,
                            opts, done](Status s) {
         if (s.ok()) {
-          env_->graph_mgr->RecvOutputs(step_id, out);
+          s = env_->graph_mgr->RecvOutputs(step_id, out);
         }
         opts->ClearCancelCallback();
         {

@@ -920,7 +920,7 @@ void WriteCCOps(const OpList& ops, const string& dot_h_fname,
   // Load the override map.
   OpGenOverrideMap override_map;
   if (!overrides_fnames.empty()) {
-    override_map.LoadFileList(env, overrides_fnames);
+    TF_CHECK_OK(override_map.LoadFileList(env, overrides_fnames));
   }
 
   // Write the initial boilerplate to the .h and .cc files.

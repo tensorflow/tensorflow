@@ -92,7 +92,8 @@ Status InferenceContext::set_output(StringPiece output_name,
     const int start = result->second.first;
     const int size = result->second.second - start;
     if (size != shapes.size()) {
-      errors::InvalidArgument("Must have exactly ", shapes.size(), " shapes.");
+      return errors::InvalidArgument("Must have exactly ", shapes.size(),
+                                     " shapes.");
     }
     for (int i = 0; i < size; ++i) {
       outputs_[i + start] = shapes[i];

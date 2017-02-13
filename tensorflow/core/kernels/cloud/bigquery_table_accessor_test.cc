@@ -387,7 +387,7 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
 
   partition.set_start_index(3);
   partition.set_end_index(-1);
-  accessor_->SetPartition(partition);
+  TF_EXPECT_OK(accessor_->SetPartition(partition));
   TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
   EXPECT_EQ(3, row_id);
   EXPECT_TRUE(accessor_->Done());
@@ -396,7 +396,7 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
 
   partition.set_start_index(0);
   partition.set_end_index(1);
-  accessor_->SetPartition(partition);
+  TF_EXPECT_OK(accessor_->SetPartition(partition));
   TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
   EXPECT_EQ(0, row_id);
   EXPECT_FALSE(accessor_->Done());

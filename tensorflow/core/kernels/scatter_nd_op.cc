@@ -156,7 +156,8 @@ class ScatterNdOp : public OpKernel {
                 errors::InvalidArgument("Shape must be a vector"));
     auto vec = shape_input.flat<Index>();
     TensorShape shape;
-    TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape);
+    OP_REQUIRES_OK(c,
+                   TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape));
 
     int64 slice_dim;
     Index num_updates;

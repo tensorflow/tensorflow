@@ -738,7 +738,7 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
   *reg = nullptr;
   *was_attr_mismatch = false;
   string label;  // Label defaults to empty if not found in NodeDef.
-  GetNodeAttr(node_def, "_kernel", &label);
+  GetNodeAttr(node_def, "_kernel", &label).IgnoreError();
   const string key = Key(node_def.op(), device_type, label);
   auto regs = GlobalKernelRegistryTyped()->equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {

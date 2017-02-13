@@ -51,7 +51,8 @@ namespace test {
 
     string dump_path;
     DebugFileIO::DumpTensorToDir(node_name, output_slot, debug_op, tensor,
-                                 event.wall_time(), dump_root, &dump_path);
+                                 event.wall_time(), dump_root, &dump_path)
+        .IgnoreError();
   }
 
   return ::grpc::Status::OK;
