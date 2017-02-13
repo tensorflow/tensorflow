@@ -147,6 +147,15 @@ class BaseRemoteRendezvous : public Rendezvous {
                                    const Rendezvous::Args& args,
                                    DoneCallback done) = 0;
 
+
+  virtual void SendToRemote(const Rendezvous::ParsedKey& parsed,
+                            const Rendezvous::Args& args,
+                            const Tensor& val,
+                            const bool is_dead,
+                            Status &s) = 0; 
+
+
+
   // Returns true if "src" and "dst" are located in the same worker,
   // and hence may use a local rendezvous.
   virtual bool IsSameWorker(DeviceNameUtils::ParsedName src,

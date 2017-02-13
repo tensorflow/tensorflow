@@ -25,6 +25,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
+#include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/framework/rendezvous.h" 
+
+
+
 namespace tensorflow {
 
 // Status callback.
@@ -93,10 +99,26 @@ class WorkerInterface {
                                CleanupAllResponse* response,
                                StatusCallback done) = 0;
 
-  virtual void RecvTensorAsync(CallOptions* opts,
+  //virtual void RecvTensorAsync(CallOptions* opts,
+  //                             const RecvTensorRequest* request,
+  //                             TensorResponse* response,
+  //                             StatusCallback done) = 0;
+
+
+
+  virtual void RecvTensorAsync(WorkerEnv* env,
+                               CallOptions* opts,
                                const RecvTensorRequest* request,
                                TensorResponse* response,
                                StatusCallback done) = 0;
+ 
+  virtual void SendTensorSync(const WorkerEnv* env,
+                              const Rendezvous::ParsedKey& key,
+                              const Rendezvous::Args &args,
+                              const Tensor& val,
+                              const bool is_dead,
+                              Status &s) = 0;
+
 
   virtual void LoggingAsync(const LoggingRequest* request,
                             LoggingResponse* response, StatusCallback done) = 0;

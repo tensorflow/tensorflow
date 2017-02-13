@@ -69,8 +69,11 @@ class Worker : public WorkerInterface {
                        CleanupAllResponse* response,
                        StatusCallback done) override;
 
-  void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
+  void RecvTensorAsync(WorkerEnv *env, CallOptions* opts, const RecvTensorRequest* request,
                        TensorResponse* response, StatusCallback done) override;
+
+  void SendTensorSync(const WorkerEnv* env, const Rendezvous::ParsedKey& key, const Rendezvous::Args &args,
+                      const Tensor& val, const bool is_dead, Status &s) override;
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
                     StatusCallback done) override;

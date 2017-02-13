@@ -343,7 +343,8 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
   return Status::OK();
 }
 
-void Worker::RecvTensorAsync(CallOptions* opts,
+void Worker::RecvTensorAsync(WorkerEnv *env,
+                             CallOptions* opts,
                              const RecvTensorRequest* request,
                              TensorResponse* response, StatusCallback done) {
   // The base Worker class does not implement RecvTensorAsync, because
@@ -352,5 +353,21 @@ void Worker::RecvTensorAsync(CallOptions* opts,
   // instead.
   done(errors::Unimplemented("Worker::RecvTensorAsync()"));
 }
+
+
+void Worker::SendTensorSync(const WorkerEnv* env,
+                      const Rendezvous::ParsedKey& key,
+                      const Rendezvous::Args &args,
+                      const Tensor& val,
+                      const bool is_dead,
+                      Status &s)  {
+    s =  Status(tensorflow::error::UNIMPLEMENTED, "Worker::SendTensorSync()");
+
+    //done(errors::Unimplemented("Worker::RecvTensorAsync()"));
+  }
+
+
+
+
 
 }  // namespace tensorflow
