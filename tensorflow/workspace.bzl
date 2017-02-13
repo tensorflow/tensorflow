@@ -448,13 +448,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@boringssl//:ssl",
   )
 
-  native.new_git_repository(
-      name = "grpc",
-      remote = "https://github.com/llhe/grpc.git",
-      commit = "cc7caf86af55801e143d3836c216dee942635f79",
-      build_file = str(Label("//third_party:grpc.BUILD")),
+  native.bind(
+      name = "nanopb",
+      actual = "@grpc//third_party/nanopb:nanopb",
   )
 
+  native.new_http_archive(
+      name = "grpc",
+      urls = [
+          #"http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/ee31910271a72c4e454a9d64ceafa530566388a6.tar.gz",
+          "https://github.com/grpc/grpc/archive/ee31910271a72c4e454a9d64ceafa530566388a6.tar.gz",
+      ],
+      sha256 = "24d1ca7d8111e97ac9b19c67c7d6cb98f73c377e47cbd892e3e37600237c6fe7",
+      strip_prefix = "grpc-ee31910271a72c4e454a9d64ceafa530566388a6",
+      build_file = str(Label("//third_party:grpc.BUILD")),
+  )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
   # C++ plugin code generator.
@@ -517,22 +525,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "025264d6e9a7ad371f2f66d17a28b6627de0c9592dc2eb54afd062f68f1f9aa3",
       strip_prefix = "boringssl-bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",
-  )
-
-  native.new_http_archive(
-      name = "nanopb_git",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-          "https://github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-      ],
-      sha256 = "ab1455c8edff855f4f55b68480991559e51c11e7dab060bbab7cffb12dd3af33",
-      strip_prefix = "nanopb-1251fa1065afc0d62f635e0f63fec8276e14e13c",
-      build_file = str(Label("//third_party:nanopb.BUILD")),
-  )
-
-  native.bind(
-      name = "nanopb",
-      actual = "@nanopb_git//:nanopb",
   )
 
   native.new_http_archive(

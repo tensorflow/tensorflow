@@ -290,9 +290,6 @@ grpc_cc_library(
         "src/core/ext/census/trace_status.h",
         "src/core/ext/census/trace_string.h",
         "src/core/ext/census/tracing.h",
-        "third_party/nanopb/pb.h",
-        "third_party/nanopb/pb_decode.h",
-        "third_party/nanopb/pb_encode.h",
     ],
     external_deps = [
         "nanopb",
@@ -754,9 +751,6 @@ grpc_cc_library(
         "src/core/ext/lb_policy/grpclb/grpclb_channel.h",
         "src/core/ext/lb_policy/grpclb/load_balancer_api.h",
         "src/core/ext/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.h",
-        "third_party/nanopb/pb.h",
-        "third_party/nanopb/pb_decode.h",
-        "third_party/nanopb/pb_encode.h",
     ],
     external_deps = [
         "nanopb",
@@ -781,9 +775,6 @@ grpc_cc_library(
         "src/core/ext/lb_policy/grpclb/grpclb_channel.h",
         "src/core/ext/lb_policy/grpclb/load_balancer_api.h",
         "src/core/ext/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.h",
-        "third_party/nanopb/pb.h",
-        "third_party/nanopb/pb_decode.h",
-        "third_party/nanopb/pb_encode.h",
     ],
     external_deps = [
         "nanopb",
