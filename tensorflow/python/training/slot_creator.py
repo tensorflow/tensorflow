@@ -48,8 +48,7 @@ from tensorflow.python.ops import variables
 
 def _is_resource(v):
   """Returns true if v is something you get from a resource variable."""
-  return (isinstance(v, resource_variable_ops.ResourceVariable) or
-          (isinstance(v, ops.Tensor) and v.op.type == "ResourceGather"))
+  return isinstance(v, resource_variable_ops.ResourceVariable)
 
 
 def _create_slot_var(primary, val, scope):

@@ -126,7 +126,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     with ops.device(grad[0].device):
       global_step = array_ops.identity(self._global_step) + 1
     return training_ops.resource_apply_adagrad_da(
-        var,
+        var.handle,
         g_acc.handle,
         gg_acc.handle,
         grad,
@@ -163,7 +163,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
     with ops.device(grad[0].device):
       global_step = array_ops.identity(self._global_step) + 1
     return training_ops.resource_sparse_apply_adagrad_da(
-        var,
+        var.handle,
         g_acc.handle,
         gg_acc.handle,
         grad,

@@ -43,6 +43,7 @@ from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -429,6 +430,9 @@ def gradients(ys,
 
   with ops.name_scope(name, "gradients", ys + xs + grad_ys) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
+    xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
+          else x
+          for x in xs]
     xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
 
@@ -523,6 +527,8 @@ def gradients(ys,
                 not out_grad) and _IsTrainable(op.outputs[i]):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
+              # TODO(apassos) gradients of resource handles might be an
+              # issue here because of zeros.
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
               else:
@@ -553,7 +559,8 @@ def gradients(ys,
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad is not None:
-            if isinstance(in_grad, ops.Tensor):
+            if (isinstance(in_grad, ops.Tensor) and
+                t_in.dtype != dtypes.resource):
               in_grad.set_shape(t_in.get_shape())
             _SetGrad(grads, t_in, in_grad)
         if loop_state:

@@ -142,7 +142,7 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     return training_ops.resource_apply_adam(
-        var, m.handle, v.handle,
+        var.handle, m.handle, v.handle,
         math_ops.cast(self._beta1_power, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),

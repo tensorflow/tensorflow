@@ -83,7 +83,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.resource_apply_adadelta(
-        var,
+        var.handle,
         accum.handle,
         accum_update.handle,
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
@@ -110,7 +110,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.resource_sparse_apply_adadelta(
-        var,
+        var.handle,
         accum.handle,
         accum_update.handle,
         math_ops.cast(self._lr_t, grad.dtype),
