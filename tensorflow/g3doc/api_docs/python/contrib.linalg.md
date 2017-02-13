@@ -3,18 +3,7 @@
 # Linear Algebra (contrib)
 [TOC]
 
-Linear algebra libraries for TensorFlow.
-
-## `LinearOperator`
-
-Subclasses of `LinearOperator` provide a access to common methods on a
-(batch) matrix, without the need to materialize the matrix.  This allows:
-
-* Matrix free computations
-* Different operators to take advantage of special strcture, while providing a
-  consistent API to users.
-
-### Base class
+Linear algebra libraries. See the @{$python/contrib.linalg} guide.
 
 - - -
 
@@ -573,9 +562,6 @@ If this operator acts like the batch matrix `A` with
 Return a dense (batch) matrix representing this operator.
 
 
-
-
-### Individual operators
 
 - - -
 
@@ -3883,9 +3869,6 @@ If this operator is `A = L + U D V^H`, this is the `U`.
 If this operator is `A = L + U D V^H`, this is the `V`.
 
 
-
-
-### Transformations and Combinations of operators
 
 - - -
 
