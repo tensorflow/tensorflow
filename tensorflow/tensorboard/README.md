@@ -16,7 +16,7 @@ Before running TensorBoard, make sure you have generated summary data in a log
 directory by creating a summary writer:
 
 ``` python
-# sess.graph_def is the graph definition; that enables the Graph Visualizer.
+# sess.graph contains the graph definition; that enables the Graph Visualizer.
 
 file_writer = tf.summary.FileWriter('/path/to/logs', sess.graph)
 ```
