@@ -26,7 +26,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// @defgroup core Core Tensorflow API
+
 class Output;
+
+/// @addtogroup core
+/// @{
 
 /// Represents a node in the computation graph.
 class Operation {
@@ -283,6 +288,8 @@ class InputList {
  private:
   std::vector<Input> inputs_;
 };
+
+/// @}
 
 }  // namespace tensorflow
 
