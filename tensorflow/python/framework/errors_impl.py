@@ -32,9 +32,6 @@ class OpError(Exception):
 
   Whenever possible, the session will raise a more specific subclass
   of `OpError` from the `tf.errors` module.
-
-  @@op
-  @@node_def
   """
 
   def __init__(self, node_def, op, message, error_code):

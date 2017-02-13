@@ -89,15 +89,6 @@ class SparseTensor(_TensorLike):
    [0, 0, 2, 0]
    [0, 0, 0, 0]]
   ```
-
-  @@__init__
-  @@get_shape
-  @@indices
-  @@values
-  @@dense_shape
-  @@dtype
-  @@op
-  @@graph
   """
 
   @classmethod

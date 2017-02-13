@@ -783,9 +783,6 @@ class Defun(object):
   b = tf.Constant([2.0])
   c, d = MyFunc(a, b, name='mycall')
   ```
-
-  @@__init__
-
   """
 
   def __init__(self, *input_types, **kwargs):
