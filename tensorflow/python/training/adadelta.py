@@ -29,8 +29,6 @@ class AdadeltaOptimizer(optimizer.Optimizer):
 
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
   ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
-
-  @@__init__
   """
 
   def __init__(self, learning_rate=0.001, rho=0.95, epsilon=1e-8,
