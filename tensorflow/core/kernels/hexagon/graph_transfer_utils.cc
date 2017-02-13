@@ -58,7 +58,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
   CHECK(gt != nullptr);
   GraphTransferer::OutputTensorInfo output_tensor_info;
   Status status = gt->DryRunInferenceForAllNode(
-      def, inputs, false /* initialize_by_zero */, &output_tensor_info);
+      def, inputs, true /* initialize_by_zero */, &output_tensor_info);
   CHECK(status.ok());
   status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs, false,
                                   output_tensor_info.output_tensor_map);

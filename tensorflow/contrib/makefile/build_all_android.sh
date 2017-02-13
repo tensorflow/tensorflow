@@ -90,7 +90,7 @@ if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
 fi
 
 if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
-    echo "Copy hexagon libraries"
+    echo "Copy hexagon libraries from ${HEXAGON_LIB_PATH}"
 
     mkdir -p "${HEXAGON_DOWNLOAD_PATH}/libs"
     cp -fv "${HEXAGON_LIB_PATH}/libhexagon_controller.so" \
