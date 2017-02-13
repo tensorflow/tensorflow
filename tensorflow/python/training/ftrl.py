@@ -30,8 +30,6 @@ class FtrlOptimizer(optimizer.Optimizer):
 
   See this [paper](
   https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate,

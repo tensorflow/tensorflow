@@ -38,8 +38,6 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   trained model. This optimizer only guarantees sparsity for linear models. Be
   careful when using AdagradDA for deep networks as it will require careful
   initialization of the gradient accumulators for it to train.
-
-  @@__init__
   """
 
   def __init__(self,
