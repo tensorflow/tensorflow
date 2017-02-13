@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -366,15 +366,51 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA
+
 #define REGISTER_SCATTER_ND_ADD_SUB_GPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB(type, GPU);
 
 #define REGISTER_SCATTER_ND_UPDATE_GPU(type) \
   REGISTER_SCATTER_ND_UPDATE(type, GPU);
 
-// TODO(simister): Re-enable when GPU support is working.
-// TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_GPU);
-// TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_GPU);
+
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, IXDIM)           \
+  template <>                                                           \
+  Index ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM>::operator()(   \
+      const GPUDevice& d, const Index slice_size,                       \
+      const Eigen::array<Eigen::DenseIndex, IXDIM> output_shape_prefix, \
+      typename TTypes<T, 2>::Tensor Tparams,                            \
+      typename TTypes<Index, 2>::ConstTensor Tindices,                  \
+      typename TTypes<T, 2>::ConstTensor Tupdates,                      \
+      typename TTypes<T, 2>::Tensor Toutput);                           \
+  extern template struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM>;
+
+#define DECLARE_GPU_SPECS_INDEX_OP(T, Index, op)     \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 1); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 2); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 3); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 4); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5)
+
+#define DECLARE_GPU_SPECS_INDEX(T, Index)                                \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ASSIGN); \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ADD);    \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::SUB)
+
+#define DECLARE_GPU_SPECS(T)         \
+  DECLARE_GPU_SPECS_INDEX(T, int32); \
+  DECLARE_GPU_SPECS_INDEX(T, int64)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
+
+#undef DECLARE_GPU_SPECS
+#undef DECLARE_GPU_SPECS_INDEX
+#undef DECLARE_GPU_SPECS_INDEX_OP
+}  // namespace functor
 
 #endif  // GOOGLE_CUDA
 
