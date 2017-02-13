@@ -270,7 +270,7 @@ Determinant for every batch member.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag` {#LinearOperatorUDVHUpdate.diag}
+#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag_arg` {#LinearOperatorUDVHUpdate.diag_arg}
 
 If this operator is `A = L + U D V^H`, this is the diagonal of `D`.
 
@@ -280,6 +280,39 @@ If this operator is `A = L + U D V^H`, this is the diagonal of `D`.
 #### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag_operator` {#LinearOperatorUDVHUpdate.diag_operator}
 
 If this operator is `A = L + U D V^H`, this is `D`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag_part(name='diag_part')` {#LinearOperatorUDVHUpdate.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
 
 
 - - -
@@ -329,6 +362,13 @@ The `DType` of `Tensor`s handled by this `LinearOperator`.
 #### `tf.contrib.linalg.LinearOperatorUDVHUpdate.graph_parents` {#LinearOperatorUDVHUpdate.graph_parents}
 
 List of graph dependencies of this `LinearOperator`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.is_diag_positive` {#LinearOperatorUDVHUpdate.is_diag_positive}
+
+If this operator is `A = L + U D V^H`, this hints `D > 0` elementwise.
 
 
 - - -
