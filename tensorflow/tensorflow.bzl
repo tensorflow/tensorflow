@@ -38,6 +38,14 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
          ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
           for p in core_proto_sources_relative])
 
+def if_android_x86(a):
+  return select({
+      "//tensorflow:android_x86": a,
+      "//tensorflow:android_x86_64": a,
+      "//conditions:default": [],
+  })
+
+
 def if_android_arm(a):
   return select({
       "//tensorflow:android_arm": a,
@@ -126,7 +134,7 @@ def tf_opts_nortti_if_android():
       "-fno-rtti",
       "-DGOOGLE_PROTOBUF_NO_RTTI",
       "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-  ])
+  ]) + if_android_x86(["-msse4.1"])
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Given a list of "op_lib_names" (a list of files in the ops directory

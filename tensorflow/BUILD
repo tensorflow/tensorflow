@@ -21,6 +21,24 @@ config_setting(
 )
 
 config_setting(
+    name = "android_x86",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "x86",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_x86_64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
