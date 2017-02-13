@@ -45,6 +45,26 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
+
+#if 1
+
+#include <mpi.h>
+
+#define MPICheck(cmd) do {                                 \
+   int mpi_errno = cmd;                                          \
+   if (MPI_SUCCESS != mpi_errno) {                               \
+       fprintf(stderr, "[%s:%d] MPI call failed with %d \n",     \
+        __FILE__, __LINE__,mpi_errno);                           \
+       exit(EXIT_FAILURE);                                       \
+   }                                                             \
+   assert(MPI_SUCCESS == mpi_errno);                             \
+   } while(false)
+
+
+#endif
+
+
+
 namespace tensorflow {
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
@@ -203,6 +223,35 @@ Status GrpcServer::Init() {
 
   // Provide direct access to the master from in-process clients.
   LocalMaster::Register(target(), master_impl_.get());
+
+
+#if 1
+   //Connect the MPI process IDs to the worker names that are used by TF
+
+  //Gather the names of all the active processes (name can't be longer than 128 bytes)
+  int procId,nProcs = -1;
+  MPICheck(MPI_Comm_rank(MPI_COMM_WORLD, &procId));
+  MPICheck(MPI_Comm_size(MPI_COMM_WORLD, &nProcs));
+
+  const int maxNameLength = 128;
+  char myName[maxNameLength];
+  assert(name_prefix.size() < maxNameLength);
+  strcpy(myName, name_prefix.c_str());
+  std::vector<char> worker_names(nProcs*maxNameLength);
+  MPICheck(MPI_Allgather(myName,           maxNameLength, MPI_CHAR,
+                         &worker_names[0], maxNameLength, MPI_CHAR,
+                         MPI_COMM_WORLD));
+
+  for(int i=0; i < nProcs; i++)
+  {
+    fprintf(stderr,"JBDBG Iam: %d Proc: %d  name: %s \n", procId, i, &worker_names[i*128]);
+    worker_env_.worker_name_MPI_idx[string(&worker_names[i*128])] = i;
+  } 
+
+#endif
+
+
+
 
   return Status::OK();
 }

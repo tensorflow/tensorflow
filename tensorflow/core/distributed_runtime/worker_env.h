@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 
 #include "tensorflow/core/platform/types.h"
+#include <map>
 
 namespace tensorflow {
 
@@ -55,6 +56,9 @@ struct WorkerEnv {
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;
+
+  // A map to convert gRPC worker-names to MPI Process IDs
+  std::map<string, int> worker_name_MPI_idx;
 };
 
 }  // end namespace tensorflow
