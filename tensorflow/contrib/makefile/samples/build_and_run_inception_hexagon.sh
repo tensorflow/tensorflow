@@ -93,7 +93,6 @@ make tree VERBOSE=1 V=android_Release
 cp -v "${GENERATED_HEXAGON_CONTROLLER_DIRECTORY}/android_Release/ship/libhexagon_controller.so" "${GEN_LIBS_DIR}"
 cp -v "${GENERATED_NNLIB_DIRECTORY}/hexagon_Release_dynamic_toolv72_v60/ship/libhexagon_nn_skel.so" "${GEN_LIBS_DIR}"
 
-
 if [[ -d "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/protobuf" &&
       -d "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/protobuf-host" ]]; then
     echo "generated protobuf and protobuf-host found."
@@ -116,8 +115,8 @@ HEXAGON_DOWNLOAD_PATH=\
 rm -rf "${HEXAGON_DOWNLOAD_PATH}"
 mkdir -p "${HEXAGON_DOWNLOAD_PATH}/libs"
 
-download_and_push "${URL_BASE}/example_images/img_299x299.jpg" \
-"${GEN_DOWNLOAD_DIR}/img_299x299.jpg" "/data/local/tmp"
+download_and_push "${URL_BASE}/example_images/img_299x299.bmp" \
+"${GEN_DOWNLOAD_DIR}/img_299x299.bmp" "/data/local/tmp"
 
 download_and_push \
 "${URL_BASE}/models/tensorflow_inception_v3_stripped_optimized_quantized.pb" \
@@ -127,8 +126,8 @@ download_and_push \
 download_and_push "${URL_BASE}/models/imagenet_comp_graph_label_strings.txt" \
 "${GEN_DOWNLOAD_DIR}/imagenet_comp_graph_label_strings.txt" "/data/local/tmp"
 
-# Uncomment this block if you want to fuse and run the model
-#gtest_args+=("--gtest_filter=GraphTransferer.RunInceptionV3OnHexagonExampleWithTfRuntime")
+# By default this script runs a test to fuse and run the model
+gtest_args+=("--gtest_filter=GraphTransferer.RunInceptionV3OnHexagonExampleWithTfRuntime")
 # Uncomment this block if you want to run the fused model
 #gtest_args+=("--gtest_filter=GraphTransferer.RunInceptionV3OnHexagonExampleWithFusedGraph")
 # Uncomment this block if you want to run the model with hexagon wrapper
@@ -139,6 +138,10 @@ download_and_push "${URL_BASE}/models/imagenet_comp_graph_label_strings.txt" \
 #gtest_args+=("--gtest_list_tests")
 
 ANDROID_EXEC_FILE_MODE=755
+
+adb push "${GEN_LIBS_DIR}/libhexagon_controller.so" "/data/local/tmp"
+adb push "${GEN_LIBS_DIR}/libhexagon_nn_skel.so" "/vendor/lib/rfsa/adsp"
+
 echo "Run hexagon_graph_execution"
 adb push -p \
 "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/bin/hexagon_graph_execution" \
