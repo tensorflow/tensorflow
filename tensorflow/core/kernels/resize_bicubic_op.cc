@@ -130,7 +130,7 @@ class CachedInterpolation {
     }
     // We use 2 hands and walk through, copying from one to another where
     // we already have values.
-    // Invarient, new_indicies_hand <= cached_values_hand
+    // Invariant, new_indicies_hand <= cached_values_hand
     const std::array<int64, 4> new_x_indices{{x_0, x_1, x_2, x_3}};
     int cached_values_hand = 0;
     int new_indicies_hand = 0;
