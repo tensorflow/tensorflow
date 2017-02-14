@@ -146,9 +146,7 @@ class FileIO(object):
 
   def tell(self):
     """Returns the current position in the file."""
-    if not self._read_check_passed:
-      raise errors.PermissionDeniedError(None, None,
-                                         "File isn't open for reading")
+    self._preread_check()
     return self._read_buf.Tell()
 
   def __enter__(self):
