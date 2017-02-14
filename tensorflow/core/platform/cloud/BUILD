@@ -87,6 +87,7 @@ cc_library(
     deps = [
         ":http_request",
         ":oauth_client",
+        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
@@ -111,6 +112,20 @@ cc_library(
 )
 
 cc_library(
+    name = "retrying_utils",
+    srcs = [
+        "retrying_utils.cc",
+    ],
+    hdrs = [
+        "retrying_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "retrying_file_system",
     srcs = [
         "retrying_file_system.cc",
@@ -119,6 +134,7 @@ cc_library(
         "retrying_file_system.h",
     ],
     deps = [
+        ":retrying_utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
     ],
