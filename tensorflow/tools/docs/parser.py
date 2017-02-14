@@ -80,11 +80,6 @@ def _get_raw_docstring(py_object):
     return ''
 
 
-def _get_brief_docstring(py_object):
-  """Gets the one line docstring of a python object."""
-  return _get_raw_docstring(py_object).split('\n')[0]
-
-
 def _reference_to_link(ref_full_name, relative_path_to_root, duplicate_of,
                        index):
   """Resolve a "@{symbol}" reference to a relative path, respecting duplicates.
@@ -190,10 +185,10 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
 
     if string in doc_index:
       if link_text is None: link_text = doc_index[string].title
-      return '[%s](%s%s)' % (
-          link_text, os.path.join(relative_path_to_root, doc_index[string].url),
-          hash_tag)
-    log_error('Handle doc reference "@{%s}"' % string)
+      url = os.path.normpath(os.path.join(
+          relative_path_to_root, '../..', doc_index[string].url))
+      return '[%s](%s%s)' % (link_text, url, hash_tag)
+    log_error('Handle doc reference "@{$%s}"' % string)
     return 'TODO:%s' % string
 
   elif string.startswith('tf.') or string.startswith('tfdbg.'):  # Python symbol
@@ -211,12 +206,11 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
     else:
       log_error('Handle C++ reference "@{%s}"' % string)
       return 'TODO_C++:%s' % string
-    # TODO(josh11b): Get rid of this hack!
-    # Rewrite e.g. ../../api_docs/python -> ['..', '..', 'api_docs', 'cc', ret]
-    cc_relative_path = relative_path_to_root.split('/')
-    cc_relative_path[-1] = 'cc'
-    cc_relative_path.append(ret)
-    return '[`%s`](%s)' % (link_text, os.path.join(*cc_relative_path))
+    # relative_path_to_root gets you to api_docs/python, we go from there
+    # to api_docs/cc, and then add ret.
+    cc_relative_path = os.path.normpath(os.path.join(
+        relative_path_to_root, '../cc', ret))
+    return '[`%s`](%s)' % (link_text, cc_relative_path)
   # Error!
   log_error('Did not understand "@{%s}"' % string)
   return 'ERROR:%s' % string
@@ -253,6 +247,40 @@ def replace_references(string, relative_path_to_root, duplicate_of, doc_index,
                                        relative_path_to_root,
                                        duplicate_of, doc_index, index),
                 string)
+
+
+def _md_brief_docstring(py_object, relative_path_to_root,
+                        duplicate_of, doc_index, index):
+  """Get the brief docstring from an object and make it into nice Markdown.
+
+  For links within the same set of docs, the `relative_path_to_root` for a
+  docstring on the page for `full_name` can be set to
+
+  ```python
+  relative_path_to_root = os.path.relpath(
+    path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
+  ```
+
+  Args:
+    py_object: A python object to retrieve the docs for (class, function/method,
+      or module).
+    relative_path_to_root: The relative path from the location of the current
+      document to the root of the Python API documentation. This is used to
+      compute links for "@{symbol}" references.
+    duplicate_of: A map from duplicate symbol names to master names. Used to
+      resolve "@symbol" references.
+    doc_index: A `dict` mapping symbol name strings to objects with `url`
+      and `title` fields. Used to resolve @{$doc} references in docstrings.
+    index: A map from all full names to python objects.
+
+  Returns:
+    The docstring, or the empty string if no docstring was found.
+  """
+  # TODO(wicke): If this is a partial, use the .func docstring and add a note.
+  docstring = _get_raw_docstring(py_object).split('\n')[0]
+  docstring = replace_references(docstring, relative_path_to_root,
+                                 duplicate_of, doc_index, index)
+  return docstring
 
 
 # TODO(aselle): Collect these into a big list for all modules and functions
@@ -292,8 +320,8 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of, doc_index,
     py_object: A python object to retrieve the docs for (class, function/method,
       or module).
     relative_path_to_root: The relative path from the location of the current
-      document to the root of the API documentation. This is used to compute
-      links for "@symbol" references.
+      document to the root of the Python API documentation. This is used to
+      compute links for "@{symbol}" references.
     duplicate_of: A map from duplicate symbol names to master names. Used to
       resolve "@symbol" references.
     doc_index: A `dict` mapping symbol name strings to objects with `url`
@@ -313,6 +341,7 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of, doc_index,
   # Define regular expressions used during parsing below.
   symbol_list_item_re = re.compile(r'^  (%s): ' % IDENTIFIER_RE)
   section_re = re.compile(r'^(\w+):\s*$')
+  atat_re = re.compile(r'^\s*@@[a-zA-Z_.0-9]+\s*$')
 
   # Translate docstring line by line.
   in_special_section = False
@@ -324,6 +353,9 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of, doc_index,
             re.match(section_re, raw_lines[i]) and
             len(raw_lines) > i+1 and raw_lines[i+1].startswith('  '))
   for i, line in enumerate(raw_lines):
+    if re.match(atat_re, line):
+      continue
+
     if not in_special_section and is_section_start(i):
       in_special_section = True
       lines.append('#### ' + section_re.sub(r'\1:', line))
@@ -700,7 +732,9 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
       member_links.append('Constant ' + name)
       continue
 
-    brief_docstring = _get_brief_docstring(member)
+    brief_docstring = _md_brief_docstring(
+        member, relative_path, duplicate_of=duplicate_of, doc_index=doc_index,
+        index=index)
     if brief_docstring:
       suffix = '%s: %s' % (suffix, brief_docstring)
 
@@ -708,8 +742,7 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
                                        relative_path, duplicate_of, index) +
                         suffix)
 
-  # TODO(deannarubin): Make this list into a table and add the brief docstring.
-  # (use _get_brief_docstring)
+  # TODO(deannarubin): Make this list into a table.
 
   return '# Module `%s`\n\n%s%s\n\n## Members\n\n%s' % (
       full_name, aliases, docstring, '\n\n'.join(member_links))
@@ -845,6 +878,6 @@ def generate_global_index(library_name, index, duplicate_of):
     lines.append('*  %s' % link)
 
   # TODO(deannarubin): Make this list into a table and add the brief docstring.
-  # (use _get_brief_docstring)
+  # (use _md_brief_docstring)
 
   return '\n'.join(lines)
