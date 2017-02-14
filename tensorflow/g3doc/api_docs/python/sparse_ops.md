@@ -7,12 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Sparse Tensor Representation
-
-TensorFlow supports a `SparseTensor` representation for data that is sparse
-in multiple dimensions. Contrast this representation with `IndexedSlices`,
-which is efficient for representing tensors that are sparse in their first
-dimension, and dense along all other dimensions.
+Sparse Tensor Representation. See the @{python/sparse_ops} guide.
 
 - - -
 
@@ -322,9 +317,6 @@ Alias for field number 1
 
 
 
-
-## Conversion
-
 - - -
 
 ### `tf.sparse_to_dense(sparse_indices, output_shape, sparse_values, default_value=0, validate_indices=True, name=None)` {#sparse_to_dense}
@@ -574,9 +566,6 @@ In this case the resulting `SparseTensor` has the following properties:
     `vocab_size` is not a or list thereof and `sp_ids` is a list.
 *  <b>`ValueError`</b>: If `sp_ids` and `vocab_size` are lists of different lengths.
 
-
-
-## Manipulation
 
 - - -
 
@@ -1026,8 +1015,6 @@ then the output will be a `SparseTensor` of shape `[5, 4]` and
 *  <b>`TypeError`</b>: If `sp_input` is not a `SparseTensor`.
 
 
-
-## Reduction
 - - -
 
 ### `tf.sparse_reduce_sum(sp_input, axis=None, keep_dims=False, reduction_axes=None)` {#sparse_reduce_sum}
@@ -1107,8 +1094,6 @@ which are interpreted according to the indexing rules in Python.
   The reduced SparseTensor.
 
 
-
-## Math Operations
 - - -
 
 ### `tf.sparse_add(a, b, thresh=0)` {#sparse_add}
