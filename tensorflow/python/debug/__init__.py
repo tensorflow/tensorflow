@@ -67,14 +67,14 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-imports
-from tensorflow.python.debug.debug_data import DebugDumpDir
-from tensorflow.python.debug.debug_data import DebugTensorDatum
-from tensorflow.python.debug.debug_data import has_inf_or_nan
-from tensorflow.python.debug.debug_data import load_tensor_from_event_file
+from tensorflow.python.debug.lib.debug_data import DebugDumpDir
+from tensorflow.python.debug.lib.debug_data import DebugTensorDatum
+from tensorflow.python.debug.lib.debug_data import has_inf_or_nan
+from tensorflow.python.debug.lib.debug_data import load_tensor_from_event_file
 
-from tensorflow.python.debug.debug_utils import add_debug_tensor_watch
-from tensorflow.python.debug.debug_utils import watch_graph
-from tensorflow.python.debug.debug_utils import watch_graph_with_blacklists
+from tensorflow.python.debug.lib.debug_utils import add_debug_tensor_watch
+from tensorflow.python.debug.lib.debug_utils import watch_graph
+from tensorflow.python.debug.lib.debug_utils import watch_graph_with_blacklists
 
 from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapperSession
 from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook

@@ -12,13 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""## Script Language Operators.
 
-TensorFlow provides allows you to wrap python/numpy functions as
-TensorFlow operators.
+"""Script Language Operators. See the @{python/script_ops} guide.
 
 @@py_func
-
 """
 
 # pylint: disable=g-bad-name

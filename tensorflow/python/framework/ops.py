@@ -230,20 +230,6 @@ class Tensor(_TensorLike):
   # Execute the graph and store the value that `e` represents in `result`.
   result = sess.run(e)
   ```
-
-  @@dtype
-  @@name
-  @@value_index
-  @@graph
-  @@op
-  @@consumers
-
-  @@eval
-
-  @@get_shape
-  @@shape
-  @@set_shape
-
   """
 
   # List of Python operators that we allow to override.
@@ -1021,17 +1007,6 @@ class IndexedSlices(_TensorLike):
   Contrast this representation with
   [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
   which uses multi-dimensional indices and scalar values.
-
-  @@__init__
-
-  @@values
-  @@indices
-  @@dense_shape
-
-  @@name
-  @@dtype
-  @@device
-  @@op
   """
 
   def __init__(self, values, indices, dense_shape=None):
@@ -1155,19 +1130,6 @@ class Operation(object):
   be executed by passing it to
   [`Session.run()`](../../api_docs/python/client.md#Session.run).
   `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
-
-  @@name
-  @@type
-  @@inputs
-  @@control_inputs
-  @@outputs
-  @@device
-  @@graph
-
-  @@run
-
-  @@get_attr
-  @@traceback
   """
 
   def __init__(self, node_def, g, inputs=None, output_types=None,

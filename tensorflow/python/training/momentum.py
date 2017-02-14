@@ -26,8 +26,6 @@ from tensorflow.python.training import training_ops
 
 class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, momentum,

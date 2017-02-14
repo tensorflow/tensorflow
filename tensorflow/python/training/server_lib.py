@@ -100,14 +100,6 @@ class Server(object):
   cluster (specified by a [`tf.train.ClusterSpec`](#ClusterSpec)), and
   corresponds to a particular task in a named job. The server can
   communicate with any other server in the same cluster.
-
-  @@__init__
-  @@create_local_server
-  @@target
-  @@server_def
-
-  @@start
-  @@join
   """
 
   def __init__(self,
@@ -257,9 +249,6 @@ class ClusterSpec(object):
                                   "ps": ["ps0.example.com:2222",
                                          "ps1.example.com:2222"]})
   ```
-
-  @@as_cluster_def
-  @@as_dict
   """
 
   def __init__(self, cluster):

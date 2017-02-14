@@ -29,8 +29,6 @@ class ProximalAdagradOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Proximal Adagrad algorithm.
 
   See this [paper](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting.pdf).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, initial_accumulator_value=0.1,

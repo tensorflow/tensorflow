@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
 class Status {
  public:
@@ -101,6 +102,7 @@ inline bool Status::operator==(const Status& x) const {
 
 inline bool Status::operator!=(const Status& x) const { return !(*this == x); }
 
+/// @ingroup core
 std::ostream& operator<<(std::ostream& os, const Status& x);
 
 typedef std::function<void(const Status&)> StatusCallback;
