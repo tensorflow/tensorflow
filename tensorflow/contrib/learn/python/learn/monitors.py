@@ -15,8 +15,6 @@
 
 """Monitors instrument the training process.
 
-See the @{$python/contrib.learn.monitors} guide.
-
 @@get_default_monitors
 @@BaseMonitor
 @@CaptureVariable
