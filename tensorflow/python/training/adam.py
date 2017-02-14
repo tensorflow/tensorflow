@@ -32,8 +32,6 @@ class AdamOptimizer(optimizer.Optimizer):
 
   See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,

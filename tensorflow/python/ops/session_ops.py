@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""## Tensor Handle Operations.
 
-TensorFlow provides several operators that allows the user to keep tensors
-"in-place" across run calls.
+"""Tensor Handle Operations. See the @{python/session_ops} guide.
 
 @@get_session_handle
 @@get_session_tensor

@@ -42,6 +42,10 @@ sh_test(
         "//tensorflow/core:all_files",
         "//tensorflow/python:all_files",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 filegroup(

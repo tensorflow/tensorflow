@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes and helper functions for Stochastic Computation Graphs.
+"""Support for Stochastic Computation Graphs.
 
-## Stochastic Computation Graph Helper Functions
+See the ${@python/contrib.bayesflow.stochastic_graph} guide.
 
 @@surrogate_loss
 """

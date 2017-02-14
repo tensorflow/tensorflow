@@ -22,7 +22,7 @@ import copy
 import six
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
 
