@@ -24,7 +24,7 @@ namespace port {
 
 ScopedSetRound::ScopedSetRound() {
 #ifdef __STDC_IEC_559__
-   std::fesetround(FE_TONEAREST);
+   fesetround(FE_TONEAREST);
 #endif
 }
 
