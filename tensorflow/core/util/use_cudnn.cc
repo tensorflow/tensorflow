@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
 

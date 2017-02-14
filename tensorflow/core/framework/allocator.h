@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -155,10 +154,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(void* ptr) {
-    CHECK(false) << "allocator doesn't track sizes";
-    return size_t(0);
-  }
+  virtual size_t RequestedSize(void* ptr);
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns RequestedSize(ptr). AllocatedSize(ptr) is

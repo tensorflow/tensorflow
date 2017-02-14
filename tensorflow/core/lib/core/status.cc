@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include <stdio.h>
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 Status::Status(tensorflow::error::Code code, StringPiece msg) {
@@ -23,6 +25,14 @@ Status::Status(tensorflow::error::Code code, StringPiece msg) {
   state_ = new State;
   state_->code = code;
   state_->msg = msg.ToString();
+}
+
+void Status::CheckOk() const {
+  CHECK(ok());
+}
+
+void Status::QCheckOk() const {
+  QCHECK(ok());
 }
 
 void Status::Update(const Status& new_status) {

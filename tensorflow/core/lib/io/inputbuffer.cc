@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace io {
