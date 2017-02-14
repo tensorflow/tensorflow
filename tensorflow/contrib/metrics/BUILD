@@ -11,6 +11,8 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "metrics_py",
     srcs = [

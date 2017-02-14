@@ -357,7 +357,7 @@ Status HttpRequest::Send() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
                              &HttpRequest::HeaderCallback);
 
-  char error_buffer[CURL_ERROR_SIZE];
+  char error_buffer[CURL_ERROR_SIZE] = {0};
   libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
 
   const auto curl_result = libcurl_->curl_easy_perform(curl_);
@@ -367,30 +367,32 @@ Status HttpRequest::Send() {
 
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
 
+  const auto& error_message = strings::StrCat(
+      "Error executing an HTTP request (HTTP response code ", response_code_,
+      ", error code ", curl_result, ", error message '", error_buffer, "')");
   switch (response_code_) {
     case 200:  // OK
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
       if (curl_result != CURLE_OK) {
-        // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.
-        return errors::Unavailable(
-            strings::StrCat("libcurl failed with error code ", curl_result,
-                            ": ", error_buffer));
+        // UNAVAILABLE can be retried by the caller, e.g by
+        // RetryingFileSystem.
+        return errors::Unavailable(error_message);
       }
       return Status::OK();
     case 401:
     case 403:
-      return errors::PermissionDenied("Not authorized to access the resource.");
+      return errors::PermissionDenied(error_message);
     case 404:
-      return errors::NotFound("The requested resource was not found.");
+      return errors::NotFound(error_message);
     case 416:  // Requested Range Not Satisfiable
       response_buffer_->clear();
       return Status::OK();
     default:
-      // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.
-      return errors::Unavailable(
-          strings::StrCat("Unexpected response code ", response_code_));
+      // UNAVAILABLE can be retried by the caller, e.g by
+      // RetryingFileSystem.
+      return errors::Unavailable(error_message);
   }
 }
 

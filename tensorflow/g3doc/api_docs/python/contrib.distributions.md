@@ -5,12 +5,7 @@
 
 Classes representing statistical distributions and ops for working with them.
 
-## Classes for statistical distributions.
-
-Classes that represent batches of statistical distributions.  Each class is
-initialized with parameters that define the distributions.
-
-## Base classes
+See the @{$python/contrib.distributions} guide.
 
 - - -
 
@@ -759,8 +754,6 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 
 
-
-## Univariate (scalar) distributions
 
 - - -
 
@@ -14933,10 +14926,6 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 
 
-## Multivariate distributions
-
-### Multivariate normal
-
 - - -
 
 ### `class tf.contrib.distributions.MultivariateNormalDiag` {#MultivariateNormalDiag}
@@ -17889,8 +17878,6 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 
 
-
-### Other multivariate distributions
 
 - - -
 
@@ -21365,8 +21352,6 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 
 
-### Multivariate Utilities
-
 - - -
 
 ### `tf.contrib.distributions.matrix_diag_transform(matrix, transform=None, name=None)` {#matrix_diag_transform}
@@ -21423,8 +21408,6 @@ loss = -1 * tf.reduce_mean(dist.log_prob(labels))
   A `Tensor` with same shape and `dtype` as `matrix`.
 
 
-
-## Transformed distributions
 
 - - -
 
@@ -22887,8 +22870,6 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 
 
-## Mixture Models
-
 - - -
 
 ### `class tf.contrib.distributions.Mixture` {#Mixture}
@@ -23554,13 +23535,6 @@ denotes expectation, and `Var.shape = batch_shape + event_shape`.
 
 
 
-## Posterior inference with conjugate priors.
-
-Functions that transform conjugate prior/likelihood pairs to distributions
-representing the posterior or posterior predictive.
-
-## Normal likelihood with conjugate prior.
-
 - - -
 
 ### `tf.contrib.distributions.normal_conjugates_known_scale_posterior(prior, scale, s, n)` {#normal_conjugates_known_scale_posterior}
@@ -23671,8 +23645,6 @@ will broadcast in the case of multidimensional sets of parameters.
 
 
 
-## Kullback-Leibler Divergence
-
 - - -
 
 ### `tf.contrib.distributions.kl(dist_a, dist_b, allow_nan=False, name=None)` {#kl}
@@ -23762,8 +23734,6 @@ Initialize the KL registrar.
 
 
 
-## Utilities
-
 - - -
 
 ### `tf.contrib.distributions.softplus_inverse(x, name=None)` {#softplus_inverse}
@@ -23787,8 +23757,6 @@ softplus_inverse = log(exp(x) - 1.)
   `Tensor`. Has the same type/shape as input `x`.
 
 
-
-## Relaxed Discrete Distributions
 
 - - -
 

@@ -31,7 +31,6 @@
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
-  * [`shape`](../../api_docs/python/framework.md#shape)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
@@ -363,13 +362,7 @@
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
 
 * **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
-  * [`concat`](../../api_docs/python/tensor_array_ops.md#concat)
-  * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
-  * [`identity`](../../api_docs/python/tensor_array_ops.md#identity)
-  * [`split`](../../api_docs/python/tensor_array_ops.md#split)
-  * [`stack`](../../api_docs/python/tensor_array_ops.md#stack)
   * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
-  * [`unstack`](../../api_docs/python/tensor_array_ops.md#unstack)
 
 * **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
   * [`delete_session_tensor`](../../api_docs/python/session_ops.md#delete_session_tensor)
@@ -478,7 +471,6 @@
   * [`ReaderBase`](../../api_docs/python/io_ops.md#ReaderBase)
   * [`shuffle_batch`](../../api_docs/python/io_ops.md#shuffle_batch)
   * [`shuffle_batch_join`](../../api_docs/python/io_ops.md#shuffle_batch_join)
-  * [`size`](../../api_docs/python/io_ops.md#size)
   * [`slice_input_producer`](../../api_docs/python/io_ops.md#slice_input_producer)
   * [`sparse_placeholder`](../../api_docs/python/io_ops.md#sparse_placeholder)
   * [`SparseConditionalAccumulator`](../../api_docs/python/io_ops.md#SparseConditionalAccumulator)
