@@ -1576,8 +1576,6 @@ class RegisterGradient(object):
   The decorator argument `op_type` is the string type of an
   operation. This corresponds to the `OpDef.name` field for the proto
   that defines the operation.
-
-  @@__init__
   """
 
   def __init__(self, op_type):
@@ -1925,16 +1923,6 @@ class Graph(object):
   synchronization must be provided. Unless otherwise specified, all methods
   are not thread-safe.
 
-  @@__init__
-  @@as_default
-  @@as_graph_def
-  @@finalize
-  @@finalized
-
-  @@control_dependencies
-  @@device
-  @@name_scope
-
   A `Graph` instance supports an arbitrary number of "collections"
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
@@ -1942,24 +1930,6 @@ class Graph(object):
   @{tf.GraphKeys.GLOBAL_VARIABLES}) for
   all variables that are created during the construction of a graph. The caller
   may define additional collections by specifying a new name.
-
-  @@add_to_collection
-  @@add_to_collections
-  @@get_collection
-  @@get_collection_ref
-
-  @@as_graph_element
-  @@get_operation_by_name
-  @@get_tensor_by_name
-  @@get_operations
-
-  @@seed
-  @@unique_name
-  @@version
-  @@graph_def_versions
-
-  @@create_op
-  @@gradient_override_map
   """
 
   def __init__(self):
