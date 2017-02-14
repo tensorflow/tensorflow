@@ -162,7 +162,7 @@ class RandomUniform(Initializer):
     maxval: A python scalar or a scalar tensor. Upper bound of the range
       of random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type.
   """
@@ -189,7 +189,7 @@ class RandomNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -221,7 +221,7 @@ class TruncatedNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -261,7 +261,7 @@ class UniformUnitScaling(Initializer):
   Args:
     factor: Float.  A multiplicative factor by which the values will be scaled.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type. Only floating point types are supported.
   """
@@ -309,7 +309,7 @@ class VarianceScaling(Initializer):
     mode: One of "fan_in", "fan_out", "fan_avg".
     distribution: Random distribution to use. One of "normal", "uniform".
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -376,7 +376,7 @@ class Orthogonal(Initializer):
     gain: multiplicative factor to apply to the orthogonal matrix
     dtype: The type of the output.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
   """
 
@@ -441,7 +441,7 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
 
   Arguments:
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
@@ -467,7 +467,7 @@ def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
 
   Arguments:
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     dtype: The data type. Only floating point types are supported.
 

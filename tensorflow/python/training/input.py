@@ -15,7 +15,7 @@
 
 """Input pipeline.
 
-Please see the [reading data how-to](../../how_tos/reading_data/index.md)
+Please see the @{$reading_data$reading data how-to}
 for context.
 """
 
