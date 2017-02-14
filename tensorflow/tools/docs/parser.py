@@ -201,6 +201,8 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
       ret = 'class/tensorflow/scope.md'
     elif string == 'tensorflow::Status':
       ret = 'class/tensorflow/status.md'
+    elif string == 'tensorflow::Tensor':
+      ret = 'class/tensorflow/tensor.md'
     elif string == 'tensorflow::ops::Const':
       ret = 'namespace/tensorflow/ops.md#const'
     else:
