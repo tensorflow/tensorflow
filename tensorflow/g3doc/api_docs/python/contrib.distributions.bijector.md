@@ -3,22 +3,7 @@
 # Random variable transformations (contrib)
 [TOC]
 
-Bijector Ops.
-
-An API for invertible, differentiable transformations of random variables.
-
-## Background
-
-Differentiable, bijective transformations of continuous random variables alter
-the calculations made in the cumulative/probability distribution functions and
-sample function. This module provides a standard interface for making these
-manipulations.
-
-For more details and examples, see the `Bijector` docstring.
-
-To apply a `Bijector`, use `distributions.TransformedDistribution`.
-
-## Bijectors
+Bijector Ops. See the @{$python/contrib.distributions.bijector} guide.
 
 - - -
 
