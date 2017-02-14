@@ -145,7 +145,6 @@ def extract():
           'tensorboard',
           'testing',
           'tfprof',
-          'training',
       ],
       'contrib.bayesflow': [
           'entropy', 'monte_carlo',
@@ -154,10 +153,10 @@ def extract():
           'stochastic_variables', 'variational_inference'
       ],
       'contrib.distributions': ['bijector'],
+      'contrib.ffmpeg': ['ffmpeg_ops'],
       'contrib.graph_editor': [
           'edit',
           'match',
-          'reroute',
           'subgraph',
           'transform',
           'select',
@@ -308,7 +307,7 @@ class UpdateTags(py_guide_parser.PyGuideParser):
   """Rewrites a Python guide so that each section has an explicit tag."""
 
   def process_section(self, line_number, section_title, tag):
-    self.replace_line(line_number, '## %s<a id="%s"/>' % (section_title, tag))
+    self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
 
 
 def other_docs(src_dir, output_dir, visitor, doc_index):

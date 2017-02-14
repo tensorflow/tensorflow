@@ -7,10 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Script Language Operators.
-
-TensorFlow provides allows you to wrap python/numpy functions as
-TensorFlow operators.
+Script Language Operators. See the @{python/script_ops} guide.
 
 - - -
 

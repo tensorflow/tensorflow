@@ -192,12 +192,6 @@ class Optimizer(object):
   opt.apply_gradients(capped_grads_and_vars)
   ```
 
-  @@__init__
-
-  @@minimize
-  @@compute_gradients
-  @@apply_gradients
-
   ### Gating Gradients
 
   Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
@@ -231,9 +225,6 @@ class Optimizer(object):
 
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
-
-  @@get_slot_names
-  @@get_slot
   """
 
   # Values for gate_gradients.

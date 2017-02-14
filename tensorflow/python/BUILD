@@ -657,6 +657,7 @@ py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -2157,6 +2158,7 @@ py_test(
     srcs = ["util/protobuf/compare_test.py"],
     main = "util/protobuf/compare_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
         ":platform_test",

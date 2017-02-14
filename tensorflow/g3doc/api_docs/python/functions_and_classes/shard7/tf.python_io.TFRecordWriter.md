@@ -2,6 +2,19 @@ A class to write records to a TFRecords file.
 
 This class implements `__enter__` and `__exit__`, and can be used
 in `with` blocks like a normal file.
+- - -
+
+#### `tf.python_io.TFRecordWriter.__enter__()` {#TFRecordWriter.__enter__}
+
+Enter a `with` block.
+
+
+- - -
+
+#### `tf.python_io.TFRecordWriter.__exit__(unused_type, unused_value, unused_traceback)` {#TFRecordWriter.__exit__}
+
+Exit a `with` block, closing the file.
+
 
 - - -
 
@@ -23,6 +36,13 @@ Opens file `path` and creates a `TFRecordWriter` writing to it.
 
 - - -
 
+#### `tf.python_io.TFRecordWriter.close()` {#TFRecordWriter.close}
+
+Close the file.
+
+
+- - -
+
 #### `tf.python_io.TFRecordWriter.write(record)` {#TFRecordWriter.write}
 
 Write a string record to the file.
@@ -31,28 +51,5 @@ Write a string record to the file.
 
 
 *  <b>`record`</b>: str
-
-
-- - -
-
-#### `tf.python_io.TFRecordWriter.close()` {#TFRecordWriter.close}
-
-Close the file.
-
-
-
-#### Other Methods
-- - -
-
-#### `tf.python_io.TFRecordWriter.__enter__()` {#TFRecordWriter.__enter__}
-
-Enter a `with` block.
-
-
-- - -
-
-#### `tf.python_io.TFRecordWriter.__exit__(unused_type, unused_value, unused_traceback)` {#TFRecordWriter.__exit__}
-
-Exit a `with` block, closing the file.
 
 

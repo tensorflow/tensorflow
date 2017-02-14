@@ -10,6 +10,8 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "learn",
     srcs = [
@@ -746,6 +748,7 @@ py_test(
     srcs = ["python/learn/estimators/linear_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

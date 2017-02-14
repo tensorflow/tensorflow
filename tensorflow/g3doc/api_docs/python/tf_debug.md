@@ -5,10 +5,7 @@
 
 Public Python API of TensorFlow Debugger (tfdbg).
 
-## Functions for adding debug watches
-
-These functions help you modify `RunOptions` to specify which `Tensor`s are to
-be watched when the TensorFlow graph is executed at runtime.
+See the @{$python/tfdbg} guide.
 
 - - -
 
@@ -102,13 +99,6 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
 *  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
     watch.
 
-
-
-
-## Classes for debug-dump data and directories
-
-These classes allow you to load and inspect tensor values dumped from
-TensorFlow graphs during runtime.
 
 - - -
 
@@ -814,10 +804,6 @@ Get all `DebugTensorDatum` instances corresponding to a debug watch key.
 
 
 
-
-
-## Functions for loading debug-dump data
-
 - - -
 
 ### `tf_debug.load_tensor_from_event_file(event_file_path)` {#load_tensor_from_event_file}
@@ -839,13 +825,6 @@ protobuf contains a `Tensor` value.
   cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
   `None`.
 
-
-
-
-## Tensor-value predicates
-
-Built-in tensor-filter predicates to support conditional breakpoint between
-runs. See `DebugDumpDir.find()` for more details.
 
 - - -
 
@@ -869,17 +848,6 @@ The signature of this function follows the requirement of the method
 
   (`bool`) True if and only if tensor consists of any nan or inf values.
 
-
-
-
-## Session wrapper class and `SessionRunHook` implementations
-
-These classes allow you to
-
-* wrap aroundTensorFlow `Session` objects to debug plain TensorFlow models
-  (see `DumpingDebugWrapperSession` and `LocalCLIDebugWrapperSession`), or
-* generate `SessionRunHook` objects to debug `tf.contrib.learn` models (see
-  `DumpingDebugHook` and `LocalCLIDebugHook`).
 
 - - -
 
