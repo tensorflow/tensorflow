@@ -447,8 +447,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_TwoSends) {
   HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
-  http_request.SetUri("http://www.google.com");
-  http_request.Send();
+  TF_EXPECT_OK(http_request.SetUri("http://www.google.com"));
+  TF_EXPECT_OK(http_request.Send());
   auto s = http_request.Send();
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(StringPiece(s.error_message())
@@ -460,8 +460,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_ReusingAfterSend) {
   HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
-  http_request.SetUri("http://www.google.com");
-  http_request.Send();
+  TF_EXPECT_OK(http_request.SetUri("http://www.google.com"));
+  TF_EXPECT_OK(http_request.Send());
   auto s = http_request.SetUri("http://mail.google.com");
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(StringPiece(s.error_message())
@@ -473,7 +473,7 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_SettingMethodTwice) {
   HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
-  http_request.SetDeleteRequest();
+  TF_EXPECT_OK(http_request.SetDeleteRequest());
   auto s = http_request.SetPostEmptyBody();
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(StringPiece(s.error_message())

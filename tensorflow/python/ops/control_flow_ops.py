@@ -1794,6 +1794,15 @@ def cond(pred, fn1, fn2, name=None):
     return merges[0] if len(merges) == 1 else merges
 
 
+def _resource_safe_shape(t):
+  """Returns the shape of t or the variable it points to."""
+  if t.dtype == dtypes.resource:
+    while t.op.inputs:
+      t = t.op.inputs[0]
+    return tensor_shape.TensorShape(t.op.get_attr("shape"))
+  return array_ops.shape_internal(t, optimize=False)
+
+
 # TODO(yuanbyu): Consider having a unified notion of context for
 # not only conditionals and loops but also control dependency and
 # subgraphs.
@@ -2284,7 +2293,7 @@ class WhileContext(ControlFlowContext):
                                         name="b_acc")
       if self.outer_context: self.outer_context.Exit()
     else:
-      values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
+      values_shape = _resource_safe_shape(op.inputs[0])[1:]
       values_shape = array_ops.concat([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)

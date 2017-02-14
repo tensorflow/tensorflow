@@ -75,9 +75,9 @@ class ExpectationImportanceSampleTest(test.TestCase):
     n = 1000
     with self.test_session():
       p = distributions.MultivariateNormalDiag(
-          mu=[0.0, 0.0], diag_stddev=[1.0, 1.0])
+          loc=[0.0, 0.0], scale_diag=[1.0, 1.0])
       q = distributions.MultivariateNormalDiag(
-          mu=[0.5, 0.5], diag_stddev=[3., 3.])
+          loc=[0.5, 0.5], scale_diag=[3., 3.])
 
       # Compute E_p[X_1 * X_2 > 0], with X_i the ith component of X ~ p(x).
       # Should equal 1/2 because p is a spherical Gaussian centered at (0, 0).

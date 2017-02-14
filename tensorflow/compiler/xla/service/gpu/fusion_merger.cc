@@ -98,8 +98,9 @@ double CalculateFlopsToBytesRatio(HloInstruction* fusion) {
   double bytes = CalculateBytesReadByFusionInstruction(fusion);
   // Add bytes written to root instructions buffer.
   bytes += ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
-  // Calculate flops for all fused instructions.
-  HloCostAnalysis analysis;
+  // Calculate flops for all fused instructions. Use a null shape size function
+  // because we don't care about bytes accessed by the ops.
+  HloCostAnalysis analysis([](const Shape& shape) { return 0; });
   TF_CHECK_OK(fusion->fused_expression_root()->Accept(&analysis));
   // Return flops / bytes.
   return bytes > 0.0 ? analysis.flop_count() / bytes : analysis.flop_count();

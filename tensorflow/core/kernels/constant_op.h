@@ -50,6 +50,15 @@ class HostConstantOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(HostConstantOp);
 };
 
+class PlaceholderOp : public OpKernel {
+ public:
+  explicit PlaceholderOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  TensorShape expected_shape_;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONSTANT_OP_H_

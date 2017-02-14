@@ -1,28 +1,21 @@
 # Android TensorFlow support
 
-This directory contains components geared towards supporting TensorFlow on
-Android.
+This directory defines components (a native `.so` library and a Java JAR)
+geared towards supporting TensorFlow on Android. This includes:
 
-## Android Java Inference Interface for TensorFlow
+- The [TensorFlow Java API](../../java/README.md)
+- A `TensorFlowInferenceInterface` class that provides a smaller API
+  surface suitable for inference and summarizing performance of model execution.
 
-This library contains a Java API capable of loading TensorFlow graphs and
-performing inference on Android. See [TensorFlowImageClassifier.java](../../examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
-in the [TensorFlow Android Camera Demo](../../examples/android) for an example.
-
-It also contains a Java class (`RunStats`) for summarizing performance
-of operations during graph execution.
-
-With both the native .so library and the Java JAR (or AAR which combines both),
-you will have everything you need to use TensorFlow for inference in your
-Android app. Note that training is not supported through this interface; for
-that you will have to use one of the other APIs.
+For example usage, see [TensorFlowImageClassifier.java](../../examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
+in the [TensorFlow Android Demo](../../examples/android).
 
 For prebuilt libraries, see the
 [nightly Android build artifacts](https://ci.tensorflow.org/view/Nightly/job/nightly-android/)
 page for a recent build.
 
-To build the inference libraries yourself (if, for example, you want to support
-custom TensorFlow operators), pick your preferred approach below:
+To build the libraries yourself (if, for example, you want to support custom
+TensorFlow operators), pick your preferred approach below:
 
 ### Bazel
 
@@ -64,8 +57,9 @@ For documentation on building a self-contained AAR file with cmake, see
 [tensorflow/contrib/android/cmake](cmake).
 
 
-## AssetManagerFileSystem:
+## AssetManagerFileSystem
 
-A TensorFlow filesystem supporting the Android asset manager. This may be
-useful when writing native (C/C++) code that is tightly coupled with TensorFlow
-(for typical usage the Inference Interface library above will be sufficient).
+This directory also contains a TensorFlow filesystem supporting the Android
+asset manager. This may be useful when writing native (C++) code that is tightly
+coupled with TensorFlow. For typical usage, the library above will be
+sufficient.

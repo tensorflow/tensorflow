@@ -80,20 +80,32 @@ public class TensorFlowMultiBoxDetector implements Classifier {
       final AssetManager assetManager,
       final String modelFilename,
       final String locationFilename,
-      final int numLocations,
-      final int inputSize,
       final int imageMean,
       final float imageStd,
       final String inputName,
-      final String outputName) {
+      final String outputLocationsName,
+      final String outputScoresName) {
     final TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
+
+    d.inferenceInterface = new TensorFlowInferenceInterface();
+    if (d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
+      throw new RuntimeException("TF initialization failed");
+    }
+
     d.inputName = inputName;
-    d.inputSize = inputSize;
+    // The inputName node has a shape of [N, H, W, C], where
+    // N is the batch size
+    // H = W are the height and width
+    // C is the number of channels (3 for our purposes - RGB)
+    d.inputSize = (int) d.inferenceInterface.graph().operation(inputName).output(0).shape().size(1);
     d.imageMean = imageMean;
     d.imageStd = imageStd;
-    d.numLocations = numLocations;
+    // The outputScoresName node has a shape of [N, NumLocations], where N
+    // is the batch size.
+    d.numLocations =
+        (int) d.inferenceInterface.graph().operation(outputScoresName).output(0).shape().size(1);
 
-    d.boxPriors = new float[numLocations * 8];
+    d.boxPriors = new float[d.numLocations * 8];
 
     try {
       d.loadCoderOptions(assetManager, locationFilename, d.boxPriors);
@@ -102,19 +114,12 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     }
 
     // Pre-allocate buffers.
-    d.outputNames = outputName.split(",");
-    d.intValues = new int[inputSize * inputSize];
-    d.floatValues = new float[inputSize * inputSize * 3];
-    d.outputScores = new float[numLocations];
-    d.outputLocations = new float[numLocations * 4];
+    d.outputNames = new String[] {outputLocationsName, outputScoresName};
+    d.intValues = new int[d.inputSize * d.inputSize];
+    d.floatValues = new float[d.inputSize * d.inputSize * 3];
+    d.outputScores = new float[d.numLocations];
+    d.outputLocations = new float[d.numLocations * 4];
 
-    d.inferenceInterface = new TensorFlowInferenceInterface();
-
-    final int status = d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
-    if (status != 0) {
-      LOGGER.e("TF init status: " + status);
-      throw new RuntimeException("TF init status (" + status + ") != 0");
-    }
     return d;
   }
 

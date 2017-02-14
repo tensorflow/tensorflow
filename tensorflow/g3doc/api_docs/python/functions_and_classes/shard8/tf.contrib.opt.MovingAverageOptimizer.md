@@ -1,4 +1,35 @@
-Optimizer wrapper that maintains a moving average of parameters.
+Optimizer that computes a moving average of the variables.
+
+Empirically it has been found that using the moving average of the trained
+parameters of a deep network is better than using its trained parameters
+directly. This optimizer allows you to compute this moving average and swap
+the variables at save time so that any code outside of the training loop will
+use by default the averaged values instead of the original ones.
+
+Example of usage:
+
+```python
+
+// Encapsulate your favorite optimizer (here the momentum one)
+// inside the MovingAverageOptimizer.
+opt = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
+opt = tf.contrib.opt.MovingAverageOptimizer(opt)
+// Then create your model and all its variables.
+model = build_model()
+// Add the training op that optimizes using opt.
+// This needs to be called before swapping_saver().
+opt.minimize(cost, var_list)
+// Then create your saver like this:
+saver = opt.swapping_saver()
+// Pass it to your training loop.
+    slim.learning.train(
+        model,
+        ...
+        saver=saver)
+```
+
+Note that for evaluation, the normal saver should be used instead of
+swapping_saver().
 - - -
 
 #### `tf.contrib.opt.MovingAverageOptimizer.__init__(opt, average_decay=0.9999, num_updates=None, sequential_update=True)` {#MovingAverageOptimizer.__init__}

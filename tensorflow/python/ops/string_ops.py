@@ -13,30 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Hashing
+"""Operations for working with string Tensors.
 
-String hashing ops take a string input tensor and map each element to an
-integer.
+See the @{$python/string_ops} guide.
 
 @@string_to_hash_bucket_fast
 @@string_to_hash_bucket_strong
 @@string_to_hash_bucket
-
-## Joining
-
-String joining ops concatenate elements of input string tensors to produce a new
-string tensor.
-
 @@reduce_join
 @@string_join
-
-## Splitting
-
 @@string_split
 @@substr
-
-## Conversion
-
 @@as_string
 @@encode_base64
 @@decode_base64

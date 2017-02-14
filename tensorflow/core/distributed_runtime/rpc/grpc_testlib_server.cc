@@ -111,8 +111,8 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << "Could not create server: " << s.error_message();
     return -1;
   }
-  svr->Start();
-  svr->Join();
+  TF_QCHECK_OK(svr->Start());
+  TF_QCHECK_OK(svr->Join());
 
   // NOTE(mrry): Unreachable code.
   return 0;

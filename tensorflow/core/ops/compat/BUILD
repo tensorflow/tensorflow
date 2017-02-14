@@ -31,6 +31,7 @@ tf_cc_test(
     srcs = ["backwards_compatibility_test.cc"],
     data = [
         ":ops_history.v0.pbtxt",
+        ":ops_history.v1.pbtxt",
         "//tensorflow/core:ops/ops.pbtxt",
     ],
     deps = [

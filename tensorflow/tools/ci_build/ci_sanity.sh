@@ -371,6 +371,14 @@ do_lib_package_licenses_check() {
     "//tensorflow/tools/lib_package:clicenses_generate"
 }
 
+do_java_package_licenses_check() {
+  echo "Running do_java_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow/java:libtensorflow_jni.so" \
+    "//tensorflow/tools/lib_package:jnilicenses_generate"
+}
+
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
@@ -391,8 +399,8 @@ do_bazel_nobuild() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies")
 
 INCREMENTAL_FLAG=""
 

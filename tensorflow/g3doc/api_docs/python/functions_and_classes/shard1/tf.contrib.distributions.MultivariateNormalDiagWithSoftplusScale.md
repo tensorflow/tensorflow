@@ -1,35 +1,34 @@
 MultivariateNormalDiag with `diag_stddev = softplus(diag_stddev)`.
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.__init__(mu, diag_stddev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagWithSoftplusStdDev')` {#MultivariateNormalDiagWithSoftplusStDev.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.__init__(loc, scale_diag, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagWithSoftplusScale')` {#MultivariateNormalDiagWithSoftplusScale.__init__}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.allow_nan_stats` {#MultivariateNormalDiagWithSoftplusStDev.allow_nan_stats}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.allow_nan_stats` {#MultivariateNormalDiagWithSoftplusScale.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.batch_shape` {#MultivariateNormalDiagWithSoftplusStDev.batch_shape}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.batch_shape` {#MultivariateNormalDiagWithSoftplusScale.batch_shape}
 
 Shape of a single sample from a single event index as a `TensorShape`.
 
@@ -46,7 +45,7 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalDiagWithSoftplusStDev.batch_shape_tensor}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.batch_shape_tensor(name='batch_shape_tensor')` {#MultivariateNormalDiagWithSoftplusScale.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
@@ -66,7 +65,14 @@ parameterizations of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.cdf(value, name='cdf')` {#MultivariateNormalDiagWithSoftplusStDev.cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.bijector` {#MultivariateNormalDiagWithSoftplusScale.bijector}
+
+Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.cdf(value, name='cdf')` {#MultivariateNormalDiagWithSoftplusScale.cdf}
 
 Cumulative distribution function.
 
@@ -91,7 +97,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.copy(**override_parameters_kwargs)` {#MultivariateNormalDiagWithSoftplusStDev.copy}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.copy(**override_parameters_kwargs)` {#MultivariateNormalDiagWithSoftplusScale.copy}
 
 Creates a deep copy of the distribution.
 
@@ -114,7 +120,7 @@ intialization arguments.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.covariance(name='covariance')` {#MultivariateNormalDiagWithSoftplusStDev.covariance}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.covariance(name='covariance')` {#MultivariateNormalDiagWithSoftplusScale.covariance}
 
 Covariance.
 
@@ -158,21 +164,35 @@ length-`k'` vector.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.dtype` {#MultivariateNormalDiagWithSoftplusStDev.dtype}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.det_covariance(name='det_covariance')` {#MultivariateNormalDiagWithSoftplusScale.det_covariance}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.distribution` {#MultivariateNormalDiagWithSoftplusScale.distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.dtype` {#MultivariateNormalDiagWithSoftplusScale.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.entropy(name='entropy')` {#MultivariateNormalDiagWithSoftplusStDev.entropy}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.entropy(name='entropy')` {#MultivariateNormalDiagWithSoftplusScale.entropy}
 
 Shannon entropy in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.event_shape` {#MultivariateNormalDiagWithSoftplusStDev.event_shape}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.event_shape` {#MultivariateNormalDiagWithSoftplusScale.event_shape}
 
 Shape of a single sample from a single batch as a `TensorShape`.
 
@@ -186,7 +206,7 @@ May be partially defined or unknown.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalDiagWithSoftplusStDev.event_shape_tensor}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.event_shape_tensor(name='event_shape_tensor')` {#MultivariateNormalDiagWithSoftplusScale.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -203,14 +223,14 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_continuous` {#MultivariateNormalDiagWithSoftplusStDev.is_continuous}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.is_continuous` {#MultivariateNormalDiagWithSoftplusScale.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_batch}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.is_scalar_batch(name='is_scalar_batch')` {#MultivariateNormalDiagWithSoftplusScale.is_scalar_batch}
 
 Indicates that `batch_shape == []`.
 
@@ -222,12 +242,12 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagWithSoftplusStDev.is_scalar_event}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.is_scalar_event(name='is_scalar_event')` {#MultivariateNormalDiagWithSoftplusScale.is_scalar_event}
 
 Indicates that `event_shape == []`.
 
@@ -239,12 +259,19 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiagWithSoftplusStDev.log_cdf}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.loc` {#MultivariateNormalDiagWithSoftplusScale.loc}
+
+The `loc` `Tensor` in `Y = scale @ X + loc`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiagWithSoftplusScale.log_cdf}
 
 Log cumulative distribution function.
 
@@ -273,24 +300,31 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.log_prob(value, name='log_prob')` {#MultivariateNormalDiagWithSoftplusStDev.log_prob}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.log_det_covariance(name='log_det_covariance')` {#MultivariateNormalDiagWithSoftplusScale.log_det_covariance}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.log_prob(value, name='log_prob')` {#MultivariateNormalDiagWithSoftplusScale.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalOperatorPD`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
-`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+`value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
 
-```
+```python
 self.batch_shape + self.event_shape
 ```
 
 or
 
-```
-[M1,...,Mm] + self.batch_shape + self.event_shape
+```python
+[M1, ..., Mm] + self.batch_shape + self.event_shape
 ```
 
 ##### Args:
@@ -308,14 +342,7 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalDiagWithSoftplusStDev.log_sigma_det}
-
-Log of determinant of covariance matrix.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiagWithSoftplusStDev.log_survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiagWithSoftplusScale.log_survival_function}
 
 Log survival function.
 
@@ -344,35 +371,28 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.mean(name='mean')` {#MultivariateNormalDiagWithSoftplusStDev.mean}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.mean(name='mean')` {#MultivariateNormalDiagWithSoftplusScale.mean}
 
 Mean.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.mode(name='mode')` {#MultivariateNormalDiagWithSoftplusStDev.mode}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.mode(name='mode')` {#MultivariateNormalDiagWithSoftplusScale.mode}
 
 Mode.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.mu` {#MultivariateNormalDiagWithSoftplusStDev.mu}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.name` {#MultivariateNormalDiagWithSoftplusStDev.name}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.name` {#MultivariateNormalDiagWithSoftplusScale.name}
 
 Name prepended to all ops created by this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#MultivariateNormalDiagWithSoftplusStDev.param_shapes}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#MultivariateNormalDiagWithSoftplusScale.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
@@ -396,14 +416,14 @@ Subclasses should override class method `_param_shapes`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiagWithSoftplusStDev.param_static_shapes}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.param_static_shapes(cls, sample_shape)` {#MultivariateNormalDiagWithSoftplusScale.param_static_shapes}
 
 param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -426,31 +446,31 @@ constant-valued tensors when constant values are fed.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.parameters` {#MultivariateNormalDiagWithSoftplusStDev.parameters}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.parameters` {#MultivariateNormalDiagWithSoftplusScale.parameters}
 
 Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.prob(value, name='prob')` {#MultivariateNormalDiagWithSoftplusStDev.prob}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.prob(value, name='prob')` {#MultivariateNormalDiagWithSoftplusScale.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
 
-Additional documentation from `_MultivariateNormalOperatorPD`:
+Additional documentation from `MultivariateNormalLinearOperator`:
 
-`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+`value` is a batch vector with compatible shape if `value` is a `Tensor` whose
 shape can be broadcast up to either:
 
-```
+```python
 self.batch_shape + self.event_shape
 ```
 
 or
 
-```
-[M1,...,Mm] + self.batch_shape + self.event_shape
+```python
+[M1, ..., Mm] + self.batch_shape + self.event_shape
 ```
 
 ##### Args:
@@ -468,7 +488,7 @@ or
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.reparameterization_type` {#MultivariateNormalDiagWithSoftplusStDev.reparameterization_type}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.reparameterization_type` {#MultivariateNormalDiagWithSoftplusScale.reparameterization_type}
 
 Describes how samples from the distribution are reparameterized.
 
@@ -483,7 +503,7 @@ or `distributions.NOT_REPARAMETERIZED`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiagWithSoftplusStDev.sample}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiagWithSoftplusScale.sample}
 
 Generate samples of the specified shape.
 
@@ -505,21 +525,14 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sigma` {#MultivariateNormalDiagWithSoftplusStDev.sigma}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.scale` {#MultivariateNormalDiagWithSoftplusScale.scale}
 
-Dense (batch) covariance matrix, if available.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.sigma_det(name='sigma_det')` {#MultivariateNormalDiagWithSoftplusStDev.sigma_det}
-
-Determinant of covariance matrix.
+The `scale` `LinearOperator` in `Y = scale @ X + loc`.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.stddev(name='stddev')` {#MultivariateNormalDiagWithSoftplusStDev.stddev}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.stddev(name='stddev')` {#MultivariateNormalDiagWithSoftplusScale.stddev}
 
 Standard deviation.
 
@@ -546,7 +559,7 @@ denotes expectation, and `stddev.shape = batch_shape + event_shape`.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.survival_function(value, name='survival_function')` {#MultivariateNormalDiagWithSoftplusStDev.survival_function}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.survival_function(value, name='survival_function')` {#MultivariateNormalDiagWithSoftplusScale.survival_function}
 
 Survival function.
 
@@ -572,14 +585,14 @@ survival_function(x) = P[X > x]
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.validate_args` {#MultivariateNormalDiagWithSoftplusStDev.validate_args}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.validate_args` {#MultivariateNormalDiagWithSoftplusScale.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.variance(name='variance')` {#MultivariateNormalDiagWithSoftplusStDev.variance}
+#### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale.variance(name='variance')` {#MultivariateNormalDiagWithSoftplusScale.variance}
 
 Variance.
 

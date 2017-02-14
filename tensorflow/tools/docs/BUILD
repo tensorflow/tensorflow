@@ -68,6 +68,7 @@ py_binary(
         ":parser",
         ":py_guide_parser",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
     ],
@@ -105,17 +106,6 @@ py_test(
     deps = [
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_binary(
-    name = "make_py_guides",
-    srcs = ["make_py_guides.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":generate",
-        ":parser",
-        ":py_guide_parser",
     ],
 )
 

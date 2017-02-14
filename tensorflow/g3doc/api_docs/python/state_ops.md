@@ -1976,7 +1976,7 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`initializer`</b>: Initializer for the variable if one is created.
 *  <b>`regularizer`</b>: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
@@ -2068,7 +2068,7 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`initializer`</b>: Initializer for the variable if one is created.
 *  <b>`regularizer`</b>: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
     Defaults to `[GraphKeys.LOCAL_VARIABLES]` (see `tf.Variable`).
 *  <b>`caching_device`</b>: Optional device string or function describing where the
@@ -2115,9 +2115,9 @@ Some useful partitioners are available.  See, e.g.,
 
 ### `class tf.VariableScope` {#VariableScope}
 
-Variable scope object to carry defaults to provide to get_variable.
+Variable scope object to carry defaults to provide to `get_variable`.
 
-Many of the arguments we need for get_variable in a variable store are most
+Many of the arguments we need for `get_variable` in a variable store are most
 easily handled with a context. This object is used for the defaults.
 
 Attributes:

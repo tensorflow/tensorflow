@@ -276,20 +276,19 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         TF_RETURN_IF_ERROR(root->Accept(&fused_emitter));
 
         Shape input_shape = root->operand(0)->shape();
-        // EmitRedutionToVector requires the input shape to have a layout, but
+        // EmitReductionToVector requires the input shape to have a layout, but
         // fused instructions don't have one. So we determine its layout from
         // the fusion's operands. The choice of the layout only affects
         // performance but not correctness.
         auto choose_input_layout = [](
             tensorflow::gtl::ArraySlice<const HloInstruction*> operands,
-            Shape* input_shape) {
+            Shape* input_shape) -> Status {
           // Prefer the layout of an operand whose shape is compatible with
           // input_shape.
           for (const HloInstruction* operand : operands) {
             if (ShapeUtil::Compatible(*input_shape, operand->shape())) {
-              LayoutUtil::CopyLayoutBetweenShapes(operand->shape(),
-                                                  input_shape);
-              return;
+              return LayoutUtil::CopyLayoutBetweenShapes(operand->shape(),
+                                                         input_shape);
             }
           }
           // If no operand has a compatible shape, prefer an operand that has
@@ -300,19 +299,20 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               // Do not use CopyLayoutBetweenShapes because input_shape and
               // operand->shape() may be incompatible.
               *input_shape->mutable_layout() = operand->shape().layout();
-              return;
+              return Status::OK();
             }
           }
           // When all the above fails, which is rare, set the default layout.
           LayoutUtil::SetToDefaultLayout(input_shape);
+          return Status::OK();
         };
-        choose_input_layout(fusion->operands(), &input_shape);
+        TF_RETURN_IF_ERROR(
+            choose_input_layout(fusion->operands(), &input_shape));
 
         return EmitReductionToVector(
             root, input_shape, fused_emitter.GetGenerator(root->operand(0)),
             fused_emitter.GetGenerator(root->operand(1)), root->dimensions(),
             root->to_apply());
-        break;
       }
       default:
         LOG(FATAL) << "Bad opcode for input fusion: "

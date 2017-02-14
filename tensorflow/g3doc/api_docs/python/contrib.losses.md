@@ -3,7 +3,7 @@
 # Losses (contrib)
 [TOC]
 
-Ops for building neural network losses.
+Ops for building neural network losses. See @{$python/contrib.losses}.
 
 ## Other Functions and Classes
 - - -

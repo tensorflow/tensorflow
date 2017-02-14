@@ -38,6 +38,7 @@ __all__ = [
 
 
 class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
+  """Base class for Identity operators."""
 
   def _check_num_rows_possibly_add_asserts(self):
     """Static check of init arg `num_rows`, possibly add asserts."""
@@ -72,6 +73,18 @@ class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
     if num_rows_static < 0:
       raise ValueError("Argument num_rows must be non-negative.  Found:"
                        " %s" % num_rows_static)
+
+  def _ones_diag(self):
+    """Returns the diagonal of this operator as all ones."""
+    if self.shape.is_fully_defined():
+      d_shape = self.batch_shape.concatenate(
+          [min(self.domain_dimension.value, self.range_dimension.value)])
+    else:
+      d_shape = array_ops.concat(
+          [self.batch_shape_tensor(),
+           [math_ops.reduce_min(self.shape_tensor()[-2:])]], axis=0)
+
+    return array_ops.ones(shape=d_shape, dtype=self.dtype)
 
 
 class LinearOperatorIdentity(BaseLinearOperatorIdentity):
@@ -327,6 +340,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
 
   def _solve(self, rhs, adjoint=False):
     return self._apply(rhs)
+
+  def _diag_part(self):
+    return self._ones_diag()
 
   def add_to_tensor(self, mat, name="add_to_tensor"):
     """Add matrix represented by this operator to `mat`.  Equiv to `I + mat`.
@@ -618,6 +634,9 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
           self, rhs)
       rhs = control_flow_ops.with_dependencies([aps], rhs)
     return rhs / matrix
+
+  def _diag_part(self):
+    return self._ones_diag() * self.multiplier[..., array_ops.newaxis]
 
   def add_to_tensor(self, mat, name="add_to_tensor"):
     """Add matrix represented by this operator to `mat`.  Equiv to `I + mat`.
