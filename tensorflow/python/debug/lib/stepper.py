@@ -23,7 +23,6 @@ import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
 
