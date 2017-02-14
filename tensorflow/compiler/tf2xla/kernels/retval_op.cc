@@ -43,7 +43,7 @@ class RetvalOp : public XlaOpKernel {
     if (frame) {
       // If 'frame' is non-null, this is an inner function call inside a JIT
       // compilation.
-      frame->SetRetval(index_, input);
+      OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
       xla::ComputationDataHandle input = ctx->Input(0);
       const TensorShape input_shape = ctx->InputShape(0);
@@ -58,7 +58,7 @@ class RetvalOp : public XlaOpKernel {
       if (input_shape.num_elements() == 0 || is_constant.ValueOrDie()) {
         xla::Literal literal;
         OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
-        tc.AddConstRetval(index_, dtype_, literal);
+        OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
         tc.AddRetval(index_, input);
       }

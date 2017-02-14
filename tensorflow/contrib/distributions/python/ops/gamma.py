@@ -112,15 +112,15 @@ class Gamma(distribution.Distribution):
         distribution(s). Must contain only positive values.
       rate: Floating point tensor, the inverse scale params of the
         distribution(s). Must contain only positive values.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
@@ -231,7 +231,7 @@ class Gamma(distribution.Distribution):
 
   @distribution_util.AppendDocstring(
       """The mode of a gamma distribution is `(shape - 1) / rate` when
-      `shape > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+      `shape > 1`, and `NaN` otherwise. If `self.allow_nan_stats` is `False`,
       an exception will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = (self.concentration - 1.) / self.rate

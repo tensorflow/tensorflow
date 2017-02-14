@@ -715,7 +715,7 @@ TF_Buffer* TF_GetAllOpList() {
     *(op_list.add_op()) = op;
   }
   TF_Buffer* ret = TF_NewBuffer();
-  MessageToBuffer(op_list, ret);
+  TF_CHECK_OK(MessageToBuffer(op_list, ret));
   return ret;
 }
 
@@ -1166,7 +1166,7 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
       // TODO(b/28152992): Enable returning the result of this
       // code-path once we have converted all python shape functions
       // to call their C++ versions.
-      desc->graph->refiner.AddNode(ret);
+      desc->graph->refiner.AddNode(ret).IgnoreError();
 
       // Add the node to the name-to-node mapping.
       desc->graph->name_map[ret->name()] = ret;

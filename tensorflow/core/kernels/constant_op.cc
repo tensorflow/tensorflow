@@ -269,30 +269,24 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
 
 #undef REGISTER_KERNEL
 
-class PlaceholderOp : public OpKernel {
- public:
-  explicit PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
-  }
+PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
+}
 
-  void Compute(OpKernelContext* ctx) override {
-    if (expected_shape_.dims() > 0) {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument(
-                      "You must feed a value for placeholder tensor '", name(),
-                      "' with dtype ", DataTypeString(output_type(0)),
-                      " and shape ", expected_shape_.DebugString()));
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument(
-                      "You must feed a value for placeholder tensor '", name(),
-                      "' with dtype ", DataTypeString(output_type(0))));
-    }
+void PlaceholderOp::Compute(OpKernelContext* ctx) {
+  if (expected_shape_.dims() > 0) {
+    OP_REQUIRES(ctx, false,
+                errors::InvalidArgument(
+                    "You must feed a value for placeholder tensor '", name(),
+                    "' with dtype ", DataTypeString(output_type(0)),
+                    " and shape ", expected_shape_.DebugString()));
+  } else {
+    OP_REQUIRES(ctx, false,
+                errors::InvalidArgument(
+                    "You must feed a value for placeholder tensor '", name(),
+                    "' with dtype ", DataTypeString(output_type(0))));
   }
-
- private:
-  TensorShape expected_shape_;
-};
+}
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),

@@ -398,26 +398,6 @@ class TensorShape(object):
   details of shape functions and how to register them. Alternatively,
   the shape may be set explicitly using
   [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
-
-  @@merge_with
-  @@concatenate
-
-  @@ndims
-  @@dims
-  @@as_list
-  @@as_proto
-  @@is_compatible_with
-  @@is_fully_defined
-
-  @@with_rank
-  @@with_rank_at_least
-  @@with_rank_at_most
-
-  @@assert_has_rank
-  @@assert_same_rank
-  @@assert_is_compatible_with
-  @@assert_is_fully_defined
-
   """
 
   def __init__(self, dims):

@@ -28,13 +28,13 @@ time and match `len(components)`.
 *  <b>`components`</b>: A list or tuple of `Distribution` instances.
     Each instance must have the same type, be defined on the same domain,
     and have matching `event_shape` and `batch_shape`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  If `True`, raise a runtime
+*  <b>`validate_args`</b>: Python `bool`, default `False`. If `True`, raise a runtime
     error if batch or event ranks are inconsistent between cat and any of
-    the distributions.  This is only checked if the ranks cannot be
+    the distributions. This is only checked if the ranks cannot be
     determined statically at graph construction time.
-*  <b>`allow_nan_stats`</b>: Boolean, default `True`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: Boolean, default `True`. If `False`, raise an
    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
+    batch member. If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
 
@@ -57,21 +57,20 @@ time and match `len(components)`.
 
 #### `tf.contrib.distributions.Mixture.allow_nan_stats` {#Mixture.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -248,7 +247,7 @@ distribution:
 \\)
 
 where \\( p \\) is the prior distribution, \\( q \\) is the variational,
-and \\( H[q] \\) is the entropy of \\( q \\).  If there is a lower bound
+and \\( H[q] \\) is the entropy of \\( q \\). If there is a lower bound
 \\( G[q] \\) such that \\( H[q] \geq G[q] \\) then it can be used in
 place of \\( H[q] \\).
 
@@ -329,7 +328,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -346,7 +345,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -486,8 +485,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -628,7 +627,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.Mixture.validate_args` {#Mixture.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -

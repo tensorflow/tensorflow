@@ -65,20 +65,6 @@ class EventMultiplexer(object):
   If you would like to watch `/parent/directory/path`, wait for it to be created
     (if necessary) and then periodically pick up new runs, use
     `AutoloadingMultiplexer`
-
-  @@__init__
-  @@AddRun
-  @@AddRunsFromDirectory
-  @@Reload
-  @@Runs
-  @@RunPaths
-  @@Scalars
-  @@Graph
-  @@MetaGraph
-  @@Histograms
-  @@CompressedHistograms
-  @@Images
-  @@Audio
   """
 
   def __init__(self,

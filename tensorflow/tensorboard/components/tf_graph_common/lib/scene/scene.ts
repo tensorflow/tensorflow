@@ -89,6 +89,49 @@ module tf.graph.scene {
   ;
 
   /**
+   * Encapsulates how to render a single entry in a health pill. Each entry
+   * corresponds to a category of tensor element values.
+   */
+  interface HealthPillEntry {
+    background_color: string;
+    text_color: string;
+    label: string;
+  }
+  ;
+  const _healthPillEntries: HealthPillEntry[] = [
+    {
+      background_color: '#762a83',
+      text_color: '#fff',
+      label: '-∞',
+    },
+    {
+      background_color: '#af8dc3',
+      text_color: '#000',
+      label: '-',
+    },
+    {
+      background_color: '#f7da0b',
+      text_color: '#000',
+      label: '0',
+    },
+    {
+      background_color: '#a2c96f',
+      text_color: '#000',
+      label: '+',
+    },
+    {
+      background_color: '#1f8926',
+      text_color: '#fff',
+      label: '+∞',
+    },
+    {
+      background_color: '#0909c6',
+      text_color: '#fff',
+      label: 'NaN',
+    },
+  ];
+
+  /**
    * Helper method for fitting the graph in the svg view.
    *
    * @param svg The main svg.
@@ -474,7 +517,7 @@ export function positionEllipse(ellipse, cx: number, cy: number,
  */
 function _addHealthPill(
     nodeGroupElement: SVGElement, healthPill: HealthPill,
-    nodeInfo: render.RenderGroupNodeInfo, colors: string[]) {
+    nodeInfo: render.RenderGroupNodeInfo) {
   // Check if text already exists at location.
   d3.select(nodeGroupElement.parentNode)
       .selectAll('.health-pill-group')
@@ -497,10 +540,26 @@ function _addHealthPill(
   healthPillSvg.setAttribute('width', String(healthPillWidth));
   healthPillSvg.setAttribute('height', String(healthPillHeight));
 
+  let svgDefs = document.createElementNS(svgNamespace, 'defs');
+  healthPillSvg.appendChild(svgDefs);
+  let clipPath = document.createElementNS(svgNamespace, 'clipPath');
+  clipPath.setAttribute('id', 'health-pill-clip-path');
+  svgDefs.appendChild(clipPath);
+  let clipRect = document.createElementNS(svgNamespace, 'rect');
+  clipRect.setAttribute('height', String(healthPillHeight));
+  clipRect.setAttribute('width', String(healthPillWidth));
+  clipRect.setAttribute('rx', '2');
+  clipRect.setAttribute('ry', '2');
+  clipPath.appendChild(clipRect);
+
+  let rectGroup = document.createElementNS(svgNamespace, 'g');
+  rectGroup.setAttribute('clip-path', 'url(#health-pill-clip-path)');
+  healthPillSvg.appendChild(rectGroup);
   let totalCount = lastHealthPillData[1];
   // Create 1 rectangle for each category.
   let totalCountSoFar = 0;
   let totalWidthDividedByTotalCount = healthPillWidth / totalCount;
+  let titleOnHoverTextEntries = [];
   for (let i = 0; i < lastHealthPillOverview.length; i++) {
     if (!lastHealthPillOverview[i]) {
       // Do not render empty rectangles.
@@ -508,15 +567,34 @@ function _addHealthPill(
     }
     let rect = document.createElementNS(svgNamespace, 'rect');
     rect.setAttribute('height', String(healthPillHeight));
-    rect.setAttribute(
-        'width',
-        String(totalWidthDividedByTotalCount * lastHealthPillOverview[i]));
-    rect.setAttribute(
-        'x', String(totalWidthDividedByTotalCount * totalCountSoFar));
-    rect.setAttribute('fill', colors[i]);
+    let rectWidth = totalWidthDividedByTotalCount * lastHealthPillOverview[i];
+    rect.setAttribute('width', String(rectWidth));
+    let rectX = totalWidthDividedByTotalCount * totalCountSoFar;
+    rect.setAttribute('x', String(rectX));
+    rect.setAttribute('fill', _healthPillEntries[i].background_color);
     totalCountSoFar += lastHealthPillOverview[i];
-    Polymer.dom(healthPillSvg).appendChild(rect);
+    rectGroup.appendChild(rect);
+
+    // Append a label.
+    let textSvg = document.createElementNS(svgNamespace, 'text');
+    textSvg.setAttribute('font-size', '8');
+    textSvg.setAttribute('font-family', 'arial');
+    rectGroup.appendChild(textSvg);
+    textSvg.appendChild(document.createTextNode(_healthPillEntries[i].label));
+    textSvg.setAttribute('x', String(rectX + rectWidth / 2));
+    textSvg.setAttribute('y', String(7.5));
+    textSvg.setAttribute('text-anchor', 'middle');
+    textSvg.setAttribute('fill', _healthPillEntries[i].text_color);
+
+    // Include this number in the title that appears on hover.
+    titleOnHoverTextEntries.push(
+        _healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
   }
+
+  // Show a title with specific counts on hover.
+  let titleSvg = document.createElementNS(svgNamespace, 'title');
+  titleSvg.textContent = titleOnHoverTextEntries.join(', ');
+  healthPillSvg.appendChild(titleSvg);
 
   // Center this health pill just right above the node for the op.
   healthPillSvg.setAttribute(
@@ -534,8 +612,7 @@ function _addHealthPill(
  * @param colors A list of colors to use.
  */
 export function addHealthPills(
-    svgRoot: SVGElement, nodeNamesToHealthPill: {[key: string]: HealthPill},
-    colors: string[]) {
+    svgRoot: SVGElement, nodeNamesToHealthPill: {[key: string]: HealthPill}) {
   if (!nodeNamesToHealthPill) {
     // No health pill information available.
     return;
@@ -546,7 +623,7 @@ export function addHealthPills(
       .each(function(nodeInfo: render.RenderGroupNodeInfo) {
         // The element is the first item of a d3 selection.
         _addHealthPill(
-            this, nodeNamesToHealthPill[nodeInfo.node.name], nodeInfo, colors);
+            this, nodeNamesToHealthPill[nodeInfo.node.name], nodeInfo);
       });
 };
 

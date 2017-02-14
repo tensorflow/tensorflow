@@ -3,9 +3,7 @@
 # RNN and Cells (contrib)
 [TOC]
 
-Module for constructing RNN Cells and additional RNN operations.
-
-## Base interface for all RNN Cells
+RNN Cells and additional RNN operations. See @{$python/contrib.rnn} guide.
 
 - - -
 
@@ -96,9 +94,6 @@ Return zero-filled state tensor(s).
 the shapes `[batch_size x s]` for each s in `state_size`.
 
 
-
-
-## Core RNN Cells for use with TensorFlow's core RNN methods
 
 - - -
 
@@ -507,9 +502,6 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 
 
-
-## Classes storing split `RNNCell` state
-
 - - -
 
 ### `class tf.contrib.rnn.LSTMStateTuple` {#LSTMStateTuple}
@@ -568,9 +560,6 @@ Alias for field number 0
 Alias for field number 1
 
 
-
-
-## Core RNN Cell wrappers (RNNCells that wrap other RNNCells)
 
 - - -
 
@@ -1137,8 +1126,6 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 
 
-
-### Block RNNCells
 - - -
 
 ### `class tf.contrib.rnn.LSTMBlockCell` {#LSTMBlockCell}
@@ -1300,8 +1287,6 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 
 
-
-### Fused RNNCells
 - - -
 
 ### `class tf.contrib.rnn.FusedRNNCell` {#FusedRNNCell}
@@ -1487,8 +1472,6 @@ Number of units in this cell (output dimension).
 
 
 
-
-### LSTM-like cells
 - - -
 
 ### `class tf.contrib.rnn.CoupledInputForgetGateLSTMCell` {#CoupledInputForgetGateLSTMCell}
@@ -1865,8 +1848,6 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 
 
-
-### RNNCell wrappers
 - - -
 
 ### `class tf.contrib.rnn.AttentionCellWrapper` {#AttentionCellWrapper}
@@ -2011,13 +1992,6 @@ Return zero-filled state tensor(s).
 the shapes `[batch_size x s]` for each s in `state_size`.
 
 
-
-
-
-## Recurrent Neural Networks
-
-TensorFlow provides a number of methods for constructing Recurrent Neural
-Networks.
 
 - - -
 

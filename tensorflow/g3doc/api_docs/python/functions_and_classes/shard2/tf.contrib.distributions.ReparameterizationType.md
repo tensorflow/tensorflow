@@ -8,7 +8,7 @@ one of two possible properties for samples from a distribution:
 
 `NOT_REPARAMETERIZED`: Samples from the distribution are not fully
   reparameterized, and straight-through gradients are either partially
-  unsupported or are not supported at all.  In this case, for purposes of
+  unsupported or are not supported at all. In this case, for purposes of
   e.g. RL or variational inference, it is generally safest to wrap the
   sample results in a `stop_gradients` call and instead use policy
   gradients / surrogate loss instead.

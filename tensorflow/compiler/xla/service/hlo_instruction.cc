@@ -1498,6 +1498,15 @@ string HloInstruction::ToCategory() const {
   return HloOpcodeString(opcode());
 }
 
+string HloInstruction::FullyQualifiedName() const {
+  if (IsFused()) {
+    return tensorflow::strings::StrCat(fusion_instruction()->parent()->name(),
+                                       "::", fusion_instruction()->name(),
+                                       "::", name_);
+  }
+  return tensorflow::strings::StrCat(parent_->name(), "::", name_);
+}
+
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
 
 void HloInstruction::set_tracing(HloInstruction* trace_instruction) {

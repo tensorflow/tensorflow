@@ -44,18 +44,6 @@ class SummaryWriter(object):
   file contents asynchronously. This allows a training program to call methods
   to add data to the file directly from the training loop, without slowing down
   training.
-
-  @@__init__
-
-  @@add_summary
-  @@add_session_log
-  @@add_event
-  @@add_graph
-  @@add_run_metadata
-  @@get_logdir
-
-  @@flush
-  @@close
   """
 
   def __init__(self, logdir, graph=None, max_queue=10, flush_secs=120,

@@ -25,9 +25,9 @@ Instantiates the `CholeskyOuterProduct` bijector.
 *  <b>`event_ndims`</b>: `constant` `int32` scalar `Tensor` indicating the number of
     dimensions associated with a particular draw from the distribution. Must
     be 0 or 2.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -281,7 +281,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -

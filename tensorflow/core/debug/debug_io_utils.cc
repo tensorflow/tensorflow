@@ -264,7 +264,8 @@ Status DebugIO::PublishGraph(const Graph& graph,
       status.Update(
           DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
     } else if (debug_url.find(kGrpcURLScheme) == 0) {
-      DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url);
+      status.Update(
+          DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url));
     }
   }
 
@@ -331,7 +332,7 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
 
   std::unique_ptr<WritableFile> f = nullptr;
   TF_CHECK_OK(env->NewWritableFile(file_path, &f));
-  f->Append(event_str);
+  f->Append(event_str).IgnoreError();
   TF_CHECK_OK(f->Close());
 
   return Status::OK();
@@ -372,7 +373,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
                                   " because the path exists as a file "));
   }
 
-  env->CreateDir(dir);
+  env->CreateDir(dir).IgnoreError();
   // Guard against potential race in creating directories by doing a check
   // after the CreateDir call.
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {

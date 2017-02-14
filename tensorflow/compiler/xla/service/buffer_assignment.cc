@@ -411,19 +411,12 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    int64 pointer_size, int64 alignment) {
-  return BufferAssigner::Run(module, std::move(hlo_ordering),
-                             [pointer_size](const LogicalBuffer& buffer) {
-                               return ShapeUtil::IsOpaque(buffer.shape())
-                                          ? 0
-                                          : ShapeUtil::ByteSizeOf(
-                                                buffer.shape(), pointer_size);
-                             },
-                             [alignment](const LogicalBuffer& buffer) {
-                               return alignment;
-                             },
-                             /*colocate_related_buffers=*/true,
-                             /*combine_temp-allocations=*/true);
+    LogicalBuffer::SizeFunction buffer_size, int64 alignment) {
+  return BufferAssigner::Run(
+      module, std::move(hlo_ordering), std::move(buffer_size),
+      [alignment](const LogicalBuffer& buffer) { return alignment; },
+      /*colocate_related_buffers=*/true,
+      /*combine_temp-allocations=*/true);
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,

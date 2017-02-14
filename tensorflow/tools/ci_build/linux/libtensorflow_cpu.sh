@@ -14,8 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to build a binary release tarball for the TensorFlow C-library without
-# GPU support.
+# Script to build a binary releases of libtensorflow without GPU support.
 
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

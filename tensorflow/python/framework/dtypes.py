@@ -54,22 +54,6 @@ class DType(object):
 
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
-
-  @@is_compatible_with
-  @@name
-  @@base_dtype
-  @@real_dtype
-  @@is_bool
-  @@is_floating
-  @@is_complex
-  @@is_integer
-  @@is_quantized
-  @@is_unsigned
-
-  @@as_numpy_dtype
-  @@as_datatype_enum
-
-  @@limits
   """
 
   def __init__(self, type_enum):

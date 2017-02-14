@@ -32,7 +32,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  WriteStringToFile(env, filename, input);
+  TF_CHECK_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 
@@ -53,11 +53,12 @@ string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
 
 class DefaultEnvTest : public ::testing::Test {
  protected:
-  void SetUp() override { env_->CreateDir(BaseDir()); }
+  void SetUp() override { TF_CHECK_OK(env_->CreateDir(BaseDir())); }
 
   void TearDown() override {
     int64 undeleted_files, undeleted_dirs;
-    env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs);
+    TF_CHECK_OK(
+        env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }
 
   Env* env_ = Env::Default();

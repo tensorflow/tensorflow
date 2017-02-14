@@ -3197,7 +3197,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "scatter_nd_op_test",
     size = "small",
     srcs = ["scatter_nd_op_test.cc"],
@@ -3206,6 +3206,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":scatter_nd_op",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
