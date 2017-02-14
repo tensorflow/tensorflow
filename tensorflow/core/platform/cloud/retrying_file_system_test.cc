@@ -23,6 +23,15 @@ namespace {
 
 typedef std::vector<std::tuple<string, Status>> ExpectedCalls;
 
+ExpectedCalls CreateRetriableErrors(const string& method, int n) {
+  ExpectedCalls expected_calls;
+  for (int i = 0; i < n; i++) {
+    expected_calls.emplace_back(std::make_tuple(
+        method, errors::Unavailable(strings::StrCat("Retriable error #", i))));
+  }
+  return expected_calls;
+}
+
 // A class to manage call expectations on mock implementations.
 class MockCallSequence {
  public:
@@ -204,11 +213,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
 
 TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
   // Configure the mock base random access file.
-  ExpectedCalls expected_file_calls(
-      {std::make_tuple("Read", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Read", errors::Unavailable("Wrong again")),
-       std::make_tuple("Read", errors::Unavailable("And again")),
-       std::make_tuple("Read", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_file_calls = CreateRetriableErrors("Read", 6);
   std::unique_ptr<RandomAccessFile> base_file(
       new MockRandomAccessFile(expected_file_calls));
 
@@ -227,7 +232,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
   // Use it and check the results.
   StringPiece result;
   char scratch[10];
-  EXPECT_EQ("Last error",
+  EXPECT_EQ("Retriable error #5",
             random_access_file->Read(0, 10, &result, scratch).error_message());
 }
 
@@ -361,12 +366,8 @@ TEST(RetryingFileSystemTest, NewAppendableFile_SuccessWith3rdTry) {
 
 TEST(RetryingFileSystemTest, NewWritableFile_AllRetriesFailed) {
   // Configure the mock base random access file.
-  ExpectedCalls expected_file_calls(
-      {std::make_tuple("Sync", errors::Unavailable("Something is wrong")),
-       std::make_tuple("Sync", errors::Unavailable("Something is wrong again")),
-       std::make_tuple("Sync", errors::Unavailable("...and again")),
-       std::make_tuple("Sync", errors::Unavailable("And again")),
-       std::make_tuple("Close", Status::OK())});
+  ExpectedCalls expected_file_calls = CreateRetriableErrors("Sync", 6);
+  expected_file_calls.emplace_back(std::make_tuple("Close", Status::OK()));
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
 
@@ -383,7 +384,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_AllRetriesFailed) {
   TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
 
   // Use it and check the results.
-  EXPECT_EQ("And again", writable_file->Sync().error_message());
+  EXPECT_EQ("Retriable error #5", writable_file->Sync().error_message());
 }
 
 TEST(RetryingFileSystemTest,
@@ -401,21 +402,14 @@ TEST(RetryingFileSystemTest,
 }
 
 TEST(RetryingFileSystemTest, NewReadOnlyMemoryRegionFromFile_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("NewReadOnlyMemoryRegionFromFile",
-                       errors::Unavailable("Something is wrong")),
-       std::make_tuple("NewReadOnlyMemoryRegionFromFile",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("NewReadOnlyMemoryRegionFromFile",
-                       errors::Unavailable("and again")),
-       std::make_tuple("NewReadOnlyMemoryRegionFromFile",
-                       errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls =
+      CreateRetriableErrors("NewReadOnlyMemoryRegionFromFile", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::unique_ptr<ReadOnlyMemoryRegion> result;
-  EXPECT_EQ("Last error",
+  EXPECT_EQ("Retriable error #5",
             fs.NewReadOnlyMemoryRegionFromFile("filename.txt", &result)
                 .error_message());
 }
@@ -434,19 +428,14 @@ TEST(RetryingFileSystemTest, GetChildren_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("GetChildren",
-                       errors::Unavailable("Something is wrong")),
-       std::make_tuple("GetChildren",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("GetChildren", errors::Unavailable("And again")),
-       std::make_tuple("GetChildren", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("GetChildren", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
-  EXPECT_EQ("Last error", fs.GetChildren("gs://path", &result).error_message());
+  EXPECT_EQ("Retriable error #5",
+            fs.GetChildren("gs://path", &result).error_message());
 }
 
 TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
@@ -463,19 +452,14 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("GetMatchingPaths",
-                       errors::Unavailable("Something is wrong")),
-       std::make_tuple("GetMatchingPaths",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("GetMatchingPaths", errors::Unavailable("And again")),
-       std::make_tuple("GetMatchingPaths", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls =
+      CreateRetriableErrors("GetMatchingPaths", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
-  EXPECT_EQ("Last error",
+  EXPECT_EQ("Retriable error #5",
             fs.GetMatchingPaths("gs://path/dir", &result).error_message());
 }
 
@@ -492,18 +476,14 @@ TEST(RetryingFileSystemTest, DeleteFile_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, DeleteFile_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteFile", errors::Unavailable("Something is wrong")),
-       std::make_tuple("DeleteFile",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("DeleteFile", errors::Unavailable("And again")),
-       std::make_tuple("DeleteFile", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("DeleteFile", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
-  EXPECT_EQ("Last error", fs.DeleteFile("gs://path/file.txt").error_message());
+  EXPECT_EQ("Retriable error #5",
+            fs.DeleteFile("gs://path/file.txt").error_message());
 }
 
 TEST(RetryingFileSystemTest, CreateDir_SuccessWith2ndTry) {
@@ -519,18 +499,14 @@ TEST(RetryingFileSystemTest, CreateDir_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, CreateDir_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("CreateDir", errors::Unavailable("Something is wrong")),
-       std::make_tuple("CreateDir",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("CreateDir", errors::Unavailable("And again")),
-       std::make_tuple("CreateDir", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("CreateDir", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
-  EXPECT_EQ("Last error", fs.CreateDir("gs://path/newdir").error_message());
+  EXPECT_EQ("Retriable error #5",
+            fs.CreateDir("gs://path/newdir").error_message());
 }
 
 TEST(RetryingFileSystemTest, DeleteDir_SuccessWith2ndTry) {
@@ -546,18 +522,14 @@ TEST(RetryingFileSystemTest, DeleteDir_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteDir", errors::Unavailable("Something is wrong")),
-       std::make_tuple("DeleteDir",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("DeleteDir", errors::Unavailable("And again")),
-       std::make_tuple("DeleteDir", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("DeleteDir", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
-  EXPECT_EQ("Last error", fs.DeleteDir("gs://path/dir").error_message());
+  EXPECT_EQ("Retriable error #5",
+            fs.DeleteDir("gs://path/dir").error_message());
 }
 
 TEST(RetryingFileSystemTest, GetFileSize_SuccessWith2ndTry) {
@@ -574,19 +546,13 @@ TEST(RetryingFileSystemTest, GetFileSize_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, GetFileSize_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("GetFileSize",
-                       errors::Unavailable("Something is wrong")),
-       std::make_tuple("GetFileSize",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("GetFileSize", errors::Unavailable("And again")),
-       std::make_tuple("GetFileSize", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("GetFileSize", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   uint64 size;
-  EXPECT_EQ("Last error",
+  EXPECT_EQ("Retriable error #5",
             fs.GetFileSize("gs://path/file.txt", &size).error_message());
 }
 
@@ -602,18 +568,12 @@ TEST(RetryingFileSystemTest, RenameFile_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, RenameFile_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls({
-      std::make_tuple("RenameFile", errors::Unavailable("Something is wrong")),
-      std::make_tuple("RenameFile",
-                      errors::Unavailable("Something is wrong again")),
-      std::make_tuple("RenameFile", errors::Unavailable("And again")),
-      std::make_tuple("RenameFile", errors::Unavailable("Last error")),
-  });
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("RenameFile", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
-  EXPECT_EQ("Last error",
+  EXPECT_EQ("Retriable error #5",
             fs.RenameFile("old_name", "new_name").error_message());
 }
 
@@ -630,18 +590,13 @@ TEST(RetryingFileSystemTest, Stat_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls({
-      std::make_tuple("Stat", errors::Unavailable("Something is wrong")),
-      std::make_tuple("Stat", errors::Unavailable("Something is wrong again")),
-      std::make_tuple("Stat", errors::Unavailable("And again")),
-      std::make_tuple("Stat", errors::Unavailable("Last error")),
-  });
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("Stat", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
   FileStatistics stat;
-  EXPECT_EQ("Last error", fs.Stat("file_name", &stat).error_message());
+  EXPECT_EQ("Retriable error #5", fs.Stat("file_name", &stat).error_message());
 }
 
 TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
@@ -657,18 +612,13 @@ TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("IsDirectory",
-                       errors::Unavailable("Something is wrong")),
-       std::make_tuple("IsDirectory",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("IsDirectory", errors::Unavailable("And again")),
-       std::make_tuple("IsDirectory", errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("IsDirectory", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
 
-  EXPECT_EQ("Last error", fs.IsDirectory("gs://path/dir").error_message());
+  EXPECT_EQ("Retriable error #5",
+            fs.IsDirectory("gs://path/dir").error_message());
 }
 
 TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
@@ -686,21 +636,15 @@ TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
 }
 
 TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("DeleteRecursively",
-                       errors::Unavailable("Something is wrong")),
-       std::make_tuple("DeleteRecursively",
-                       errors::Unavailable("Something is wrong again")),
-       std::make_tuple("DeleteRecursively", errors::Unavailable("And again")),
-       std::make_tuple("DeleteRecursively",
-                       errors::Unavailable("Last error"))});
+  ExpectedCalls expected_fs_calls =
+      CreateRetriableErrors("DeleteRecursively", 6);
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs), 0);
   int64 undeleted_files, undeleted_dirs;
 
   EXPECT_EQ(
-      "Last error",
+      "Retriable error #5",
       fs.DeleteRecursively("gs://path/dir", &undeleted_files, &undeleted_dirs)
           .error_message());
 }

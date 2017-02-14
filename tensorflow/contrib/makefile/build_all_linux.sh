@@ -36,4 +36,4 @@ tensorflow/contrib/makefile/download_dependencies.sh
 tensorflow/contrib/makefile/compile_linux_protobuf.sh
 
 # Build TensorFlow.
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile OPTFLAGS="-O3"
+make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile OPTFLAGS="-O3 -march=native"

@@ -3,15 +3,7 @@
 # Training (contrib)
 [TOC]
 
-Training and input utilities.
-
-## Splitting sequence inputs into minibatches with state saving
-
-Use [`SequenceQueueingStateSaver`](#SequenceQueueingStateSaver) or
-its wrapper [`batch_sequences_with_states`](#batch_sequences_with_states) if
-you have input data with a dynamic primary time / frame count axis which
-you'd like to convert into fixed size segments during minibatching, and would
-like to store state in the forward direction across segments of an example.
+Training and input utilities. See @{$python/contrib.training} guide.
 
 - - -
 
@@ -728,25 +720,6 @@ It should be run in a separate thread via e.g. a `QueueRunner`.
 
 
 
-
-
-## Online data resampling
-
-To resample data with replacement on a per-example basis, use
-['rejection_sample'](#rejection_sample) or
-['resample_at_rate'](#resample_at_rate). For `rejection_sample`, provide
-a boolean Tensor describing whether to accept or reject. Resulting batch sizes
-are always the same. For `resample_at_rate`, provide the desired rate for each
-example. Resulting batch sizes may vary. If you wish to specify relative
-rates, rather than absolute ones, use ['weighted_resample'](#weighted_resample)
-(which also returns the actual resampling rate used for each output example).
-
-Use ['stratified_sample'](#stratified_sample) to resample without replacement
-from the data to achieve a desired mix of class proportions that the Tensorflow
-graph sees. For instance, if you have a binary classification dataset that is
-99.9% class 1, a common approach is to resample from the data so that the data
-is more balanced.
-
 - - -
 
 ### `tf.contrib.training.rejection_sample(tensors, accept_prob_fn, batch_size, queue_threads=1, enqueue_many=False, prebatch_capacity=16, prebatch_threads=1, runtime_checks=False, name=None)` {#rejection_sample}
@@ -934,15 +907,6 @@ rate of selection across all inputs (and many invocations!) is
     possibly zero) first dimension.
   A tensor containing the effective resampling rate used for each output.
 
-
-
-## Bucketing
-
-Use ['bucket'](#bucket) or
-['bucket_by_sequence_length'](#bucket_by_sequence_length) to stratify
-minibatches into groups ("buckets").  Use `bucket_by_sequence_length`
-with the argument `dynamic_pad=True` to receive minibatches of similarly
-sized sequences for efficient training via `dynamic_rnn`.
 
 - - -
 
