@@ -13,6 +13,8 @@ py_library(
     name = "training_py",
     srcs = [
         "__init__.py",
+        "python/__init__.py",
+        "python/training/__init__.py",
         "python/training/bucket_ops.py",
         "python/training/device_setter.py",
         "python/training/evaluation.py",
@@ -22,6 +24,7 @@ py_library(
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
         "python/training/training.py",
+        "python/training/tuner.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

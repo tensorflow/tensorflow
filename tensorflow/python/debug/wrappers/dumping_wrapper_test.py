@@ -23,8 +23,8 @@ import shutil
 import tempfile
 
 from tensorflow.python.client import session
-from tensorflow.python.debug import debug_data
-from tensorflow.python.debug import stepper
+from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op

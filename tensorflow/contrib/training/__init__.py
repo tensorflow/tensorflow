@@ -56,6 +56,7 @@ from tensorflow.contrib.training.python.training.training import clip_gradient_n
 from tensorflow.contrib.training.python.training.training import create_train_op
 from tensorflow.contrib.training.python.training.training import multiply_gradients
 from tensorflow.contrib.training.python.training.training import train
+from tensorflow.contrib.training.python.training.tuner import Tuner
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
