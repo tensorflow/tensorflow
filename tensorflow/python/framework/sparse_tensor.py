@@ -203,7 +203,7 @@ class SparseTensor(_TensorLike):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
+        See @{tf.Session.run} for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this sparse
         tensor. If none, the default session will be used.

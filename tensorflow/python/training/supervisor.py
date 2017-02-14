@@ -127,7 +127,7 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    [`tf.train.Server.create_local_server()`](#Server.create_local_server) for
+    @{tf.train.Server.create_local_server} for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
