@@ -23,7 +23,7 @@ import uuid
 
 # Google-internal import(s).
 from tensorflow.core.util import event_pb2
-from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.platform import gfile
 

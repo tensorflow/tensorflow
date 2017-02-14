@@ -115,8 +115,8 @@ import abc
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.debug import debug_utils
-from tensorflow.python.debug import stepper
+from tensorflow.python.debug.lib import debug_utils
+from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
 
 
