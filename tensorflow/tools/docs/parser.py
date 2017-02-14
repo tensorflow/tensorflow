@@ -133,7 +133,7 @@ def _reference_to_link(ref_full_name, relative_path_to_root, duplicate_of,
 
 
 def _markdown_link(link_text, ref_full_name, relative_path_to_root,
-                   duplicate_of, index):
+                   duplicate_of, index, code_ref=True):
   """Resolve a "@{symbol}" reference to a Markdown link, respecting duplicates.
 
   The input to this function should already be stripped of the '@' and '{}'.
@@ -149,15 +149,18 @@ def _markdown_link(link_text, ref_full_name, relative_path_to_root,
       document to the root of the API documentation.
     duplicate_of: A map from duplicate full names to master names.
     index: A map from all full names to python objects.
+    code_ref: If true (the default), put `link_text` in `...`.
 
   Returns:
     A markdown link from the documentation page of `from_full_name`
     to the documentation page of `ref_full_name`.
   """
-  return '[`%s`](%s)' % (
-      link_text,
-      _reference_to_link(ref_full_name, relative_path_to_root,
-                         duplicate_of, index))
+  link = _reference_to_link(ref_full_name, relative_path_to_root,
+                            duplicate_of, index)
+  if code_ref:
+    return '[`%s`](%s)' % (link_text, link)
+  else:
+    return '[%s](%s)' % (link_text, link)
 
 
 def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
@@ -167,12 +170,13 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
   if dollar > 0:  # Ignore $ in first character
     link_text = string[dollar + 1:]
     string = string[:dollar]
+    manual_link_text = True
   else:
     link_text = string
+    manual_link_text = False
 
   # Handle different types of references.
   if string.startswith('$'):  # Doc reference
-    if link_text == string: link_text = None
     string = string[1:]  # remove leading $
 
     # If string has a #, split that part into `hash_tag`
@@ -184,7 +188,7 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
       hash_tag = ''
 
     if string in doc_index:
-      if link_text is None: link_text = doc_index[string].title
+      if not manual_link_text: link_text = doc_index[string].title
       url = os.path.normpath(os.path.join(
           relative_path_to_root, '../..', doc_index[string].url))
       return '[%s](%s%s)' % (link_text, url, hash_tag)
@@ -192,8 +196,8 @@ def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
     return 'TODO:%s' % string
 
   elif string.startswith('tf.') or string.startswith('tfdbg.'):  # Python symbol
-    return _markdown_link(
-        link_text, string, relative_path_to_root, duplicate_of, index)
+    return _markdown_link(link_text, string, relative_path_to_root,
+                          duplicate_of, index, code_ref=not manual_link_text)
   elif string.startswith('tensorflow::'):  # C++ symbol
     if string == 'tensorflow::ClientSession':
       ret = 'class/tensorflow/client-session.md'
