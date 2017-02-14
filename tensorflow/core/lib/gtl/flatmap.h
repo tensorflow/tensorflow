@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stddef.h>
 #include <functional>
+#include <initializer_list>
+#include <iterator>
 #include <utility>
 #include "tensorflow/core/lib/gtl/flatrep.h"
 #include "tensorflow/core/platform/logging.h"
@@ -76,6 +78,10 @@ class FlatMap {
     insert(first, last);
   }
 
+  FlatMap(std::initializer_list<std::pair<const Key, Val>> init, size_t N = 1,
+          const Hash& hf = Hash(), const Eq& eq = Eq())
+      : FlatMap(init.begin(), init.end(), N, hf, eq) {}
+
   FlatMap& operator=(const FlatMap& src) {
     rep_.CopyFrom(src.rep_);
     return *this;
@@ -97,20 +103,24 @@ class FlatMap {
 
   class iterator {
    public:
+    typedef FlatMap::difference_type difference_type;
+    typedef FlatMap::value_type value_type;
+    typedef FlatMap::pointer pointer;
+    typedef FlatMap::reference reference;
+    typedef std::forward_iterator_tag iterator_category;
+
     iterator() : b_(nullptr), end_(nullptr), i_(0) {}
 
     // Make iterator pointing at first element at or after b.
-    explicit iterator(Bucket* b, Bucket* end) : b_(b), end_(end), i_(0) {
-      SkipUnused();
-    }
+    iterator(Bucket* b, Bucket* end) : b_(b), end_(end), i_(0) { SkipUnused(); }
 
     // Make iterator pointing exactly at ith element in b, which must exist.
     iterator(Bucket* b, Bucket* end, uint32 i) : b_(b), end_(end), i_(i) {
       FillValue();
     }
 
-    value_type& operator*() { return *val(); }
-    value_type* operator->() { return val(); }
+    reference operator*() { return *val(); }
+    pointer operator->() { return val(); }
     bool operator==(const iterator& x) const {
       return b_ == x.b_ && i_ == x.i_;
     }
@@ -121,6 +131,11 @@ class FlatMap {
       SkipUnused();
       return *this;
     }
+    iterator operator++(int /*indicates postfix*/) {
+      iterator tmp(*this);
+      ++*this;
+      return tmp;
+    }
 
    private:
     friend class FlatMap;
@@ -129,7 +144,7 @@ class FlatMap {
     uint32 i_;
     char space_[sizeof(value_type)];
 
-    value_type* val() { return reinterpret_cast<value_type*>(space_); }
+    pointer val() { return reinterpret_cast<pointer>(space_); }
     void FillValue() { new (space_) value_type(b_->key(i_), b_->val(i_)); }
     void SkipUnused() {
       while (b_ < end_) {
@@ -150,17 +165,28 @@ class FlatMap {
    private:
     mutable iterator rep_;  // Share state and logic with non-const iterator.
    public:
+    typedef FlatMap::difference_type difference_type;
+    typedef FlatMap::value_type value_type;
+    typedef FlatMap::const_pointer pointer;
+    typedef FlatMap::const_reference reference;
+    typedef std::forward_iterator_tag iterator_category;
+
     const_iterator() : rep_() {}
-    explicit const_iterator(Bucket* start, Bucket* end) : rep_(start, end) {}
+    const_iterator(Bucket* start, Bucket* end) : rep_(start, end) {}
     const_iterator(Bucket* b, Bucket* end, uint32 i) : rep_(b, end, i) {}
 
-    const value_type& operator*() const { return *rep_.val(); }
-    const value_type* operator->() const { return rep_.val(); }
+    reference operator*() const { return *rep_.val(); }
+    pointer operator->() const { return rep_.val(); }
     bool operator==(const const_iterator& x) const { return rep_ == x.rep_; }
     bool operator!=(const const_iterator& x) const { return rep_ != x.rep_; }
     const_iterator& operator++() {
       ++rep_;
       return *this;
+    }
+    const_iterator operator++(int /*indicates postfix*/) {
+      const_iterator tmp(*this);
+      ++*this;
+      return tmp;
     }
   };
 
