@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/core/platform/macros.h"
-
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
