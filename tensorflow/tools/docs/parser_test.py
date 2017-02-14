@@ -125,8 +125,8 @@ class ParserTest(googletest.TestCase):
     doc2.title = 'Two words'
     doc2.url = 'somewhere/else'
     doc_index = {'doc1': doc1, 'do/c2': doc2}
-    result = parser.replace_references(string, '..', {}, doc_index=doc_index,
-                                       index={})
+    result = parser.replace_references(string, 'python', {},
+                                       doc_index=doc_index, index={})
     self.assertEqual(
         '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
         '[zelda](../URL1#def) [Two words](../somewhere/else)',

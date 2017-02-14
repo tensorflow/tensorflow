@@ -23,9 +23,9 @@ import tempfile
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.debug import debug_data
-from tensorflow.python.debug import debug_utils
-from tensorflow.python.debug import session_debug_testlib
+from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_utils
+from tensorflow.python.debug.lib import session_debug_testlib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
