@@ -522,6 +522,11 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   HloInstruction* fused_parameter(int64 parameter_number) const;
 
+  // Returns the vector of fused parameters inside this fusion instruction.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  const std::vector<HloInstruction*>& fused_parameters() const;
+
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);
     return fusion_kind_;
