@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Control Flow Operations
-
-TensorFlow provides several operations and classes that you can use to control
-the execution of operations and add conditional dependencies to your graph.
+"""Control Flow Operations. See the @{python/control_flow_ops} guide.
 
 @@identity
 @@tuple
@@ -26,22 +23,10 @@ the execution of operations and add conditional dependencies to your graph.
 @@cond
 @@case
 @@while_loop
-
-## Logical Operators
-
-TensorFlow provides several operations that you can use to add logical operators
-to your graph.
-
 @@logical_and
 @@logical_not
 @@logical_or
 @@logical_xor
-
-## Comparison Operators
-
-TensorFlow provides several operations that you can use to add comparison
-operators to your graph.
-
 @@equal
 @@not_equal
 @@less
@@ -49,12 +34,6 @@ operators to your graph.
 @@greater
 @@greater_equal
 @@where
-
-## Debugging Operations
-
-TensorFlow provides several operations that you can use to validate values and
-debug your graph.
-
 @@is_finite
 @@is_inf
 @@is_nan

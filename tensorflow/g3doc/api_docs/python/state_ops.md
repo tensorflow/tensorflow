@@ -7,7 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Variables
+Variables. See the @{python/state_ops} guide.
 
 - - -
 
@@ -1170,12 +1170,6 @@ is on a different device it will get a copy of the variable.
 
 
 
-
-## Variable helper functions
-
-TensorFlow provides a set of functions to help manage the set of variables
-collected in the graph.
-
 - - -
 
 ### `tf.global_variables()` {#global_variables}
@@ -1259,7 +1253,6 @@ This convenience function returns the contents of that collection.
 ##### Returns:
 
   A list of Variable objects.
-
 
 
 - - -
@@ -1381,7 +1374,6 @@ logged by the C++ runtime. This is expected.
   An Op, or None if there are no variables.
 
 
-
 - - -
 
 ### `tf.assign(ref, value, validate_shape=None, use_locking=None, name=None)` {#assign}
@@ -1470,9 +1462,6 @@ This makes it easier to chain operations that need to use the reset value.
   Same as "ref".  Returned as a convenience for operations that want
   to use the new value after the variable has been updated.
 
-
-
-## Saving and Restoring Variables
 
 - - -
 
@@ -1851,7 +1840,6 @@ Converts this `Saver` to a `SaverDef` protocol buffer.
 
 
 
-
 - - -
 
 ### `tf.train.latest_checkpoint(checkpoint_dir, latest_filename=None)` {#latest_checkpoint}
@@ -1869,7 +1857,6 @@ Finds the filename of latest saved checkpoint file.
 ##### Returns:
 
   The full path to the latest checkpoint or `None` if no checkpoint was found.
-
 
 
 - - -
@@ -1925,12 +1912,6 @@ proto.
 
 *  <b>`RuntimeError`</b>: If the save paths conflict.
 
-
-
-## Sharing Variables
-
-TensorFlow provides several classes and operations that you can use to
-create variables contingent on certain conditions.
 
 - - -
 
@@ -2506,13 +2487,11 @@ reduce the likelihood of collisions with kwargs.
 *  <b>`ValueError`</b>: if the name is None.
 
 
-
 - - -
 
 ### `tf.no_regularizer(_)` {#no_regularizer}
 
 Use this function to prevent regularization of variables.
-
 
 
 - - -
@@ -2820,9 +2799,6 @@ Args:
 
 
 
-
-## Variable Partitioners for Sharding
-
 - - -
 
 ### `tf.fixed_size_partitioner(num_shards, axis=0)` {#fixed_size_partitioner}
@@ -2907,21 +2883,6 @@ variable. The maximum number of such partitions (upper bound) is given by
   A partition function usable as the `partitioner` argument to
   `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
 
-
-
-## Sparse Variable Updates
-
-The sparse update ops modify a subset of the entries in a dense `Variable`,
-either overwriting the entries or adding / subtracting a delta.  These are
-useful for training embedding models and similar lookup-based networks, since
-only a small subset of embedding vectors change in any given step.
-
-Since a sparse update of a large tensor may be generated automatically during
-gradient computation (as in the gradient of
-[`tf.gather`](../../api_docs/python/array_ops.md#gather)),
-an [`IndexedSlices`](#IndexedSlices) class is provided that encapsulates a set
-of sparse indices and values.  `IndexedSlices` objects are detected and handled
-automatically by the optimizers in most cases.
 
 - - -
 
@@ -3421,7 +3382,6 @@ gradients for operations that have sparse gradients
 Contrast this representation with
 [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
 which uses multi-dimensional indices and scalar values.
-
 - - -
 
 #### `tf.IndexedSlices.__init__(values, indices, dense_shape=None)` {#IndexedSlices.__init__}
@@ -3429,59 +3389,6 @@ which uses multi-dimensional indices and scalar values.
 Creates an `IndexedSlices`.
 
 
-
-- - -
-
-#### `tf.IndexedSlices.values` {#IndexedSlices.values}
-
-A `Tensor` containing the values of the slices.
-
-
-- - -
-
-#### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
-
-A 1-D `Tensor` containing the indices of the slices.
-
-
-- - -
-
-#### `tf.IndexedSlices.dense_shape` {#IndexedSlices.dense_shape}
-
-A 1-D `Tensor` containing the shape of the corresponding dense tensor.
-
-
-
-- - -
-
-#### `tf.IndexedSlices.name` {#IndexedSlices.name}
-
-The name of this `IndexedSlices`.
-
-
-- - -
-
-#### `tf.IndexedSlices.dtype` {#IndexedSlices.dtype}
-
-The `DType` of elements in this tensor.
-
-
-- - -
-
-#### `tf.IndexedSlices.device` {#IndexedSlices.device}
-
-The name of the device on which `values` will be produced, or `None`.
-
-
-- - -
-
-#### `tf.IndexedSlices.op` {#IndexedSlices.op}
-
-The `Operation` that produces `values` as an output.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.IndexedSlices.__neg__()` {#IndexedSlices.__neg__}
@@ -3498,14 +3405,60 @@ The `Operation` that produces `values` as an output.
 
 - - -
 
+#### `tf.IndexedSlices.dense_shape` {#IndexedSlices.dense_shape}
+
+A 1-D `Tensor` containing the shape of the corresponding dense tensor.
+
+
+- - -
+
+#### `tf.IndexedSlices.device` {#IndexedSlices.device}
+
+The name of the device on which `values` will be produced, or `None`.
+
+
+- - -
+
+#### `tf.IndexedSlices.dtype` {#IndexedSlices.dtype}
+
+The `DType` of elements in this tensor.
+
+
+- - -
+
 #### `tf.IndexedSlices.graph` {#IndexedSlices.graph}
 
 The `Graph` that contains the values, indices, and shape tensors.
 
 
+- - -
+
+#### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
+
+A 1-D `Tensor` containing the indices of the slices.
 
 
-### Read-only Lookup Tables
+- - -
+
+#### `tf.IndexedSlices.name` {#IndexedSlices.name}
+
+The name of this `IndexedSlices`.
+
+
+- - -
+
+#### `tf.IndexedSlices.op` {#IndexedSlices.op}
+
+The `Operation` that produces `values` as an output.
+
+
+- - -
+
+#### `tf.IndexedSlices.values` {#IndexedSlices.values}
+
+A `Tensor` containing the values of the slices.
+
+
 
 - - -
 
@@ -3544,10 +3497,6 @@ Returns an Op that initializes all tables of the default graph.
   An Op that initializes all tables.  Note that if there are
   not tables the returned Op is a NoOp.
 
-
-
-
-## Exporting and Importing Meta Graphs
 
 - - -
 
@@ -3661,9 +3610,6 @@ device assignments have not changed.
   A None value is returned if no variables exist in the `MetaGraphDef`
   (i.e., there are no variables to restore).
 
-
-
-# Deprecated functions (removed after 2017-03-02). Please don't use them.
 
 - - -
 

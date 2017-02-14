@@ -6,6 +6,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 filegroup(
     name = "data_csv",
     srcs = glob(["data/*.csv"]),

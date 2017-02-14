@@ -68,6 +68,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
     ],
+    tags = ["no_pip"],
 )
 
 cuda_py_test(
@@ -653,6 +654,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["no_pip"],
 )
 
 cuda_py_test(
