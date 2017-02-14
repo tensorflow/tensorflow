@@ -458,7 +458,7 @@ while true; do
   if is_linux; then
     if ! type ldconfig > /dev/null; then
         LDCONFIG_BIN=/sbin/ldconfig
-      else
+    else
         LDCONFIG_BIN=ldconfig
     fi
     CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
