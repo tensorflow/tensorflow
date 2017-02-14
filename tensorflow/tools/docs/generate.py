@@ -157,7 +157,6 @@ def extract():
       'contrib.graph_editor': [
           'edit',
           'match',
-          'reroute',
           'subgraph',
           'transform',
           'select',
