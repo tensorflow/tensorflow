@@ -57,6 +57,7 @@ __all__ = ['add_model_variable',
            'get_unique_variable',
            'get_variables_by_name',
            'get_variables_by_suffix',
+           'get_variable_full_name',
            'get_variables_to_restore',
            'get_variables',
            'local_variable',
@@ -508,8 +509,31 @@ def assign_from_values_fn(var_names_to_values):
 # pylint: disable=protected-access
 # Currently variable_scope doesn't provide very good APIs to access
 # all variables under scope and retrieve and check existing scopes.
-#
+def get_variable_full_name(var):
+  """Returns the full name of a variable.
+
+  For normal Variables, this is the same as the var.op.name.  For
+  sliced or PartitionedVariables, this name is the same for all the
+  slices/partitions. In both cases, this is normally the name used in
+  a checkpoint file.
+
+  Args:
+    var: A `Variable` object.
+
+  Returns:
+    A string that is the full name.
+  """
+  if var._save_slice_info:
+    return var._save_slice_info.full_name
+  else:
+    return var.op.name
+
+
 # TODO(nsilberman): add flag to load exponential moving averages instead
+#
+# TODO(sguada): Update docs in slim/g3doc/index.md to describe
+# the new feature where the var_list dictionary can have values that
+# are each a list of Variables.
 def assign_from_checkpoint(model_path, var_list):
   """Creates an operation to assign specific variables from a checkpoint.
 
@@ -538,10 +562,7 @@ def assign_from_checkpoint(model_path, var_list):
   grouped_vars = {}
   if isinstance(var_list, (tuple, list)):
     for var in var_list:
-      if var._save_slice_info:
-        ckpt_name = var._save_slice_info.full_name
-      else:
-        ckpt_name = var.op.name
+      ckpt_name = get_variable_full_name(var)
       if ckpt_name not in grouped_vars:
         grouped_vars[ckpt_name] = []
       grouped_vars[ckpt_name].append(var)
@@ -568,7 +589,7 @@ def assign_from_checkpoint(model_path, var_list):
       placeholder_tensor = array_ops.placeholder(
           dtype=var.dtype.base_dtype,
           shape=var.get_shape(),
-          name='placeholder/' + ckpt_name)
+          name='placeholder/' + var.op.name)
       assign_ops.append(var.assign(placeholder_tensor))
 
       if not var._save_slice_info:
@@ -585,6 +606,7 @@ def assign_from_checkpoint(model_path, var_list):
         slice_dims = [(start, start + size) for (start, size) in slice_dims]
         slice_dims = [slice(*x) for x in slice_dims]
         slice_value = ckpt_value[slice_dims]
+        slice_value = slice_value.reshape(var._save_slice_info.var_shape)
         feed_dict[placeholder_tensor] = slice_value
 
   assign_op = control_flow_ops.group(*assign_ops)

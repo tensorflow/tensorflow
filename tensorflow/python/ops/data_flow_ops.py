@@ -123,17 +123,6 @@ class QueueBase(object):
   [`tf.RandomShuffleQueue`](#RandomShuffleQueue) for concrete
   implementations of this class, and instructions on how to create
   them.
-
-  @@enqueue
-  @@enqueue_many
-
-  @@dequeue
-  @@dequeue_many
-
-  @@size
-
-  @@close
-
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -571,8 +560,6 @@ class RandomShuffleQueue(QueueBase):
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, min_after_dequeue, dtypes, shapes=None,
@@ -646,8 +633,6 @@ class FIFOQueue(QueueBase):
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, dtypes, shapes=None, names=None,
@@ -699,8 +684,6 @@ class PaddingFIFOQueue(QueueBase):
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, dtypes, shapes, names=None, shared_name=None,
@@ -763,8 +746,6 @@ class PriorityQueue(QueueBase):
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, types, shapes=None, names=None, shared_name=None,

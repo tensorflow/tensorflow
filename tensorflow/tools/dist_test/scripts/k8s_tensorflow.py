@@ -49,6 +49,7 @@ spec:
       labels:
         tf-worker: "{worker_id}"
         name-prefix: "{name_prefix}"
+        job: "worker"
     spec:
       containers:
       - name: tf-worker{worker_id}
@@ -105,6 +106,7 @@ spec:
       labels:
         tf-ps: "{param_server_id}"
         name-prefix: "{name_prefix}"
+        job: "ps"
     spec:
       containers:
       - name: tf-ps{param_server_id}
@@ -231,7 +233,8 @@ def GenerateConfig(num_workers,
         volumes=VOLUMES if use_shared_volume else '',
         cluster_spec=WorkerClusterSpecString(num_workers,
                                              num_param_servers,
-                                             port))
+                                             port,
+                                             name_prefix))
     config += '---\n'
     if request_load_balancer:
       config += WORKER_LB_SVC.format(port=port,
@@ -253,7 +256,8 @@ def GenerateConfig(num_workers,
         volumes=VOLUMES if use_shared_volume else '',
         cluster_spec=ParamServerClusterSpecString(num_workers,
                                                   num_param_servers,
-                                                  port))
+                                                  port,
+                                                  name_prefix))
     config += '---\n'
     if request_load_balancer:
       config += PARAM_LB_SVC.format(
@@ -268,31 +272,35 @@ def GenerateConfig(num_workers,
 
 def WorkerClusterSpecString(num_workers,
                             num_param_servers,
-                            port):
+                            port,
+                            name_prefix):
   """Generates worker cluster spec."""
-  return ClusterSpecString(num_workers, num_param_servers, port)
+  return ClusterSpecString(num_workers, num_param_servers, port, name_prefix)
 
 
 def ParamServerClusterSpecString(num_workers,
                                  num_param_servers,
-                                 port):
+                                 port,
+                                 name_prefix):
   """Generates parameter server spec."""
-  return ClusterSpecString(num_workers, num_param_servers, port)
+  return ClusterSpecString(num_workers, num_param_servers, port,
+                           name_prefix)
 
 
 def ClusterSpecString(num_workers,
                       num_param_servers,
-                      port):
+                      port,
+                      name_prefix):
   """Generates general cluster spec."""
   spec = 'worker|'
   for worker in range(num_workers):
-    spec += 'tf-worker%d:%d' % (worker, port)
+    spec += '%s-worker%d:%d' % (name_prefix, worker, port)
     if worker != num_workers-1:
       spec += ';'
 
   spec += ',ps|'
   for param_server in range(num_param_servers):
-    spec += 'tf-ps%d:%d' % (param_server, port)
+    spec += '%s-ps%d:%d' % (name_prefix, param_server, port)
     if param_server != num_param_servers-1:
       spec += ';'
 

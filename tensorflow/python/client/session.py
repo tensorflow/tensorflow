@@ -1150,17 +1150,6 @@ class Session(BaseSession):
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                           log_device_placement=True))
   ```
-
-  @@__init__
-  @@run
-  @@close
-
-  @@graph
-
-  @@as_default
-
-  @@reset
-
   """
 
   def __init__(self, target='', graph=None, config=None):
@@ -1285,9 +1274,6 @@ class InteractiveSession(BaseSession):
     # We can also use 'c.eval()' here.
     print(c.eval())
   ```
-
-  @@__init__
-  @@close
   """
 
   def __init__(self, target='', graph=None, config=None):

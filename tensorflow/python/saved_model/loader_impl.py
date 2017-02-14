@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 
+from google.protobuf import message
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -54,28 +55,27 @@ def _parse_saved_model(export_dir):
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
-  # Ensure that the SavedModel exists at either path.
-  if not file_io.file_exists(path_to_pbtxt) and not file_io.file_exists(
-      path_to_pb):
-    raise IOError("SavedModel file does not exist at: %s" % export_dir)
-
-  saved_model = saved_model_pb2.SavedModel()
-
   # Parse the SavedModel protocol buffer.
-  try:
-    file_content = file_io.FileIO(path_to_pb, "rb").read()
-    saved_model.ParseFromString(file_content)
-    return saved_model
-  except Exception:  # pylint: disable=broad-except
-    # Pass for exceptions in order to try reading the file in text format.
-    pass
-
-  try:
-    file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
-    text_format.Merge(file_content.decode("utf-8"), saved_model)
-  except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
-  return saved_model
+  saved_model = saved_model_pb2.SavedModel()
+  if file_io.file_exists(path_to_pb):
+    try:
+      file_content = file_io.FileIO(path_to_pb, "rb").read()
+      saved_model.ParseFromString(file_content)
+      return saved_model
+    except message.DecodeError as e:
+      raise IOError("Cannot parse file %s: %s." % (path_to_pb, str(e)))
+  elif file_io.file_exists(path_to_pbtxt):
+    try:
+      file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
+      text_format.Merge(file_content.decode("utf-8"), saved_model)
+      return saved_model
+    except text_format.ParseError as e:
+      raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
+  else:
+    raise IOError("SavedModel file does not exist at: %s/{%s|%s}" %
+                  (export_dir,
+                   constants.SAVED_MODEL_FILENAME_PBTXT,
+                   constants.SAVED_MODEL_FILENAME_PB))
 
 
 def _get_asset_tensors(export_dir, meta_graph_def_to_load):

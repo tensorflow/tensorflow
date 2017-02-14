@@ -4,7 +4,7 @@ A `Bijector` implements a
 [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
 bijective, differentiable function. A `Bijector` is used by
 `TransformedDistribution` but can be generally used for transforming a
-`Distribution` generated `Tensor`.  A `Bijector` is characterized by three
+`Distribution` generated `Tensor`. A `Bijector` is characterized by three
 operations:
 
 1. Forward Evaluation
@@ -22,7 +22,7 @@ operations:
    "The log of the determinant of the matrix of all first-order partial
    derivatives of the inverse function."
    Useful for inverting a transformation to compute one probability in terms
-   of another.  Geometrically, the det(Jacobian) is the volume of the
+   of another. Geometrically, the det(Jacobian) is the volume of the
    transformation and is used to scale the probability.
 
 By convention, transformations of random variables are named in terms of the
@@ -34,7 +34,7 @@ Example Use:
   - Basic properties:
 
   ```python
-  x = ... # A tensor.
+  x = ...  # A tensor.
   # Evaluate forward transformation.
   fwd_x = my_bijector.forward(x)
   x == my_bijector.inverse(fwd_x)
@@ -91,7 +91,7 @@ Example transformations:
           if self.event_ndims is None:
             raise ValueError("Jacobian requires known event_ndims.")
           event_dims = array_ops.shape(x)[-self.event_ndims:]
-          return math_ops.reduce_sum(x, reduction_indices=event_dims)
+          return math_ops.reduce_sum(x, axis=event_dims)
       ```
 
   - "Affine"
@@ -116,8 +116,8 @@ Example of why a `Bijector` needs to understand sample, batch, event
 partitioning:
 
 - Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
-  and event (S, B, E) shape semantics.  Suppose
-  the `Tensor`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
+  and event (S, B, E) shape semantics. Suppose the `Tensor`'s
+  partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
 
   For `Exp`, the shape of the `Tensor` returned by `forward` and `inverse` is
   unchanged, i.e., `[4, 2, 3, 3]`. However the shape returned by
@@ -132,7 +132,7 @@ Subclass Requirements:
 
 - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
   like `QuantizedDistribution`) then depending on your use, you may not need
-  to implement all of `_forward` and `_inverse` functions.  Examples:
+  to implement all of `_forward` and `_inverse` functions. Examples:
     1. Sampling (e.g., `sample`) only requires `_forward`.
     2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
        `_inverse` (and related).
@@ -140,7 +140,7 @@ Subclass Requirements:
       `_inverse` can be implemented as a cache lookup.
 
   See `Example Use` [above] which shows how these functions are used to
-  transform a distribution.  (Note: `_forward` could theoretically be
+  transform a distribution. (Note: `_forward` could theoretically be
   implemented as a cache lookup but this would require controlling the
   underlying sample generation mechanism.)
 
@@ -158,7 +158,7 @@ Subclass Requirements:
 
 - Subclasses should implement `_forward_event_shape`,
   `_forward_event_shape_tensor` (and `inverse` counterparts) if the
-  transformation is shape-changing.  By default the event-shape is assumed
+  transformation is shape-changing. By default the event-shape is assumed
   unchanged from input.
 
 Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
@@ -167,14 +167,14 @@ Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
   can be implemented as a cache lookup.
 
 - The inverse `log o det o Jacobian` can be implemented as the negative of the
-  forward `log o det o Jacobian`.  This is useful if the `inverse` is
+  forward `log o det o Jacobian`. This is useful if the `inverse` is
   implemented as a cache or the inverse Jacobian is computationally more
   expensive (e.g., `CholeskyOuterProduct` `Bijector`). The following
   demonstrates the suggested implementation.
 
   ```python
   def _inverse_and_log_det_jacobian(self, y):
-     x = # ... implement inverse, possibly via cache.
+     x = ...  # implement inverse, possibly via cache.
      return x, -self._forward_log_det_jac(x)  # Note negation.
   ```
 
@@ -233,10 +233,10 @@ See `Bijector` subclass docstring for more details and specific examples.
 
 *  <b>`event_ndims`</b>: number of dimensions associated with event coordinates.
 *  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Bijector`.
-*  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is not a
+*  <b>`is_constant_jacobian`</b>: Python `bool` indicating that the Jacobian is not a
     function of the input.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
+*  <b>`validate_args`</b>: Python `bool`, default `False`. Whether to validate input
+    with asserts. If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`dtype`</b>: `tf.dtype` supported by this `Bijector`. `None` means dtype is not
     enforced.
@@ -489,7 +489,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -

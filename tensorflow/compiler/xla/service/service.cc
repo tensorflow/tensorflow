@@ -1203,7 +1203,9 @@ tensorflow::Status Service::GetComputationStats(
   MakeHloDumper()(*module, "computation statistics subject");
 
   // Run HLO analysis to get the computation statistics.
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis([this](const Shape& shape) {
+    return execute_backend_->compiler()->ShapeSizeBytes(shape);
+  });
 
   TF_RETURN_IF_ERROR(
       module->entry_computation()->root_instruction()->Accept(&analysis));

@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -93,8 +94,8 @@ def make_multivariate_mixture(batch_shape, num_components, event_shape):
       list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
   components = [
       distributions_py.MultivariateNormalDiag(
-          mu=np.float32(np.random.randn(*list(batch_shape + event_shape))),
-          diag_stddev=np.float32(10 * np.random.rand(
+          loc=np.float32(np.random.randn(*list(batch_shape + event_shape))),
+          scale_diag=np.float32(10 * np.random.rand(
               *list(batch_shape + event_shape)))) for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
@@ -529,7 +530,7 @@ class MixtureBenchmark(test.Benchmark):
       ]
       components = list(
           distributions_py.MultivariateNormalDiag(
-              mu=mu, diag_stddev=sigma) for (mu, sigma) in zip(mus, sigmas))
+              loc=mu, scale_diag=sigma) for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:
@@ -567,8 +568,10 @@ class MixtureBenchmark(test.Benchmark):
               psd(np.random.rand(batch_size, num_features, num_features)))
           for _ in range(num_components)
       ]
-      components = list(distributions_py.MultivariateNormalFull(
-          mu=mu, sigma=sigma) for (mu, sigma) in zip(mus, sigmas))
+      components = list(
+          distributions_py.MultivariateNormalTriL(
+              loc=mu, scale_tril=linalg_ops.cholesky(sigma))
+          for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:

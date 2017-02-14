@@ -68,6 +68,16 @@ class BatchSequencesWithStatesTest(test.TestCase):
         array_ops.constant(ind2, dtypes.int64),
         array_ops.constant(val2, dtypes.int64),
         array_ops.constant(shape2, dtypes.int64))
+    sp_tensor3 = sparse_tensor.SparseTensor(
+        array_ops.constant([[1, 9], [2, 2], [2, 10]], dtypes.int64),
+        array_ops.constant([7, 15, 2], dtypes.int64),
+        array_ops.constant([5, 12], dtypes.int64)
+    )
+    self.sp_tensor3_expected = sparse_tensor.SparseTensorValue(
+        [[0, 1, 9], [0, 2, 2], [0, 2, 10], [1, 1, 9], [1, 2, 2], [1, 2, 10]],
+        [7, 15, 2, 7, 15, 2],
+        [2, 5, 12]
+    )
     self.batch_size = 2
     self.key = string_ops.string_join([
         "key_", string_ops.as_string(
@@ -78,7 +88,9 @@ class BatchSequencesWithStatesTest(test.TestCase):
         "seq2": np.random.rand(self.value_length, 4, 2),
         "seq3": sp_tensor1,
         "seq4": sp_tensor2}
-    self.context = {"context1": [3, 4]}
+    self.context = {
+        "context1": [3, 4],
+        "sp_context": sp_tensor3}
     self.initial_states = {
         "state1": np.random.rand(6, 7),
         "state2": np.random.rand(8)
@@ -134,12 +146,13 @@ class BatchSequencesWithStatesTest(test.TestCase):
 
       # Step 1
       (key_value, next_key_value, seq1_value, seq2_value, seq3_value,
-       seq4_value, context1_value, state1_value, state2_value, length_value,
-       _, _) = sess.run(
+       seq4_value, context1_value, context2_value, state1_value, state2_value,
+       length_value, _, _) = sess.run(
            (next_batch.key, next_batch.next_key, next_batch.sequences["seq1"],
             next_batch.sequences["seq2"], next_batch.sequences["seq3"],
             next_batch.sequences["seq4"], next_batch.context["context1"],
-            state1, state2, next_batch.length, state1_update, state2_update))
+            next_batch.context["sp_context"], state1, state2, next_batch.length,
+            state1_update, state2_update))
       expected_first_keys = set([b"00000_of_00002"])
       expected_second_keys = set([b"00001_of_00002"])
       expected_final_keys = set([b"STOP"])
@@ -149,6 +162,12 @@ class BatchSequencesWithStatesTest(test.TestCase):
       self.assertAllEqual(
           np.tile(self.context["context1"], (self.batch_size, 1)),
           context1_value)
+      self.assertAllEqual(self.sp_tensor3_expected.indices,
+                          context2_value.indices)
+      self.assertAllEqual(self.sp_tensor3_expected.values,
+                          context2_value.values)
+      self.assertAllEqual(self.sp_tensor3_expected.dense_shape,
+                          context2_value.dense_shape)
       self.assertAllEqual(expected_seq1_batch1, seq1_value)
       self.assertAllEqual(expected_seq2_batch1, seq2_value)
       self.assertAllEqual(expected_seq3_batch1.indices, seq3_value.indices)
@@ -169,18 +188,25 @@ class BatchSequencesWithStatesTest(test.TestCase):
 
       # Step 2
       (key_value, next_key_value, seq1_value, seq2_value, seq3_value,
-       seq4_value, context1_value, state1_value, state2_value, length_value,
-       _, _) = sess.run(
+       seq4_value, context1_value, context2_value, state1_value, state2_value,
+       length_value, _, _) = sess.run(
            (next_batch.key, next_batch.next_key, next_batch.sequences["seq1"],
             next_batch.sequences["seq2"], next_batch.sequences["seq3"],
             next_batch.sequences["seq4"], next_batch.context["context1"],
-            state1, state2, next_batch.length, state1_update, state2_update))
+            next_batch.context["sp_context"], state1, state2, next_batch.length,
+            state1_update, state2_update))
 
       self.assertEqual(expected_second_keys, self._prefix(key_value))
       self.assertEqual(expected_final_keys, self._prefix(next_key_value))
       self.assertAllEqual(
           np.tile(self.context["context1"], (self.batch_size, 1)),
           context1_value)
+      self.assertAllEqual(self.sp_tensor3_expected.indices,
+                          context2_value.indices)
+      self.assertAllEqual(self.sp_tensor3_expected.values,
+                          context2_value.values)
+      self.assertAllEqual(self.sp_tensor3_expected.dense_shape,
+                          context2_value.dense_shape)
       self.assertAllEqual(expected_seq1_batch2, seq1_value)
       self.assertAllEqual(expected_seq2_batch2, seq2_value)
       self.assertAllEqual(expected_seq3_batch2.indices, seq3_value.indices)
@@ -349,6 +375,57 @@ class BatchSequencesWithStatesTest(test.TestCase):
         axis=1)
     expected_seq2_batch2 = np.concatenate(
         [padded_seq2] * self.batch_size, axis=0)
+
+    ind1_1 = np.array([
+        # batch entry 1
+        [0, 0, 0],
+        [0, 1, 0], [0, 1, 3], [0, 1, 4],
+        # batch entry 2
+        [1, 0, 0],
+        [1, 1, 0], [1, 1, 3], [1, 1, 4]])
+    ind1_2 = np.array([
+        # batch entry 1
+        [0, 0, 2], [0, 0, 3],
+        # batch entry 2
+        [1, 0, 2], [1, 0, 3]])
+    val1_1 = np.array([0, 10, 13, 14,
+                       0, 10, 13, 14])
+    val1_2 = np.array([32, 33,
+                       32, 33])
+    shape1 = np.array([self.batch_size, num_unroll, 6])
+
+    # For sp_tensor2 all values fall into the first segment.
+    ind2_1 = np.array([
+        # batch entry 1
+        [0, 0, 0, 1],
+        [0, 0, 1, 0],
+        [0, 0, 1, 2],
+        [0, 1, 0, 3],
+        [0, 1, 1, 0],
+        [0, 1, 1, 1],
+        [0, 1, 1, 2],
+        [0, 1, 2, 2],
+        # batch entry 2
+        [1, 0, 0, 1],
+        [1, 0, 1, 0],
+        [1, 0, 1, 2],
+        [1, 1, 0, 3],
+        [1, 1, 1, 0],
+        [1, 1, 1, 1],
+        [1, 1, 1, 2],
+        [1, 1, 2, 2],
+    ])
+    val2_1 = np.array([1, 10, 12, 103, 150, 149, 150, 122,
+                       1, 10, 12, 103, 150, 149, 150, 122])
+    shape2 = np.array([self.batch_size, num_unroll, 3, 4])
+    expected_seq3_batch1 = sparse_tensor.SparseTensorValue(
+        ind1_1, val1_1, shape1)
+    expected_seq3_batch2 = sparse_tensor.SparseTensorValue(
+        ind1_2, val1_2, shape1)
+    expected_seq4_batch1 = sparse_tensor.SparseTensorValue(
+        ind2_1, val2_1, shape2)
+    expected_seq4_batch2 = sparse_tensor.SparseTensorValue(
+        np.empty(shape=[0, 4], dtype=np.int64), np.array([]), shape2)
 
     ind1_1 = np.array([
         # batch entry 1

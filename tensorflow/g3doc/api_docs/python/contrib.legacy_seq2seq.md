@@ -409,7 +409,7 @@ e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(
 
 - - -
 
-### `tf.contrib.legacy_seq2seq.one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell, num_encoder_symbols, num_decoder_symbols_dict, embedding_size, feed_previous=False, dtype=None, scope=None)` {#one2many_rnn_seq2seq}
+### `tf.contrib.legacy_seq2seq.one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, enc_cell, dec_cells_dict, num_encoder_symbols, num_decoder_symbols_dict, embedding_size, feed_previous=False, dtype=None, scope=None)` {#one2many_rnn_seq2seq}
 
 One-to-many RNN sequence-to-sequence model (multi-task).
 
@@ -425,7 +425,9 @@ here: http://arxiv.org/abs/1511.06114
     the corresponding decoder_inputs; each decoder_inputs is a list of 1D
     Tensors of shape [batch_size]; num_decoders is defined as
     len(decoder_inputs_dict).
-*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
+*  <b>`enc_cell`</b>: core_rnn_cell.RNNCell defining the encoder cell function and size.
+*  <b>`dec_cells_dict`</b>: A dictionary mapping encoder name (string) to an
+    instance of core_rnn_cell.RNNCell.
 *  <b>`num_encoder_symbols`</b>: Integer; number of symbols on the encoder side.
 *  <b>`num_decoder_symbols_dict`</b>: A dictionary mapping decoder name (string) to an
     integer specifying number of symbols for the corresponding decoder;
@@ -451,6 +453,12 @@ here: http://arxiv.org/abs/1511.06114
 *  <b>`state_dict`</b>: A mapping from decoder name (string) to the final state of the
       corresponding decoder RNN; it is a 2D Tensor of shape
       [batch_size x cell.state_size].
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if enc_cell or any of the dec_cells are not instances of RNNCell.
+*  <b>`ValueError`</b>: if len(dec_cells) != len(decoder_inputs_dict).
 
 
 - - -

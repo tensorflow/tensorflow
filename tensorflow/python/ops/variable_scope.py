@@ -766,9 +766,9 @@ def no_regularizer(_):
 
 
 class VariableScope(object):
-  """Variable scope object to carry defaults to provide to get_variable.
+  """Variable scope object to carry defaults to provide to `get_variable`.
 
-  Many of the arguments we need for get_variable in a variable store are most
+  Many of the arguments we need for `get_variable` in a variable store are most
   easily handled with a context. This object is used for the defaults.
 
   Attributes:
@@ -1071,7 +1071,7 @@ Args:
   initializer: Initializer for the variable if one is created.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the

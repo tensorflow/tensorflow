@@ -86,10 +86,6 @@ class TFRecordWriter(object):
 
   This class implements `__enter__` and `__exit__`, and can be used
   in `with` blocks like a normal file.
-
-  @@__init__
-  @@write
-  @@close
   """
 
   # TODO(josh11b): Support appending?

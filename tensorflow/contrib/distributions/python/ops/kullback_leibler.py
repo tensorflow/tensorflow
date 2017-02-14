@@ -66,7 +66,7 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
     dist_b: The second distribution.
     allow_nan: If `False` (default), a runtime error is raised
       if the KL returns NaN values for any batch entry of the given
-      distributions.  If `True`, the KL may return a NaN for the given entry.
+      distributions. If `True`, the KL may return a NaN for the given entry.
     name: (optional) Name scope to use for created operations.
 
   Returns:
@@ -80,7 +80,7 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
   if kl_fn is None:
     raise NotImplementedError(
         "No KL(dist_a || dist_b) registered for dist_a type %s and dist_b "
-        "type %s" % ((type(dist_a).__name__, type(dist_b).__name__)))
+        "type %s" % (type(dist_a).__name__, type(dist_b).__name__))
 
   with ops.name_scope("KullbackLeibler"):
     kl_t = kl_fn(dist_a, dist_b, name=name)
@@ -95,7 +95,7 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
             math_ops.logical_not(
                 math_ops.reduce_any(math_ops.is_nan(kl_t))),
             ["KL calculation between %s and %s returned NaN values "
-             "(and was called with allow_nan=False).  Values:"
+             "(and was called with allow_nan=False). Values:"
              % (dist_a.name, dist_b.name), kl_t])]):
       return array_ops.identity(kl_t, name="checked_kl")
 

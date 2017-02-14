@@ -131,6 +131,8 @@ class CpuCompiler : public Compiler {
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
+  int64 ShapeSizeBytes(const Shape& shape) const override;
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();

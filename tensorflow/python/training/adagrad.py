@@ -31,8 +31,6 @@ class AdagradOptimizer(optimizer.Optimizer):
   See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
   or this
   [intro](http://cs.stanford.edu/~ppasupat/a9online/uploads/proximal_notes.pdf).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, initial_accumulator_value=0.1,
@@ -83,7 +81,7 @@ class AdagradOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")
     return training_ops.resource_apply_adagrad(
-        var,
+        var.handle,
         acc.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
         grad,
@@ -102,7 +100,7 @@ class AdagradOptimizer(optimizer.Optimizer):
   def _resource_apply_sparse(self, grad, var, indices):
     acc = self.get_slot(var, "accumulator")
     return training_ops.resource_sparse_apply_adagrad(
-        var,
+        var.handle,
         acc.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
         grad,

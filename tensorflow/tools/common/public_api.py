@@ -40,6 +40,8 @@ class PublicAPIVisitor(object):
   # Each entry maps a module path to a name to ignore in traversal.
   _do_not_descend_map = {
       '': [
+          'core',
+          'examples',
           'flags',  # Don't add flags
           'platform',  # TODO(drpng): This can be removed once sealed off.
           'pywrap_tensorflow',  # TODO(drpng): This can be removed once sealed.
@@ -47,9 +49,6 @@ class PublicAPIVisitor(object):
           'python',
           'tools'
       ],
-
-      # Exclude protos, they leak a lot.
-      'core': ['protobuf'],
 
       # Some implementations have this internal module that we shouldn't expose.
       'flags': ['cpp_flags'],

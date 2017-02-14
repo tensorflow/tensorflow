@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -51,9 +52,9 @@ static void CheckRunStepRequest(const RunStepRequestWrapper& request) {
   EXPECT_EQ("feed_a:0", request.feed_name(0));
   EXPECT_EQ("feed_b:0", request.feed_name(1));
   Tensor val;
-  request.FeedValue(0, &val);
+  TF_EXPECT_OK(request.FeedValue(0, &val));
   test::ExpectTensorEqual<int32>(TensorA(), val);
-  request.FeedValue(1, &val);
+  TF_EXPECT_OK(request.FeedValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
 
   EXPECT_EQ(2, request.num_fetches());
@@ -70,8 +71,10 @@ static void BuildRunGraphRequest(
   run_graph_request->set_graph_handle("graph_handle");
   run_graph_request->set_step_id(13);
   run_graph_request->mutable_exec_opts()->set_record_timeline(true);
-  run_graph_request->AddSendFromRunStepRequest(run_step_request, 0, "send_0");
-  run_graph_request->AddSendFromRunStepRequest(run_step_request, 1, "send_1");
+  TF_EXPECT_OK(run_graph_request->AddSendFromRunStepRequest(run_step_request, 0,
+                                                            "send_0"));
+  TF_EXPECT_OK(run_graph_request->AddSendFromRunStepRequest(run_step_request, 1,
+                                                            "send_1"));
   run_graph_request->add_recv_key("recv_2");
   run_graph_request->add_recv_key("recv_3");
   run_graph_request->set_is_partial(true);
@@ -84,9 +87,9 @@ static void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
   EXPECT_TRUE(request.exec_opts().record_timeline());
   EXPECT_EQ(2, request.num_sends());
   Tensor val;
-  request.SendValue(0, &val);
+  TF_EXPECT_OK(request.SendValue(0, &val));
   test::ExpectTensorEqual<int32>(TensorA(), val);
-  request.SendValue(1, &val);
+  TF_EXPECT_OK(request.SendValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
   EXPECT_TRUE(request.is_partial());
   EXPECT_FALSE(request.is_last_partial_run());
@@ -106,9 +109,9 @@ static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
   EXPECT_EQ("recv_2", response->recv_key(0));
   EXPECT_EQ("recv_3", response->recv_key(1));
   Tensor val;
-  response->RecvValue(0, &val);
+  TF_EXPECT_OK(response->RecvValue(0, &val));
   test::ExpectTensorEqual<int32>(TensorA(), val);
-  response->RecvValue(1, &val);
+  TF_EXPECT_OK(response->RecvValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
   EXPECT_EQ(1, response->mutable_step_stats()->dev_stats_size());
   EXPECT_EQ("/cpu:0", response->mutable_step_stats()->dev_stats(0).device());
@@ -119,10 +122,10 @@ static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
 static void BuildRunStepResponse(
     MutableRunGraphResponseWrapper* run_graph_response,
     MutableRunStepResponseWrapper* run_step_response) {
-  run_step_response->AddTensorFromRunGraphResponse("fetch_x:0",
-                                                   run_graph_response, 0);
-  run_step_response->AddTensorFromRunGraphResponse("fetch_y:0",
-                                                   run_graph_response, 1);
+  TF_EXPECT_OK(run_step_response->AddTensorFromRunGraphResponse(
+      "fetch_x:0", run_graph_response, 0));
+  TF_EXPECT_OK(run_step_response->AddTensorFromRunGraphResponse(
+      "fetch_y:0", run_graph_response, 1));
   *run_step_response->mutable_metadata()->mutable_step_stats() =
       *run_graph_response->mutable_step_stats();
 }
@@ -133,9 +136,9 @@ static void CheckRunStepResponse(
   EXPECT_EQ("fetch_x:0", response.tensor_name(0));
   EXPECT_EQ("fetch_y:0", response.tensor_name(1));
   Tensor val;
-  response.TensorValue(0, &val);
+  TF_EXPECT_OK(response.TensorValue(0, &val));
   test::ExpectTensorEqual<int32>(TensorA(), val);
-  response.TensorValue(1, &val);
+  TF_EXPECT_OK(response.TensorValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
   EXPECT_EQ(1, response.metadata().step_stats().dev_stats_size());
   EXPECT_EQ("/cpu:0", response.metadata().step_stats().dev_stats(0).device());

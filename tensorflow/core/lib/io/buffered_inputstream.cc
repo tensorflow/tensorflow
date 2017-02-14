@@ -163,7 +163,7 @@ Status BufferedInputStream::ReadLine(string* result) {
 
 string BufferedInputStream::ReadLineAsString() {
   string result;
-  ReadLineHelper(&result, true);
+  ReadLineHelper(&result, true).IgnoreError();
   return result;
 }
 
