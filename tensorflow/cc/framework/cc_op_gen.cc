@@ -437,6 +437,7 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
   }
   strings::StrAppend(&comment, "\nArguments:\n* scope: A Scope object\n");
 
+  // Process inputs
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     const auto& arg(op_def.input_arg(i));
     arg_types.push_back(strings::StrCat(
@@ -451,30 +452,45 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
                          arg.description(), "\n");
     }
   }
+
+  // Process attrs
+  string required_attrs_comment;
+  string optional_attrs_comment;
   for (int i = 0; i < op_def.attr_size(); ++i) {
     const auto& attr(op_def.attr(i));
-    // If the attr is going to be inferred or is optional, don't add it as a
-    // required argument.
-    if ((inferred_input_attrs.find(attr.name()) !=
-         inferred_input_attrs.end()) ||
-        attr.has_default_value()) {
-      continue;
-    }
+    // Skip inferred arguments
+    if (inferred_input_attrs.count(attr.name()) > 0) continue;
+
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
+    string attr_name = AvoidCPPKeywords(attr.name());
 
-    arg_types.push_back(strings::StrCat(use_const ? "const " : "",
-                                        attr_type_name, use_const ? "&" : ""));
-    arg_names.push_back(AvoidCPPKeywords(attr.name()));
+    string attr_comment;
     if (!attr.description().empty()) {
-      strings::StrAppend(&comment, "* ", AvoidCPPKeywords(attr.name()), ":\n");
       // TODO(keveman): Word wrap and indent this, to handle multi-line
       // descriptions.
-      strings::StrAppend(&comment, "    ", attr.description(), "\n");
+      strings::StrAppend(&attr_comment, "* ", attr_name, ": ",
+                         attr.description(), "\n");
+    }
+    if (attr.has_default_value()) {
+      strings::StrAppend(&optional_attrs_comment, attr_comment);
+    } else {
+      strings::StrAppend(&required_attrs_comment, attr_comment);
+      arg_types.push_back(strings::StrCat(
+          use_const ? "const " : "", attr_type_name, use_const ? "&" : ""));
+      arg_names.push_back(attr_name);
     }
   }
 
+  strings::StrAppend(&comment, required_attrs_comment);
+
+  if (!optional_attrs_comment.empty()) {
+    strings::StrAppend(&comment, "\nOptional attributes (see `Attrs`):\n");
+    strings::StrAppend(&comment, optional_attrs_comment);
+  }
+
+  // Process outputs
   for (int i = 0; i < op_def.output_arg_size(); ++i) {
     const auto& arg = op_def.output_arg(i);
     bool is_list = ArgIsList(arg);
