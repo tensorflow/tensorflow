@@ -116,36 +116,7 @@ class Variable(object):
   `trainable_variables()` returns the contents of this collection. The
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
-
-
-  Creating a variable.
-
-  @@__init__
-  @@initialized_value
-
-  Changing a variable value.
-
-  @@assign
-  @@assign_add
-  @@assign_sub
-  @@scatter_sub
-  @@count_up_to
-
-  @@eval
-
-  Properties.
-
-  @@name
-  @@dtype
-  @@get_shape
-  @@device
-  @@initializer
-  @@graph
-  @@op
   """
-
-  # TODO(touts): Add @@value and @@ref in the docstring above once they are
-  # ready for consumption.
 
   def __init__(self,
                initial_value=None,

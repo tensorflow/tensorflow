@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Resource management.
+"""Resource management library.
 
 @@get_data_files_path
 @@get_path_to_datafile
