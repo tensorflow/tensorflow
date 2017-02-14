@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/integral_image.h"
-#include "tensorflow/examples/android/jni/object_tracking/log_streaming.h"
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 #include "tensorflow/examples/android/jni/object_tracking/time_log.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
