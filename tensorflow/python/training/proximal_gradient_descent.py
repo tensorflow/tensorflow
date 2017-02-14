@@ -69,7 +69,7 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
 
   def _resource_apply_dense(self, grad, var):
     return training_ops.resource_apply_proximal_gradient_descent(
-        var,
+        var.handle,
         self._learning_rate_tensor,
         self._l1_regularization_strength_tensor,
         self._l2_regularization_strength_tensor,
@@ -88,7 +88,7 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
 
   def _resource_apply_sparse(self, grad, var, indices):
     return training_ops.resource_sparse_apply_proximal_gradient_descent(
-        var,
+        var.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
         math_ops.cast(self._l1_regularization_strength_tensor, grad.dtype),
         math_ops.cast(self._l2_regularization_strength_tensor, grad.dtype),

@@ -190,7 +190,7 @@ Status GrpcServer::Init() {
         host_port = task.second;
       }
     }
-    channel_spec.AddHostPortsJob(job.name(), host_ports);
+    TF_RETURN_IF_ERROR(channel_spec.AddHostPortsJob(job.name(), host_ports));
   }
 
   std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(

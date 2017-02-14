@@ -32,8 +32,6 @@ class AdamOptimizer(optimizer.Optimizer):
 
   See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
@@ -142,7 +140,7 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     return training_ops.resource_apply_adam(
-        var, m.handle, v.handle,
+        var.handle, m.handle, v.handle,
         math_ops.cast(self._beta1_power, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),

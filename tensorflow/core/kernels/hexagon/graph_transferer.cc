@@ -606,15 +606,15 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
   CHECK_GT(node.def().attr().count(PADDING_ATTR_NAME), 0);
   // TODO(satok): Use context->GetAttr(...) instead?
   Padding padding;
-  context->GetAttr(PADDING_ATTR_NAME, &padding);
+  TF_CHECK_OK(context->GetAttr(PADDING_ATTR_NAME, &padding));
   CHECK_GT(node.def().attr().count(STRIDES_ATTR_NAME), 0);
   std::vector<int32> strides;
-  context->GetAttr(STRIDES_ATTR_NAME, &strides);
+  TF_CHECK_OK(context->GetAttr(STRIDES_ATTR_NAME, &strides));
   const int stride_id = RegisterConstantShape(strides);
   std::vector<int> extra_inputs{stride_id};
   if (node.def().attr().count(KSIZE_ATTR_NAME) > 0) {
     std::vector<int32> kernel_sizes;
-    context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes);
+    TF_CHECK_OK(context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes));
     const int ksize_id = RegisterConstantShape(kernel_sizes);
     extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }

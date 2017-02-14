@@ -57,15 +57,15 @@ class Bernoulli(distribution.Distribution):
         Bernoulli distribution. Only one of `logits` or `probs` should be passed
         in.
       dtype: The type of the event samples. Default: `int32`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
         statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-        indicate the result is undefined.  When `False`, an exception is raised
+        indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
@@ -114,7 +114,7 @@ class Bernoulli(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    new_shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
+    new_shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
     uniform = random_ops.random_uniform(
         new_shape, seed=seed, dtype=self.probs.dtype)
     sample = math_ops.less(uniform, self.probs)

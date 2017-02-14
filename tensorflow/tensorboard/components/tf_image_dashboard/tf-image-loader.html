@@ -189,6 +189,7 @@ future for loading older images.
         }
 
         let img = new Image();
+        img.id = "img"; // '#img' used to select the image in tf-image-dashboard.
 
         const loadIndex = ++this._currentImageLoadIndex;
         img.onload = img.onerror = (function() {

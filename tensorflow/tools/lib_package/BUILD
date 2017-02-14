@@ -1,7 +1,6 @@
-# Packaging the TensorFlow C API into a small, standalone archive for use with
-# language bindings and installations without Python.
+# Packaging the TensorFlow C API and Java libraries into standalone archives
+# for use with language bindings and installations without Python.
 #
-# TODO(ashankar): Something similar for the JNI library for Java?
 # TODO(ashankar): Something similar for the C++ API (caveat: ABI compatibility)
 
 package(default_visibility = ["//visibility:private"])
@@ -22,6 +21,21 @@ pkg_tar(
         ":clib",
         ":clicenses",
     ],
+)
+
+pkg_tar(
+    name = "libtensorflow_jni",
+    extension = "tar.gz",
+    files = [
+        "include/tensorflow/jni/LICENSE",
+        "//tensorflow/java:libtensorflow_jni",
+    ],
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    tags = ["manual"],
 )
 
 pkg_tar(
@@ -88,6 +102,34 @@ genrule(
     tools = [":concat_licenses.sh"],
 )
 
+genrule(
+    name = "jnilicenses_generate",
+    srcs = [
+        "//third_party/hadoop:LICENSE.txt",
+        "//third_party/eigen3:LICENSE",
+        "@boringssl//:LICENSE",
+        "@com_googlesource_code_re2//:LICENSE",
+        "@curl//:COPYING",
+        "@eigen_archive//:COPYING.MPL2",
+        "@farmhash_archive//:COPYING",
+        "@gemmlowp//:LICENSE",
+        "@gif_archive//:COPYING",
+        "@grpc//:LICENSE",
+        "@highwayhash//:LICENSE",
+        "@jemalloc//:COPYING",
+        "@jpeg//:LICENSE.md",
+        "@libxsmm_archive//:LICENSE",
+        "@local_config_sycl//sycl:LICENSE.text",
+        "@nanopb_git//:LICENSE.txt",
+        "@png_archive//:LICENSE",
+        "@protobuf//:LICENSE",
+        "@zlib_archive//:zlib.h",
+    ],
+    outs = ["include/tensorflow/jni/LICENSE"],
+    cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
+    tools = [":concat_licenses.sh"],
+)
+
 sh_test(
     name = "libtensorflow_test",
     size = "small",
@@ -95,6 +137,25 @@ sh_test(
     data = [
         "libtensorflow_test.c",
         ":libtensorflow.tar.gz",
+    ],
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    # Till then, this test is explicitly executed when building
+    # the release by tensorflow/tools/ci_build/builds/libtensorflow.sh
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "libtensorflow_java_test",
+    size = "small",
+    srcs = ["libtensorflow_java_test.sh"],
+    data = [
+        ":LibTensorFlowTest.java",
+        ":libtensorflow_jni.tar.gz",
+        "//tensorflow/java:libtensorflow.jar",
     ],
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352

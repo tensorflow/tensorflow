@@ -120,7 +120,7 @@ class Binomial(distribution.Distribution):
     Args:
       total_count: Non-negative floating point tensor with shape broadcastable
         to `[N1,..., Nm]` with `m >= 0` and the same dtype as `probs` or
-        `logits`.  Defines this as a batch of `N1 x ... x Nm` different Binomial
+        `logits`. Defines this as a batch of `N1 x ...  x Nm` different Binomial
         distributions. Its components should be equal to integer values.
       logits: Floating point tensor representing the log-odds of a
         positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
@@ -131,15 +131,15 @@ class Binomial(distribution.Distribution):
         `[N1,..., Nm]` `m >= 0`, `probs in [0, 1]`. Each entry represents the
         probability of success for independent Binomial distributions. Only one
         of `logits` or `probs` should be passed in.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
     with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
@@ -221,7 +221,7 @@ class Binomial(distribution.Distribution):
 
   @distribution_util.AppendDocstring(
       """Note that when `(1 + total_count) * probs` is an integer, there are
-      actually two modes.  Namely, `(1 + total_count) * probs` and
+      actually two modes. Namely, `(1 + total_count) * probs` and
       `(1 + total_count) * probs - 1` are both modes. Here we return only the
       larger of the two modes.""")
   def _mode(self):

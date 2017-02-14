@@ -596,7 +596,7 @@ class SliceHelper {
       CHECK(aligned.shape().IsSameSize(t.shape()));
       CHECK_EQ(aligned.dtype(), t.dtype());
     } else {  // allocate a new temporary tensor
-      ctx_->allocate_temp(t.dtype(), t.shape(), &aligned);
+      TF_CHECK_OK(ctx_->allocate_temp(t.dtype(), t.shape(), &aligned));
       pool_.emplace(name, std::make_pair(aligned, true));
     }
     functor::TensorCopyUnaligned<Device, T>()(device_, t.unaligned_flat<T>(),

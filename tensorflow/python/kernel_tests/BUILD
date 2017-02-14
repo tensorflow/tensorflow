@@ -567,7 +567,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "scatter_nd_ops_test",
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],

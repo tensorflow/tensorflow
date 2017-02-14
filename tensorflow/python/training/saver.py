@@ -58,8 +58,8 @@ from tensorflow.python.util import compat
 _VARIABLE_OPS = set(["Variable",
                      "VariableV2",
                      "AutoReloadVariable",
-                     "ReadVariableOp",
-                     "ResourceGather"])
+                     "VarHandleOp",
+                     "ReadVariableOp"])
 
 
 def _set_cpu0(device_string):

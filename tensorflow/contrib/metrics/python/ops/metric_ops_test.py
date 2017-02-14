@@ -521,7 +521,7 @@ class StreamingAccuracyTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=2)
     accuracy, update_op = metrics.streaming_accuracy(predictions, labels)
 
     with self.test_session() as sess:
@@ -1073,7 +1073,7 @@ class StreamingPrecisionTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     precision, update_op = metrics.streaming_precision(predictions, labels)
 
     with self.test_session() as sess:
@@ -1237,7 +1237,7 @@ class StreamingRecallTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
@@ -1360,7 +1360,7 @@ class StreamingAUCTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     auc, update_op = metrics.streaming_auc(predictions, labels)
 
     with self.test_session() as sess:
@@ -1623,7 +1623,7 @@ class StreamingSpecificityAtSensitivityTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     specificity, update_op = metrics.streaming_specificity_at_sensitivity(
         predictions, labels, sensitivity=0.7)
 
@@ -1759,7 +1759,7 @@ class StreamingSensitivityAtSpecificityTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     sensitivity, update_op = metrics.streaming_sensitivity_at_specificity(
         predictions, labels, specificity=0.7)
 
@@ -1885,7 +1885,7 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     thresholds = [0, 0.5, 1.0]
     prec, prec_op = metrics.streaming_precision_at_thresholds(predictions,
                                                               labels,
@@ -4341,7 +4341,7 @@ class StreamingMeanIOUTest(test.TestCase):
     predictions = random_ops.random_uniform(
         [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
+        [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=2)
     miou, update_op = metrics.streaming_mean_iou(
         predictions, labels, num_classes=num_classes)
 

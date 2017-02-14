@@ -153,6 +153,9 @@ class Compiler {
   static StatusOr<Compiler*> GetForPlatform(
       const perftools::gputools::Platform* platform);
 
+  // Returns the size in bytes of the top-level buffer of a shape.
+  virtual int64 ShapeSizeBytes(const Shape& shape) const = 0;
+
  private:
   // Mutex that guards the platform-compiler map.
   static tensorflow::mutex* platform_compiler_mutex_;

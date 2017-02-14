@@ -104,12 +104,12 @@ class ArgOp : public XlaOpKernel {
 
     OP_REQUIRES(ctx, 0 <= index_ && index_ < tc.args().size(),
                 errors::InvalidArgument("Invalid argument index ", index_));
-    const XlaCompiler::Argument& arg = tc.args()[index_];
 
-    if (arg.parameter < 0) {
+    const XlaContext::HandleOrConstant& arg = tc.args()[index_];
+    if (arg.is_constant) {
       ctx->SetConstantOutput(0, arg.constant_value);
     } else {
-      ctx->SetOutput(0, tc.parameter(arg.parameter));
+      ctx->SetOutput(0, arg.handle);
     }
   }
 

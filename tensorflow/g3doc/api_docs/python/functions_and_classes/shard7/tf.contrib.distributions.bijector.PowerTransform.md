@@ -18,9 +18,9 @@ Instantiates the `PowerTransform` bijector.
     `Y = g(X) = (1 + X * c)**(1 / c)` where `c` is the `power`.
 *  <b>`event_ndims`</b>: Python scalar indicating the number of dimensions associated
     with a particular draw from the distribution.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -274,7 +274,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -

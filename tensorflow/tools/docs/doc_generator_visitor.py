@@ -37,13 +37,17 @@ class DocGeneratorVisitor(object):
     Args:
       root_name: The name of the root module/class.
     """
-    self._root_name = root_name or ''
-    self._prefix = (root_name + '.') if root_name else ''
+    self.set_root_name(root_name)
     self._index = {}
     self._tree = {}
     self._reverse_index = None
     self._duplicates = None
     self._duplicate_of = None
+
+  def set_root_name(self, root_name):
+    """Sets the root name for subsequent __call__s."""
+    self._root_name = root_name or ''
+    self._prefix = (root_name + '.') if root_name else ''
 
   @property
   def index(self):
@@ -114,6 +118,10 @@ class DocGeneratorVisitor(object):
     self._maybe_find_duplicates()
     return self._duplicates
 
+  def _add_prefix(self, name):
+    """Adds the root name to a name."""
+    return self._prefix + name if name else self._root_name
+
   def __call__(self, parent_name, parent, children):
     """Visitor interface, see `tensorflow/tools/common:traverse` for details.
 
@@ -132,15 +140,11 @@ class DocGeneratorVisitor(object):
       RuntimeError: If this visitor is called with a `parent` that is not a
         class or module.
     """
-    parent_name = self._prefix + parent_name if parent_name else self._root_name
+    parent_name = self._add_prefix(parent_name)
     self._index[parent_name] = parent
     self._tree[parent_name] = []
 
-    if inspect.ismodule(parent):
-      print('module %s: %r' % (parent_name, parent))
-    elif inspect.isclass(parent):
-      print('class %s: %r' % (parent_name, parent))
-    else:
+    if not (inspect.ismodule(parent) or inspect.isclass(parent)):
       raise RuntimeError('Unexpected type in visitor -- %s: %r' %
                          (parent_name, parent))
 
