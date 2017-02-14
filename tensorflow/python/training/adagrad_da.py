@@ -38,8 +38,6 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   trained model. This optimizer only guarantees sparsity for linear models. Be
   careful when using AdagradDA for deep networks as it will require careful
   initialization of the gradient accumulators for it to train.
-
-  @@__init__
   """
 
   def __init__(self,
@@ -118,6 +116,24 @@ class AdagradDAOptimizer(optimizer.Optimizer):
         global_step,
         use_locking=self._use_locking)
 
+  def _resource_apply_dense(self, grad, var):
+    g_acc = self.get_slot(var, "gradient_accumulator")
+    gg_acc = self.get_slot(var, "gradient_squared_accumulator")
+    # Performance optimization so that worker creates a copy of the global step
+    # to avoid overloading the parameter server holding the global step.
+    with ops.device(grad[0].device):
+      global_step = array_ops.identity(self._global_step) + 1
+    return training_ops.resource_apply_adagrad_da(
+        var.handle,
+        g_acc.handle,
+        gg_acc.handle,
+        grad,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        math_ops.cast(self._l1_regularization_strength, grad.dtype.base_dtype),
+        math_ops.cast(self._l2_regularization_strength, grad.dtype.base_dtype),
+        global_step,
+        use_locking=self._use_locking)
+
   def _apply_sparse(self, grad, var):
     g_acc = self.get_slot(var, "gradient_accumulator")
     gg_acc = self.get_slot(var, "gradient_squared_accumulator")
@@ -134,5 +150,24 @@ class AdagradDAOptimizer(optimizer.Optimizer):
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         math_ops.cast(self._l1_regularization_strength, var.dtype.base_dtype),
         math_ops.cast(self._l2_regularization_strength, var.dtype.base_dtype),
+        global_step,
+        use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    g_acc = self.get_slot(var, "gradient_accumulator")
+    gg_acc = self.get_slot(var, "gradient_squared_accumulator")
+    # Performance optimization so that worker creates a copy of the global step
+    # to avoid overloading the parameter server holding the global step.
+    with ops.device(grad[0].device):
+      global_step = array_ops.identity(self._global_step) + 1
+    return training_ops.resource_sparse_apply_adagrad_da(
+        var.handle,
+        g_acc.handle,
+        gg_acc.handle,
+        grad,
+        indices,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype),
+        math_ops.cast(self._l1_regularization_strength, grad.dtype),
+        math_ops.cast(self._l2_regularization_strength, grad.dtype),
         global_step,
         use_locking=self._use_locking)

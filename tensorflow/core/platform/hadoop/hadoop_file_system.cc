@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
+
 namespace tensorflow {
 
 template <typename R, typename... Args>
@@ -104,18 +105,23 @@ class LibHDFS {
 
     // libhdfs.so won't be in the standard locations. Use the path as specified
     // in the libhdfs documentation.
+#if defined(PLATFORM_WINDOWS)
+    const char *kLibHdfsDso = "hdfs.dll";
+#else
+    const char *kLibHdfsDso = "libhdfs.so";
+#endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
     if (hdfs_home == nullptr) {
       status_ = errors::FailedPrecondition(
           "Environment variable HADOOP_HDFS_HOME not set");
       return;
     }
-    string path = io::JoinPath(hdfs_home, "lib", "native", "libhdfs.so");
+    string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
     status_ = TryLoadAndBind(path.c_str(), &handle_);
     if (!status_.ok()) {
       // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
       // is installed in non-standard location
-      status_ = TryLoadAndBind("libhdfs.so", &handle_);
+      status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
     }
     return;
   }
@@ -253,7 +259,7 @@ class HDFSWritableFile : public WritableFile {
 
   ~HDFSWritableFile() override {
     if (file_ != nullptr) {
-      Close();
+      Close().IgnoreError();
     }
   }
 

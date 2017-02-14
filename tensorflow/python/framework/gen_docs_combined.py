@@ -49,6 +49,7 @@ def module_names():
       "tf.nn",
       "tf.train",
       "tf.python_io",
+      "tf.saved_model",
       "tf.summary",
       "tf.test",
       "tf.contrib.bayesflow.entropy",
@@ -168,6 +169,7 @@ def all_libraries(module_to_name, members, documented):
               "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
                                "initialize_all_tables",
+                               "tables_initializer",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),
@@ -250,7 +252,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
-                   "ClusterDef", "JobDef", "ServerDef"]
+                   "ClusterDef", "JobDef", "ServerDef", "TensorInfo"]
 
 # TODO(skleinfeld, deannarubin) Address shortname
 # conflict between tf.contrib.learn.NanLossDuringTrainingError and
@@ -259,11 +261,18 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
 # TODO(wicke): Remove contrib.layers.relu* after shortnames are
 # disabled.  These conflict with tf.nn.relu*
 EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
+                     "tf.contrib.layers.dropout",
+                     "tf.contrib.layers.bias_add",
+                     "tf.contrib.layers.conv2d",
+                     "tf.contrib.layers.conv2d_transpose",
+                     "tf.contrib.layers.separable_conv2d",
+                     "tf.contrib.layers.softmax",
                      "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
                      "tf.contrib.framework.assert_global_step",
                      "tf.contrib.framework.get_global_step",
                      "tf.contrib.learn.NanLossDuringTrainingError",
                      "tf.contrib.layers.stack",
+                     "tf.contrib.layers.ProblemType",
                      "tf.confusion_matrix"])
 
 

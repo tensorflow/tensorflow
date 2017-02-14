@@ -105,12 +105,13 @@ class QuantizeNodesTest : public ::testing::Test {
                                     &quantized_graph_def);
     // Reshape is not included here because it can be added as part of the
     // quantization process.
-    const std::set<string> quantizable_ops = {
-        "BiasAdd", "Concat", "Conv2D",  "MatMul",
-        "Relu",    "Relu6",  "AvgPool", "MaxPool",
-    };
+    const std::set<string> quantizable_ops = {"BiasAdd", "Concat",  "Conv2D",
+                                              "MatMul",  "Relu",    "Relu6",
+                                              "AvgPool", "MaxPool", "Mul"};
     for (const NodeDef& node : quantized_graph_def.node()) {
-      EXPECT_EQ(0, quantizable_ops.count(node.op()));
+      EXPECT_EQ(0, quantizable_ops.count(node.op()))
+          << "Found quantizable node " << node.op() << " for node named "
+          << node.name();
     }
   }
 
@@ -189,6 +190,41 @@ class QuantizeNodesTest : public ::testing::Test {
                        {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   }
 
+  void TestQuantizeMul() {
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    std::vector<int64> x_shape({10, 100});
+    const size_t x_num_elements = TensorShape(x_shape).num_elements();
+    std::vector<float> x_values(x_num_elements);
+    for (int i = 0; i < x_num_elements; ++i) {
+      x_values[i] = (i % 256) / 256.0f;
+    }
+
+    std::vector<int64> y_shape({100});
+    const size_t y_num_elements = TensorShape(y_shape).num_elements();
+    std::vector<float> y_values(y_num_elements);
+    for (int i = 0; i < y_num_elements; ++i) {
+      y_values[i] = ((i + 23) % 123) - 50;
+    }
+
+    Scope root = Scope::NewRootScope();
+
+    Tensor x_float_tensor(DT_FLOAT, TensorShape(x_shape));
+    test::FillValues<float>(&x_float_tensor, x_values);
+    Output x = Const(root.WithOpName("x"), Input::Initializer(x_float_tensor));
+
+    Tensor y_float_tensor(DT_FLOAT, TensorShape(y_shape));
+    test::FillValues<float>(&y_float_tensor, y_values);
+    Output y = Const(root.WithOpName("y"), Input::Initializer(y_float_tensor));
+
+    Mul mul = Mul(root.WithOpName("mul"), x, y);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    TestQuantizedVersusFloatGraph(float_graph_def, {}, {"mul"});
+  }
+
   void TestQuantizeConv2D(int depth, int input_width, int input_height,
                           int input_batch_count, int filter_size,
                           int filter_count, int stride, const string& padding,
@@ -260,7 +296,7 @@ class QuantizeNodesTest : public ::testing::Test {
     Output b_op = Const(root.WithOpName("b_op"), Input::Initializer(b_tensor));
 
     Output concat_op =
-        Concat(root.WithOpName("concat_op"), shape_op, {a_op, b_op});
+        Concat(root.WithOpName("concat_op"), {a_op, b_op}, shape_op);
 
     GraphDef float_graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
@@ -1285,6 +1321,8 @@ TEST_F(QuantizeNodesTest, TestQuantizeMatMulTiny) { TestQuantizeMatMulTiny(); }
 TEST_F(QuantizeNodesTest, TestQuantizeMatMulSmall) {
   TestQuantizeMatMulSmall();
 }
+
+TEST_F(QuantizeNodesTest, TestQuantizeMul) { TestQuantizeMul(); }
 
 TEST_F(QuantizeNodesTest, TestOddPaddingProblem) {
   // Tests one error case we ran into in a real graph.

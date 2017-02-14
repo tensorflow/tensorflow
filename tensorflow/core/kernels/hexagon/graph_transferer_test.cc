@@ -16,10 +16,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
@@ -63,16 +63,91 @@ class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
     }
     return -1;
   }
+  GraphTransferInfo::Destination GetTransferDestination() const final {
+    return GraphTransferInfo::NOP;
+  }
 
  private:
 } TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
 
+static Output BuildAddOps(const Scope& scope, const Input& x, const Input& y) {
+  EXPECT_TRUE(scope.ok());
+  auto _x = ops::AsNodeOut(scope, x);
+  EXPECT_TRUE(scope.ok());
+  auto _y = ops::AsNodeOut(scope, y);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("Add");
+  auto builder = NodeBuilder(unique_name, "Add").Input(_x).Input(_y);
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
+static Output BuildSoftmaxOps(const Scope& scope, const Input& logits) {
+  EXPECT_TRUE(scope.ok());
+  auto _logits = ops::AsNodeOut(scope, logits);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("Softmax");
+  auto builder = NodeBuilder(unique_name, "Softmax").Input(_logits);
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
+static Output BuildConv2DOps(const Scope& scope, const Input& input,
+                             const Input& filter,
+                             const gtl::ArraySlice<int>& strides,
+                             const StringPiece& padding) {
+  EXPECT_TRUE(scope.ok());
+  auto _input = ops::AsNodeOut(scope, input);
+  EXPECT_TRUE(scope.ok());
+  auto _filter = ops::AsNodeOut(scope, filter);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("Conv2D");
+  auto builder = NodeBuilder(unique_name, "Conv2D")
+                     .Input(_input)
+                     .Input(_filter)
+                     .Attr("strides", strides)
+                     .Attr("use_cudnn_on_gpu", true)
+                     .Attr("padding", padding)
+                     .Attr("data_format", "NHWC");
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
+static Output BuildMaxPoolOps(const Scope& scope, const Input& input,
+                              const gtl::ArraySlice<int>& ksize,
+                              const gtl::ArraySlice<int>& strides,
+                              const StringPiece& padding) {
+  EXPECT_TRUE(scope.ok());
+  auto _input = ops::AsNodeOut(scope, input);
+  EXPECT_TRUE(scope.ok());
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("MaxPool");
+  auto builder = NodeBuilder(unique_name, "MaxPool")
+                     .Input(_input)
+                     .Attr("ksize", ksize)
+                     .Attr("strides", strides)
+                     .Attr("padding", padding)
+                     .Attr("data_format", "NHWC");
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  EXPECT_TRUE(scope.ok());
+  return Output(ret, 0);
+}
+
 static GraphDef CreateAddGraphDef() {
   Scope root = Scope::NewRootScope();
-  ops::Output node_a = ops::Const(root.WithOpName(NAME_A), NODE_A_VAL);
-  ops::Output node_b = ops::Const(root.WithOpName(NAME_B), NODE_B_VAL);
-  ops::Output node_add =
-      ops::Add(root.WithOpName(NAME_A_PLUS_B), node_a, node_b);
+  Output node_a = ops::Const(root.WithOpName(NAME_A), NODE_A_VAL);
+  Output node_b = ops::Const(root.WithOpName(NAME_B), NODE_B_VAL);
+  Output node_add = BuildAddOps(root.WithOpName(NAME_A_PLUS_B), node_a, node_b);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -82,16 +157,16 @@ static GraphDef CreateConvGraphDef() {
   Scope root = Scope::NewRootScope();
   Tensor input_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&input_data, 1.0f);
-  ops::Output input =
-      ops::Const(root.WithOpName("input"), ops::Input::Initializer(input_data));
+  Output input =
+      ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
   Tensor filter_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&filter_data, 1.0f);
-  ops::Output filter = ops::Const(root.WithOpName("filter"),
-                                  ops::Input::Initializer(filter_data));
+  Output filter =
+      ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
   const std::vector<int> strides{1, 1, 1, 1};
-  ops::Output conv =
-      ops::Conv2D(root.WithOpName("conv"), input, filter, strides, "SAME");
-  ops::Output softmax = ops::Softmax(root.WithOpName("softmax"), conv);
+  Output conv =
+      BuildConv2DOps(root.WithOpName("conv"), input, filter, strides, "SAME");
+  Output softmax = BuildSoftmaxOps(root.WithOpName("softmax"), conv);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
@@ -101,61 +176,61 @@ static GraphDef CreatePoolGraphDef() {
   Scope root = Scope::NewRootScope();
   Tensor input_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&input_data, 1.0f);
-  ops::Output input =
-      ops::Const(root.WithOpName("input"), ops::Input::Initializer(input_data));
+  Output input =
+      ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
   Tensor filter_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillIota<float>(&filter_data, 1.0f);
-  ops::Output filter = ops::Const(root.WithOpName("filter"),
-                                  ops::Input::Initializer(filter_data));
+  Output filter =
+      ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
   const std::vector<int> ksize{1, 1, 1, 1};
   const std::vector<int> padding{0, 0, 0, 0};
   const std::vector<int> strides{1, 1, 1, 1};
-  ops::Output max_pool =
-      ops::MaxPool(root.WithOpName("maxpool"), input, ksize, strides, "SAME");
-  ops::Output softmax = ops::Softmax(root.WithOpName("softmax"), max_pool);
+  Output max_pool = BuildMaxPoolOps(root.WithOpName("maxpool"), input, ksize,
+                                    strides, "SAME");
+  Output softmax = BuildSoftmaxOps(root.WithOpName("softmax"), max_pool);
   GraphDef def;
   TF_CHECK_OK(root.ToGraphDef(&def));
   return def;
 }
 
-static const GraphTransferer::ConstNodeTransferParams* FindConstNodeParams(
+static const GraphTransferInfo::ConstNodeInfo* FindConstNodeInfo(
     const GraphTransferer& gt, const string& name) {
-  for (const GraphTransferer::ConstNodeTransferParams& params :
-       gt.GetConstNodeParams()) {
-    if (params.name == name) {
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       gt.GetGraphTransferInfo().const_node_info()) {
+    if (params.name() == name) {
       return &params;
     }
   }
   return nullptr;
 }
 
-static const GraphTransferer::NodeTransferParams* FindOpNodeParams(
+static const GraphTransferInfo::NodeInfo* FindNodeInfo(
     const GraphTransferer& gt, const string& name) {
-  for (const GraphTransferer::NodeTransferParams& params :
-       gt.GetOpNodeParams()) {
-    if (params.name == name) {
+  for (const GraphTransferInfo::NodeInfo& params :
+       gt.GetGraphTransferInfo().node_info()) {
+    if (params.name() == name) {
       return &params;
     }
   }
   return nullptr;
 }
 
-static const GraphTransferer::NodeInputParams* FindNodeInputParams(
+static const GraphTransferInfo::NodeInputInfo* FindNodeInputInfo(
     const GraphTransferer& gt, const int node_id) {
-  for (const GraphTransferer::NodeInputParams& params :
-       gt.GetNodeInputParams()) {
-    if (params.node_id == node_id) {
+  for (const GraphTransferInfo::NodeInputInfo& params :
+       gt.GetGraphTransferInfo().node_input_info()) {
+    if (params.node_id() == node_id) {
       return &params;
     }
   }
   return nullptr;
 }
 
-static const GraphTransferer::NodeOutputParams* FindNodeOutputParams(
+static const GraphTransferInfo::NodeOutputInfo* FindNodeOutputInfo(
     const GraphTransferer& gt, const int node_id) {
-  for (const GraphTransferer::NodeOutputParams& params :
-       gt.GetNodeOutputParams()) {
-    if (params.node_id == node_id) {
+  for (const GraphTransferInfo::NodeOutputInfo& params :
+       gt.GetGraphTransferInfo().node_output_info()) {
+    if (params.node_id() == node_id) {
       return &params;
     }
   }
@@ -163,27 +238,26 @@ static const GraphTransferer::NodeOutputParams* FindNodeOutputParams(
 }
 
 static void SanityCheckNodes(const GraphTransferer& gt) {
-  for (const GraphTransferer::NodeTransferParams& params :
-       gt.GetOpNodeParams()) {
-    if (params.inputs_size > 0) {
-      const GraphTransferer::NodeInputParams* input_params =
-          FindNodeInputParams(gt, params.node_id);
+  for (const GraphTransferInfo::NodeInfo& params :
+       gt.GetGraphTransferInfo().node_info()) {
+    if (params.input_count() > 0) {
+      const GraphTransferInfo::NodeInputInfo* input_params =
+          FindNodeInputInfo(gt, params.node_id());
       ASSERT_NE(nullptr, input_params);
-      EXPECT_EQ(params.inputs_size,
-                input_params->input_node_id_and_output_port_list.size());
-      EXPECT_EQ(params.node_id, input_params->node_id);
-      for (const std::tuple<int, int>& pair :
-           input_params->input_node_id_and_output_port_list) {
-        EXPECT_GE(std::get<1>(pair), 0);
+      EXPECT_EQ(params.input_count(), input_params->node_input_size());
+      EXPECT_EQ(params.node_id(), input_params->node_id());
+      for (const GraphTransferInfo::NodeInput& node_input :
+           input_params->node_input()) {
+        EXPECT_GE(node_input.output_port(), 0);
       }
     }
-    if (params.outputs_size > 0) {
-      const GraphTransferer::NodeOutputParams* output_params =
-          FindNodeOutputParams(gt, params.node_id);
+    if (params.output_count() > 0) {
+      const GraphTransferInfo::NodeOutputInfo* output_params =
+          FindNodeOutputInfo(gt, params.node_id());
       ASSERT_NE(nullptr, output_params);
-      EXPECT_EQ(params.outputs_size, output_params->max_sizes.size());
-      EXPECT_EQ(params.node_id, output_params->node_id);
-      for (const int max_size : output_params->max_sizes) {
+      EXPECT_EQ(params.output_count(), output_params->max_byte_size_size());
+      EXPECT_EQ(params.node_id(), output_params->node_id());
+      for (const int max_size : output_params->max_byte_size()) {
         EXPECT_GE(max_size, 0);
       }
     }
@@ -194,30 +268,33 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      {}, std::vector<string>{NAME_A_PLUS_B},
-                                     EMPTY_OUTPUT_TENSOR_MAP)
+                                     false, EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
 
-  const int const_node_count = gt_.GetConstNodeParams().size();
+  const int const_node_count =
+      gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
-  const GraphTransferer::ConstNodeTransferParams* params_a =
-      FindConstNodeParams(gt_, NAME_A);
+  const GraphTransferInfo::ConstNodeInfo* params_a =
+      FindConstNodeInfo(gt_, NAME_A);
   ASSERT_TRUE(params_a != nullptr);
-  EXPECT_EQ(NAME_A, params_a->name);
-  EXPECT_EQ(1, params_a->shape[0]);
-  EXPECT_EQ(1, params_a->shape[1]);
-  EXPECT_EQ(1, params_a->shape[2]);
-  EXPECT_EQ(1, params_a->shape[3]);
-  EXPECT_EQ(4, params_a->data_size);
+  EXPECT_EQ(NAME_A, params_a->name());
+  ASSERT_EQ(4, params_a->shape_size());
+  EXPECT_EQ(1, params_a->shape(0));
+  EXPECT_EQ(1, params_a->shape(1));
+  EXPECT_EQ(1, params_a->shape(2));
+  EXPECT_EQ(1, params_a->shape(3));
+  EXPECT_EQ(4, params_a->data().length());
 
-  const GraphTransferer::ConstNodeTransferParams* params_b =
-      FindConstNodeParams(gt_, NAME_B);
+  const GraphTransferInfo::ConstNodeInfo* params_b =
+      FindConstNodeInfo(gt_, NAME_B);
   ASSERT_TRUE(params_b != nullptr);
-  EXPECT_EQ(1, params_b->shape[0]);
-  EXPECT_EQ(1, params_b->shape[1]);
-  EXPECT_EQ(1, params_b->shape[2]);
-  EXPECT_EQ(1, params_b->shape[3]);
-  EXPECT_EQ(4, params_b->data_size);
+  ASSERT_EQ(4, params_b->shape_size());
+  EXPECT_EQ(1, params_b->shape(0));
+  EXPECT_EQ(1, params_b->shape(1));
+  EXPECT_EQ(1, params_b->shape(2));
+  EXPECT_EQ(1, params_b->shape(3));
+  EXPECT_EQ(4, params_b->data().length());
 }
 
 TEST_F(GraphTransfererTest, DryRunAddGraphA) {
@@ -327,8 +404,9 @@ TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
   const GraphTransferer::OutputTensorMap& output_tensor_map =
       output_tensor_info.output_tensor_map;
   const std::vector<string> output_node_names = {NAME_A_PLUS_B};
-  status = gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
-                                  inputs, output_node_names, output_tensor_map);
+  status =
+      gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, inputs,
+                             output_node_names, false, output_tensor_map);
   ASSERT_TRUE(status.ok());
 }
 
@@ -340,22 +418,22 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     EMPTY_OUTPUT_TENSOR_MAP)
+                                     false, EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
-  const int const_node_count = gt_.GetConstNodeParams().size();
+  const int const_node_count =
+      gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
-  const int op_node_count = gt_.GetOpNodeParams().size();
+  const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
   ASSERT_EQ(3, op_node_count);
-  const GraphTransferer::NodeTransferParams* params_conv =
-      FindOpNodeParams(gt_, "conv");
+  const GraphTransferInfo::NodeInfo* params_conv = FindNodeInfo(gt_, "conv");
   ASSERT_TRUE(params_conv != nullptr);
-  const int id = params_conv->node_id;
+  const int id = params_conv->node_id();
   EXPECT_GE(id, 0);
-  EXPECT_EQ("Conv2D", params_conv->type);
-  EXPECT_EQ(3, params_conv->inputs_size);
-  EXPECT_EQ(1, params_conv->outputs_size);
-  EXPECT_EQ("NN_PAD_SAME", params_conv->padding);
+  EXPECT_EQ("Conv2D", params_conv->type_name());
+  EXPECT_EQ(3, params_conv->input_count());
+  EXPECT_EQ(1, params_conv->output_count());
+  EXPECT_EQ(Padding::SAME, params_conv->padding_id());
 }
 
 TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
@@ -366,22 +444,23 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     EMPTY_OUTPUT_TENSOR_MAP)
+                                     false, EMPTY_OUTPUT_TENSOR_MAP)
                   .ok());
   SanityCheckNodes(gt_);
-  const int const_node_count = gt_.GetConstNodeParams().size();
+  const int const_node_count =
+      gt_.GetGraphTransferInfo().const_node_info_size();
   ASSERT_EQ(2, const_node_count);
-  const int op_node_count = gt_.GetOpNodeParams().size();
+  const int op_node_count = gt_.GetGraphTransferInfo().node_info_size();
   ASSERT_EQ(3, op_node_count);
-  const GraphTransferer::NodeTransferParams* params_max_pool =
-      FindOpNodeParams(gt_, "maxpool");
+  const GraphTransferInfo::NodeInfo* params_max_pool =
+      FindNodeInfo(gt_, "maxpool");
   ASSERT_TRUE(params_max_pool != nullptr);
-  const int id = params_max_pool->node_id;
+  const int id = params_max_pool->node_id();
   EXPECT_GE(id, 0);
-  EXPECT_EQ("MaxPool", params_max_pool->type);
-  EXPECT_EQ(3, params_max_pool->inputs_size);
-  EXPECT_EQ(1, params_max_pool->outputs_size);
-  EXPECT_EQ("NN_PAD_SAME", params_max_pool->padding);
+  EXPECT_EQ("MaxPool", params_max_pool->type_name());
+  EXPECT_EQ(3, params_max_pool->input_count());
+  EXPECT_EQ(1, params_max_pool->output_count());
+  EXPECT_EQ(Padding::SAME, params_max_pool->padding_id());
 }
 
 TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
@@ -422,6 +501,93 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
-      is_text_proto, true, &output_tensor_info);
+      is_text_proto, false, true, &output_tensor_info);
 }
+
+TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
+  GraphDef def = CreateAddGraphDef();
+  GraphTransferer::InputNodeInfo input_node_info_a;
+  input_node_info_a.name = NAME_A;
+  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
+  input_node_info_a.tensor.scalar<float>()() = 1.0f;
+  GraphTransferer::InputNodeInfo input_node_info_b;
+  input_node_info_b.name = NAME_B;
+  input_node_info_b.tensor = Tensor(DT_FLOAT, {});
+  input_node_info_b.tensor.scalar<float>()() = 10.0f;
+  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a,
+                                                           input_node_info_b};
+  std::vector<string> outputs = {NAME_A_PLUS_B};
+
+  GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
+      TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, "remote_fused_graph_execute_node",
+      inputs, outputs, def, &gt_);
+
+  EXPECT_EQ(3, fused_graph_def.node_size());
+}
+
+namespace {
+// Just compares the max_byte_size attributes present.
+void CompareGraphTransferInfo(const GraphTransferInfo& a,
+                              const GraphTransferInfo& b) {
+  EXPECT_EQ(a.node_output_info_size(), b.node_output_info_size());
+  for (int i = 0; i < a.node_output_info_size(); ++i) {
+    EXPECT_EQ(a.node_output_info(i).node_id(), b.node_output_info(i).node_id());
+    EXPECT_EQ(a.node_output_info(i).max_byte_size_size(),
+              b.node_output_info(i).max_byte_size_size());
+    for (int j = 0; j < a.node_output_info(i).max_byte_size_size(); ++j) {
+      EXPECT_EQ(a.node_output_info(i).max_byte_size(j),
+                b.node_output_info(i).max_byte_size(j));
+    }
+  }
+}
+}  // anonymous namespace
+
+TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &TEST_GRAPH_TRANSFER_OPS_DEFINITIONS;
+  string filename =
+      io::JoinPath(testing::TensorFlowSrcRoot(),
+                   "core/example/testdata/parse_example_graph_def.pbtxt");
+  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {};
+  std::vector<string> output_node_names = {};
+  bool is_text_proto = true;
+
+  // In order to run with a more complex graph uncomment the following lines
+  // filename = "v3_stripped_quantized_graph_opt.pb";
+  // input_node_info_list.emplace_back(
+  // GraphTransferer::InputNodeInfo{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
+  // output_node_names.emplace_back("softmax");
+  // is_text_proto = false;
+  // ops_definitions = &HexagonOpsDefinitions::getInstance();
+
+  // First compute using Shape inference.
+  GraphTransferer::OutputTensorInfo si_output_tensor_info;
+  GraphTransferer si_gt;
+  si_gt.EnableStrictCheckMode(false);
+  bool shape_inference_for_unknown_shape = true;
+  bool dry_run_for_unknown_shape = false;
+  Status status1 = si_gt.LoadGraphFromProtoFile(
+      *ops_definitions, filename, input_node_info_list, output_node_names,
+      is_text_proto, shape_inference_for_unknown_shape,
+      dry_run_for_unknown_shape, &si_output_tensor_info);
+  const GraphTransferInfo& si_graph_transfer_info =
+      si_gt.GetGraphTransferInfo();
+
+  // Now compute using dry run.
+  GraphTransferer::OutputTensorInfo dr_output_tensor_info;
+  GraphTransferer dr_gt;
+  dr_gt.EnableStrictCheckMode(false);
+  shape_inference_for_unknown_shape = false;
+  dry_run_for_unknown_shape = true;
+  Status status2 = dr_gt.LoadGraphFromProtoFile(
+      *ops_definitions, filename, input_node_info_list, output_node_names,
+      is_text_proto, shape_inference_for_unknown_shape,
+      dry_run_for_unknown_shape, &si_output_tensor_info);
+  const GraphTransferInfo& dr_graph_transfer_info =
+      dr_gt.GetGraphTransferInfo();
+
+  // Now compare both of them.
+  CompareGraphTransferInfo(si_graph_transfer_info, dr_graph_transfer_info);
+}
+
 }  // namespace tensorflow

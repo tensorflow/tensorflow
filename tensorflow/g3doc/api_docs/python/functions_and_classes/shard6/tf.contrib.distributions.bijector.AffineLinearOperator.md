@@ -1,4 +1,4 @@
-Bijector which computes `Y = g(X; shift, scale) = scale @ X.T + shift`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
 `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
@@ -6,7 +6,7 @@ If `X` is a scalar then the forward transformation is: `scale * X + shift`
 where `*` denotes the scalar product.
 
 Note: we don't always simply transpose `X` (but write it this way for
-brevity).  Actually the input `X` undergoes the following transformation
+brevity). Actually the input `X` undergoes the following transformation
 before being premultiplied by `scale`:
 
 1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
@@ -21,8 +21,8 @@ before being premultiplied by `scale`:
 (For more details see `shape.make_batch_of_event_sample_matrices`.)
 
 The result of the above transformation is that `X` can be regarded as a batch
-of matrices where each column is a draw from the distribution.  After
-premultiplying by `scale`, we take the inverse of this procedure.  The input
+of matrices where each column is a draw from the distribution. After
+premultiplying by `scale`, we take the inverse of this procedure. The input
 `Y` also undergoes the same transformation before/after premultiplying by
 `inv(scale)`.
 
@@ -38,7 +38,7 @@ diag = [1., 2, 3]
 scale = linalg.LinearOperatorDiag(diag)
 affine = AffineLinearOperator(shift, scale)
 # In this case, `forward` is equivalent to:
-# diag * scale + shift
+# y = scale @ x + shift
 y = affine.forward(x)  # [0., 4, 10]
 
 shift = [2., 3, 1]
@@ -60,14 +60,14 @@ Instantiates the `AffineLinearOperator` bijector.
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.
-*  <b>`scale`</b>: Subclass of `LinearOperator`.  Represents the (batch) positive
+*  <b>`shift`</b>: Floating-point `Tensor`.
+*  <b>`scale`</b>: Subclass of `LinearOperator`. Represents the (batch) positive
     definite matrix `M` in `R^{k x k}`.
 *  <b>`event_ndims`</b>: Scalar `integer` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -87,7 +87,14 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward(x, name='forward', **condition_kwargs)` {#AffineLinearOperator.forward}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.event_ndims` {#AffineLinearOperator.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward(x, name='forward')` {#AffineLinearOperator.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -96,7 +103,6 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -112,7 +118,28 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_event_shape(input_shape, name='forward_event_shape')` {#AffineLinearOperator.forward_event_shape}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_event_shape(input_shape)` {#AffineLinearOperator.forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_event_shape_tensor(input_shape, name='forward_event_shape_tensor')` {#AffineLinearOperator.forward_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -126,13 +153,13 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `forward`.
+*  <b>`forward_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `forward`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.forward_log_det_jacobian(x, name='forward_log_det_jacobian')` {#AffineLinearOperator.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -141,7 +168,6 @@ Returns both the forward_log_det_jacobian.
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -158,48 +184,6 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.get_forward_event_shape(input_shape)` {#AffineLinearOperator.get_forward_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `forward_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `forward` function.
-
-##### Returns:
-
-
-*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `forward`. Possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.get_inverse_event_shape(output_shape)` {#AffineLinearOperator.get_inverse_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `inverse_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `inverse` function.
-
-##### Returns:
-
-
-*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `inverse`. Possibly unknown.
-
-
-- - -
-
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.graph_parents` {#AffineLinearOperator.graph_parents}
 
 Returns this `Bijector`'s graph_parents as a Python list.
@@ -207,7 +191,7 @@ Returns this `Bijector`'s graph_parents as a Python list.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse(y, name='inverse', **condition_kwargs)` {#AffineLinearOperator.inverse}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse(y, name='inverse')` {#AffineLinearOperator.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -216,7 +200,6 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 *  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -233,7 +216,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian')` {#AffineLinearOperator.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -247,7 +230,6 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 *  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -264,7 +246,28 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_event_shape(output_shape, name='inverse_event_shape')` {#AffineLinearOperator.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_event_shape(output_shape)` {#AffineLinearOperator.inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `inverse`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_event_shape_tensor(output_shape, name='inverse_event_shape_tensor')` {#AffineLinearOperator.inverse_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -278,13 +281,13 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `inverse`.
+*  <b>`inverse_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `inverse`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#AffineLinearOperator.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian')` {#AffineLinearOperator.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -297,7 +300,6 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 *  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -322,7 +324,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -336,21 +339,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
 
-The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.shaper` {#AffineLinearOperator.shaper}
-
-Returns shape object used to manage shape constraints.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
 
-The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -

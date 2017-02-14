@@ -33,6 +33,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/java/src/main/native",
     ],
     alwayslink = 1,
 )
@@ -54,7 +55,7 @@ filegroup(
 # JAR with Java bindings to TF.
 android_library(
     name = "android_tensorflow_inference_java",
-    srcs = glob(["java/**/*.java"]),
+    srcs = glob(["java/**/*.java"]) + ["//tensorflow/java:java_sources"],
     tags = [
         "manual",
         "notap",

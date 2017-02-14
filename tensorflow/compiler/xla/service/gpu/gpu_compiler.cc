@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -41,13 +42,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/temp_buffer_offsets.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -77,6 +77,13 @@ const char* kTargetTriple = "nvptx64-nvidia-cuda";
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
 const char* kDataLayout = "e-i64:64-v16:16-v32:32-n16:32:64";
+
+// Any address of a variable residing in global memory or returned by one of the
+// memory allocation routines from the driver or runtime API is always aligned
+// to at least 256 bytes.
+//
+// http://docs.nvidia.com/cuda/cuda-c-programming-guide/#device-memory-accesses
+constexpr int64 kMemoryAlignment = 256;
 
 // Returns the directory containing nvvm libdevice files. This function is
 // called in GpuCompiler's constructor, so can't return an error. But
@@ -132,6 +139,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     HloPassFix<HloPassPipeline> fusion("fusion", dump_hlo);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
+    fusion.AddPass<FusionMerger>();
     return fusion.Run(hlo_module).status();
   }
 }
@@ -204,7 +212,9 @@ void DumpPtxasInfo(const string& ptx) {
 
 }  // namespace
 
-GpuCompiler::GpuCompiler() : libdevice_dir_(GetLibdeviceDir()) {}
+GpuCompiler::GpuCompiler()
+    : libdevice_dir_(GetLibdeviceDir()),
+      pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> hlo_module,
@@ -232,8 +242,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // Set the target triple and the data layout.
   llvm_module.setTargetTriple(kTargetTriple);
   llvm_module.setDataLayout(kDataLayout);
-  const llvm::DataLayout& data_layout = llvm_module.getDataLayout();
-  int64 pointer_size = data_layout.getPointerSize();
 
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
@@ -248,12 +256,14 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          pointer_size));
-  auto temp_buffer_offsets = MakeUnique<TempBufferOffsets>(*buffer_assignment);
+                          [this](const LogicalBuffer& buffer) {
+                            return ShapeSizeBytes(buffer.shape());
+                          },
+                          kMemoryAlignment));
 
-  IrEmitterContext ir_emitter_context(
-      hlo_module.get(), buffer_assignment.get(), temp_buffer_offsets.get(),
-      &stream_exec->GetDeviceDescription(), &llvm_module);
+  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
+                                      &stream_exec->GetDeviceDescription(),
+                                      &llvm_module);
 
   HloComputation* entry_computation = hlo_module->entry_computation();
   IrEmitterUnnested ir_emitter(*module_config, entry_computation,
@@ -277,7 +287,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     generated_ptxes_.emplace_back(MakeUnique<string>());
     ptx = generated_ptxes_.back().get();
   }
-  TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, libdevice_dir_));
+  TF_ASSIGN_OR_RETURN(
+      *ptx, CompileToPtx(&llvm_module, *module_config, libdevice_dir_));
 
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
@@ -295,8 +306,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   auto* gpu_executable =
       new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(hlo_module),
-                        std::move(module_config), std::move(buffer_assignment),
-                        std::move(temp_buffer_offsets));
+                        std::move(module_config), std::move(buffer_assignment));
   if (flags->xla_gpu_embed_ir) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -312,15 +322,20 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::CompileAheadOfTime(
-    std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-    const AotCompilationOptions& options) {
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+GpuCompiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> module,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_config,
+    HloDumper dump_hlo, const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
 }
 
 se::Platform::Id GpuCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
+}
+
+int64 GpuCompiler::ShapeSizeBytes(const Shape& shape) const {
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
 }  // namespace gpu

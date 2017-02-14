@@ -205,6 +205,7 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/lib/python")
 add_python_module("tensorflow/tensorboard/plugins")
+add_python_module("tensorflow/tensorboard/plugins/debugger")
 add_python_module("tensorflow/tensorboard/plugins/projector")
 add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
@@ -263,6 +264,7 @@ add_python_module("tensorflow/contrib/grid_rnn")
 add_python_module("tensorflow/contrib/grid_rnn/python")
 add_python_module("tensorflow/contrib/grid_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/grid_rnn/python/ops")
+add_python_module("tensorflow/contrib/hooks")
 add_python_module("tensorflow/contrib/image")
 add_python_module("tensorflow/contrib/image/python")
 add_python_module("tensorflow/contrib/image/python/ops")
@@ -372,6 +374,9 @@ add_python_module("tensorflow/contrib/slim/python/slim/nets")
 add_python_module("tensorflow/contrib/solvers")
 add_python_module("tensorflow/contrib/solvers/python")
 add_python_module("tensorflow/contrib/solvers/python/ops")
+add_python_module("tensorflow/contrib/sparsemax")
+add_python_module("tensorflow/contrib/sparsemax/python")
+add_python_module("tensorflow/contrib/sparsemax/python/ops")
 add_python_module("tensorflow/contrib/specs")
 add_python_module("tensorflow/contrib/specs/python")
 add_python_module("tensorflow/contrib/stat_summarizer")
@@ -582,8 +587,10 @@ add_library(pywrap_tensorflow SHARED
     $<TARGET_OBJECTS:tf_core_framework>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
+    $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 target_include_directories(pywrap_tensorflow PUBLIC
@@ -647,6 +654,20 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/tensorboard_external
                                              ${CMAKE_CURRENT_BINARY_DIR}/tf_python/external)
 
+# Copy datasets for tf.contrib.learn.
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/boston_house_prices.csv
+                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/iris.csv
+                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/text_test.csv
+                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/text_train.csv
+                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
+					   
 if(${tensorflow_ENABLE_GPU})
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu

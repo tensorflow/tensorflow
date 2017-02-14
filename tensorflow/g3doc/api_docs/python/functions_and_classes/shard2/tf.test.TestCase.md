@@ -95,7 +95,7 @@ Asserts that two numpy arrays have near values.
 
 - - -
 
-#### `tf.test.TestCase.assertAllCloseAccordingToType(a, b, rtol=1e-06, atol=1e-06)` {#TestCase.assertAllCloseAccordingToType}
+#### `tf.test.TestCase.assertAllCloseAccordingToType(a, b, rtol=1e-06, atol=1e-06, float_rtol=1e-06, float_atol=1e-06, half_rtol=0.001, half_atol=0.001)` {#TestCase.assertAllCloseAccordingToType}
 
 Like assertAllClose, but also suitable for comparing fp16 arrays.
 
@@ -109,6 +109,10 @@ one of the arguments is of type float16.
 *  <b>`b`</b>: a numpy ndarray or anything can be converted to one.
 *  <b>`rtol`</b>: relative tolerance
 *  <b>`atol`</b>: absolute tolerance
+*  <b>`float_rtol`</b>: relative tolerance for float32
+*  <b>`float_atol`</b>: absolute tolerance for float32
+*  <b>`half_rtol`</b>: relative tolerance for float16
+*  <b>`half_atol`</b>: absolute tolerance for float16
 
 
 - - -
@@ -452,7 +456,7 @@ then compares them using self._AssertProtoEqual().
 
 - - -
 
-#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=20, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
+#### `tf.test.TestCase.assertProtoEqualsVersion(expected, actual, producer=21, min_consumer=0)` {#TestCase.assertProtoEqualsVersion}
 
 
 
@@ -829,6 +833,13 @@ Hook method for deconstructing the class fixture after running all tests in the 
 Returns a TensorFlow Session for use in executing tests.
 
 This method should be used for all functional tests.
+
+This method behaves different than session.Session: for performance reasons
+`test_session` will by default (if `graph` is None) reuse the same session
+across tests. This means you may want to either call the function
+`reset_default_graph()` before tests, or if creating an explicit new graph,
+pass it here (simply setting it with `as_default()` won't do it), which will
+trigger the creation of a new session.
 
 Use the `use_gpu` and `force_gpu` options to control where ops are run. If
 `force_gpu` is True, all ops are pinned to `/gpu:0`. Otherwise, if `use_gpu`

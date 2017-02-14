@@ -14,7 +14,7 @@ for an extensive description of how reusing works. Here is a basic example:
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 
@@ -43,7 +43,7 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`initializer`</b>: Initializer for the variable if one is created.
 *  <b>`regularizer`</b>: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
     Defaults to `[GraphKeys.LOCAL_VARIABLES]` (see `tf.Variable`).
 *  <b>`caching_device`</b>: Optional device string or function describing where the
@@ -57,6 +57,9 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,

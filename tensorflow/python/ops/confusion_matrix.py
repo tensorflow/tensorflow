@@ -32,8 +32,19 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
 
-def remove_squeezable_dimensions(labels, predictions, name=None):
-  """Squeeze last dim if ranks of `predictions` and `labels` differ by 1.
+def remove_squeezable_dimensions(
+    labels, predictions, expected_rank_diff=0, name=None):
+  """Squeeze last dim if ranks differ from expected by exactly 1.
+
+  In the common case where we expect shapes to match, `expected_rank_diff`
+  defaults to 0, and we squeeze the last dimension of the larger rank if they
+  differ by 1.
+
+  But, for example, if `labels` contains class IDs and `predictions` contains 1
+  probability per class, we expect `predictions` to have 1 more dimension than
+  `labels`, so `expected_rank_diff` would be 1. In this case, we'd squeeze
+  `labels` if `rank(predictions) - rank(labels) == 0`, and
+  `predictions` if `rank(predictions) - rank(labels) == 2`.
 
   This will use static shape if available. Otherwise, it will add graph
   operations, which could result in a performance hit.
@@ -41,6 +52,7 @@ def remove_squeezable_dimensions(labels, predictions, name=None):
   Args:
     labels: Label values, a `Tensor` whose dimensions match `predictions`.
     predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    expected_rank_diff: Expected result of `rank(predictions) - rank(labels)`.
     name: Name of the op.
 
   Returns:
@@ -57,10 +69,10 @@ def remove_squeezable_dimensions(labels, predictions, name=None):
     if (labels_rank is not None) and (predictions_rank is not None):
       # Use static rank.
       rank_diff = predictions_rank - labels_rank
-      if rank_diff == -1:
-        labels = array_ops.squeeze(labels, [-1])
-      elif rank_diff == 1:
+      if rank_diff == expected_rank_diff + 1:
         predictions = array_ops.squeeze(predictions, [-1])
+      elif rank_diff == expected_rank_diff - 1:
+        labels = array_ops.squeeze(labels, [-1])
       return labels, predictions
 
     # Use dynamic rank.
@@ -68,13 +80,13 @@ def remove_squeezable_dimensions(labels, predictions, name=None):
     if (predictions_rank is None) or (
         predictions_shape.dims[-1].is_compatible_with(1)):
       predictions = control_flow_ops.cond(
-          math_ops.equal(1, rank_diff),
+          math_ops.equal(expected_rank_diff + 1, rank_diff),
           lambda: array_ops.squeeze(predictions, [-1]),
           lambda: predictions)
     if (labels_rank is None) or (
         labels_shape.dims[-1].is_compatible_with(1)):
       labels = control_flow_ops.cond(
-          math_ops.equal(-1, rank_diff),
+          math_ops.equal(expected_rank_diff - 1, rank_diff),
           lambda: array_ops.squeeze(labels, [-1]),
           lambda: labels)
     return labels, predictions
@@ -87,11 +99,11 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
   Calculate the Confusion Matrix for a pair of prediction and
   label 1-D int arrays.
 
-  The matrix rows represent the prediction labels and the columns
-  represents the real labels. The confusion matrix is always a 2-D array
-  of shape `[n, n]`, where `n` is the number of valid labels for a given
-  classification task. Both prediction and labels must be 1-D arrays of
-  the same shape in order for this function to work.
+  The matrix columns represent the prediction labels and the rows represent the
+  real labels. The confusion matrix is always a 2-D array of shape `[n, n]`,
+  where `n` is the number of valid labels for a given classification task. Both
+  prediction and labels must be 1-D arrays of the same shape in order for this
+  function to work.
 
   If `num_classes` is None, then `num_classes` will be set to the one plus
   the maximum value in either predictions or labels.
@@ -116,9 +128,8 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
   resulting in a 5x5 confusion matrix.
 
   Args:
-    labels: A 1-D representing the real labels for the classification task.
-    predictions: A 1-D array representing the predictions for a given
-                 classification.
+    labels: 1-D `Tensor` of real labels for the classification task.
+    predictions: 1-D `Tensor` of predictions for a given classification.
     num_classes: The possible number of labels the classification task can
                  have. If this value is not provided, it will be calculated
                  using both predictions and labels array.
@@ -153,7 +164,7 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
       weights = math_ops.cast(weights, dtype)
 
     shape = array_ops.stack([num_classes, num_classes])
-    indices = array_ops.transpose(array_ops.stack([predictions, labels]))
+    indices = array_ops.transpose(array_ops.stack([labels, predictions]))
     values = (array_ops.ones_like(predictions, dtype)
               if weights is None else weights)
     cm_sparse = sparse_tensor.SparseTensor(

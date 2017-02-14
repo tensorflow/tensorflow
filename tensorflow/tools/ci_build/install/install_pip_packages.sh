@@ -26,9 +26,13 @@ pip3 install wheel
 pip install --upgrade six==1.10.0
 pip3 install --upgrade six==1.10.0
 
+# Install werkzeug.
+pip install --upgrade werkzeug==0.11.10
+pip3 install --upgrade werkzeug==0.11.10
+
 # Install protobuf.
-pip install --upgrade protobuf==3.0.0
-pip3 install --upgrade protobuf==3.0.0
+pip install --upgrade protobuf==3.2.0
+pip3 install --upgrade protobuf==3.2.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -36,7 +40,7 @@ rm -rf /usr/lib/python3/dist-packages/six*
 set +e
 # Use pip to install numpy to a modern version, instead of 1.8.2 that comes
 # with apt-get in ubuntu:14.04.
-NUMPY_VERSION="1.11.0"
+NUMPY_VERSION="1.12.0"
 numpy_ver_flat=$(echo $NUMPY_VERSION | sed 's/\.//g' | sed 's/^0*//g')
 local_numpy_ver=$(python -c "import numpy; print(numpy.__version__)")
 local_numpy_ver_flat=$(echo $local_numpy_ver | sed 's/\.//g' | sed 's/^0*//g')
@@ -44,12 +48,9 @@ if [[ -z $local_numpy_ver_flat ]]; then
   local_numpy_ver_flat=0
 fi
 if (( $local_numpy_ver_flat < $numpy_ver_flat )); then
-  set -e
-  wget -q https://pypi.python.org/packages/06/92/3c786303889e6246971ad4c48ac2b4e37a1b1c67c0dc2106dc85cb15c18e/numpy-1.11.0-cp27-cp27mu-manylinux1_x86_64.whl#md5=6ffb66ff78c28c55bfa09a2ceee487df
-  mv numpy-1.11.0-cp27-cp27mu-manylinux1_x86_64.whl \
-     numpy-1.11.0-cp27-none-linux_x86_64.whl
-  pip install numpy-1.11.0-cp27-none-linux_x86_64.whl
-  rm numpy-1.11.0-cp27-none-linux_x86_64.whl
+  # We must pip install numpy to compile it from source due to subtle issues
+  # around the pypi package and Ubuntu 14.04.
+  pip install --upgrade numpy==$NUMPY_VERSION
 fi
 
 set +e
@@ -59,12 +60,9 @@ if [[ -z $local_numpy_ver_flat ]]; then
   local_numpy_ver_flat=0
 fi
 if (( $local_numpy_ver_flat < $numpy_ver_flat )); then
-  set -e
-  wget -q https://pypi.python.org/packages/ea/ca/5e48a68be496e6f79c3c8d90f7c03ea09bbb154ea4511f5b3d6c825cefe5/numpy-1.11.0-cp34-cp34m-manylinux1_x86_64.whl#md5=08a002aeffa20354aa5045eadb549361
-  mv numpy-1.11.0-cp34-cp34m-manylinux1_x86_64.whl \
-     numpy-1.11.0-cp34-none-linux_x86_64.whl
-  pip3 install numpy-1.11.0-cp34-none-linux_x86_64.whl
-  rm numpy-1.11.0-cp34-none-linux_x86_64.whl
+  # We must pip install numpy to compile it from source due to subtle issues
+  # around the pypi package and Ubuntu 14.04.
+  pip3 install --upgrade numpy==$NUMPY_VERSION
 fi
 
 # Use pip to install scipy to get the latest version, instead of 0.13 through
@@ -140,8 +138,8 @@ fi
 set -e
 
 # pandas required by tf.learn/inflow
-pip install pandas==0.18.1
-pip3 install pandas==0.18.1
+pip install pandas==0.19.2
+pip3 install pandas==0.19.2
 
 # Benchmark tests require the following:
 pip install psutil

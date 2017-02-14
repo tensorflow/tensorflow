@@ -197,7 +197,7 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
     ops::QuantizeAndDequantize(root, {-3.5} /* input */); \
     TF_CHECK_OK(root.status());                           \
     Graph* g = new Graph(OpRegistry::Global());           \
-    root.ToGraph(g);                                      \
+    TF_CHECK_OK(root.ToGraph(g));                         \
     test::Benchmark(#DEVICE, g).Run(iters);               \
   }                                                       \
   BENCHMARK(BM_SIMPLE_QUAN_DEQUAN_##DEVICE);

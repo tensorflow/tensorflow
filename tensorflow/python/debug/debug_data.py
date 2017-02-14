@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import os
 
 import numpy as np
@@ -28,6 +29,13 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
+
+
+METADATA_FILE_PREFIX = "_tfdbg_"
+CORE_METADATA_TAG = "core_metadata_"
+GRAPH_FILE_TAG = "graph_"
+FETCHES_INFO_FILE_TAG = "fetches_info_"
+FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
 
 
 def load_tensor_from_event_file(event_file_path):
@@ -41,7 +49,9 @@ def load_tensor_from_event_file(event_file_path):
 
   Returns:
     The tensor value loaded from the event file, as a `numpy.ndarray`. For
-    uninitialized tensors, returns None.
+    uninitialized Tensors, returns `None`. For Tensors of data types that
+    cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
+    `None`.
   """
 
   event = event_pb2.Event()
@@ -51,9 +61,12 @@ def load_tensor_from_event_file(event_file_path):
     if (event.summary.value[0].tensor.tensor_content or
         event.summary.value[0].tensor.string_val):
       # Initialized tensor.
-      tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+      try:
+        tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+      except KeyError:
+        tensor_value = None
     else:
-      # Uninitialized tensor.
+      # Uninitialized tensor or tensor of unconvertible data type.
       tensor_value = None
 
   return tensor_value
@@ -65,6 +78,14 @@ def _load_graph_def_from_event_file(event_file_path):
     event.ParseFromString(f.read())
 
   return graph_pb2.GraphDef.FromString(event.graph_def)
+
+
+def _load_log_message_from_event_file(event_file_path):
+  event = event_pb2.Event()
+  with gfile.Open(event_file_path, "rb") as f:
+    event.ParseFromString(f.read())
+
+  return event.log_message.message
 
 
 def parse_node_or_tensor_name(name):
@@ -91,8 +112,20 @@ def parse_node_or_tensor_name(name):
     return name, None
 
 
+def _is_core_metadata_file(file_name):
+  return file_name.startswith(METADATA_FILE_PREFIX + CORE_METADATA_TAG)
+
+
 def _is_graph_file(file_name):
-  return file_name.startswith("_tfdbg_graph_")
+  return file_name.startswith(METADATA_FILE_PREFIX + GRAPH_FILE_TAG)
+
+
+def _is_run_fetches_info_file(file_name):
+  return file_name == METADATA_FILE_PREFIX + FETCHES_INFO_FILE_TAG
+
+
+def _is_run_feed_keys_info_file(file_name):
+  return file_name == METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG
 
 
 def get_node_name(element_name):
@@ -247,6 +280,20 @@ def has_inf_or_nan(datum, tensor):
     return False
 
 
+def extract_core_metadata_from_event_proto(event):
+  json_metadata = json.loads(event.log_message.message)
+  core_metadata = collections.namedtuple("CoreMetadata", [
+      "global_step", "session_run_count", "executor_step_count", "input_names",
+      "output_names", "target_nodes"
+  ])
+  return core_metadata(json_metadata["global_step"],
+                       json_metadata["session_run_count"],
+                       json_metadata["executor_step_count"],
+                       json_metadata["input_names"],
+                       json_metadata["output_names"],
+                       json_metadata["target_nodes"])
+
+
 class DebugTensorDatum(object):
   """A single tensor dumped by TensorFlow Debugger (tfdbg).
 
@@ -290,7 +337,7 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
-    namespace = os.path.dirname(debug_dump_rel_path)
+    namespace = os.path.dirname(debug_dump_rel_path).replace("\\", "/")
     node_base_name = "_".join(base.split("_")[:-3])
     if not namespace or namespace == ".":
       self._node_name = node_base_name
@@ -300,6 +347,9 @@ class DebugTensorDatum(object):
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
     self._dump_size_bytes = (gfile.Stat(self._file_path).length if
                              gfile.Exists(self._file_path) else None)
+
+    self._run_fetches_info = None
+    self._run_feed_keys_info = None
 
   def __str__(self):
     return "{DebugTensorDatum: %s:%d @ %s @ %d}" % (self.node_name,
@@ -425,6 +475,7 @@ class DebugDumpDir(object):
     if not gfile.IsDirectory(dump_root):
       raise IOError("Dump root directory %s does not exist" % dump_root)
 
+    self._core_metadata = None
     self._load_dumps(dump_root)
     self._create_tensor_watch_maps()
     self._load_partition_graphs(partition_graphs, validate)
@@ -467,9 +518,22 @@ class DebugDumpDir(object):
 
     for root, _, files in gfile.Walk(self._dump_root):
       for f in files:
-        if _is_graph_file(f):
-          self._dump_graph_file_paths.append(
-              os.path.join(self._dump_root, root, f))
+        if f.startswith(METADATA_FILE_PREFIX):
+          if _is_core_metadata_file(f):
+            self._load_core_metadata(os.path.join(self._dump_root, root, f))
+
+          if _is_graph_file(f):
+            self._dump_graph_file_paths.append(
+                os.path.join(self._dump_root, root, f))
+
+          if _is_run_fetches_info_file(f):
+            self._run_fetches_info = _load_log_message_from_event_file(
+                os.path.join(root, f))
+
+          if _is_run_feed_keys_info_file(f):
+            self._run_feed_keys_info = _load_log_message_from_event_file(
+                os.path.join(root, f))
+
           continue
 
         datum = self._dump_file_name_to_datum(root, f)
@@ -485,6 +549,12 @@ class DebugDumpDir(object):
       self._t0 = self._dump_tensor_data[0].timestamp
     else:
       self._t0 = None
+
+  def _load_core_metadata(self, event_file_path):
+    event = event_pb2.Event()
+    with gfile.Open(event_file_path, "rb") as f:
+      event.ParseFromString(f.read())
+      self._core_metadata = extract_core_metadata_from_event_proto(event)
 
   def _dump_file_name_to_datum(self, dir_name, file_name):
     """Obtain a DebugTensorDatum from the directory and file name.
@@ -546,6 +616,37 @@ class DebugDumpDir(object):
     if self._python_graph:
       for op in self._python_graph.get_operations():
         self._node_traceback[op.name] = op.traceback
+
+  @property
+  def core_metadata(self):
+    """Metadata about the `Session.run()` call from the core runtime.
+
+    Of the three counters available in the return value, `global_step` is
+    supplied by the caller of the debugged `Session.run()`, while
+    `session_run_count` and `executor_step_count` are determined by the state
+    of the core runtime, automatically. For the same fetch list, feed keys and
+    debug tensor watch options, the same executor will be used and
+    `executor_step_count` should increase by one at a time. However, runs with
+    different fetch lists, feed keys and debug_tensor watch options that all
+    share the same `Session` object can lead to gaps in `session_run_count`.
+
+    Returns:
+      If core metadata are loaded, a `namedtuple` with the fields:
+        `global_step`: A global step count supplied by the caller of
+          `Session.run()`. It is optional to the caller. If the caller did not
+          supply this parameter, its value will be -1.
+        `session_run_count`: A counter for Run() calls to the underlying
+          TensorFlow `Session` object.
+        `executor_step_count`: A counter for invocations of a given runtime
+          executor. The same executor is re-used for the same fetched tensors,
+          target nodes, input feed keys and debug tensor watch options.
+        `input_names`: Names of the input (feed) Tensors.
+        `output_names`: Names of the output (fetched) Tensors.
+        `target_nodes`: Names of the target nodes.
+      If the core metadata have not been loaded, `None`.
+    """
+
+    return self._core_metadata
 
   @property
   def dumped_tensor_data(self):
@@ -823,6 +924,28 @@ class DebugDumpDir(object):
       raise LookupError("No partition graphs have been loaded.")
 
     return self._partition_graphs
+
+  @property
+  def run_fetches_info(self):
+    """Get a str representation of the fetches used in the Session.run() call.
+
+    Returns:
+      If the information is available, a `str` obtained from `repr(fetches)`.
+      If the information is not available, `None`.
+    """
+
+    return self._run_fetches_info
+
+  @property
+  def run_feed_keys_info(self):
+    """Get a str representation of the feed_dict used in the Session.run() call.
+
+    Returns:
+      If the information is available, a `str` obtained from `repr(feed_dict)`.
+      If the information is not available, `None`.
+    """
+
+    return self._run_feed_keys_info
 
   def nodes(self):
     """Get a list of all nodes from the partition graphs.

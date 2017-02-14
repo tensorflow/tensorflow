@@ -191,7 +191,7 @@ class XentTest(test.TestCase):
     # Taking ths second gradient should fail, since it is not
     # yet supported.
     with self.assertRaisesRegexp(LookupError,
-                                 ".*No gradient defined.*PreventGradient.*"):
+                                 "explicitly disabled"):
       _ = gradients_impl.hessians(loss, [f])
 
   def testWrapper(self):

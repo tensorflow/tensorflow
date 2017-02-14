@@ -65,7 +65,8 @@ Status SummarizeGraph(const GraphDef& graph) {
   MapNodesToOutputs(graph, &output_map);
   std::vector<const NodeDef*> outputs;
   for (const NodeDef& node : graph.node()) {
-    if (output_map.count(node.name()) == 0) {
+    if ((output_map.count(node.name()) == 0) && (node.op() != "Const") &&
+        (node.op() != "Assign")) {
       outputs.push_back(&node);
     }
   }
@@ -81,19 +82,11 @@ Status SummarizeGraph(const GraphDef& graph) {
     std::cout << std::endl;
   }
 
-  int const_count = 0;
-  int variable_count = 0;
-  int identity_count = 0;
+  int64 const_parameter_count = 0;
+  int64 variable_parameter_count = 0;
   int control_edge_count = 0;
   std::map<string, int> device_counts;
   for (const NodeDef& node : graph.node()) {
-    if (node.op() == "Const") {
-      ++const_count;
-    } else if (node.op() == "Variable") {
-      ++variable_count;
-    } else if (node.op() == "Identity") {
-      ++identity_count;
-    }
     for (const string& input : node.input()) {
       if (input.substr(0, 1) == "^") {
         ++control_edge_count;
@@ -102,11 +95,27 @@ Status SummarizeGraph(const GraphDef& graph) {
     if (node.device() != "") {
       ++device_counts[node.device()];
     }
+    if ((node.op() == "Const") || (node.op() == "Variable")) {
+      Tensor tensor;
+      if (tensor.FromProto(node.attr().at("value").tensor())) {
+        const size_t num_elements = tensor.NumElements();
+        if (node.op() == "Const") {
+          const_parameter_count += num_elements;
+        } else {
+          variable_parameter_count += num_elements;
+        }
+      } else {
+        LOG(WARNING) << "Decoding Tensor failed for node" << node.name();
+      }
+    }
   }
 
-  std::cout << "Found " << const_count << " consts, " << variable_count
-            << " variables, " << identity_count << " identities, and "
-            << control_edge_count << " control_edges" << std::endl;
+  std::cout << "Found " << const_parameter_count << " ("
+            << strings::HumanReadableNum(const_parameter_count)
+            << ") const parameters, " << variable_parameter_count << " ("
+            << strings::HumanReadableNum(variable_parameter_count)
+            << ") variable parameters, and " << control_edge_count
+            << " control_edges" << std::endl;
   if (!device_counts.empty()) {
     for (const auto& device_info : device_counts) {
       std::cout << device_info.second << " nodes assigned to device '"

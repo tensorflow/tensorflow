@@ -101,7 +101,7 @@ void Master::GC() {
                        << "Note that if you are starting multiple replicas "
                        << "on a staggered delay, session_gc_seconds may need "
                        << "to be raised.";
-          sess->Close();
+          sess->Close().IgnoreError();
           sess->Unref();
         });
       }
@@ -297,7 +297,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
       Status create_status = session->Create(gdef);
       if (!create_status.ok()) {
-        session->Close();
+        session->Close().IgnoreError();
         session->Unref();
         done(create_status);
         return;
@@ -356,7 +356,7 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 }
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
-                     RunStepResponse* resp, MyClosure done) {
+                     MutableRunStepResponseWrapper* resp, MyClosure done) {
   mu_.lock();
   uint64 start_time = env_->env->NowMicros();
   MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());

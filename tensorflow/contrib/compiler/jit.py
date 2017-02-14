@@ -24,6 +24,17 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
 
 
+_XLA_SCOPE_KEY = ("__xla_scope",)
+
+
+class _XlaScope(object):
+  """Keeps track of previous XLA scope calls, and depth of current call."""
+
+  def __init__(self, count, depth):
+    self.count = count
+    self.depth = depth
+
+
 @contextlib.contextmanager
 def experimental_jit_scope(compile_ops=True):
   """Enable or disable JIT compilation of operators within the scope.
@@ -33,19 +44,53 @@ def experimental_jit_scope(compile_ops=True):
   The compilation is a hint and only supported on a best-effort basis.
 
   Example usage:
-    with tf.contrib.framework.experimental_jit_scope():
+    with tf.contrib.compiler.experimental_jit_scope():
       c = tf.matmul(a, b)  # compiled
-    with tf.contrib.framework.experimental_jit_scope(compile_ops=False):
-        d = tf.matmul(a, c)  # not compiled
+    with tf.contrib.compiler.experimental_jit_scope(compile_ops=False):
+      d = tf.matmul(a, c)  # not compiled
+    with tf.contrib.compiler.experimental_jit_scope(
+        compile_ops=lambda node_def: 'matmul' in node_def.op.lower()):
+      e = tf.matmul(a, b) + d  # matmul is compiled, the addition is not.
 
   Args:
-    compile_ops: boolean, whether to enable or disable compilation in the scope.
+    compile_ops: Whether to enable or disable compilation in the scope.
+      Either a Python bool, or a callable that accepts the parameter
+      `node_def` and returns a python bool.
   Yields:
     The current scope, enabling or disabling compilation.
 
   """
-  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=compile_ops)}
+  if callable(compile_ops):
+    def xla_compile(node_def):
+      return attr_value_pb2.AttrValue(b=compile_ops(node_def))
+  else:
+    xla_compile = attr_value_pb2.AttrValue(b=compile_ops)
+
+  attrs = {"_XlaCompile": xla_compile}
+
+  # Find the singleton counter for the current scoped graph.  If it
+  # doesn't exist, create one.
+  xla_scope_counter = ops.get_collection(_XLA_SCOPE_KEY)
+  if not xla_scope_counter:
+    xla_scope_counter = _XlaScope(0, 0)
+    ops.add_to_collection(_XLA_SCOPE_KEY, xla_scope_counter)
+  else:
+    xla_scope_counter = xla_scope_counter[0]
+
+  if xla_scope_counter.depth == 0:
+    # If we're at the root xla scope, we can increase the counter so
+    # future calls to jit_scope use a different scope value.
+    # If we're already within a scope, we'll be fusing using the scope
+    # controlled by the parent.
+    attrs["_XlaScope"] = attr_value_pb2.AttrValue(
+        s=("jit_scope_%d" % xla_scope_counter.count).encode())
+    xla_scope_counter.count += 1
+
+  xla_scope_counter.depth += 1
+
   # pylint: disable=protected-access
   with ops.get_default_graph()._attr_scope(attrs):
     yield
   # pylint: enable=protected-access
+
+  xla_scope_counter.depth -= 1

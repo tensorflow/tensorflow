@@ -39,8 +39,11 @@ public final class Operation {
 
   /** Returns the full name of the Operation. */
   public String name() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       return name(unsafeNativeHandle);
+    } finally {
+      r.close();
     }
   }
 
@@ -49,15 +52,21 @@ public final class Operation {
    * operation.
    */
   public String type() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       return type(unsafeNativeHandle);
+    } finally {
+      r.close();
     }
   }
 
   /** Returns the number of tensors produced by this operation. */
   public int numOutputs() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       return numOutputs(unsafeNativeHandle);
+    } finally {
+      r.close();
     }
   }
 
@@ -70,6 +79,16 @@ public final class Operation {
     return unsafeNativeHandle;
   }
 
+  // Package private, meant primarily for the public Output.shape() method.
+  long[] shape(int output) {
+    Graph.Reference r = graph.ref();
+    try {
+      return shape(r.nativeHandle(), unsafeNativeHandle, output);
+    } finally {
+      r.close();
+    }
+  }
+
   private final long unsafeNativeHandle;
   private final Graph graph;
 
@@ -78,4 +97,6 @@ public final class Operation {
   private static native String type(long handle);
 
   private static native int numOutputs(long handle);
+
+  private static native long[] shape(long graphHandle, long opHandle, int output);
 }

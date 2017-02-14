@@ -103,6 +103,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._run_through_times = 1
     self._skip_debug = False
     self._run_start_response = None
+    self._is_run_start = True
 
     self._ui_type = ui_type
 
@@ -161,7 +162,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       request: An instance of `OnSessionInitRequest`.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
     """
 
     return framework.OnSessionInitResponse(
@@ -183,6 +184,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       RuntimeError: If user chooses to prematurely exit the debugger.
     """
 
+    self._is_run_start = True
     self._update_run_calls_state(request.run_call_count, request.fetches,
                                  request.feed_dict)
 
@@ -207,7 +209,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if self._run_start_response is None:
       self._prep_cli_for_run_start()
 
-      self._run_start_response = self._launch_cli(is_run_start=True)
+      self._run_start_response = self._launch_cli()
       if self._run_through_times > 1:
         self._run_through_times -= 1
 
@@ -253,6 +255,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       An instance of OnSessionInitResponse.
     """
 
+    self._is_run_start = False
     if request.performed_action == framework.OnRunStartAction.DEBUG_RUN:
       partition_graphs = None
       if request.run_metadata and request.run_metadata.partition_graphs:
@@ -349,12 +352,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if help_intro:
       self._run_cli.set_help_intro(help_intro)
 
-  def _launch_cli(self, is_run_start=False):
+  def _launch_cli(self):
     """Launch the interactive command-line interface.
-
-    Args:
-      is_run_start: (bool) whether this CLI launch occurs at a run-start
-        callback.
 
     Returns:
       The OnRunStartResponse specified by the user using the "run" command.
@@ -369,13 +368,18 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     return response
 
   def _run_info_handler(self, args, screen_info=None):
-    output = self._run_info
+    output = debugger_cli_common.RichTextLines([])
 
-    # Add main menu.
-    menu = debugger_cli_common.Menu()
-    menu.append(debugger_cli_common.MenuItem("list_tensors", "lt"))
-    menu.append(debugger_cli_common.MenuItem("help", "help"))
-    output.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+    if self._run_call_count == 1:
+      output.extend(cli_shared.get_tfdbg_logo())
+    output.extend(self._run_info)
+
+    if (not self._is_run_start and
+        debugger_cli_common.MAIN_MENU_KEY in output.annotations):
+      menu = output.annotations[debugger_cli_common.MAIN_MENU_KEY]
+      if "list_tensors" not in menu.captions():
+        menu.insert(
+            0, debugger_cli_common.MenuItem("list_tensors", "list_tensors"))
 
     return output
 

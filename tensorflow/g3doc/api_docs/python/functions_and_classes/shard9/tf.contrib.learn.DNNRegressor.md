@@ -87,7 +87,9 @@ Initializes a `DNNRegressor` instance.
                     labels which are the output of `input_fn` and
                     returns features and labels which will be fed
                     into the model.
-*  <b>`label_dimension`</b>: Dimension of the label for multilabels. Defaults to 1.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
 *  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EbeddingColumn` to
       a `float` multiplier. Multiplier will be used to multiply with
       learning rate for the embedding variables.
@@ -129,22 +131,19 @@ See BaseEstimator.export.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export_savedmodel(*args, **kwargs)` {#DNNRegressor.export_savedmodel}
+#### `tf.contrib.learn.DNNRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNRegressor.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -153,7 +152,8 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
@@ -299,7 +299,7 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.DNNRegressor.predict(*args, **kwargs)` {#DNNRegressor.predict}
 
-Returns predicted scores for given features. (deprecated arguments)
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
 Instructions for updating:
@@ -307,12 +307,21 @@ The default behavior of predict() is changing. The default value for
 as_iterable will change to True, and then the flag will be removed
 altogether. The behavior of this flag is described below.
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns scores.
 *  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
     for each example until inputs are exhausted. Note: The inputs must
     terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -323,6 +332,7 @@ altogether. The behavior of this flag is described below.
   Numpy array of predicted scores (or an iterable of predicted scores if
   as_iterable is True). If `label_dimension == 1`, the shape of the output
   is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -

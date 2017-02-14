@@ -32,6 +32,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import weights_broadcast_ops
 
 
 def _local_variable(initial_value, validate_shape=True, name=None):
@@ -50,8 +51,8 @@ def _local_variable(initial_value, validate_shape=True, name=None):
       validate_shape=validate_shape, name=name)
 
 
-def _remove_squeezable_dimensions(labels, predictions, weights):
-  """Internal version of _remove_squeezable_dimensions which handles weights.
+def _remove_squeezable_dimensions(predictions, labels, weights):
+  """Internal version of `remove_squeezable_dimensions` which handles weights.
 
   Squeezes `predictions` and `labels` if their rank differs by 1.
   Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
@@ -60,8 +61,8 @@ def _remove_squeezable_dimensions(labels, predictions, weights):
   operations, which could result in a performance hit.
 
   Args:
-    labels: Label values, a `Tensor` whose dimensions match `predictions`.
     predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    labels: Optional label `Tensor` whose dimensions match `predictions`.
     weights: Optional weight `Tensor`. It will be squeezed if its rank is 1
       more than the new rank of `predictions`
 
@@ -69,9 +70,11 @@ def _remove_squeezable_dimensions(labels, predictions, weights):
     Tuple of `predictions`, `labels` and `weights`, possibly with the last
     dimension squeezed.
   """
-  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
-      labels, predictions)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions = ops.convert_to_tensor(predictions)
+  if labels is not None:
+    labels, predictions = confusion_matrix.remove_squeezable_dimensions(
+        labels, predictions)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   if weights is not None:
     weights = ops.convert_to_tensor(weights)
@@ -80,19 +83,22 @@ def _remove_squeezable_dimensions(labels, predictions, weights):
     weights_shape = weights.get_shape()
     weights_rank = weights_shape.ndims
 
+    # TODO(ptucker): Add logic to handle weights rank 1 less than predictions &
+    # labels.
     if (predictions_rank is not None) and (weights_rank is not None):
       # Use static rank.
       if weights_rank - predictions_rank == 1:
         weights = array_ops.squeeze(weights, [-1])
-    elif (weights_rank is None) or (
-        weights_shape.dims[-1].is_compatible_with(1)):
-      # Use dynamic rank
+    elif ((weights_rank is None) or
+          ((weights_rank > 0) and
+           weights_shape.dims[-1].is_compatible_with(1))):
+      # Use dynamic rank.
       weights = control_flow_ops.cond(
           math_ops.equal(array_ops.rank(weights),
                          math_ops.add(array_ops.rank(predictions), 1)),
           lambda: array_ops.squeeze(weights, [-1]),
           lambda: weights)
-  return labels, predictions, weights
+  return predictions, labels, weights
 
 
 def _maybe_expand_labels(labels, predictions):
@@ -169,41 +175,6 @@ def _create_local(name, shape, collections=None, validate_shape=True,
       trainable=False,
       collections=collections,
       validate_shape=validate_shape)
-
-
-def _assert_weights_rank(weights, values):
-  return check_ops.assert_rank_in(weights, (0, array_ops.rank(values)))
-
-
-def _broadcast_weights(weights, values):
-  """Broadcast `weights` to the same shape as `values`.
-
-  This returns a version of `weights` following the same broadcast rules as
-  `multiply(weights, values)`. When computing a weighted average, use this
-  function to broadcast `weights` before summing them; e.g.,
-  `reduce_sum(w * v) / reduce_sum(_broadcast_weights(w, v))`.
-
-  Args:
-    weights: `Tensor` whose rank is either 0, or the same rank as `values`, and
-      must be broadcastable to `values` (i.e., all dimensions must be either
-      `1`, or the same as the corresponding `values` dimension).
-    values: `Tensor` of any shape.
-
-  Returns:
-    `weights` broadcast to `values` shape.
-
-  Raises:
-    ValueError: if `weights` rank is invalid.
-  """
-  weights_shape = weights.get_shape()
-  values_shape = values.get_shape()
-  if (weights_shape.is_fully_defined() and
-      values_shape.is_fully_defined() and
-      weights_shape.is_compatible_with(values_shape)):
-    return weights
-  with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-    return math_ops.multiply(
-        weights, array_ops.ones_like(values), name='broadcast_weights')
 
 
 def _safe_div(numerator, denominator, name):
@@ -292,16 +263,19 @@ def mean(values, weights=None, metrics_collections=None,
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
     else:
-      weights = _broadcast_weights(math_ops.to_float(weights), values)
+      values, _, weights = _remove_squeezable_dimensions(
+          predictions=values, labels=None, weights=weights)
+      weights = weights_broadcast_ops.broadcast_weights(
+          math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.reduce_sum(weights)
 
-    total_compute_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
-    count_compute_op = state_ops.assign_add(count, num_values)
+    update_total_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
+    with ops.control_dependencies([values]):
+      update_count_op = state_ops.assign_add(count, num_values)
 
     mean_t = _safe_div(total, count, 'value')
-    with ops.control_dependencies([total_compute_op, count_compute_op]):
-      update_op = _safe_div(total, count, 'update_op')
+    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_t)
@@ -356,8 +330,8 @@ def accuracy(labels, predictions, weights=None, metrics_collections=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights=weights)
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   if labels.dtype != predictions.dtype:
     predictions = math_ops.cast(predictions, labels.dtype)
@@ -388,8 +362,8 @@ def _confusion_matrix_at_thresholds(
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `Tensor` whose shape matches `predictions`. `labels` will be cast
-      to `bool`.
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
@@ -418,9 +392,10 @@ def _confusion_matrix_at_thresholds(
       if include not in all_includes:
         raise ValueError('Invaild key: %s.' % include)
 
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=math_ops.to_float(predictions),
+      labels=math_ops.cast(labels, dtype=dtypes.bool),
+      weights=weights)
 
   num_thresholds = len(thresholds)
 
@@ -452,7 +427,8 @@ def _confusion_matrix_at_thresholds(
     label_is_neg = math_ops.logical_not(label_is_pos)
 
   if weights is not None:
-    weights = _broadcast_weights(math_ops.to_float(weights), predictions)
+    weights = weights_broadcast_ops.broadcast_weights(
+        math_ops.to_float(weights), predictions)
     weights_tiled = array_ops.tile(array_ops.reshape(
         weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
@@ -536,7 +512,8 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
@@ -657,8 +634,7 @@ def mean_absolute_error(labels, predictions, weights=None,
       tuple.
   """
   predictions, labels, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+      predictions=predictions, labels=labels, weights=weights)
   absolute_errors = math_ops.abs(predictions - labels)
   return mean(absolute_errors, weights, metrics_collections,
               updates_collections, name or 'mean_absolute_error')
@@ -708,9 +684,8 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
                                      reduction_indices=[dim,],
@@ -885,9 +860,8 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
 
   predictions, normalizer = confusion_matrix.remove_squeezable_dimensions(
       predictions, normalizer)
@@ -946,9 +920,8 @@ def mean_squared_error(labels, predictions, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
   squared_error = math_ops.square(labels - predictions)
   return mean(squared_error, weights, metrics_collections,
               updates_collections, name or 'mean_squared_error')
@@ -1003,12 +976,16 @@ def mean_tensor(values, weights=None, metrics_collections=None,
 
     num_values = array_ops.ones_like(values)
     if weights is not None:
-      weights = _broadcast_weights(math_ops.to_float(weights), values)
+      values, _, weights = _remove_squeezable_dimensions(
+          predictions=values, labels=None, weights=weights)
+      weights = weights_broadcast_ops.broadcast_weights(
+          math_ops.to_float(weights), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
 
-    total_compute_op = state_ops.assign_add(total, values)
-    count_compute_op = state_ops.assign_add(count, num_values)
+    update_total_op = state_ops.assign_add(total, values)
+    with ops.control_dependencies([values]):
+      update_count_op = state_ops.assign_add(count, num_values)
 
     def compute_mean(total, count, name):
       non_zero_count = math_ops.maximum(count,
@@ -1017,8 +994,7 @@ def mean_tensor(values, weights=None, metrics_collections=None,
       return math_ops.truediv(total, non_zero_count, name=name)
 
     mean_t = compute_mean(total, count, 'value')
-    with ops.control_dependencies([total_compute_op, count_compute_op]):
-      update_op = compute_mean(total, count, 'update_op')
+    update_op = compute_mean(update_total_op, update_count_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_t)
@@ -1134,10 +1110,10 @@ def true_positives(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1160,11 +1136,12 @@ def true_positives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'true_positives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_true_positive = math_ops.logical_and(math_ops.equal(labels, 1),
-                                            math_ops.equal(predictions, 1))
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+    is_true_positive = math_ops.logical_and(math_ops.equal(labels, True),
+                                            math_ops.equal(predictions, True))
     return _count_condition(is_true_positive, weights, metrics_collections,
                             updates_collections)
 
@@ -1178,10 +1155,10 @@ def false_positives(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1204,11 +1181,12 @@ def false_positives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_positives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_false_positive = math_ops.logical_and(math_ops.equal(labels, 0),
-                                             math_ops.equal(predictions, 1))
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+    is_false_positive = math_ops.logical_and(math_ops.equal(labels, False),
+                                             math_ops.equal(predictions, True))
     return _count_condition(is_false_positive, weights, metrics_collections,
                             updates_collections)
 
@@ -1232,9 +1210,10 @@ def precision(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1260,9 +1239,10 @@ def precision(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'precision', (predictions, labels, weights)):
 
-    labels, predictions, weights = _remove_squeezable_dimensions(
-        labels, predictions, weights)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
     true_p, true_positives_update_op = true_positives(
         labels, predictions, weights, metrics_collections=None,
@@ -1271,17 +1251,16 @@ def precision(labels, predictions, weights=None,
         labels, predictions, weights, metrics_collections=None,
         updates_collections=None, name=None)
 
-    def compute_precision(name):
+    def compute_precision(tp, fp, name):
       return array_ops.where(
-          math_ops.greater(true_p + false_p, 0),
-          math_ops.div(true_p, true_p + false_p),
+          math_ops.greater(tp + fp, 0),
+          math_ops.div(tp, tp + fp),
           0,
           name)
 
-    p = compute_precision('value')
-    with ops.control_dependencies([true_positives_update_op,
-                                   false_positives_update_op]):
-      update_op = compute_precision('update_op')
+    p = compute_precision(true_p, false_p, 'value')
+    update_op = compute_precision(
+        true_positives_update_op, false_positives_update_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, p)
@@ -1313,7 +1292,8 @@ def precision_at_thresholds(labels, predictions, thresholds,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
@@ -1342,17 +1322,15 @@ def precision_at_thresholds(labels, predictions, thresholds,
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights, includes=('tp', 'fp'))
-    tp = values['tp']
-    fp = values['fp']
 
     # Avoid division by zero.
     epsilon = 1e-7
-    def compute_precision(name):
+    def compute_precision(tp, fp, name):
       return math_ops.div(tp, epsilon + tp + fp, name='precision_' + name)
 
-    prec = compute_precision('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_precision('update_op')
+    prec = compute_precision(values['tp'], values['fp'], 'value')
+    update_op = compute_precision(
+        update_ops['tp'], update_ops['fp'], 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, prec)
@@ -1372,10 +1350,10 @@ def false_negatives(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1397,11 +1375,11 @@ def false_negatives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_negatives', (predictions, labels, weights)):
 
-    predictions = ops.convert_to_tensor(predictions)
-    labels = ops.convert_to_tensor(labels)
+    labels = math_ops.cast(labels, dtype=dtypes.bool)
+    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_false_negative = math_ops.logical_and(math_ops.equal(labels, 1),
-                                             math_ops.equal(predictions, 0))
+    is_false_negative = math_ops.logical_and(math_ops.equal(labels, True),
+                                             math_ops.equal(predictions, False))
     return _count_condition(is_false_negative, weights, metrics_collections,
                             updates_collections)
 
@@ -1423,9 +1401,10 @@ def recall(labels, predictions, weights=None,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary shape.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -1450,9 +1429,10 @@ def recall(labels, predictions, weights=None,
   """
   with variable_scope.variable_scope(
       name, 'recall', (predictions, labels, weights)):
-    labels, predictions, weights = _remove_squeezable_dimensions(
-        labels, predictions, weights)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
     true_p, true_positives_update_op = true_positives(
         labels, predictions, weights, metrics_collections=None,
@@ -1469,9 +1449,8 @@ def recall(labels, predictions, weights=None,
           name)
 
     rec = compute_recall(true_p, false_n, 'value')
-    with ops.control_dependencies([true_positives_update_op,
-                                   false_negatives_update_op]):
-      update_op = compute_recall(true_p, false_n, 'update_op')
+    update_op = compute_recall(
+        true_positives_update_op, false_negatives_update_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, rec)
@@ -1586,7 +1565,8 @@ def _sparse_true_positive_at_k(labels,
     tp = sets.set_size(sets.set_intersection(predictions_idx, labels))
     tp = math_ops.to_double(tp)
     if weights is not None:
-      with ops.control_dependencies((_assert_weights_rank(weights, tp),)):
+      with ops.control_dependencies((
+          weights_broadcast_ops.assert_broadcastable(weights, tp),)):
         weights = math_ops.to_double(weights)
         tp = math_ops.multiply(tp, weights)
     return tp
@@ -1681,7 +1661,8 @@ def _sparse_false_negative_at_k(labels,
                                            aminusb=False))
     fn = math_ops.to_double(fn)
     if weights is not None:
-      with ops.control_dependencies((_assert_weights_rank(weights, fn),)):
+      with ops.control_dependencies((
+          weights_broadcast_ops.assert_broadcastable(weights, fn),)):
         weights = math_ops.to_double(weights)
         fn = math_ops.multiply(fn, weights)
     return fn
@@ -1852,7 +1833,8 @@ def recall_at_thresholds(labels, predictions, thresholds,
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
@@ -1881,17 +1863,14 @@ def recall_at_thresholds(labels, predictions, thresholds,
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights, includes=('tp', 'fn'))
-    tp = values['tp']
-    fn = values['fn']
 
     # Avoid division by zero.
     epsilon = 1e-7
-    def compute_recall(name):
+    def compute_recall(tp, fn, name):
       return math_ops.div(tp, epsilon + tp + fn, name='recall_' + name)
 
-    rec = compute_recall('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_recall('update_op')
+    rec = compute_recall(values['tp'], values['fn'], 'value')
+    update_op = compute_recall(update_ops['tp'], update_ops['fn'], 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, rec)
@@ -1948,24 +1927,22 @@ def root_mean_squared_error(labels, predictions, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  labels, predictions, weights = _remove_squeezable_dimensions(
-      labels, predictions, weights)
-  predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-  value_tensor, update_op = mean_squared_error(
+  predictions, labels, weights = _remove_squeezable_dimensions(
+      predictions=predictions, labels=labels, weights=weights)
+  mse, update_mse_op = mean_squared_error(
       labels, predictions, weights, None, None,
       name or 'root_mean_squared_error')
 
-  rmse = math_ops.sqrt(value_tensor)
-  with ops.control_dependencies([update_op]):
-    update_op = math_ops.sqrt(update_op)
+  rmse = math_ops.sqrt(mse)
+  update_rmse_op = math_ops.sqrt(update_mse_op)
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, rmse)
 
   if updates_collections:
-    ops.add_to_collections(updates_collections, update_op)
+    ops.add_to_collections(updates_collections, update_rmse_op)
 
-  return rmse, update_op
+  return rmse, update_rmse_op
 
 
 def sensitivity_at_specificity(
@@ -1991,7 +1968,8 @@ def sensitivity_at_specificity(
   following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     specificity: A scalar value in range `[0, 1]`.
@@ -2031,12 +2009,8 @@ def sensitivity_at_specificity(
 
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights)
-    tp = values['tp']
-    fn = values['fn']
-    tn = values['tn']
-    fp = values['fp']
 
-    def compute_sensitivity_at_specificity(name):
+    def compute_sensitivity_at_specificity(tp, tn, fp, fn, name):
       specificities = math_ops.div(tn, tn + fp + kepsilon)
       tf_index = math_ops.argmin(math_ops.abs(specificities - specificity), 0)
       tf_index = math_ops.cast(tf_index, dtypes.int32)
@@ -2046,9 +2020,11 @@ def sensitivity_at_specificity(
                           tp[tf_index] + fn[tf_index] + kepsilon,
                           name)
 
-    sensitivity = compute_sensitivity_at_specificity('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_sensitivity_at_specificity('update_op')
+    sensitivity = compute_sensitivity_at_specificity(
+        values['tp'], values['tn'], values['fp'], values['fn'], 'value')
+    update_op = compute_sensitivity_at_specificity(
+        update_ops['tp'], update_ops['tn'], update_ops['fp'], update_ops['fn'],
+        'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, sensitivity)
@@ -2304,7 +2280,7 @@ def sparse_average_precision_at_k(labels,
     average_precision = _sparse_average_precision_at_k(
         predictions=predictions, labels=labels, k=k)
     if weights is not None:
-      weights = _broadcast_weights(
+      weights = weights_broadcast_ops.broadcast_weights(
           math_ops.to_double(weights), average_precision)
       average_precision = math_ops.multiply(average_precision, weights)
 
@@ -2379,7 +2355,8 @@ def _sparse_false_positive_at_k(labels,
         predictions_idx, labels, aminusb=True))
     fp = math_ops.to_double(fp)
     if weights is not None:
-      with ops.control_dependencies((_assert_weights_rank(weights, fp),)):
+      with ops.control_dependencies((
+          weights_broadcast_ops.assert_broadcastable(weights, fp),)):
         weights = math_ops.to_double(weights)
         fp = math_ops.multiply(fp, weights)
     return fp
@@ -2433,6 +2410,79 @@ def _streaming_sparse_false_positive_at_k(labels,
 
     var = _local_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
+
+
+def _sparse_precision_at_top_k(labels,
+                               predictions_idx,
+                               k=None,
+                               class_id=None,
+                               weights=None,
+                               metrics_collections=None,
+                               updates_collections=None,
+                               name=None):
+  """Computes precision@k of the predictions with respect to sparse labels.
+
+  Differs from `sparse_precision_at_k` in that predictions must be in the form
+  of top `k` class indices, whereas `sparse_precision_at_k` expects logits.
+  Refer to `sparse_precision_at_k` for more details.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels] or [D1, ... DN], where the latter implies
+      num_labels=1. N >= 1 and num_labels is the number of target classes for
+      the associated prediction. Commonly, N=1 and `labels` has shape
+      [batch_size, num_labels]. [D1, ... DN] must match `predictions`. Values
+      should be in range [0, num_classes), where num_classes is the last
+      dimension of `predictions`. Values outside this range are ignored.
+    predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where
+      N >= 1. Commonly, N=1 and predictions has shape [batch size, k].
+      The final dimension contains the top `k` predicted class indices.
+      [D1, ... DN] must match `labels`.
+    k: Integer, k for @k metric.
+    class_id: Integer class ID for which we want binary metrics. This should be
+      in range [0, num_classes], where num_classes is the last dimension of
+      `predictions`. If `class_id` is outside this range, the method returns
+      NAN.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
+    metrics_collections: An optional list of collections that values should
+      be added to.
+    updates_collections: An optional list of collections that updates should
+      be added to.
+    name: Name of new update operation, and namespace for other dependent ops.
+
+  Returns:
+    precision: Scalar `float64` `Tensor` with the value of `true_positives`
+      divided by the sum of `true_positives` and `false_positives`.
+    update_op: `Operation` that increments `true_positives` and
+      `false_positives` variables appropriately, and whose value matches
+      `precision`.
+
+  Raises:
+    ValueError: If `weights` is not `None` and its shape doesn't match
+      `predictions`, or if either `metrics_collections` or `updates_collections`
+      are not a list or tuple.
+  """
+  with ops.name_scope(name, _at_k_name('precision', k, class_id=class_id),
+                      (predictions_idx, labels, weights)) as scope:
+    top_k_idx = math_ops.to_int64(predictions_idx)
+    tp, tp_update = _streaming_sparse_true_positive_at_k(
+        predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
+        weights=weights)
+    fp, fp_update = _streaming_sparse_false_positive_at_k(
+        predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
+        weights=weights)
+
+    metric = math_ops.div(tp, math_ops.add(tp, fp), name=scope)
+    update = math_ops.div(
+        tp_update, math_ops.add(tp_update, fp_update), name='update')
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, metric)
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update)
+    return metric, update
 
 
 def sparse_precision_at_k(labels,
@@ -2514,22 +2564,15 @@ def sparse_precision_at_k(labels,
     labels = _maybe_expand_labels(labels, predictions)
 
     _, top_k_idx = nn.top_k(predictions, k)
-    top_k_idx = math_ops.to_int64(top_k_idx)
-    tp, tp_update = _streaming_sparse_true_positive_at_k(
-        predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
-        weights=weights)
-    fp, fp_update = _streaming_sparse_false_positive_at_k(
-        predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
-        weights=weights)
-
-    metric = math_ops.div(tp, math_ops.add(tp, fp), name=scope)
-    update = math_ops.div(
-        tp_update, math_ops.add(tp_update, fp_update), name='update')
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, metric)
-    if updates_collections:
-      ops.add_to_collections(updates_collections, update)
-    return metric, update
+    return _sparse_precision_at_top_k(
+        labels=labels,
+        predictions_idx=top_k_idx,
+        k=k,
+        class_id=class_id,
+        weights=weights,
+        metrics_collections=metrics_collections,
+        updates_collections=updates_collections,
+        name=scope)
 
 
 def specificity_at_sensitivity(
@@ -2555,7 +2598,8 @@ def specificity_at_sensitivity(
   following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
 
   Args:
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     sensitivity: A scalar value in range `[0, 1]`.
@@ -2595,15 +2639,15 @@ def specificity_at_sensitivity(
 
     values, update_ops = _confusion_matrix_at_thresholds(
         labels, predictions, thresholds, weights)
-    tp = values['tp']
-    fn = values['fn']
-    tn = values['tn']
-    fp = values['fp']
 
-    def compute_specificity_at_sensitivity(name):
+    def compute_specificity_at_sensitivity(tp, tn, fp, fn, name):
       """Computes the specificity at the given sensitivity.
 
       Args:
+        tp: True positives.
+        tn: True negatives.
+        fp: False positives.
+        fn: False negatives.
         name: The name of the operation.
 
       Returns:
@@ -2626,9 +2670,11 @@ def specificity_at_sensitivity(
                           tn[tf_index] + fp[tf_index] + kepsilon,
                           name)
 
-    specificity = compute_specificity_at_sensitivity('value')
-    with ops.control_dependencies(update_ops.values()):
-      update_op = compute_specificity_at_sensitivity('update_op')
+    specificity = compute_specificity_at_sensitivity(
+        values['tp'], values['tn'], values['fp'], values['fn'], 'value')
+    update_op = compute_specificity_at_sensitivity(
+        update_ops['tp'], update_ops['tn'], update_ops['fp'], update_ops['fn'],
+        'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, specificity)

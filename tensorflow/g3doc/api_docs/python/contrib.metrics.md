@@ -3,90 +3,9 @@
 # Metrics (contrib)
 [TOC]
 
-##Ops for evaluation metrics and summary statistics.
+Ops for evaluation metrics and summary statistics.
 
-### API
-
-This module provides functions for computing streaming metrics: metrics computed
-on dynamically valued `Tensors`. Each metric declaration returns a
-"value_tensor", an idempotent operation that returns the current value of the
-metric, and an "update_op", an operation that accumulates the information
-from the current value of the `Tensors` being measured as well as returns the
-value of the "value_tensor".
-
-To use any of these metrics, one need only declare the metric, call `update_op`
-repeatedly to accumulate data over the desired number of `Tensor` values (often
-each one is a single batch) and finally evaluate the value_tensor. For example,
-to use the `streaming_mean`:
-
-```python
-value = ...
-mean_value, update_op = tf.contrib.metrics.streaming_mean(values)
-sess.run(tf.local_variables_initializer())
-
-for i in range(number_of_batches):
-  print('Mean after batch %d: %f' % (i, update_op.eval())
-print('Final Mean: %f' % mean_value.eval())
-```
-
-Each metric function adds nodes to the graph that hold the state necessary to
-compute the value of the metric as well as a set of operations that actually
-perform the computation. Every metric evaluation is composed of three steps
-
-* Initialization: initializing the metric state.
-* Aggregation: updating the values of the metric state.
-* Finalization: computing the final metric value.
-
-In the above example, calling streaming_mean creates a pair of state variables
-that will contain (1) the running sum and (2) the count of the number of samples
-in the sum.  Because the streaming metrics use local variables,
-the Initialization stage is performed by running the op returned
-by `tf.local_variables_initializer()`. It sets the sum and count variables to
-zero.
-
-Next, Aggregation is performed by examining the current state of `values`
-and incrementing the state variables appropriately. This step is executed by
-running the `update_op` returned by the metric.
-
-Finally, finalization is performed by evaluating the "value_tensor"
-
-In practice, we commonly want to evaluate across many batches and multiple
-metrics. To do so, we need only run the metric computation operations multiple
-times:
-
-```python
-labels = ...
-predictions = ...
-accuracy, update_op_acc = tf.contrib.metrics.streaming_accuracy(
-    labels, predictions)
-error, update_op_error = tf.contrib.metrics.streaming_mean_absolute_error(
-    labels, predictions)
-
-sess.run(tf.local_variables_initializer())
-for batch in range(num_batches):
-  sess.run([update_op_acc, update_op_error])
-
-accuracy, mean_absolute_error = sess.run([accuracy, mean_absolute_error])
-```
-
-Note that when evaluating the same metric multiple times on different inputs,
-one must specify the scope of each metric to avoid accumulating the results
-together:
-
-```python
-labels = ...
-predictions0 = ...
-predictions1 = ...
-
-accuracy0 = tf.contrib.metrics.accuracy(labels, predictions0, name='preds0')
-accuracy1 = tf.contrib.metrics.accuracy(labels, predictions1, name='preds1')
-```
-
-Certain metrics, such as streaming_mean or streaming_accuracy, can be weighted
-via a `weights` argument. The `weights` tensor must be the same size as the
-labels and predictions tensors and results in a weighted average of the metric.
-
-## Metric `Ops`
+See the @{$python/contrib.metrics} guide.
 
 - - -
 
@@ -734,6 +653,57 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     `weights` is not `None` and its shape doesn't match `predictions`, or if
     either `metrics_collections` or `updates_collections` are not a list or
     tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_mean_tensor(values, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_mean_tensor}
+
+Computes the element-wise (weighted) mean of the given tensors.
+
+In contrast to the `streaming_mean` function which returns a scalar with the
+mean,  this function returns an average tensor with the same shape as the
+input tensors.
+
+The `streaming_mean_tensor` function creates two local variables,
+`total_tensor` and `count_tensor` that are used to compute the average of
+`values`. This average is ultimately returned as `mean` which is an idempotent
+operation that simply divides `total` by `count`.
+
+For estimation of the metric  over a stream of data, the function creates an
+`update_op` operation that updates these variables and returns the `mean`.
+`update_op` increments `total` with the reduced sum of the product of `values`
+and `weights`, and it increments `count` with the reduced sum of `weights`.
+
+If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+##### Args:
+
+
+*  <b>`values`</b>: A `Tensor` of arbitrary dimensions.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `values`, and
+    must be broadcastable to `values` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `values` dimension).
+*  <b>`metrics_collections`</b>: An optional list of collections that `mean`
+    should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op`
+    should be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`mean`</b>: A float `Tensor` representing the current mean, the value of `total`
+    divided by `count`.
+*  <b>`update_op`</b>: An operation that increments the `total` and `count` variables
+    appropriately and whose value matches `mean_value`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match `values`,
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -1424,7 +1394,7 @@ that updates can be run in amortized constant time.
 
 For estimation of the metric over a stream of data, the function creates an
 `update_op` operation that appends the values of a tensor and returns the
-`value` of the concatenated tensors.
+length of the concatenated axis.
 
 This op allows for evaluating metrics that cannot be updated incrementally
 using the same framework as other streaming metrics.
@@ -1469,10 +1439,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
-    dimensions.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
-    match `predictions`.
+*  <b>`predictions`</b>: The predicted values, a `Tensor` of arbitrary dimensions. Will
+    be cast to `bool`.
+*  <b>`labels`</b>: The ground truth values, a `Tensor` whose dimensions must match
+    `predictions`. Will be cast to `bool`.
 *  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
     `labels`, and must be broadcastable to `labels` (i.e., all dimensions
     must be either `1`, or the same as the corresponding `labels`
@@ -1515,10 +1485,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
-    dimensions.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
-    match `predictions`.
+*  <b>`predictions`</b>: The predicted values, a `Tensor` of arbitrary dimensions. Will
+    be cast to `bool`.
+*  <b>`labels`</b>: The ground truth values, a `Tensor` whose dimensions must match
+    `predictions`. Will be cast to `bool`.
 *  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
     `labels`, and must be broadcastable to `labels` (i.e., all dimensions
     must be either `1`, or the same as the corresponding `labels`
@@ -1562,10 +1532,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
-    dimensions.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
-    match `predictions`.
+*  <b>`predictions`</b>: The predicted values, a `Tensor` of arbitrary dimensions. Will
+    be cast to `bool`.
+*  <b>`labels`</b>: The ground truth values, a `Tensor` whose dimensions must match
+    `predictions`. Will be cast to `bool`.
 *  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
     `labels`, and must be broadcastable to `labels` (i.e., all dimensions
     must be either `1`, or the same as the corresponding `labels`
@@ -1609,10 +1579,10 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
-    dimensions.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
-    match `predictions`.
+*  <b>`predictions`</b>: The predicted values, a `Tensor` of arbitrary dimensions. Will
+    be cast to `bool`.
+*  <b>`labels`</b>: The ground truth values, a `Tensor` whose dimensions must match
+    `predictions`. Will be cast to `bool`.
 *  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
     `labels`, and must be broadcastable to `labels` (i.e., all dimensions
     must be either `1`, or the same as the corresponding `labels`
@@ -1641,7 +1611,6 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 - - -
 
 ### `tf.contrib.metrics.streaming_true_positives_at_thresholds(predictions, labels, thresholds, weights=None)` {#streaming_true_positives_at_thresholds}
-
 
 
 
@@ -1687,7 +1656,6 @@ numbers of bins and comparing results.
 *  <b>`update_op`</b>: `Op`, when run, updates internal histograms.
 
 
-
 - - -
 
 ### `tf.contrib.metrics.accuracy(predictions, labels, weights=None)` {#accuracy}
@@ -1712,7 +1680,6 @@ Computes the percentage of times that predictions matches labels.
 
 *  <b>`ValueError`</b>: if dtypes don't match or
               if dtype is not bool, integer, or string.
-
 
 
 - - -
@@ -1771,8 +1738,12 @@ and update ops when the list of metrics is long. For example:
   names to update ops.
 
 
+- - -
 
-## Set `Ops`
+### `tf.contrib.metrics.confusion_matrix(labels, predictions, num_classes=None, dtype=tf.int32, name=None, weights=None)` {#confusion_matrix}
+
+Deprecated. Use tf.confusion_matrix instead.
+
 
 - - -
 

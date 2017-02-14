@@ -38,6 +38,7 @@ namespace tensorflow {
 class TensorBuffer;  // Forward declaration.
 class TensorCApi;
 
+/// @ingroup core
 /// Represents an n-dimensional array of values.
 class Tensor {
  public:
@@ -99,11 +100,12 @@ class Tensor {
   /// for details.
   explicit Tensor(DataType type);
 
-  Tensor(const Tensor& other);  /// Copy constructor.
+  /// Copy constructor.
+  Tensor(const Tensor& other);
 
-  // Move constructor.  After this call, <other> is safely destructible and can
-  // be assigned to, but other calls on it (e.g. shape manipulation) are not
-  // valid.
+  /// \brief Move constructor. After this call, <other> is safely destructible and can
+  /// be assigned to, but other calls on it (e.g. shape manipulation) are not
+  /// valid.
   Tensor(Tensor&& other);
 
   ~Tensor();

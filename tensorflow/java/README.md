@@ -32,12 +32,17 @@ Java bindings for TensorFlow.
 
 ## Installation
 
-Build the Java Archive (JAR) and native library:
+Configure and build the Java Archive (JAR) and native library:
 
 ```sh
-bazel build -c opt \
+# Configure the build (e.g. GPU support etc.), as per
+# https://www.tensorflow.org/get_started/os_setup#configure_the_installation
+./configure
+
+# Build the JAR and native library
+bazel build --config opt \
   //tensorflow/java:tensorflow \
-  //tensorflow/java:libtensorflow-jni
+  //tensorflow/java:libtensorflow_jni
 ```
 
 ### Maven
@@ -86,8 +91,8 @@ bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:label_i
       ./src/main/java/org/tensorflow/examples/LabelImage.java
     ```
 
--   Make `libtensorflow.jar` and `libtensorflow-jni.so`
-    (`libtensorflow-jni.dylib` on OS X) available during execution. For example:
+-   Make `libtensorflow.jar` and `libtensorflow_jni.so`
+    (`libtensorflow_jni.dylib` on OS X) available during execution. For example:
 
     ```sh
     java \

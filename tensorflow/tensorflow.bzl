@@ -12,11 +12,17 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_sycl_tests_tags",
+    "tf_additional_xla_deps_py",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
     "cuda_default_copts"
+)
+
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
 )
 
 # List of proto files for android builds
@@ -31,6 +37,14 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
           for p in core_proto_sources_relative] +
          ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
           for p in core_proto_sources_relative])
+
+def if_android_x86(a):
+  return select({
+      "//tensorflow:android_x86": a,
+      "//tensorflow:android_x86_64": a,
+      "//conditions:default": [],
+  })
+
 
 def if_android_arm(a):
   return select({
@@ -96,8 +110,9 @@ def tf_copts():
            "-Wno-sign-compare",
            "-fno-exceptions",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
+          if_mkl(["-DINTEL_MKL=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          if_x86(["-msse4.1"]) +
+          if_x86(["-msse3"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",
@@ -120,7 +135,7 @@ def tf_opts_nortti_if_android():
       "-fno-rtti",
       "-DGOOGLE_PROTOBUF_NO_RTTI",
       "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-  ])
+  ]) + if_android_x86(["-msse4.1"])
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -140,28 +155,37 @@ def tf_gen_op_libs(op_lib_names, deps=None):
                       linkstatic=1,)
 
 def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
-                         op_gen="//tensorflow/cc:cc_op_gen_main"):
+                         op_gen="//tensorflow/cc:cc_op_gen_main",
+                         deps=None,
+                         override_file=None,
+                         include_internal_ops=0):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
+  if deps == None:
+    deps = [pkg + ":" + name + "_op_lib"]
   native.cc_binary(
       name = tool,
       copts = tf_copts(),
       linkopts = ["-lm"],
       linkstatic = 1,   # Faster to link this one-time-use binary dynamically
-      deps = ([op_gen, pkg + ":" + name + "_op_lib"])
+      deps = [op_gen] + deps
   )
 
-  # Run the op generator.
-  if name == "sendrecv_ops" or name == "function_ops":
-    include_internal = "1"
+  if override_file == None:
+    srcs = []
+    override_arg = ","
   else:
-    include_internal = "0"
+    srcs = [override_file]
+    override_arg = "$(location " + override_file + ")"
   native.genrule(
       name=name + "_genrule",
-      outs=[out_ops_file + ".h", out_ops_file + ".cc"],
+      outs=[out_ops_file + ".h", out_ops_file + ".cc",
+            out_ops_file + "_internal.h", out_ops_file + "_internal.cc"],
+      srcs=srcs,
       tools=[":" + tool],
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
-           "$(location :" + out_ops_file + ".cc) " + include_internal))
+           "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
+           str(include_internal_ops)))
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate individual C++ .cc and .h
@@ -181,6 +205,15 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
 #            hdrs = [ "ops/array_ops.h",
 #                     "ops/math_ops.h" ],
 #            deps = [ ... ])
+#
+# Plus a private library for the "hidden" ops.
+# cc_library(name = "tf_ops_lib_internal",
+#            srcs = [ "ops/array_ops_internal.cc",
+#                     "ops/math_ops_internal.cc" ],
+#            hdrs = [ "ops/array_ops_internal.h",
+#                     "ops/math_ops_internal.h" ],
+#            deps = [ ... ])
+# TODO(josh11b): Cleaner approach for hidden ops.
 def tf_gen_op_wrappers_cc(name,
                           op_lib_names=[],
                           other_srcs=[],
@@ -192,13 +225,21 @@ def tf_gen_op_wrappers_cc(name,
                               "//tensorflow/cc:const_op",
                           ],
                           op_gen="//tensorflow/cc:cc_op_gen_main",
+                          override_file=None,
+                          include_internal_ops=0,
                           visibility=None):
   subsrcs = other_srcs
   subhdrs = other_hdrs
+  internalsrcs = []
+  internalhdrs = []
   for n in op_lib_names:
-    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg, op_gen=op_gen)
+    tf_gen_op_wrapper_cc(
+        n, "ops/" + n, pkg=pkg, op_gen=op_gen, override_file=override_file,
+        include_internal_ops=include_internal_ops)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
+    internalsrcs += ["ops/" + n + "_internal.cc"]
+    internalhdrs += ["ops/" + n + "_internal.h"]
 
   native.cc_library(name=name,
                     srcs=subsrcs,
@@ -214,6 +255,20 @@ def tf_gen_op_wrappers_cc(name,
                     copts=tf_copts(),
                     alwayslink=1,
                     visibility=visibility)
+  native.cc_library(name=name + "_internal",
+                    srcs=internalsrcs,
+                    hdrs=internalhdrs,
+                    deps=deps + if_not_android([
+                        "//tensorflow/core:core_cpu",
+                        "//tensorflow/core:framework",
+                        "//tensorflow/core:lib",
+                        "//tensorflow/core:protos_all_cc",
+                    ]) + if_android([
+                        "//tensorflow/core:android_tensorflow_lib",
+                    ]),
+                    copts=tf_copts(),
+                    alwayslink=1,
+                    visibility=["//tensorflow:internal"])
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
@@ -335,6 +390,10 @@ def tf_cc_tests(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
         args=args,
         linkopts=linkopts)
 
+def tf_cc_test_mkl(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
+                    args=None):
+  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
+
 def tf_cc_tests_gpu(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):
   tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
@@ -423,7 +482,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
           "//tensorflow/core:cuda",
           "@local_config_cuda//cuda:cuda_headers"
       ]),
-      copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
+      copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
       **kwargs)
 
 def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
@@ -620,7 +679,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 
 def tf_custom_op_library_additional_deps():
   return [
-      "@protobuf//:protobuf",
+      "//:protobuf_headers",
       "//third_party/eigen3",
       "//tensorflow/core:framework_headers_lib",
   ]
@@ -787,7 +846,10 @@ def py_test(deps=[], **kwargs):
       **kwargs)
 
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-               tags=[], shard_count=1, additional_deps=[], flaky=0):
+               tags=[], shard_count=1, additional_deps=[], flaky=0,
+               xla_enabled=False):
+  if xla_enabled:
+    additional_deps += tf_additional_xla_deps_py()
   native.py_test(
       name=name,
       size=size,
@@ -809,7 +871,8 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
       srcs_version="PY2AND3")
 
 def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-                 shard_count=1, additional_deps=[], tags=[], flaky=0):
+                 shard_count=1, additional_deps=[], tags=[], flaky=0,
+                 xla_enabled=False):
   test_tags = tags + tf_cuda_tests_tags()
   tf_py_test(name=name,
              size=size,
@@ -820,10 +883,12 @@ def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
              tags=test_tags,
              shard_count=shard_count,
              additional_deps=additional_deps,
-             flaky=flaky)
+             flaky=flaky,
+             xla_enabled=xla_enabled)
 
 def sycl_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-                shard_count=1, additional_deps=[], tags=[], flaky=0):
+                 shard_count=1, additional_deps=[], tags=[], flaky=0,
+                 xla_enabled=False):
  test_tags = tags + tf_sycl_tests_tags()
  tf_py_test(name=name,
             size=size,
@@ -834,7 +899,8 @@ def sycl_py_test(name, srcs, size="medium", data=[], main=None, args=[],
             tags=test_tags,
             shard_count=shard_count,
             additional_deps=additional_deps,
-            flaky=flaky)
+            flaky=flaky,
+            xla_enabled=xla_enabled)
 
 def py_tests(name,
              srcs,
@@ -843,7 +909,8 @@ def py_tests(name,
              data=[],
              tags=[],
              shard_count=1,
-             prefix=""):
+             prefix="",
+             xla_enabled=False):
   for src in srcs:
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
@@ -855,13 +922,15 @@ def py_tests(name,
                tags=tags,
                shard_count=shard_count,
                data=data,
-               additional_deps=additional_deps)
+               additional_deps=additional_deps,
+               xla_enabled=xla_enabled)
 
 def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[],
-                  shard_count=1, tags=[], prefix=""):
+                  shard_count=1, tags=[], prefix="", xla_enabled=False):
   test_tags = tags + tf_cuda_tests_tags()
   py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
-           data=data, tags=test_tags, shard_count=shard_count,prefix=prefix)
+           data=data, tags=test_tags, shard_count=shard_count,prefix=prefix,
+           xla_enabled=xla_enabled)
 
 # Creates a genrule named <name> for running tools/proto_text's generator to
 # make the proto_text functions, for the protos passed in <srcs>.

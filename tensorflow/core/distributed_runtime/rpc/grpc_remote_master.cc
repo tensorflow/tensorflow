@@ -62,11 +62,12 @@ class GrpcRemoteMaster : public MasterInterface {
   }
 
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
-                 RunStepResponse* response) override {
+                 MutableRunStepResponseWrapper* response) override {
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(), response));
+    return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(),
+                                         get_proto_from_wrapper(response)));
   }
 
   Status CloseSession(CallOptions* call_options,

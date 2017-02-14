@@ -32,6 +32,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
@@ -114,7 +115,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "core_rnn_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/core_rnn_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -241,7 +242,9 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/gru_ops_test.cc"],
     data = [":python/ops/_gru_ops.so"],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/core:framework",
@@ -258,7 +261,9 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/lstm_ops_test.cc"],
     data = [":python/ops/_lstm_ops.so"],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/core:framework",

@@ -98,7 +98,7 @@ class SessionRunHook(object):
     """
     pass
 
-  def after_create_session(self, session):  # pylint: disable=unused-argument
+  def after_create_session(self, session, coord):  # pylint: disable=unused-argument
     """Called when new TensorFlow session is created.
 
     This is called to signal the hooks that a new session has been created. This
@@ -111,6 +111,7 @@ class SessionRunHook(object):
 
     Args:
       session: A TensorFlow Session that has been created.
+      coord: A Coordinator object which keeps track of all threads.
     """
     pass
 

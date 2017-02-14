@@ -505,7 +505,7 @@ regularization_loss = tf.add_n(slim.losses.get_regularization_losses())
 total_loss1 = classification_loss + sum_of_squares_loss + pose_loss + regularization_loss
 
 # (Regularization Loss is included in the total loss by default).
-total_loss2 = losses.get_total_loss()
+total_loss2 = slim.losses.get_total_loss()
 ```
 In this example, we can again either produce the total loss function manually
 or let TF-Slim know about the additional loss and let TF-Slim handle the losses.
@@ -880,7 +880,7 @@ names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
 
 # Create the summary ops such that they also print out to std output:
 summary_ops = []
-for metric_name, metric_value in metrics_to_values.iteritems():
+for metric_name, metric_value in names_to_values.iteritems():
   op = tf.summary.scalar(metric_name, metric_value)
   op = tf.Print(op, [metric_value], metric_name)
   summary_ops.append(op)

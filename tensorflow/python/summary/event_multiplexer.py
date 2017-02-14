@@ -65,20 +65,6 @@ class EventMultiplexer(object):
   If you would like to watch `/parent/directory/path`, wait for it to be created
     (if necessary) and then periodically pick up new runs, use
     `AutoloadingMultiplexer`
-
-  @@__init__
-  @@AddRun
-  @@AddRunsFromDirectory
-  @@Reload
-  @@Runs
-  @@RunPaths
-  @@Scalars
-  @@Graph
-  @@MetaGraph
-  @@Histograms
-  @@CompressedHistograms
-  @@Images
-  @@Audio
   """
 
   def __init__(self,
@@ -249,6 +235,23 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Scalars(tag)
+
+  def HealthPills(self, run, node_name):
+    """Retrieve the health pill events associated with a run and node name.
+
+    Args:
+      run: A string name of the run for which health pills are retrieved.
+      node_name: A string name of the node for which health pills are retrieved.
+
+    Raises:
+      KeyError: If the run is not found, or the node name is not available for
+        the given run.
+
+    Returns:
+      An array of `event_accumulator.HealthPillEvents`.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.HealthPills(node_name)
 
   def Graph(self, run):
     """Retrieve the graph associated with the provided run.

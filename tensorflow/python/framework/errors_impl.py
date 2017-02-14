@@ -32,9 +32,6 @@ class OpError(Exception):
 
   Whenever possible, the session will raise a more specific subclass
   of `OpError` from the `tf.errors` module.
-
-  @@op
-  @@node_def
   """
 
   def __init__(self, node_def, op, message, error_code):
@@ -459,8 +456,8 @@ def _make_specific_exception(node_def, op, message, error_code):
 
 @contextlib.contextmanager
 def raise_exception_on_not_ok_status():
+  status = pywrap_tensorflow.TF_NewStatus()
   try:
-    status = pywrap_tensorflow.TF_NewStatus()
     yield status
     if pywrap_tensorflow.TF_GetCode(status) != 0:
       raise _make_specific_exception(

@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
@@ -40,6 +41,49 @@ public class SessionTest {
         final int[][] expected = {{31}};
         assertEquals(expected, outputs.get(0).copyTo(new int[1][1]));
       }
+    }
+  }
+
+  @Test
+  public void runWithMetadata() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
+      try (Tensor x = Tensor.create(new int[][] {{5}, {7}})) {
+        Session.Run result =
+            s.runner()
+                .feed("X", x)
+                .fetch("Y")
+                .setOptions(fullTraceRunOptions())
+                .runAndFetchMetadata();
+        // Sanity check on outputs.
+        AutoCloseableList<Tensor> outputs = new AutoCloseableList<Tensor>(result.outputs);
+        assertEquals(1, outputs.size());
+        final int[][] expected = {{31}};
+        assertEquals(expected, outputs.get(0).copyTo(new int[1][1]));
+        // Sanity check on metadatar
+        // See comments in fullTraceRunOptions() for an explanation about
+        // why this check is really silly. Ideally, this would be:
+        /*
+            RunMetadata md = RunMetadata.parseFrom(result.metadata);
+            assertTrue(md.toString(), md.hasStepStats());
+        */
+        assertTrue(result.metadata.length > 0);
+      }
+    }
+  }
+
+  @Test
+  public void runMultipleOutputs() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      TestUtil.constant(g, "c1", 2718);
+      TestUtil.constant(g, "c2", 31415);
+      AutoCloseableList<Tensor> outputs =
+          new AutoCloseableList<Tensor>(s.runner().fetch("c2").fetch("c1").run());
+      assertEquals(2, outputs.size());
+      assertEquals(31415, outputs.get(0).intValue());
+      assertEquals(2718, outputs.get(1).intValue());
     }
   }
 
@@ -77,5 +121,25 @@ public class SessionTest {
         throw new RuntimeException(toThrow);
       }
     }
+  }
+
+  private static byte[] fullTraceRunOptions() {
+    // Ideally this would use the generated Java sources for protocol buffers
+    // and end up with something like the snippet below. However, generating
+    // the Java files for the .proto files in tensorflow/core:protos_all is
+    // a bit cumbersome in bazel until the proto_library rule is setup.
+    //
+    // See https://github.com/bazelbuild/bazel/issues/52#issuecomment-194341866
+    // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251515362
+    // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251692558
+    //
+    // For this test, for now, the use of specific bytes sufficies.
+    return new byte[] {0x08, 0x03};
+    /*
+    return org.tensorflow.framework.RunOptions.newBuilder()
+        .setTraceLevel(RunOptions.TraceLevel.FULL_TRACE)
+        .build()
+        .toByteArray();
+    */
   }
 }

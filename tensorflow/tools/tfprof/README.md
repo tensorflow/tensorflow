@@ -98,7 +98,7 @@ TODO(xpan): Provide graph.pbtxt, model.ckpt, tfprof_log and run_meta download.
 
 ```shell
 # Build the tool.
-bazel build -c opt tensorflow/tools/tfprof/...
+bazel build --config opt tensorflow/tools/tfprof/...
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/tools/tfprof/tfprof help
@@ -152,7 +152,7 @@ tfprof>
 -min_float_ops              0
 -device_regexes             .*
 -order_by                   name
--account_type_regexes       Variable
+-account_type_regexes       Variable,VariableV2
 -start_name_regexes         .*
 -trim_name_regexes
 -show_name_regexes          .*

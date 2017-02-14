@@ -55,8 +55,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:tensorflow_opensource",
-        "//tensorflow/core/kernels:cwise_op",
     ],
     alwayslink = 1,
 )
@@ -88,6 +86,27 @@ cc_library(
 )
 
 # Internal targets below this point.
+
+cc_test(
+    name = "xla_compiler_test",
+    srcs = ["xla_compiler_test.cc"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
 
 cc_test(
     name = "str_util_test",

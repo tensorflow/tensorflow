@@ -413,7 +413,7 @@ class EvaluateRepeatedlyTest(test.TestCase):
 
     evaluation.evaluate_repeatedly(
         checkpoint_dir=checkpoint_dir,
-        hooks=[evaluation.SummaryAtEndHook(logdir),],
+        hooks=[evaluation.SummaryAtEndHook(log_dir=logdir),],
         max_number_of_evaluations=1)
 
     self._verify_summaries(logdir, names_to_values)

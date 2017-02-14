@@ -49,7 +49,8 @@ string TryFindKernelClass(const string& serialized_node_def) {
   }
   string class_name = "";
   tensorflow::FindKernelDef(tensorflow::DeviceType(parsed_name.type.c_str()),
-                            node_def, nullptr /* kernel_def */, &class_name);
+                            node_def, nullptr /* kernel_def */, &class_name)
+      .IgnoreError();
   return class_name;
 }
 

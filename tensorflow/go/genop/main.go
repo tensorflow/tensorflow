@@ -18,25 +18,45 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"go/format"
+	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/tensorflow/tensorflow/tensorflow/go/genop/internal"
 )
 
 func main() {
-	filename := flag.String("outfile", "", "File to write generated source code to.")
+	var (
+		filename = flag.String("outfile", "", "File to write generated source code to.")
+		header   = flag.String("header", "", "Path to a file whose contents will be copied into the generated file. Can be empty")
+		buf bytes.Buffer
+	)
 	flag.Parse()
 	if *filename == "" {
-		log.Fatal("--outfile must be set")
+		log.Fatal("-outfile must be set")
 	}
-	file, err := os.OpenFile(*filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open %q for writing: %v", *filename, err)
+	if *header != "" {
+		hdr, err := ioutil.ReadFile(*header)
+		if err != nil {
+			log.Fatalf("Unable to read %s: %v", *header, err)
+		}
+		buf.Write(hdr)
+		buf.WriteString("\n\n")
 	}
-	defer file.Close()
-	if err = internal.GenerateFunctionsForRegisteredOps(file); err != nil {
+	os.MkdirAll(filepath.Dir(*filename), 0755)
+
+	if err := internal.GenerateFunctionsForRegisteredOps(&buf); err != nil {
 		log.Fatal(err)
+	}
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		log.Fatalf("Failed to generate valid source? 'go fmt' failed: %v", err)
+	}
+	if err := ioutil.WriteFile(*filename, formatted, 0644); err != nil {
+		log.Fatalf("Failed to write to %q: %v", *filename, err)
 	}
 }

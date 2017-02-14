@@ -104,7 +104,9 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
 "tensorflow/python/saved_model/saved_model_test.py:"\
-"tensorflow/contrib/learn/nonlinear_test.py:"
+"tensorflow/contrib/learn/nonlinear_test.py:"\
+"tensorflow/contrib/distributions/python/kernel_tests/conditional_distribution_test.py:"\
+"tensorflow/contrib/distributions/python/kernel_tests/conditional_transformed_distribution_test.py:"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
@@ -259,7 +261,7 @@ cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
 
 # Run tests
 DIR0=$(pwd)
-ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
+ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
 
 

@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorArray operations.
-
-## Classes containing dynamically sized arrays of Tensors.
+"""TensorArray: a dynamically sized array of Tensors.
 
 @@TensorArray
 """
@@ -30,7 +28,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.deprecation import deprecated
 
 
 def _maybe_set_device(handle_op, value_t):
@@ -60,26 +57,6 @@ class TensorArray(object):
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
-
-  @@handle
-  @@flow
-  @@dtype
-
-  @@read
-  @@gather
-  @@pack
-  @@stack
-  @@concat
-
-  @@write
-  @@scatter
-  @@unpack
-  @@unstack
-  @@split
-
-  @@identity
-
-  @@grad
   """
 
   def __init__(self,
@@ -323,14 +300,6 @@ class TensorArray(object):
       with ops.name_scope(name, "TensorArrayStack", [self._handle]):
         return self.gather(math_ops.range(0, self.size()), name=name)
 
-  @deprecated("2016-12-12",
-              "This op will be removed after the deprecation date. "
-              "Please switch to tf.stack.")
-  def pack(self, name=None):
-    return self.stack(name)
-
-  pack.__doc__ = stack.__doc__
-
   def gather(self, indices, name=None):
     """Return selected values in the TensorArray as a packed `Tensor`.
 
@@ -409,14 +378,6 @@ class TensorArray(object):
       num_elements = array_ops.shape(value)[0]
       return self.scatter(
           indices=math_ops.range(0, num_elements), value=value, name=name)
-
-  @deprecated("2016-12-12",
-              "This op will be removed after the deprecation date. "
-              "Please switch to tf.unstack.")
-  def unpack(self, value, name=None):
-    return self.unstack(value, name)
-
-  unpack.__doc__ = unstack.__doc__
 
   def scatter(self, indices, value, name=None):
     """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.

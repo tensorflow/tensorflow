@@ -49,7 +49,7 @@ For a detailed [example](https://www.tensorflow.org/code/tensorflow/python/debug
 run:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_tflearn_iris.py --debug
+python -m tensorflow.python.debug.examples.debug_tflearn_iris --debug
 ```
 
 ## Debugging tf.contrib.learn Experiments
@@ -83,6 +83,39 @@ accuracy_score = ex.evaluate()["accuracy"]
 To see the `debug_tflearn_iris` example run in the `Experiment` mode, do:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_tflearn_iris.py \
+python -m tensorflow.python.debug.examples.debug_tflearn_iris \
     --use_experiment --debug
 ```
+
+## Debugging Estimators and Experiments without Terminal Access
+
+If your `Estimator` or `Experiment` is running in an environment to which you
+do not have command-line access (e.g., a remote server), you can use the
+non-interactive `DumpingDebugHook`. For example:
+
+```python
+# Let your BUILD target depend on "//tensorflow/python/debug:debug_py
+from tensorflow.python import debug as tf_debug
+
+hooks = [tf_debug.DumpingDebugHook("/cns/is-d/home/somebody/tfdbg_dumps_1")]
+```
+
+Then this `hook` can be used in the same way as the `LocalCLIDebugHook` examples
+above. As the training and/or evalution of `Estimator` or `Experiment`
+happens, directories of the naming pattern
+`/cns/is-d/home/somebody/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>`
+will appear. Each directory corresponds to a `Session.run()` call that underlies
+the `fit()` or `evaluate()` call. You can load these directories and inspect
+them in a command-line interface in an offline manner using the
+`offline_analyzer` offered by **tfdbg**. For example:
+
+```bash
+python -m tensorflow.python.debug.cli.offline_analyzer \
+    --dump_dir="/cns/is-d/home/somebody/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>"
+```
+
+The `LocalCLIDebugHook` also allows you to configure a `watch_fn` that can be
+used to flexibly specify what `Tensor`s to watch on different `Session.run()`
+calls, as a function of the `fetches` and `feed_dict` and other states. See
+[this API doc](../../api_docs/python/tf_debug.md#DumpingDebugWrapperSession.__init__)
+for more details.

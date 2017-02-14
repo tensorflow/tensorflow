@@ -22,6 +22,10 @@ existing application.
         Demonstrates a model based on [Scalable Object Detection
         using Deep Neural Networks](https://arxiv.org/abs/1312.2249) to
         localize and track people in the camera preview in real-time.
+3. [TF Stylize](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/src/org/tensorflow/demo/StylizeActivity.java):
+        Uses a model based on [A Learned Representation For Artistic Style]
+        (https://arxiv.org/abs/1610.07629) to restyle the camera preview image
+        to that of a number of different artists.
 
 ## Prebuilt APK:
 
@@ -33,7 +37,8 @@ A device running Android 5.0 (API 21) or higher is required.
 ## Running the Demo
 
 Once the app is installed it can be started via the "TF Classify" and
-"TF Detect" and icons, which have the orange TensorFlow logo as their icon.
+"TF Detect" and icons, which have the orange TensorFlow logo 
+(<img src="res/drawable-mdpi/ic_launcher.png" width="20">) as their icon.
 
 While running the activities, pressing the volume keys on your device will
 toggle debug visualizations on/off, rendering additional info to the screen

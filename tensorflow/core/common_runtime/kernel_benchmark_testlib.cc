@@ -144,13 +144,13 @@ void Benchmark::RunWithArgs(
     for (const auto& p : in) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
-      rendez_->Send(parsed, Rendezvous::Args(), p.second, false);
+      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
     for (const string& key : out) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
-      rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead);
+      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
     }
   }
   TF_CHECK_OK(device_->Sync());
@@ -161,13 +161,13 @@ void Benchmark::RunWithArgs(
     for (const auto& p : in) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
-      rendez_->Send(parsed, Rendezvous::Args(), p.second, false);
+      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
     for (const string& key : out) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
-      rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead);
+      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
     }
   }
 

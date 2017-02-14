@@ -638,7 +638,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
 
     if sequence_length is None:
-      max_seq_len = time_len
+      max_seq_len = math_ops.to_int64(time_len)
     else:
       max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
 

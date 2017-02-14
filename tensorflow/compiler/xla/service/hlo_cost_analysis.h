@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -35,7 +36,12 @@ namespace xla {
 // operations separately from transcendental operations.
 class HloCostAnalysis : public DfsHloVisitor {
  public:
-  HloCostAnalysis() = default;
+  // shape_size is a function which returns the size in bytes of the top-level
+  // buffer of a shape.
+  using ShapeSizeFunction = std::function<int64(const Shape&)>;
+  explicit HloCostAnalysis(const ShapeSizeFunction& shape_size)
+      : shape_size_(shape_size) {}
+
   ~HloCostAnalysis() override = default;
 
   Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode,
@@ -68,6 +74,7 @@ class HloCostAnalysis : public DfsHloVisitor {
                            HloInstruction* rhs, const Window& window) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random,
                    RandomDistribution distribution) override;
   Status HandleReverse(HloInstruction* reverse,
@@ -114,13 +121,21 @@ class HloCostAnalysis : public DfsHloVisitor {
                      HloComputation* condition, HloComputation* body) override;
   Status FinishVisit(HloInstruction* root) override;
 
-  // Returns the amount of computations in the graph.
-  double flop_count() { return flop_count_; }
-  double transcendental_count() { return transcendental_count_; }
+  Status Preprocess(HloInstruction* hlo) override;
+  Status Postprocess(HloInstruction* hlo) override;
 
-  // Resolves the provided HLO instruction to a flop count, or 0 if the HLO was
-  // not found to have a flop count in the analysis.
-  double hlo_to_flop_count(const HloInstruction& hlo) const;
+  // Returns the amount of computations in the graph.
+  int64 flop_count() const { return flop_count_; }
+  int64 transcendental_count() const { return transcendental_count_; }
+
+  // Returns the respective cost computed for a particular HLO instruction, or 0
+  // if the HLO was not found to have a cost in the analysis.
+  int64 flop_count(const HloInstruction& hlo) const;
+  int64 transcendental_count(const HloInstruction& hlo) const;
+
+  // Returns the number of bytes read/written.
+  int64 bytes_accessed(const HloInstruction& hlo) const;
+  int64 bytes_accessed() const { return bytes_accessed_; }
 
  private:
   // An FMA counts as two floating point operations in these analyses.
@@ -129,15 +144,28 @@ class HloCostAnalysis : public DfsHloVisitor {
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(HloInstruction* hlo_instruction);
 
-  // Mapping from HLO instructions to the flop count we computed for them in the
+  // Function which computes the size of the top-level of a given shape (not
+  // including nested elements, if any). If null then bytes_accessed methods
+  // return an error.
+  const ShapeSizeFunction shape_size_;
+
+  // The total number of floating point operations, transcendental operations,
+  // and bytes accesses (read or written) in the computation.
+  int64 flop_count_ = 0;
+  int64 transcendental_count_ = 0;
+  int64 bytes_accessed_ = 0;
+
+  // Cost counts of the current instruction. These should be set by each
+  // handlers if different from the default values computed in Preprocess.
+  int64 current_flop_count_;
+  int64 current_transcendental_count_;
+  int64 current_bytes_accessed_;
+
+  // Mapping from HLO instructions to the cost we computed for them in the
   // course of the graph analysis.
-  std::map<const HloInstruction*, double> hlo_to_flop_count_;
-
-  // The number of floating point operations in the graph.
-  double flop_count_ = 0;
-
-  // The number of transcendental operations in the graph.
-  double transcendental_count_ = 0;
+  std::map<const HloInstruction*, int64> hlo_to_flop_count_;
+  std::map<const HloInstruction*, int64> hlo_to_transcendental_count_;
+  std::map<const HloInstruction*, int64> hlo_to_bytes_accessed_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloCostAnalysis);
 };

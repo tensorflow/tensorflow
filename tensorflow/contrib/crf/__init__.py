@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Linear-chain CRF layer.
-
-## This package provides functions for building a linear-chain CRF layer.
+"""Linear-chain CRF layer. See the @{$python/contrib.crf} guide.
 
 @@crf_sequence_score
 @@crf_log_norm
@@ -37,3 +35,7 @@ from tensorflow.contrib.crf.python.ops.crf import crf_sequence_score
 from tensorflow.contrib.crf.python.ops.crf import crf_unary_score
 from tensorflow.contrib.crf.python.ops.crf import CrfForwardRnnCell
 from tensorflow.contrib.crf.python.ops.crf import viterbi_decode
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+remove_undocumented(__name__)

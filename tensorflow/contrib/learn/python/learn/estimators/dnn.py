@@ -113,66 +113,73 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
   features = _get_feature_dict(features)
   parent_scope = "dnn"
 
-  input_layer_partitioner = (partitioned_variables.min_max_variable_partitioner(
-      max_partitions=num_ps_replicas,
-      min_slice_size=input_layer_min_slice_size))
-  input_layer_scope = parent_scope + "/input_from_feature_columns"
+  partitioner = partitioned_variables.min_max_variable_partitioner(
+      max_partitions=num_ps_replicas)
   with variable_scope.variable_scope(
-      input_layer_scope,
-      values=list(six.itervalues(features)),
-      partitioner=input_layer_partitioner) as scope:
-    net = layers.input_from_feature_columns(
-        columns_to_tensors=features,
-        feature_columns=feature_columns,
-        weight_collections=[parent_scope],
-        scope=scope)
-
-  hidden_layer_partitioner = (
-      partitioned_variables.min_max_variable_partitioner(
-          max_partitions=num_ps_replicas))
-  for layer_id, num_hidden_units in enumerate(hidden_units):
+      parent_scope,
+      values=tuple(six.itervalues(features)),
+      partitioner=partitioner):
+    input_layer_partitioner = (
+        partitioned_variables.min_max_variable_partitioner(
+            max_partitions=num_ps_replicas,
+            min_slice_size=input_layer_min_slice_size))
     with variable_scope.variable_scope(
-        parent_scope + "/hiddenlayer_%d" % layer_id,
-        values=[net],
-        partitioner=hidden_layer_partitioner) as scope:
-      net = layers.fully_connected(
+        "input_from_feature_columns",
+        values=tuple(six.itervalues(features)),
+        partitioner=input_layer_partitioner) as input_layer_scope:
+      net = layers.input_from_feature_columns(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          weight_collections=[parent_scope],
+          scope=input_layer_scope)
+
+    for layer_id, num_hidden_units in enumerate(hidden_units):
+      with variable_scope.variable_scope(
+          "hiddenlayer_%d" % layer_id,
+          values=(net,)) as hidden_layer_scope:
+        net = layers.fully_connected(
+            net,
+            num_hidden_units,
+            activation_fn=activation_fn,
+            variables_collections=[parent_scope],
+            scope=hidden_layer_scope)
+        if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+          net = layers.dropout(net, keep_prob=(1.0 - dropout))
+      _add_hidden_layer_summary(net, hidden_layer_scope.name)
+
+    with variable_scope.variable_scope(
+        "logits",
+        values=(net,)) as logits_scope:
+      logits = layers.fully_connected(
           net,
-          num_hidden_units,
-          activation_fn=activation_fn,
+          head.logits_dimension,
+          activation_fn=None,
           variables_collections=[parent_scope],
-          scope=scope)
-      if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-        net = layers.dropout(net, keep_prob=(1.0 - dropout))
-    _add_hidden_layer_summary(net, scope.name)
+          scope=logits_scope)
+    _add_hidden_layer_summary(logits, logits_scope.name)
 
-  with variable_scope.variable_scope(
-      parent_scope + "/logits",
-      values=[net],
-      partitioner=hidden_layer_partitioner) as scope:
-    logits = layers.fully_connected(
-        net,
-        head.logits_dimension,
-        activation_fn=None,
-        variables_collections=[parent_scope],
-        scope=scope)
-  _add_hidden_layer_summary(logits, scope.name)
+    def _train_op_fn(loss):
+      """Returns the op to optimize the loss."""
+      return optimizers.optimize_loss(
+          loss=loss,
+          global_step=contrib_variables.get_global_step(),
+          learning_rate=_LEARNING_RATE,
+          optimizer=_get_optimizer(optimizer),
+          gradient_multipliers=(
+              dnn_linear_combined._extract_embedding_lr_multipliers(  # pylint: disable=protected-access
+                  embedding_lr_multipliers, parent_scope,
+                  input_layer_scope.name)),
+          clip_gradients=gradient_clip_norm,
+          name=parent_scope,
+          # Empty summaries to prevent optimizers from logging training_loss.
+          summaries=[])
 
-  def _train_op_fn(loss):
-    """Returns the op to optimize the loss."""
-    return optimizers.optimize_loss(
-        loss=loss,
-        global_step=contrib_variables.get_global_step(),
-        learning_rate=_LEARNING_RATE,
-        optimizer=_get_optimizer(optimizer),
-        gradient_multipliers=(
-            dnn_linear_combined._extract_embedding_lr_multipliers(  # pylint: disable=protected-access
-                embedding_lr_multipliers, parent_scope, input_layer_scope)),
-        clip_gradients=gradient_clip_norm,
-        name=parent_scope,
-        # Empty summaries to prevent optimizers from logging the training_loss.
-        summaries=[])
-
-  return head.head_ops(features, labels, mode, _train_op_fn, logits)
+    return head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
 
 
 class DNNClassifier(estimator.Estimator):
@@ -320,13 +327,23 @@ class DNNClassifier(estimator.Estimator):
       estimator.AS_ITERABLE_DATE,
       estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted classes for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_classes, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted classes. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_classes` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns classes.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -336,11 +353,19 @@ class DNNClassifier(estimator.Estimator):
       Numpy array of predicted classes with shape [batch_size] (or an iterable
       of predicted classes if as_iterable is True). Each predicted class is
       represented by its class index (i.e. integer from 0 to n_classes-1).
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_classes(
+    if not outputs:
+      return self.predict_classes(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -385,7 +410,7 @@ class DNNClassifier(estimator.Estimator):
                     input_fn=None,
                     batch_size=None,
                     as_iterable=True):
-    """Returns prediction probabilities for given features.
+    """Returns predicted probabilities for given features.
 
     Args:
       x: features.
@@ -568,7 +593,9 @@ class DNNRegressor(estimator.Estimator):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
-      label_dimension: Dimension of the label for multilabels. Defaults to 1.
+      label_dimension: Number of regression targets per example. This is the
+        size of the last dimension of the labels and logits `Tensor` objects
+        (typically, these have shape `[batch_size, label_dimension]`).
       embedding_lr_multipliers: Optional. A dictionary from `EbeddingColumn` to
           a `float` multiplier. Multiplier will be used to multiply with
           learning rate for the embedding variables.
@@ -638,13 +665,23 @@ class DNNRegressor(estimator.Estimator):
       estimator.AS_ITERABLE_DATE,
       estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted scores for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_scores, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted scores. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_scores` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns scores.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -654,11 +691,19 @@ class DNNRegressor(estimator.Estimator):
       Numpy array of predicted scores (or an iterable of predicted scores if
       as_iterable is True). If `label_dimension == 1`, the shape of the output
       is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_scores(
+    if not outputs:
+      return self.predict_scores(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNRegressor, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(

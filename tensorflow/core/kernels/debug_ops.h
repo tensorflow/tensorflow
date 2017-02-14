@@ -38,8 +38,9 @@ class CopyOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& src_tensor = context->input(0);
 
-    if (src_tensor.IsInitialized()) {
-      // Source tensor is initialized. Make a copy.
+    if (src_tensor.IsInitialized() &&
+        DataTypeCanUseMemcpy(src_tensor.dtype())) {
+      // Source tensor is initialized and is mem-copyable. Make a copy.
       Tensor* copied_tensor;
       OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
                                                        &copied_tensor));
@@ -66,7 +67,8 @@ class CopyOp : public OpKernel {
       *copied_tensor = tensor::DeepCopy(src_tensor);
 #endif
     } else {
-      // Source tensor is NOT initialized. Forward the Tensor object.
+      // Source tensor is NOT initialized and/or is not mem-copyable: Forward
+      // the Tensor object.
       context->set_output(0, src_tensor);
     }
   }
@@ -127,7 +129,7 @@ class DebugNanCountOp : public OpKernel {
       const T* input_flat = input.template flat<T>().data();
 
       for (int64 i = 0; i < input_shape.num_elements(); ++i) {
-        if (Eigen::numext::isnan(input_flat[i])) {
+        if (Eigen::numext::isnan(static_cast<double>(input_flat[i]))) {
           nan_count++;
         }
       }

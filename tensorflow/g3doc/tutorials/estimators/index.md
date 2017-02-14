@@ -22,15 +22,15 @@ different activation functions for each neural network layer. Or maybe you're
 implementing a ranking or recommendation system, and neither a classifier nor a
 regressor is appropriate for generating predictions.
 
-This tutorial covers how to create your own `Estimator` using the building blocks
-provided in `tf.contrib.learn`, which will predict the ages of
+This tutorial covers how to create your own `Estimator` using the building
+blocks provided in `tf.contrib.learn`, which will predict the ages of
 [abalones](https://en.wikipedia.org/wiki/Abalone) based on their physical
 measurements. You'll learn how to do the following:
 
 *   Instantiate an `Estimator`
 *   Construct a custom model function
 *   Configure a neural network using `tf.contrib.layers`
-*   Choose an appropriate loss function from `tf.contrib.losses`
+*   Choose an appropriate loss function from `tf.losses`
 *   Define a training op for your model
 *   Generate and return predictions
 
@@ -94,42 +94,30 @@ here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/estimators/a
 
 To feed the abalone dataset into the model, you'll need to download and load the
 CSVs into TensorFlow `Dataset`s. First, add some standard Python and TensorFlow
-imports:
+imports, and set up FLAGS:
 
 ```python
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import tempfile
-import urllib
+
+# Import urllib
+from six.moves import urllib
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+
+FLAGS = None
 ```
 
-Then define flags to allow users to optionally specify CSV files for training,
-test, and prediction datasets via the command line (by default, files will be
-downloaded from [tensorflow.org](https://www.tensorflow.org/)), and enable
-logging:
+Enable logging:
 
 ```python
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string(
-    "train_data",
-    "",
-    "Path to the training data.")
-flags.DEFINE_string(
-    "test_data",
-    "",
-    "Path to the test data.")
-flags.DEFINE_string(
-    "predict_data",
-    "",
-    "Path to the prediction data.")
-
 tf.logging.set_verbosity(tf.logging.INFO)
 ```
 
@@ -138,31 +126,36 @@ command-line options, or downloaded from
 [tensorflow.org](https://www.tensorflow.org/)):
 
 ```python
-def maybe_download():
+def maybe_download(train_data, test_data, predict_data):
   """Maybe downloads training data and returns train and test file names."""
-  if FLAGS.train_data:
-    train_file_name = FLAGS.train_data
+  if train_data:
+    train_file_name = train_data
   else:
     train_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.urlretrieve("http://download.tensorflow.org/data/abalone_train.csv", train_file.name)
+    urllib.request.urlretrieve(
+        "http://download.tensorflow.org/data/abalone_train.csv",
+        train_file.name)
     train_file_name = train_file.name
     train_file.close()
     print("Training data is downloaded to %s" % train_file_name)
 
-  if FLAGS.test_data:
-    test_file_name = FLAGS.test_data
+  if test_data:
+    test_file_name = test_data
   else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.urlretrieve("http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
+    urllib.request.urlretrieve(
+        "http://download.tensorflow.org/data/abalone_test.csv", test_file.name)
     test_file_name = test_file.name
     test_file.close()
     print("Test data is downloaded to %s" % test_file_name)
 
-  if FLAGS.predict_data:
-    predict_file_name = FLAGS.predict_data
+  if predict_data:
+    predict_file_name = predict_data
   else:
     predict_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.urlretrieve("http://download.tensorflow.org/data/abalone_predict.csv", predict_file.name)
+    urllib.request.urlretrieve(
+        "http://download.tensorflow.org/data/abalone_predict.csv",
+        predict_file.name)
     predict_file_name = predict_file.name
     predict_file.close()
     print("Prediction data is downloaded to %s" % predict_file_name)
@@ -170,33 +163,43 @@ def maybe_download():
   return train_file_name, test_file_name, predict_file_name
 ```
 
-Finally, create `main()` and load the abalone CSVs into `Datasets`:
+Finally, create `main()` and load the abalone CSVs into `Datasets`, defining
+flags to allow users to optionally specify CSV files for training, test, and
+prediction datasets via the command line (by default, files will be downloaded
+from [tensorflow.org](https://www.tensorflow.org/)):
 
 ```python
 def main(unused_argv):
   # Load datasets
-  abalone_train, abalone_test, abalone_predict = maybe_download()
+  abalone_train, abalone_test, abalone_predict = maybe_download(
+    FLAGS.train_data, FLAGS.test_data, FLAGS.predict_data)
 
   # Training examples
   training_set = tf.contrib.learn.datasets.base.load_csv_without_header(
-      filename=abalone_train,
-      target_dtype=np.int,
-      features_dtype=np.float64)
+      filename=abalone_train, target_dtype=np.int, features_dtype=np.float64)
 
   # Test examples
   test_set = tf.contrib.learn.datasets.base.load_csv_without_header(
-      filename=abalone_test,
-      target_dtype=np.int,
-      features_dtype=np.float64)
+      filename=abalone_test, target_dtype=np.int, features_dtype=np.float64)
 
   # Set of 7 examples for which to predict abalone ages
   prediction_set = tf.contrib.learn.datasets.base.load_csv_without_header(
-      filename=abalone_predict,
-      target_dtype=np.int,
-      features_dtype=np.float64)
+      filename=abalone_predict, target_dtype=np.int, features_dtype=np.float64)
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--train_data", type=str, default="", help="Path to the training data.")
+  parser.add_argument(
+      "--test_data", type=str, default="", help="Path to the test data.")
+  parser.add_argument(
+      "--predict_data",
+      type=str,
+      default="",
+      help="Path to the prediction data.")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 ```
 
 ## Instantiating an Estimator
@@ -237,8 +240,8 @@ nn = tf.contrib.learn.Estimator(
     that will be passed into the `model_fn`.
 
 NOTE: Just like `tf.contrib.learn`'s predefined regressors and classifiers, the
-`Estimator` initializer also accepts the general configuration
-arguments `model_dir` and `config`.
+`Estimator` initializer also accepts the general configuration arguments
+`model_dir` and `config`.
 
 For the abalone age predictor, the model will accept one hyperparameter:
 learning rate. Define `LEARNING_RATE` as a constant at the beginning of your
@@ -259,9 +262,8 @@ containing the learning rate and instantiates the `Estimator`:
 # Set model params
 model_params = {"learning_rate": LEARNING_RATE}
 
-# Build 2 layer fully connected DNN with 10, 10 units respectively.
-nn = tf.contrib.learn.Estimator(
-    model_fn=model_fn, params=model_params)
+# Instantiate Estimator
+nn = tf.contrib.learn.Estimator(model_fn=model_fn, params=model_params)
 ```
 
 ## Constructing the `model_fn` {#constructing-modelfn}
@@ -275,7 +277,8 @@ def model_fn(features, targets, mode, params):
    # 2. Define the loss function for training/evaluation
    # 3. Define the training operation/optimizer
    # 4. Generate predictions
-   return predictions, loss, train_op
+   # 5. Return predictions/loss/train_op/eval_metric_ops in ModelFnOps object
+   return ModelFnOps(mode, predictions, loss, train_op, eval_metric_ops)
 ```
 
 The `model_fn` must accept three arguments:
@@ -308,8 +311,12 @@ sections that follow):
 *   Defining the training operation that specifies the `optimizer` algorithm to
     minimize the loss values calculated by the loss function.
 
-Finally, depending on the `mode` in which `model_fn` is run, it must return one
-or more of the following three values:
+The `model_fn` must return a
+[`ModelFnOps`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/model_fn.py)
+object, which contains the following values:
+
+*   `mode` (required). The mode in which the model was run. Typically, you will
+    return the `mode` argument of the `model_fn` here.
 
 *   `predictions` (required in `INFER` and `EVAL` modes). A dict that maps key
     names of your choice to `Tensor`s containing the predictions from the model,
@@ -319,17 +326,13 @@ or more of the following three values:
     predictions = {"results": tensor_of_predictions}
     ```
 
-    In `INFER` mode, the dict that you return from `model_fn` will then be
+    In `INFER` mode, the dict that you return in `ModelFnOps` will then be
     returned by `predict()`, so you can construct it in the format in which
     you'd like to consume it.
 
     In `EVAL` mode, the dict is used by [metric
     functions](../../api_docs/python/contrib.metrics.md#metric-ops) to compute
-    metrics. Any
-    [`MetricSpec`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/metric_spec.py)
-    objects passed to the `metrics` argument of `evaluate()` must have a
-    `prediction_key` that matches the key name of the corresponding predictions
-    in `predictions`.
+    metrics.
 
 *   `loss` (required in `EVAL` and `TRAIN` mode). A `Tensor` containing a scalar
     loss value: the output of the model's loss function (discussed in more depth
@@ -339,6 +342,24 @@ or more of the following three values:
 
 *   `train_op` (required only in `TRAIN` mode). An Op that runs one step of
     training.
+
+*   `eval_metric_ops` (optional). A dict of name/value pairs specifying the
+    metrics that will be calculated when the model runs in `EVAL` mode. The name
+    is a label of your choice for the metric, and the value is the result of
+    your metric calculation. The
+    [`tf.metrics`](https://www.tensorflow.org/code/tensorflow/python/ops/metrics_impl.py)
+    module provides predefined functions for a variety of common metrics. The
+    following `eval_metric_ops` contains an `"accuracy"` metric calculated using
+    `tf.metrics.accuracy`:
+
+    ```python
+    eval_metric_ops = {
+        "accuracy": tf.metrics.accuracy(labels, predictions)
+    }
+    ```
+
+    If you do not specify `eval_metric_ops`, only `loss` will be calculated
+    during evaluation.
 
 ### Configuring a neural network with `tf.contrib.layers`
 
@@ -359,7 +380,8 @@ with the `input_from_feature_columns()` function in
 [tf.contrib.layers](../../api_docs/python/contrib.layers.md#layers-contrib).
 
 ```python
-input layer = tf.contrib.layers.input_from_feature_columns(columns_to_tensors=features, feature_columns=[age, height, weight])
+input_layer = tf.contrib.layers.input_from_feature_columns(
+    columns_to_tensors=features, feature_columns=[age, height, weight])
 ```
 
 As shown above, `input_from_feature_columns()` takes two required arguments:
@@ -456,10 +478,10 @@ tensor to capture the model's predictions, which are stored in
 
 ### Defining loss for the model {#defining-loss}
 
-The `model_fn` must return a `Tensor` that contains the loss value, which
-quantifies how well the model's predictions reflect the target values during
-training and evaluation runs. The
-[`tf.contrib.losses`](../../api_docs/python/contrib.losses.md#losses-contrib)
+The `ModelFnOps` returned by the `model_fn` must contain `loss`: a `Tensor`
+representing the loss value, which quantifies how well the model's predictions
+reflect the target values during training and evaluation runs. The
+[`tf.losses`](https://www.tensorflow.org/code/tensorflow/python/ops/losses/losses.py)
 module provides convenience functions for calculating loss using a variety of
 metrics, including:
 
@@ -497,12 +519,24 @@ using `mean_squared_error()` (in bold):
   predictions_dict = {"ages": predictions}
 
   <strong># Calculate loss using mean squared error
-  loss = tf.contrib.losses.mean_squared_error(predictions, targets)</strong>
+  loss = tf.losses.mean_squared_error(targets, predictions)</strong>
   ...</code></pre>
 
-See the [API docs](../../api_docs/python/contrib.losses.md#losses-contrib) for
-tf.contrib.loss for a full list of loss functions and more details on supported
-arguments and usage.
+See the [API docs](../../api_docs/python/contrib.losses.md#losses-contrib) for a
+full list of loss functions and more details on supported arguments and usage.
+
+Supplementary metrics for evaluation can be added to an `eval_metric_ops` dict.
+The following code defines an `rmse` metric, which calculates the root mean
+squared error for the model predictions. Note that the `targets` tensor is cast
+to a `float64` type to match the data type of the `predictions` tensor, which
+will contain real values:
+
+```python
+eval_metric_ops = {
+    "rmse": tf.metrics.root_mean_squared_error(
+        tf.cast(targets, tf.float64), predictions)
+}
+```
 
 ### Defining the training op for the model
 
@@ -552,7 +586,7 @@ NOTE: The `optimize_loss` function supports additional optional arguments to
 further configure the optimizer, such as for implementing decay. See the [API
 docs](../../api_docs/python/contrib.layers.md#optimize_loss) for more info.
 
-The following code defines a training op for the abalone `model_fn`, using the
+The following code defines a training op for the abalone `model_fn` using the
 loss value calculated in [Defining Loss for the Model](#defining-loss), the
 learning rate passed to the function in `params`, and the SGD optimizer. For
 `global_step`, the convenience function
@@ -571,7 +605,8 @@ train_op = tf.contrib.layers.optimize_loss(
 
 Here's the final, complete `model_fn` for the abalone age predictor. The
 following code configures the neural network; defines loss and the training op;
-and returns `predictions_dict`, `loss`, and `train_op`:
+and returns a `ModelFnOps` object containing `mode`, `predictions_dict`, `loss`,
+and `train_op`:
 
 ```python
 def model_fn(features, targets, mode, params):
@@ -592,7 +627,14 @@ def model_fn(features, targets, mode, params):
   predictions_dict = {"ages": predictions}
 
   # Calculate loss using mean squared error
-  loss = tf.contrib.losses.mean_squared_error(predictions, targets)
+  loss = tf.losses.mean_squared_error(targets, predictions)
+
+  # Calculate root mean squared error as additional eval metric
+  eval_metric_ops = {
+      "rmse":
+          tf.metrics.root_mean_squared_error(
+              tf.cast(targets, tf.float64), predictions)
+  }
 
   train_op = tf.contrib.layers.optimize_loss(
       loss=loss,
@@ -600,7 +642,12 @@ def model_fn(features, targets, mode, params):
       learning_rate=params["learning_rate"],
       optimizer="SGD")
 
-  return predictions_dict, loss, train_op
+  return model_fn_lib.ModelFnOps(
+      mode=mode,
+      predictions=predictions_dict,
+      loss=loss,
+      train_op=train_op,
+      eval_metric_ops=eval_metric_ops)
 ```
 
 ## Running the Abalone Model
@@ -618,8 +665,8 @@ nn.fit(x=training_set.data, y=training_set.target, steps=5000)
 
 # Score accuracy
 ev = nn.evaluate(x=test_set.data, y=test_set.target, steps=1)
-loss_score = ev["loss"]
-print("Loss: %s" % loss_score)
+print("Loss: %s" % ev["loss"])
+print("Root Mean Squared Error: %s" % ev["rmse"])
 ```
 
 Then run the code. You should see output like the following:
@@ -642,8 +689,7 @@ To predict ages for the `ABALONE_PREDICT` data set, add the following to
 
 ```python
 # Print out predictions
-predictions = nn.predict(x=prediction_set.data,
-                         as_iterable=True)
+predictions = nn.predict(x=prediction_set.data, as_iterable=True)
 for i, p in enumerate(predictions):
   print("Prediction %s: %s" % (i + 1, p["ages"]))
 ```

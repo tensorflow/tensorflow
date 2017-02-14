@@ -39,6 +39,10 @@ class Status : public tensorflow::Status {
   Status() : tensorflow::Status() {}
   Status(tensorflow::error::Code code, tensorflow::StringPiece msg)
       : tensorflow::Status(code, msg) {}
+
+  // Ignores any errors. This method is a nop that can be used to suppress
+  // compiler errors when a Status value is intentially ignored.
+  void IgnoreError() const {}
 };
 
 }  // namespace xla

@@ -34,6 +34,7 @@ class DeviceAttributes;
 
 class DeviceMgr {
  public:
+  // Takes ownership of each device in 'devices'.
   // TODO(zhifengc): Other initialization information.
   explicit DeviceMgr(const std::vector<Device*>& devices);
   ~DeviceMgr();

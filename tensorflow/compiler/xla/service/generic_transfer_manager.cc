@@ -105,7 +105,8 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
   // a vector of void* pointers.
   std::vector<void*> element_pointers(ShapeUtil::TupleElementCount(shape),
                                       nullptr);
-  int64 tuple_size = ShapeUtil::ByteSizeOf(shape);
+  int64 tuple_size =
+      ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
   auto copy_status = executor->SynchronousMemcpyD2H(source, tuple_size,
                                                     element_pointers.data());
   if (!copy_status.ok()) {
@@ -122,7 +123,8 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
       return FailedPrecondition("tuple contains nullptr at element %d", i);
     }
-    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i));
+    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i),
+                                              /*pointer_size=*/sizeof(void*));
     destination.emplace_back(element_pointers[i], buffer_size);
   }
   return std::move(destination);
@@ -160,13 +162,15 @@ Status GenericTransferManager::TransferLiteralToInfeed(
   return Unimplemented("Infeed is not supported on GPU (b/30467474)");
 }
 
-Status GenericTransferManager::ResetDevice(se::StreamExecutor* executor) {
+Status GenericTransferManager::ResetDevices(
+    tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
+        executors) {
   return Unimplemented(
       "Device reset is not yet supported on CPU and GPU (b/30481585)");
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape);
+  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 }  // namespace xla

@@ -237,7 +237,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.initialize_all_tables())
+                                  data_flow_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -248,7 +248,9 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              chief_only_hooks=None,
                              save_checkpoint_secs=600,
                              save_summaries_steps=100,
-                             config=None):
+                             save_summaries_secs=None,
+                             config=None,
+                             stop_grace_period_secs=120):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -273,11 +275,17 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       using a default checkpoint saver. If `save_checkpoint_secs` is set to
       `None`, then the default checkpoint saver isn't used.
     save_summaries_steps: The frequency, in number of global steps, that the
-      summaries are written to disk using a default summary saver. If
-      `save_summaries_steps` is set to `None`, then the default summary saver
+      summaries are written to disk using a default summary saver. If both
+      `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
+      the default summary saver isn't used.
+    save_summaries_secs: The frequency, in secs, that the summaries are written
+      to disk using a default summary saver.  If both `save_summaries_steps` and
+      `save_summaries_secs` are set to `None`, then the default summary saver
       isn't used.
     config: an instance of `tf.ConfigProto` proto used to configure the session.
       It's the `config` argument of constructor of `tf.Session`.
+    stop_grace_period_secs: Number of seconds given to threads to stop after
+      `close()` has been called.
 
   Returns:
     A `MonitoredSession` object.
@@ -286,7 +294,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold, master=master, config=config)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks or [])
+    return MonitoredSession(session_creator=session_creator, hooks=hooks or [],
+                            stop_grace_period_secs=stop_grace_period_secs)
 
   all_hooks = []
   if chief_only_hooks:
@@ -301,10 +310,12 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     all_hooks.append(
         basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
 
-    if save_summaries_steps and save_summaries_steps > 0:
+    if (save_summaries_steps and save_summaries_steps > 0) or (
+        save_summaries_secs and save_summaries_secs > 0):
       all_hooks.append(basic_session_run_hooks.SummarySaverHook(
           scaffold=scaffold,
           save_steps=save_summaries_steps,
+          save_secs=save_summaries_secs,
           output_dir=checkpoint_dir))
     if save_checkpoint_secs and save_checkpoint_secs > 0:
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
@@ -312,7 +323,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
 
   if hooks:
     all_hooks.extend(hooks)
-  return MonitoredSession(session_creator=session_creator, hooks=all_hooks)
+  return MonitoredSession(session_creator=session_creator, hooks=all_hooks,
+                          stop_grace_period_secs=stop_grace_period_secs)
 
 
 class SessionCreator(object):
@@ -412,7 +424,8 @@ class WorkerSessionCreator(SessionCreator):
 class _MonitoredSession(object):
   """See `MonitoredSession` or `SingularMonitoredSession`."""
 
-  def __init__(self, session_creator, hooks, should_recover):
+  def __init__(self, session_creator, hooks, should_recover,
+               stop_grace_period_secs=120):
     """Sets up a Monitored or Hooked Session.
 
     Args:
@@ -421,6 +434,8 @@ class _MonitoredSession(object):
       hooks: An iterable of `SessionRunHook' objects.
       should_recover: A bool. Indicates whether to recover from `AbortedError`
         or not.
+      stop_grace_period_secs: Number of seconds given to threads to stop after
+        `close()` has been called.
     """
     self._graph_was_finalized = ops.get_default_graph().finalized
     self._hooks = hooks or []
@@ -429,7 +444,8 @@ class _MonitoredSession(object):
     # Create the session.
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
-        hooks=self._hooks)
+        hooks=self._hooks,
+        stop_grace_period_secs=stop_grace_period_secs)
     if should_recover:
       self._sess = _RecoverableSession(self._coordinated_creator)
     else:
@@ -482,11 +498,12 @@ class _MonitoredSession(object):
   class _CoordinatedSessionCreator(object):
     """Factory for the _RecoverableSession."""
 
-    def __init__(self, session_creator, hooks):
+    def __init__(self, session_creator, hooks, stop_grace_period_secs):
       self._session_creator = session_creator
       self._hooks = hooks
       self.coord = None
       self.tf_sess = None
+      self._stop_grace_period_secs = stop_grace_period_secs
 
     def create_session(self):
       """Creates a coordinated session."""
@@ -497,9 +514,10 @@ class _MonitoredSession(object):
       queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
       # Inform the hooks that a new session has been created.
       for hook in self._hooks:
-        hook.after_create_session(self.tf_sess)
+        hook.after_create_session(self.tf_sess, self.coord)
       return _CoordinatedSession(
-          _HookedSession(self.tf_sess, self._hooks), self.coord)
+          _HookedSession(self.tf_sess, self._hooks), self.coord,
+          self._stop_grace_period_secs)
 
   def _close_internal(self, exception_type=None):
     try:
@@ -596,9 +614,11 @@ class MonitoredSession(_MonitoredSession):
     A MonitoredSession object.
   """
 
-  def __init__(self, session_creator=None, hooks=None):
+  def __init__(self, session_creator=None, hooks=None,
+               stop_grace_period_secs=120):
     super(MonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=True)
+        session_creator, hooks, should_recover=True,
+        stop_grace_period_secs=stop_grace_period_secs)
 
 
 class SingularMonitoredSession(_MonitoredSession):
@@ -657,7 +677,8 @@ class SingularMonitoredSession(_MonitoredSession):
                scaffold=None,
                master='',
                config=None,
-               checkpoint_dir=None):
+               checkpoint_dir=None,
+               stop_grace_period_secs=120):
     """Creates a SingularMonitoredSession.
 
     Args:
@@ -668,6 +689,8 @@ class SingularMonitoredSession(_MonitoredSession):
       config: `ConfigProto` proto used to configure the session.
       checkpoint_dir: A string.  Optional path to a directory where to restore
         variables.
+      stop_grace_period_secs: Number of seconds given to threads to stop after
+        `close()` has been called.
     """
     session_creator = ChiefSessionCreator(
         scaffold=scaffold,
@@ -675,7 +698,8 @@ class SingularMonitoredSession(_MonitoredSession):
         config=config,
         checkpoint_dir=checkpoint_dir)
     super(SingularMonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=False)
+        session_creator, hooks, should_recover=False,
+        stop_grace_period_secs=stop_grace_period_secs)
 
   def raw_session(self):
     """Returns underlying `TensorFlow.Session` object."""
@@ -807,15 +831,18 @@ class _CoordinatedSession(_WrappedSession):
   will be re-raised from the call to `run()`.
   """
 
-  def __init__(self, sess, coord):
+  def __init__(self, sess, coord, stop_grace_period_secs=120):
     """Create a new `_CoordinatedSession`.
 
     Args:
       sess: A `tf.Session` object.  The wrapped session.
       coord: A `tf.train.Coordinator` object.
+      stop_grace_period_secs: Number of seconds given to threads to stop after
+        `close()` has been called.
     """
     _WrappedSession.__init__(self, sess)
     self._coord = coord
+    self._stop_grace_period_secs = stop_grace_period_secs
 
   def _check_stop(self):
     # Check with the coordinator if we should stop.
@@ -824,7 +851,9 @@ class _CoordinatedSession(_WrappedSession):
   def close(self):
     self._coord.request_stop()
     try:
-      self._coord.join()
+      self._coord.join(
+          stop_grace_period_secs=self._stop_grace_period_secs,
+          ignore_live_threads=True)
     finally:
       try:
         _WrappedSession.close(self)

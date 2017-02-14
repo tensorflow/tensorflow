@@ -146,6 +146,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
     `signature_fn` without filtering.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 *  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: the checkpoint path of the model to be exported. If it is
+      `None` (which is default), will use the latest checkpoint in
+      export_dir.
 
 ##### Returns:
 
@@ -157,22 +160,19 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export_savedmodel(*args, **kwargs)` {#Estimator.export_savedmodel}
+#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#Estimator.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -181,7 +181,8 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 

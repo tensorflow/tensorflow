@@ -1,150 +1,148 @@
 Beta distribution.
 
-This distribution is parameterized by `a` and `b` which are shape
-parameters.
+The Beta distribution is defined over the `(0, 1)` interval using parameters
+`concentration1` (aka "alpha") and `concentration0` (aka "beta").
 
-#### Mathematical details
+#### Mathematical Details
 
-The Beta is a distribution over the interval (0, 1).
-The distribution has hyperparameters `a` and `b` and
-probability mass function (pdf):
+The probability density function (pdf) is,
 
-```pdf(x) = 1 / Beta(a, b) * x^(a - 1) * (1 - x)^(b - 1)```
+```none
+pdf(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+```
 
-where `Beta(a, b) = Gamma(a) * Gamma(b) / Gamma(a + b)`
-is the beta function.
+where:
 
+* `concentration1 = alpha`,
+* `concentration0 = beta`,
+* `Z` is the normalization constant, and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
 
-This class provides methods to create indexed batches of Beta
-distributions. One entry of the broadcasted
-shape represents of `a` and `b` represents one single Beta distribution.
-When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
-and `x` are broadcast to the same shape (if possible).
-Every entry in a/b/x corresponds to a single Beta distribution.
+The concentration parameters represent mean total counts of a `1` or a `0`,
+i.e.,
+
+```none
+concentration1 = alpha = mean * total_concentration
+concentration0 = beta  = (1. - mean) * total_concentration
+```
+
+where `mean` in `(0, 1)` and `total_concentration` is a positive real number
+representing a mean `total_count = concentration1 + concentration0`.
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
 
 #### Examples
 
-Creates 3 distributions.
-The distribution functions can be evaluated on x.
-
 ```python
-a = [1, 2, 3]
-b = [1, 2, 3]
-dist = Beta(a, b)
+# Create a batch of three Beta distributions.
+alpha = [1, 2, 3]
+beta = [1, 2, 3]
+dist = Beta(alpha, beta)
+
+dist.sample([4, 5])  # Shape [4, 5, 3]
+
+# `x` has three batch entries, each with two samples.
+x = [[.1, .4, .5],
+     [.2, .3, .5]]
+# Calculate the probability of each pair of samples under the corresponding
+# distribution in `dist`.
+dist.prob(x)         # Shape [2, 3]
 ```
 
 ```python
-# x same shape as a.
-x = [.2, .3, .7]
-dist.pdf(x)  # Shape [3]
+# Create batch_shape=[2, 3] via parameter broadcast:
+alpha = [[1.], [2]]      # Shape [2, 1]
+beta = [3., 4, 5]        # Shape [3]
+dist = Beta(alpha, beta)
 
-# a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
-x = [[.1, .4, .5], [.2, .3, .5]]
-dist.pdf(x)  # Shape [2, 3]
+# alpha broadcast as: [[1., 1, 1,],
+#                      [2, 2, 2]]
+# beta broadcast as:  [[3., 4, 5],
+#                      [3, 4, 5]]
+# batch_Shape [2, 3]
+dist.sample([4, 5])  # Shape [4, 5, 2, 3]
 
-# a/b will be broadcast to shape [5, 7, 3] to match x.
-x = [[...]]  # Shape [5, 7, 3]
-dist.pdf(x)  # Shape [5, 7, 3]
-```
-
-Creates a 2-batch of 3-class distributions.
-
-```python
-a = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
-b = 5  # Shape []
-dist = Beta(a, b)
-
-# x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
-x = [.2, .3, .9]
-dist.pdf(x)  # Shape [2]
+x = [.2, .3, .5]
+# x will be broadcast as [[.2, .3, .5],
+#                         [.2, .3, .5]],
+# thus matching batch_shape [2, 3].
+dist.prob(x)         # Shape [2, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(concentration1=None, concentration0=None, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
 ##### Args:
 
 
-*  <b>`a`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different Beta distributions. This also defines the
-     dtype of the distribution.
-*  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different Beta distributions.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
-    values for parameters `a`, `b`, and `x` in `prob` and `log_prob`.
-    If `False` and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch.
-dist = Beta(1.1, 2.0)
-
-# Define a 2-batch.
-dist = Beta([1.0, 2.0], [4.0, 5.0])
-```
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.a` {#Beta.a}
-
-Shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.a_b_sum` {#Beta.a_b_sum}
-
-Sum of parameters.
+*  <b>`concentration1`</b>: Positive floating-point `Tensor` indicating mean
+    number of successes; aka "alpha". Implies `self.dtype` and
+    `self.batch_shape`, i.e.,
+    `concentration1.shape = [N1, N2, ..., Nm] = self.batch_shape`.
+*  <b>`concentration0`</b>: Positive floating-point `Tensor` indicating mean
+    number of failures; aka "beta". Otherwise has same semantics as
+    `concentration1`.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined. When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Beta.allow_nan_stats` {#Beta.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Beta.b` {#Beta.b}
+#### `tf.contrib.distributions.Beta.batch_shape` {#Beta.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Beta.batch_shape(name='batch_shape')` {#Beta.batch_shape}
+#### `tf.contrib.distributions.Beta.batch_shape_tensor(name='batch_shape_tensor')` {#Beta.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -159,7 +157,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.cdf(value, name='cdf', **condition_kwargs)` {#Beta.cdf}
+#### `tf.contrib.distributions.Beta.cdf(value, name='cdf')` {#Beta.cdf}
 
 Cumulative distribution function.
 
@@ -169,18 +167,37 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 cdf(x) := P[X <= x]
 ```
 
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
+
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.concentration0` {#Beta.concentration0}
+
+Concentration parameter associated with a `0` outcome.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.concentration1` {#Beta.concentration1}
+
+Concentration parameter associated with a `1` outcome.
 
 
 - - -
@@ -208,6 +225,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.Beta.covariance(name='covariance')` {#Beta.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Beta.dtype` {#Beta.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -222,7 +283,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.event_shape(name='event_shape')` {#Beta.event_shape}
+#### `tf.contrib.distributions.Beta.event_shape` {#Beta.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.event_shape_tensor(name='event_shape_tensor')` {#Beta.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -239,42 +314,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.get_batch_shape()` {#Beta.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.get_event_shape()` {#Beta.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
 #### `tf.contrib.distributions.Beta.is_continuous` {#Beta.is_continuous}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.is_reparameterized` {#Beta.is_reparameterized}
 
 
 
@@ -293,7 +333,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -310,12 +350,12 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Beta.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Beta.log_cdf}
+#### `tf.contrib.distributions.Beta.log_cdf(value, name='log_cdf')` {#Beta.log_cdf}
 
 Log cumulative distribution function.
 
@@ -332,17 +372,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -353,66 +390,21 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Beta.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Beta.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.log_prob(value, name='log_prob', **condition_kwargs)` {#Beta.log_prob}
+#### `tf.contrib.distributions.Beta.log_prob(value, name='log_prob')` {#Beta.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
+
+Additional documentation from `Beta`:
+
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
+
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -423,7 +415,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Beta.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Beta.log_survival_function}
+#### `tf.contrib.distributions.Beta.log_survival_function(value, name='log_survival_function')` {#Beta.log_survival_function}
 
 Log survival function.
 
@@ -443,7 +435,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -466,10 +457,10 @@ Mode.
 
 Additional documentation from `Beta`:
 
-Note that the mode for the Beta distribution is only defined
-when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+Note: The mode is undefined when `concentration1 <= 1` or
+`concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
+is used for undefined modes. If `self.allow_nan_stats` is `False` an
+exception is raised when one or more modes are undefined.
 
 
 - - -
@@ -485,7 +476,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -503,7 +498,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Beta.param_static_shapes(cls, sample_shape)` {#Beta.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -530,74 +533,21 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.pdf(value, name='pdf', **condition_kwargs)` {#Beta.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.pmf(value, name='pmf', **condition_kwargs)` {#Beta.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.prob(value, name='prob', **condition_kwargs)` {#Beta.prob}
+#### `tf.contrib.distributions.Beta.prob(value, name='prob')` {#Beta.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
 
 Additional documentation from `Beta`:
 
-Note that the argument `x` must be a non-negative floating point tensor
-whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-dimensions, the last dimension represents counts for the corresponding Beta
-distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+Note: `x` must have dtype `self.dtype` and be in
+`[0, 1].` It must have a shape compatible with `self.batch_shape()`.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -608,7 +558,22 @@ distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Beta.sample}
+#### `tf.contrib.distributions.Beta.reparameterization_type` {#Beta.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.sample(sample_shape=(), seed=None, name='sample')` {#Beta.sample}
 
 Generate samples of the specified shape.
 
@@ -621,7 +586,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -631,14 +595,34 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.std(name='std')` {#Beta.std}
+#### `tf.contrib.distributions.Beta.stddev(name='stddev')` {#Beta.stddev}
 
 Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Beta.survival_function(value, name='survival_function', **condition_kwargs)` {#Beta.survival_function}
+#### `tf.contrib.distributions.Beta.survival_function(value, name='survival_function')` {#Beta.survival_function}
 
 Survival function.
 
@@ -655,19 +639,25 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.total_concentration` {#Beta.total_concentration}
+
+Sum of concentration parameters.
 
 
 - - -
 
 #### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -675,5 +665,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Beta.variance(name='variance')` {#Beta.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

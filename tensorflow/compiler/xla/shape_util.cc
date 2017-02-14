@@ -37,32 +37,62 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ bool ShapeUtil::CompareShapes(const Shape& lhs, const Shape& rhs,
-                                           bool compare_layouts) {
-  if (IsTuple(lhs)) {
-    return IsTuple(rhs) &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts);
-                           });
+namespace {
+
+// Recursive helper for comparing the equality of two shapes. Returns true if
+// the shapes are the same. If compare_layouts is true, then layouts must also
+// match.
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
+  if (ShapeUtil::IsTuple(lhs)) {
+    if (!ShapeUtil::IsTuple(rhs)) {
+      VLOG(3) << "CompareShapes: lhs is a tuple, rhs not a tuple";
+      return false;
+    }
+
+    if (!ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [=](const Shape& l, const Shape& r) {
+                           return CompareShapes(l, r, compare_layouts);
+                         })) {
+      VLOG(3) << "CompareShapes: tuples on lhs and rhs not equal";
+      return false;
+    }
   }
   // Explicitly compare the fields rather than using MessageDifferencer because
   // we want empty layouts to be treated identically to missing layouts.
-  if (compare_layouts &&
-      (!ContainersEqual(lhs.layout().minor_to_major(),
-                        rhs.layout().minor_to_major()) ||
-       !ContainersEqual(lhs.layout().padded_dimensions(),
-                        rhs.layout().padded_dimensions()) ||
-       lhs.layout().padding_value() != rhs.layout().padding_value())) {
+  if (compare_layouts) {
+    if (!ContainersEqual(lhs.layout().minor_to_major(),
+                         rhs.layout().minor_to_major())) {
+      VLOG(3) << "CompareShapes: lhs layout != rhs layout";
+      return false;
+    }
+    if (!ContainersEqual(lhs.layout().padded_dimensions(),
+                         rhs.layout().padded_dimensions())) {
+      VLOG(3)
+          << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
+      return false;
+    }
+    if (lhs.layout().padding_value() != rhs.layout().padding_value()) {
+      VLOG(3) << "CompareShapes: lhs padding value != rhs padding_value";
+      return false;
+    }
+  }
+
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
     return false;
   }
-  return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
+  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs element type != rhs element type";
+    return false;
+  }
+  return true;
 }
+
+}  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
   bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
   if (!equal && VLOG_IS_ON(3)) {
-    // TODO(jeff): Maybe print more info about where lhs and rhs differ
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
   }
@@ -335,10 +365,9 @@ namespace xla {
     string layout;
     if (!IsScalar(shape) && !IsOpaque(shape)) {
       if (LayoutUtil::HasLayout(shape)) {
-        layout = tensorflow::strings::StrCat(
-            " ", LayoutUtil::HumanString(shape.layout()));
+        layout = LayoutUtil::HumanString(shape.layout());
       } else {
-        layout = " (no layout)";
+        layout = "{no layout}";
       }
     }
     return tensorflow::strings::StrCat(
@@ -481,6 +510,7 @@ namespace xla {
   TF_DCHECK_OK(ValidateShape(shape));
   DCHECK_NE(OPAQUE, shape.element_type());
   if (shape.element_type() == TUPLE) {
+    CHECK_GT(pointer_size, 0);
     return pointer_size * shape.tuple_shapes_size();
   }
   int64 allocated_element_count;
@@ -495,10 +525,6 @@ namespace xla {
   }
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
-}
-
-/* static */ int64 ShapeUtil::ByteSizeOf(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
@@ -982,6 +1008,40 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   };
   return check_input_unit_indices(input_shape, output_shape) &&
          check_input_unit_indices(output_shape, input_shape);
+}
+
+/* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
+                                              Shape shape) {
+  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  if (LayoutUtil::HasLayout(shape)) {
+    Layout* layout = shape.mutable_layout();
+    for (size_t i = 0; i < layout->minor_to_major().size();) {
+      if (layout->minor_to_major(i) == dim_to_delete) {
+        layout->mutable_minor_to_major()->erase(
+            layout->minor_to_major().begin() + i);
+        continue;
+      }
+      if (layout->minor_to_major(i) > dim_to_delete) {
+        (*layout->mutable_minor_to_major())[i] -= 1;
+      }
+      ++i;
+    }
+  }
+  return shape;
+}
+
+/* static */ Shape ShapeUtil::FilterDimensions(
+    const std::function<bool(int64)>& p, Shape shape) {
+  std::vector<int64> dims_to_delete;
+  for (int64 i = shape.dimensions().size() - 1; i >= 0; --i) {
+    if (!p(i)) {
+      dims_to_delete.push_back(i);
+    }
+  }
+  for (int64 dim : dims_to_delete) {
+    shape = DeleteDimension(dim, shape);
+  }
+  return shape;
 }
 
 }  // namespace xla

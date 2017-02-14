@@ -18,7 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os.path
+import os
+import re
 import threading
 
 import numpy as np
@@ -37,6 +38,10 @@ from tensorflow.python.util import compat
 
 namedtuple = collections.namedtuple
 ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])
+
+HealthPillEvent = namedtuple(
+    'HealthPillEvent',
+    ['wall_time', 'step', 'node_name', 'output_slot', 'value'])
 
 CompressedHistogramEvent = namedtuple('CompressedHistogramEvent',
                                       ['wall_time', 'step',
@@ -73,6 +78,7 @@ HISTOGRAMS = 'histograms'
 IMAGES = 'images'
 AUDIO = 'audio'
 SCALARS = 'scalars'
+HEALTH_PILLS = 'health_pills'
 GRAPH = 'graph'
 META_GRAPH = 'meta_graph'
 RUN_METADATA = 'run_metadata'
@@ -87,6 +93,8 @@ DEFAULT_SIZE_GUIDANCE = {
     IMAGES: 4,
     AUDIO: 4,
     SCALARS: 10000,
+    # We store this many health pills per op.
+    HEALTH_PILLS: 100,
     HISTOGRAMS: 1,
 }
 
@@ -95,12 +103,30 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
     IMAGES: 0,
     AUDIO: 0,
     SCALARS: 0,
+    HEALTH_PILLS: 0,
     HISTOGRAMS: 0,
 }
 
+# The tag that values containing health pills have. Health pill data is stored
+# in tensors. In order to distinguish health pill values from scalar values, we
+# rely on how health pill values have this special tag value.
+_HEALTH_PILL_EVENT_TAG = '__health_pill__'
+
 
 def IsTensorFlowEventsFile(path):
-  """Check the path name to see if it is probably a TF Events file."""
+  """Check the path name to see if it is probably a TF Events file.
+
+  Args:
+    path: A file path to check if it is an event file.
+
+  Raises:
+    ValueError: If the path is an empty string.
+
+  Returns:
+    If path is formatted like a TensorFlowEventsFile.
+  """
+  if not path:
+    raise ValueError('Path must be a nonempty string')
   return 'tfevents' in compat.as_str_any(os.path.basename(path))
 
 
@@ -125,17 +151,6 @@ class EventAccumulator(object):
 
   Histograms, audio, and images are very large, so storing all of them is not
   recommended.
-
-  @@Reload
-  @@Tags
-  @@Scalars
-  @@Graph
-  @@MetaGraph
-  @@RunMetadata
-  @@Histograms
-  @@CompressedHistograms
-  @@Images
-  @@Audio
   """
 
   def __init__(self,
@@ -169,6 +184,12 @@ class EventAccumulator(object):
 
     self._first_event_timestamp = None
     self._scalars = reservoir.Reservoir(size=sizes[SCALARS])
+
+    # Unlike the other reservoir, the reservoir for health pills is keyed by the
+    # name of the op instead of the tag. This lets us efficiently obtain the
+    # health pills per node.
+    self._health_pills = reservoir.Reservoir(size=sizes[HEALTH_PILLS])
+
     self._graph = None
     self._graph_from_metagraph = False
     self._meta_graph = None
@@ -292,7 +313,10 @@ class EventAccumulator(object):
     elif event.HasField('summary'):
       for value in event.summary.value:
         if value.HasField('tensor'):
-          self._ProcessTensorSummary(value, event)
+          if value.tag == _HEALTH_PILL_EVENT_TAG:
+            self._ProcessHealthPillSummary(value, event)
+          else:
+            self._ProcessTensorSummary(value, event)
         else:
           for summary_type, summary_func in SUMMARY_TYPES.items():
             if value.HasField(summary_type):
@@ -349,6 +373,38 @@ class EventAccumulator(object):
           'Unsupported type {} for TensorSummary {}; skipping this sequence.'.
           format(type_hint, name))
 
+  def _ProcessHealthPillSummary(self, value, event):
+    """Process summaries containing health pills.
+
+    These summaries are distinguished by the fact that they have a Tensor field
+    and have a special tag value.
+
+    This method emits ERROR-level messages to the logs if it encounters Tensor
+    summaries that it cannot process.
+
+    Args:
+      value: A summary_pb2.Summary.Value with a Tensor field.
+      event: The event_pb2.Event containing that value.
+    """
+    elements = np.fromstring(value.tensor.tensor_content, dtype=np.float64)
+
+    # The node_name property of the value object is actually a watch key: a
+    # combination of node name, output slot, and a suffix. We capture the
+    # actual node name and the output slot with a regular expression.
+    match = re.match(r'^(.*):(\d+):DebugNumericSummary$', value.node_name)
+    if not match:
+      logging.log_first_n(
+          logging.ERROR,
+          'Unsupported watch key %s for health pills; skipping this sequence.',
+          1,
+          value.node_name)
+      return
+
+    node_name = match.group(1)
+    output_slot = int(match.group(2))
+    self._ProcessHealthPill(
+        event.wall_time, event.step, node_name, output_slot, elements)
+
   def _UpdateTensorSummaries(self):
     g = self.Graph()
     for node in g.node:
@@ -387,6 +443,20 @@ class EventAccumulator(object):
       An array of `ScalarEvent`s.
     """
     return self._scalars.Items(tag)
+
+  def HealthPills(self, node_name):
+    """Returns all health pill values for a certain node.
+
+    Args:
+      node_name: The name of the node to obtain health pills for.
+
+    Raises:
+      KeyError: If the node name is not found.
+
+    Returns:
+      An array of `HealthPillEvent`s.
+    """
+    return self._health_pills.Items(node_name)
 
   def Graph(self):
     """Return the graph definition, if there is one.
@@ -598,6 +668,31 @@ class EventAccumulator(object):
     sv = ScalarEvent(wall_time=wall_time, step=step, value=scalar)
     self._scalars.AddItem(tag, sv)
 
+  def _ProcessHealthPill(self, wall_time, step, node_name, output_slot,
+                         elements):
+    """Processes a health pill value by adding it to accumulated state.
+
+    Args:
+      wall_time: The time at which the health pill was created. Provided by the
+        debugger.
+      step: The step at which the health pill was created. Provided by the
+        debugger.
+      node_name: The name of the node for this health pill.
+      output_slot: The output slot for this health pill.
+      elements: An ND array of 12 floats. The elements of the health pill.
+    """
+    # Key by the node name for fast retrieval of health pills by node name. The
+    # array is cast to a list so that it is JSON-able. The debugger data plugin
+    # serves a JSON response.
+    self._health_pills.AddItem(
+        node_name,
+        HealthPillEvent(
+            wall_time=wall_time,
+            step=step,
+            node_name=node_name,
+            output_slot=output_slot,
+            value=list(elements)))
+
   def _Purge(self, event, by_tags):
     """Purge all events that have occurred after the given event.step.
 
@@ -662,6 +757,8 @@ def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
 
 def _GeneratorFromPath(path):
   """Create an event generator for file or directory at given path string."""
+  if not path:
+    raise ValueError('path must be a valid string')
   if IsTensorFlowEventsFile(path):
     return event_file_loader.EventFileLoader(path)
   else:

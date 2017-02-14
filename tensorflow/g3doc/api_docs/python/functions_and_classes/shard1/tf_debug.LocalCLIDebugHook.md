@@ -1,6 +1,7 @@
 Command-line-interface debugger hook.
 
-Can be used as a monitor/hook for tf.train.MonitoredSession.
+Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
+`tf.contrib.learn`'s `Estimator`s and `Experiment`s.
 - - -
 
 #### `tf_debug.LocalCLIDebugHook.__enter__()` {#LocalCLIDebugHook.__enter__}
@@ -33,17 +34,23 @@ Create a local debugger command-line interface (CLI) hook.
 
 Add a tensor filter.
 
+See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+Override default behavior to accomodate the possibility of this method being
+called prior to the initialization of the underlying
+`LocalCLIDebugWrapperSession` object.
+
 ##### Args:
 
 
-*  <b>`filter_name`</b>: (`str`) name of the filter.
-*  <b>`tensor_filter`</b>: (`callable`) the filter callable. See the doc string of
-    `DebugDumpDir.find()` for more details about its signature.
+*  <b>`filter_name`</b>: See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()`
+    for details.
+*  <b>`tensor_filter`</b>: See doc of
+    `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
 
 
 - - -
 
-#### `tf_debug.LocalCLIDebugHook.after_create_session(session)` {#LocalCLIDebugHook.after_create_session}
+#### `tf_debug.LocalCLIDebugHook.after_create_session(session, coord)` {#LocalCLIDebugHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -59,6 +66,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -191,7 +199,7 @@ Overrides on-session-init callback.
 
 ##### Returns:
 
-  An instance of OnSessionInitResponse.
+  An instance of `OnSessionInitResponse`.
 
 
 - - -

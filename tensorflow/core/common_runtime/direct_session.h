@@ -125,7 +125,9 @@ class DirectSession : public Session {
   // library. Consider giving each partition its own function library to enable
   // per-partition rewrites.
   struct ExecutorsAndKeys {
-    int64 step_count = 0;
+    ExecutorsAndKeys() : step_count(0) {}
+
+    std::atomic_int_fast64_t step_count;
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
@@ -249,7 +251,9 @@ class DirectSession : public Session {
   // Holds mappings from signature to the executors that process
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
-  std::unordered_map<string, std::unique_ptr<ExecutorsAndKeys>> executors_
+  // The map value is a shared_ptr since multiple map keys can point to the
+  // same ExecutorsAndKey object.
+  std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
       GUARDED_BY(executor_lock_);
 
   // Holds mappings from handle to partial run state.

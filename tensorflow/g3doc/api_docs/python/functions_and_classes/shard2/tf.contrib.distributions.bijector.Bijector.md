@@ -4,7 +4,7 @@ A `Bijector` implements a
 [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
 bijective, differentiable function. A `Bijector` is used by
 `TransformedDistribution` but can be generally used for transforming a
-`Distribution` generated `Tensor`.  A `Bijector` is characterized by three
+`Distribution` generated `Tensor`. A `Bijector` is characterized by three
 operations:
 
 1. Forward Evaluation
@@ -22,7 +22,7 @@ operations:
    "The log of the determinant of the matrix of all first-order partial
    derivatives of the inverse function."
    Useful for inverting a transformation to compute one probability in terms
-   of another.  Geometrically, the det(Jacobian) is the volume of the
+   of another. Geometrically, the det(Jacobian) is the volume of the
    transformation and is used to scale the probability.
 
 By convention, transformations of random variables are named in terms of the
@@ -34,7 +34,7 @@ Example Use:
   - Basic properties:
 
   ```python
-  x = ... # A tensor.
+  x = ...  # A tensor.
   # Evaluate forward transformation.
   fwd_x = my_bijector.forward(x)
   x == my_bijector.inverse(fwd_x)
@@ -44,9 +44,9 @@ Example Use:
   - Computing a log-likelihood:
 
   ```python
-  def transformed_log_pdf(bijector, log_pdf, x):
+  def transformed_log_prob(bijector, log_prob, x):
     return (bijector.inverse_log_det_jacobian(x) +
-            log_pdf(bijector.inverse(x)))
+            log_prob(bijector.inverse(x)))
   ```
 
   - Transforming a random outcome:
@@ -80,7 +80,7 @@ Example transformations:
     ```
       class Exp(Bijector):
         def __init__(self, event_ndims=0, validate_args=False, name="exp"):
-          super(Exp, self).__init__(batch_ndims=0, event_ndims=event_ndims,
+          super(Exp, self).__init__(event_ndims=event_ndims,
                                     validate_args=validate_args, name=name)
         def _forward(self, x):
           return math_ops.exp(x)
@@ -88,10 +88,10 @@ Example transformations:
           x = math_ops.log(y)
           return x, -self._forward_log_det_jacobian(x)
         def _forward_log_det_jacobian(self, x):
-          if self.shaper is None:
+          if self.event_ndims is None:
             raise ValueError("Jacobian requires known event_ndims.")
-          _, _, event_dims = self.shaper.get_dims(x)
-          return math_ops.reduce_sum(x, reduction_indices=event_dims)
+          event_dims = array_ops.shape(x)[-self.event_ndims:]
+          return math_ops.reduce_sum(x, axis=event_dims)
       ```
 
   - "Affine"
@@ -116,8 +116,8 @@ Example of why a `Bijector` needs to understand sample, batch, event
 partitioning:
 
 - Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
-  and event (S, B, E) shape semantics.  Suppose
-  the `Tensor`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
+  and event (S, B, E) shape semantics. Suppose the `Tensor`'s
+  partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
 
   For `Exp`, the shape of the `Tensor` returned by `forward` and `inverse` is
   unchanged, i.e., `[4, 2, 3, 3]`. However the shape returned by
@@ -132,7 +132,7 @@ Subclass Requirements:
 
 - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
   like `QuantizedDistribution`) then depending on your use, you may not need
-  to implement all of `_forward` and `_inverse` functions.  Examples:
+  to implement all of `_forward` and `_inverse` functions. Examples:
     1. Sampling (e.g., `sample`) only requires `_forward`.
     2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
        `_inverse` (and related).
@@ -140,7 +140,7 @@ Subclass Requirements:
       `_inverse` can be implemented as a cache lookup.
 
   See `Example Use` [above] which shows how these functions are used to
-  transform a distribution.  (Note: `_forward` could theoretically be
+  transform a distribution. (Note: `_forward` could theoretically be
   implemented as a cache lookup but this would require controlling the
   underlying sample generation mechanism.)
 
@@ -156,9 +156,10 @@ Subclass Requirements:
   functions to avoid computing the `inverse_log_det_jacobian` or the
   `inverse`, respectively.
 
-- Subclasses should implement `_get_forward_event_shape`,
-  `_forward_event_shape` (and `inverse` counterparts) if the transformation is
-  shape-changing.  By default the event-shape is assumed unchanged from input.
+- Subclasses should implement `_forward_event_shape`,
+  `_forward_event_shape_tensor` (and `inverse` counterparts) if the
+  transformation is shape-changing. By default the event-shape is assumed
+  unchanged from input.
 
 Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
 
@@ -166,14 +167,14 @@ Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
   can be implemented as a cache lookup.
 
 - The inverse `log o det o Jacobian` can be implemented as the negative of the
-  forward `log o det o Jacobian`.  This is useful if the `inverse` is
+  forward `log o det o Jacobian`. This is useful if the `inverse` is
   implemented as a cache or the inverse Jacobian is computationally more
   expensive (e.g., `CholeskyOuterProduct` `Bijector`). The following
   demonstrates the suggested implementation.
 
   ```python
   def _inverse_and_log_det_jacobian(self, y):
-     x = # ... implement inverse, possibly via cache.
+     x = ...  # implement inverse, possibly via cache.
      return x, -self._forward_log_det_jac(x)  # Note negation.
   ```
 
@@ -209,7 +210,7 @@ https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
   the `_inverse` implementation.
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
+#### `tf.contrib.distributions.bijector.Bijector.__init__(event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
 
 Constructs Bijector.
 
@@ -218,11 +219,11 @@ A `Bijector` transforms random variables into new random variables.
 Examples:
 
 ```python
-# Create the Y = g(X) = X transform which operates on 4-Tensors of vectors.
-identity = Identity(batch_ndims=4, event_ndims=1)
+# Create the Y = g(X) = X transform which operates on vector events.
+identity = Identity(event_ndims=1)
 
 # Create the Y = g(X) = exp(X) transform which operates on matrices.
-exp = Exp(batch_ndims=0, event_ndims=2)
+exp = Exp(event_ndims=2)
 ```
 
 See `Bijector` subclass docstring for more details and specific examples.
@@ -230,13 +231,12 @@ See `Bijector` subclass docstring for more details and specific examples.
 ##### Args:
 
 
-*  <b>`batch_ndims`</b>: number of dimensions associated with batch coordinates.
 *  <b>`event_ndims`</b>: number of dimensions associated with event coordinates.
 *  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Bijector`.
-*  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is not a
+*  <b>`is_constant_jacobian`</b>: Python `bool` indicating that the Jacobian is not a
     function of the input.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
+*  <b>`validate_args`</b>: Python `bool`, default `False`. Whether to validate input
+    with asserts. If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`dtype`</b>: `tf.dtype` supported by this `Bijector`. `None` means dtype is not
     enforced.
@@ -252,7 +252,14 @@ dtype of `Tensor`s transformable by this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.forward(x, name='forward', **condition_kwargs)` {#Bijector.forward}
+#### `tf.contrib.distributions.bijector.Bijector.event_ndims` {#Bijector.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Bijector.forward(x, name='forward')` {#Bijector.forward}
 
 Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
@@ -261,7 +268,6 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -277,7 +283,28 @@ Returns the forward `Bijector` evaluation, i.e., X = g(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.forward_event_shape(input_shape, name='forward_event_shape')` {#Bijector.forward_event_shape}
+#### `tf.contrib.distributions.bijector.Bijector.forward_event_shape(input_shape)` {#Bijector.forward_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `forward_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `forward` function.
+
+##### Returns:
+
+
+*  <b>`forward_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `forward`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Bijector.forward_event_shape_tensor(input_shape, name='forward_event_shape_tensor')` {#Bijector.forward_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -291,13 +318,13 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`forward_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `forward`.
+*  <b>`forward_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `forward`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.forward_log_det_jacobian(x, name='forward_log_det_jacobian', **condition_kwargs)` {#Bijector.forward_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Bijector.forward_log_det_jacobian(x, name='forward_log_det_jacobian')` {#Bijector.forward_log_det_jacobian}
 
 Returns both the forward_log_det_jacobian.
 
@@ -306,7 +333,6 @@ Returns both the forward_log_det_jacobian.
 
 *  <b>`x`</b>: `Tensor`. The input to the "forward" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -323,48 +349,6 @@ Returns both the forward_log_det_jacobian.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.get_forward_event_shape(input_shape)` {#Bijector.get_forward_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `forward_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`input_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `forward` function.
-
-##### Returns:
-
-
-*  <b>`forward_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `forward`. Possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Bijector.get_inverse_event_shape(output_shape)` {#Bijector.get_inverse_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `inverse_event_shape`. May be only partially defined.
-
-##### Args:
-
-
-*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
-    `inverse` function.
-
-##### Returns:
-
-
-*  <b>`inverse_event_shape`</b>: `TensorShape` indicating event-portion shape after
-    applying `inverse`. Possibly unknown.
-
-
-- - -
-
 #### `tf.contrib.distributions.bijector.Bijector.graph_parents` {#Bijector.graph_parents}
 
 Returns this `Bijector`'s graph_parents as a Python list.
@@ -372,7 +356,7 @@ Returns this `Bijector`'s graph_parents as a Python list.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse(y, name='inverse', **condition_kwargs)` {#Bijector.inverse}
+#### `tf.contrib.distributions.bijector.Bijector.inverse(y, name='inverse')` {#Bijector.inverse}
 
 Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
@@ -381,7 +365,6 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 *  <b>`y`</b>: `Tensor`. The input to the "inverse" evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -398,7 +381,7 @@ Returns the inverse `Bijector` evaluation, i.e., X = g^{-1}(Y).
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian', **condition_kwargs)` {#Bijector.inverse_and_inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Bijector.inverse_and_inverse_log_det_jacobian(y, name='inverse_and_inverse_log_det_jacobian')` {#Bijector.inverse_and_inverse_log_det_jacobian}
 
 Returns both the inverse evaluation and inverse_log_det_jacobian.
 
@@ -412,7 +395,6 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 *  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -429,7 +411,28 @@ See `inverse()`, `inverse_log_det_jacobian()` for more details.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse_event_shape(output_shape, name='inverse_event_shape')` {#Bijector.inverse_event_shape}
+#### `tf.contrib.distributions.bijector.Bijector.inverse_event_shape(output_shape)` {#Bijector.inverse_event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `inverse_event_shape_tensor`. May be only partially defined.
+
+##### Args:
+
+
+*  <b>`output_shape`</b>: `TensorShape` indicating event-portion shape passed into
+    `inverse` function.
+
+##### Returns:
+
+
+*  <b>`inverse_event_shape_tensor`</b>: `TensorShape` indicating event-portion shape
+    after applying `inverse`. Possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Bijector.inverse_event_shape_tensor(output_shape, name='inverse_event_shape_tensor')` {#Bijector.inverse_event_shape_tensor}
 
 Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 
@@ -443,13 +446,13 @@ Shape of a single sample from a single batch as an `int32` 1D `Tensor`.
 ##### Returns:
 
 
-*  <b>`inverse_event_shape`</b>: `Tensor`, `int32` vector indicating event-portion
-    shape after applying `inverse`.
+*  <b>`inverse_event_shape_tensor`</b>: `Tensor`, `int32` vector indicating
+    event-portion shape after applying `inverse`.
 
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian', **condition_kwargs)` {#Bijector.inverse_log_det_jacobian}
+#### `tf.contrib.distributions.bijector.Bijector.inverse_log_det_jacobian(y, name='inverse_log_det_jacobian')` {#Bijector.inverse_log_det_jacobian}
 
 Returns the (log o det o Jacobian o inverse)(y).
 
@@ -462,7 +465,6 @@ Note that `forward_log_det_jacobian` is the negative of this function.
 
 *  <b>`y`</b>: `Tensor`. The input to the "inverse" Jacobian evaluation.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -487,7 +489,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -495,13 +498,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Bijector.name` {#Bijector.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Bijector.shaper` {#Bijector.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

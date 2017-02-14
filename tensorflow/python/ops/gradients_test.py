@@ -417,7 +417,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       inp = constant(1.0, shape=[100, 32], name="in")
       out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
         _ = gradients.gradients(out, inp)
 
 
@@ -567,6 +567,18 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         "of unknown shape. This may consume a large amount of memory." in
         str(w[0].message))
+
+
+class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
+
+  def testRealOnly(self):
+    x = constant_op.constant(7+3j, dtype=dtypes.complex64)
+    y = math_ops.square(x)
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Gradients of complex tensors must set grad_ys "
+        r"\(y\.dtype = tf\.complex64\)"):
+      gradients.gradients(y, x)
 
 
 if __name__ == "__main__":

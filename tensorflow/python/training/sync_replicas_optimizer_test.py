@@ -28,7 +28,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import server_lib
-from tensorflow.python.training import supervisor as supervisor_lib
 from tensorflow.python.training import training
 
 
@@ -92,33 +91,14 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
                     [var_0, var_1, var_sparse]),
                 global_step=global_step)
         ]
+        sync_replicas_hook = sync_rep_opt.make_session_run_hook(
+            is_chief, num_tokens=num_workers)
 
-        init_op = variables.global_variables_initializer()
-        # Needed ops from the sync_rep optimizer. This is mainly for the
-        # local_step initialization.
-        local_init_op = sync_rep_opt.local_step_init_op
-        if is_chief:
-          local_init_op = sync_rep_opt.chief_init_op
-        ready_for_local_init_op = sync_rep_opt.ready_for_local_init_op
-
-        # Chief_queue_runner
-        chief_queue_runner = sync_rep_opt.get_chief_queue_runner()
-        sync_init_op = sync_rep_opt.get_init_tokens_op(num_workers)
-
-    # Creates session for chief.
-    supervisor = supervisor_lib.Supervisor(
-        graph=graph,
-        is_chief=is_chief,
-        recovery_wait_secs=1,
-        init_op=init_op,
-        local_init_op=local_init_op,
-        ready_for_local_init_op=ready_for_local_init_op)
-    session = supervisor.prepare_or_wait_for_session(workers[worker_id].target)
-
-    # Chief should execute the sync_init_op and start the chief queue runner.
-    if is_chief:
-      session.run(sync_init_op)
-      supervisor.StartQueueRunners(session, [chief_queue_runner])
+      # Creates MonitoredSession
+      session = training.MonitoredTrainingSession(
+          master=workers[worker_id].target,
+          is_chief=is_chief,
+          hooks=[sync_replicas_hook])
 
     sessions.append(session)
     graphs.append(graph)
@@ -146,9 +126,9 @@ class SyncReplicasOptimizerTest(test.TestCase):
     var_0_g_0 = graphs[0].get_tensor_by_name("v0:0")
     var_1_g_0 = graphs[0].get_tensor_by_name("v1:0")
     local_step_0 = graphs[0].get_tensor_by_name("sync_rep_local_step:0")
-    self.assertAllEqual(0.0, var_0_g_0.eval(session=sessions[0]))
-    self.assertAllEqual(1.0, var_1_g_0.eval(session=sessions[0]))
-    self.assertAllEqual(0, local_step_0.eval(session=sessions[0]))
+    self.assertAllEqual(0.0, sessions[0].run(var_0_g_0))
+    self.assertAllEqual(1.0, sessions[0].run(var_1_g_0))
+    self.assertAllEqual(0, sessions[0].run(local_step_0))
 
     # Will just use session 1 to verify all the variables later.
     var_0_g_1 = graphs[1].get_tensor_by_name("v0:0")
@@ -158,10 +138,9 @@ class SyncReplicasOptimizerTest(test.TestCase):
     global_step = graphs[1].get_tensor_by_name("global_step:0")
 
     # The steps should also be initialized.
-    self.assertAllEqual(0, global_step.eval(session=sessions[1]))
-    self.assertAllEqual(0, local_step_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        [[3.0], [4.0]], var_sparse_g_1.eval(session=sessions[1]))
+    self.assertAllEqual(0, sessions[1].run(global_step))
+    self.assertAllEqual(0, sessions[1].run(local_step_1))
+    self.assertAllClose([[3.0], [4.0]], sessions[1].run(var_sparse_g_1))
 
     # We have initial tokens in the queue so we can call this one by one. After
     # the first step, this will no longer work as there will be no more extra
@@ -171,16 +150,13 @@ class SyncReplicasOptimizerTest(test.TestCase):
 
     # The global step should have been updated and the variables should now have
     # the new values after the average of the gradients are applied.
-    while global_step.eval(session=sessions[1]) != 1:
+    while sessions[1].run(global_step) != 1:
       time.sleep(0.01)
 
-    self.assertAllClose(
-        0 - (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        1 - (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        [[3.0], [4.0 - (0.1 + 0.3) / 2 * 2.0]],
-        var_sparse_g_1.eval(session=sessions[1]))
+    self.assertAllClose(0 - (0.1 + 0.3) / 2 * 2.0, sessions[1].run(var_0_g_1))
+    self.assertAllClose(1 - (0.9 + 1.1) / 2 * 2.0, sessions[1].run(var_1_g_1))
+    self.assertAllClose([[3.0], [4.0 - (0.1 + 0.3) / 2 * 2.0]],
+                        sessions[1].run(var_sparse_g_1))
 
     # The local step for both workers should still be 0 because the initial
     # tokens in the token queue are 0s. This means that the following
@@ -188,20 +164,18 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # the current global step. However, this only happens once when the system
     # just starts and this is necessary to make the system robust for the case
     # when chief gets restarted by errors/preemption/...
-    self.assertAllEqual(0, local_step_0.eval(session=sessions[0]))
-    self.assertAllEqual(0, local_step_1.eval(session=sessions[1]))
+    self.assertAllEqual(0, sessions[0].run(local_step_0))
+    self.assertAllEqual(0, sessions[1].run(local_step_1))
 
     sessions[0].run(train_ops[0])
     sessions[1].run(train_ops[1])
     # Although the global step should still be 1 as explained above, the local
     # step should now be updated to 1. The variables are still the same.
-    self.assertAllEqual(1, global_step.eval(session=sessions[1]))
-    self.assertAllEqual(1, local_step_0.eval(session=sessions[0]))
-    self.assertAllEqual(1, local_step_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        0 - (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        1 - (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllEqual(1, sessions[1].run(global_step))
+    self.assertAllEqual(1, sessions[0].run(local_step_0))
+    self.assertAllEqual(1, sessions[1].run(local_step_1))
+    self.assertAllClose(0 - (0.1 + 0.3) / 2 * 2.0, sessions[1].run(var_0_g_1))
+    self.assertAllClose(1 - (0.9 + 1.1) / 2 * 2.0, sessions[1].run(var_1_g_1))
 
     # At this step, the token queue is empty. So the 2 workers need to work
     # together to proceed.
@@ -221,11 +195,11 @@ class SyncReplicasOptimizerTest(test.TestCase):
 
     # The global step should now be 2 and the gradients should have been
     # applied twice.
-    self.assertAllEqual(2, global_step.eval(session=sessions[1]))
-    self.assertAllClose(
-        0 - 2 * (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        1 - 2 * (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllEqual(2, sessions[1].run(global_step))
+    self.assertAllClose(0 - 2 * (0.1 + 0.3) / 2 * 2.0,
+                        sessions[1].run(var_0_g_1))
+    self.assertAllClose(1 - 2 * (0.9 + 1.1) / 2 * 2.0,
+                        sessions[1].run(var_1_g_1))
 
   # 3 workers and one of them is backup.
   def test3Workers1Backup(self):
@@ -245,8 +219,8 @@ class SyncReplicasOptimizerTest(test.TestCase):
     global_step = graphs[1].get_tensor_by_name("global_step:0")
 
     # The steps should also be initilized.
-    self.assertAllEqual(0, global_step.eval(session=sessions[1]))
-    self.assertAllEqual(0, local_step_1.eval(session=sessions[1]))
+    self.assertAllEqual(0, sessions[1].run(global_step))
+    self.assertAllEqual(0, sessions[1].run(local_step_1))
 
     # We have initial tokens in the queue so we can call this one by one. After
     # the token queue becomes empty, they should be called concurrently.
@@ -257,14 +231,12 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # The global step should have been updated since we only need to collect 2
     # gradients. The variables should now have the new values after the average
     # of the gradients from worker 0/2 are applied.
-    while global_step.eval(session=sessions[1]) != 1:
+    while sessions[1].run(global_step) != 1:
       time.sleep(0.01)
 
-    self.assertAllEqual(1, global_step.eval(session=sessions[1]))
-    self.assertAllClose(
-        0 - (0.1 + 0.5) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        1 - (0.9 + 1.3) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllEqual(1, sessions[1].run(global_step))
+    self.assertAllClose(0 - (0.1 + 0.5) / 2 * 2.0, sessions[1].run(var_0_g_1))
+    self.assertAllClose(1 - (0.9 + 1.3) / 2 * 2.0, sessions[1].run(var_1_g_1))
 
     # Worker 1 finished later and its gradients will now be dropped as it is
     # stale.
@@ -278,8 +250,8 @@ class SyncReplicasOptimizerTest(test.TestCase):
 
     # Although the global step should still be 1 as explained above, the local
     # step should now be updated to 1. Just check worker 1 as an example.
-    self.assertAllEqual(1, global_step.eval(session=sessions[1]))
-    self.assertAllEqual(1, local_step_1.eval(session=sessions[1]))
+    self.assertAllEqual(1, sessions[1].run(global_step))
+    self.assertAllEqual(1, sessions[1].run(local_step_1))
 
     thread_0 = self.checkedThread(
         target=self._run, args=(train_ops[0], sessions[0]))
@@ -290,19 +262,20 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # It will wait as we need 2 workers to finish this step and the global step
     # should be still 1.
     thread_0.start()
-    self.assertAllEqual(1, global_step.eval(session=sessions[1]))
+    self.assertAllEqual(1, sessions[1].run(global_step))
 
     # Starts worker 1.
     thread_1.start()
     thread_1.join()
+    thread_0.join()
 
     # The global step should now be 2 and the gradients should have been
     # applied again.
-    self.assertAllEqual(2, global_step.eval(session=sessions[1]))
-    self.assertAllClose(
-        -0.6 - (0.1 + 0.3) / 2 * 2.0, var_0_g_1.eval(session=sessions[1]))
-    self.assertAllClose(
-        -1.2 - (0.9 + 1.1) / 2 * 2.0, var_1_g_1.eval(session=sessions[1]))
+    self.assertAllEqual(2, sessions[1].run(global_step))
+    self.assertAllClose(-0.6 - (0.1 + 0.3) / 2 * 2.0,
+                        sessions[1].run(var_0_g_1))
+    self.assertAllClose(-1.2 - (0.9 + 1.1) / 2 * 2.0,
+                        sessions[1].run(var_1_g_1))
 
 
 if __name__ == "__main__":

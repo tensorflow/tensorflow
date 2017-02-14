@@ -40,27 +40,69 @@ class RandomAccessFile;
 class ReadOnlyMemoryRegion;
 class WritableFile;
 
-/// A generic interface for accessing a file system.
+/// A generic interface for accessing a file system.  Implementations
+/// of custom filesystem adapters must implement this interface,
+/// RandomAccessFile, WritableFile, and ReadOnlyMemoryRegion classes.
 class FileSystem {
  public:
-  FileSystem() {}
-
-  virtual ~FileSystem();
-
-  /// The following functions are the implementations used by the corresponding
-  /// functions in the Env class.
+  /// \brief Creates a brand new random access read-only file with the
+  /// specified name.
+  ///
+  /// On success, stores a pointer to the new file in
+  /// *result and returns OK.  On failure stores NULL in *result and
+  /// returns non-OK.  If the file does not exist, returns a non-OK
+  /// status.
+  ///
+  /// The returned file may be concurrently accessed by multiple threads.
+  ///
+  /// The ownership of the returned RandomAccessFile is passed to the caller
+  /// and the object should be deleted when is not used.
   virtual Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) = 0;
 
+  /// \brief Creates an object that writes to a new file with the specified
+  /// name.
+  ///
+  /// Deletes any existing file with the same name and creates a
+  /// new file.  On success, stores a pointer to the new file in
+  /// *result and returns OK.  On failure stores NULL in *result and
+  /// returns non-OK.
+  ///
+  /// The returned file will only be accessed by one thread at a time.
+  ///
+  /// The ownership of the returned WritableFile is passed to the caller
+  /// and the object should be deleted when is not used.
   virtual Status NewWritableFile(const string& fname,
                                  std::unique_ptr<WritableFile>* result) = 0;
 
+  /// \brief Creates an object that either appends to an existing file, or
+  /// writes to a new file (if the file does not exist to begin with).
+  ///
+  /// On success, stores a pointer to the new file in *result and
+  /// returns OK.  On failure stores NULL in *result and returns
+  /// non-OK.
+  ///
+  /// The returned file will only be accessed by one thread at a time.
+  ///
+  /// The ownership of the returned WritableFile is passed to the caller
+  /// and the object should be deleted when is not used.
   virtual Status NewAppendableFile(const string& fname,
                                    std::unique_ptr<WritableFile>* result) = 0;
 
+  /// \brief Creates a readonly region of memory with the file context.
+  ///
+  /// On success, it returns a pointer to read-only memory region
+  /// from the content of file fname. The ownership of the region is passed to
+  /// the caller. On failure stores nullptr in *result and returns non-OK.
+  ///
+  /// The returned memory region can be accessed from many threads in parallel.
+  ///
+  /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
+  /// and the object should be deleted when is not used.
   virtual Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
+  /// Returns OK if the named path exists and NOT_FOUND otherwise.
   virtual Status FileExists(const string& fname) = 0;
 
   /// \brief Returns the immediate children in the given directory.
@@ -69,81 +111,187 @@ class FileSystem {
   virtual Status GetChildren(const string& dir,
                              std::vector<string>* result) = 0;
 
-  // \brief Given a pattern, stores in *results the set of paths that matches
-  // that pattern. *results is cleared.
-  //
-  // pattern must match all of a name, not just a substring.
-  //
-  // pattern: { term }
-  // term:
-  //   '*': matches any sequence of non-'/' characters
-  //   '?': matches a single non-'/' character
-  //   '[' [ '^' ] { match-list } ']':
-  //        matches any single character (not) on the list
-  //   c: matches character c (c != '*', '?', '\\', '[')
-  //   '\\' c: matches character c
-  // character-range:
-  //   c: matches character c (c != '\\', '-', ']')
-  //   '\\' c: matches character c
-  //   lo '-' hi: matches character c for lo <= c <= hi
-  //
-  // Typical return codes
-  //  * OK - no errors
-  //  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
-  //                    implemented
-  // The default implementation uses a combination of GetChildren, MatchPath
-  // and IsDirectory.
+  /// \brief Given a pattern, stores in *results the set of paths that matches
+  /// that pattern. *results is cleared.
+  ///
+  /// pattern must match all of a name, not just a substring.
+  ///
+  /// pattern: { term }
+  /// term:
+  ///   '*': matches any sequence of non-'/' characters
+  ///   '?': matches a single non-'/' character
+  ///   '[' [ '^' ] { match-list } ']':
+  ///        matches any single character (not) on the list
+  ///   c: matches character c (c != '*', '?', '\\', '[')
+  ///   '\\' c: matches character c
+  /// character-range:
+  ///   c: matches character c (c != '\\', '-', ']')
+  ///   '\\' c: matches character c
+  ///   lo '-' hi: matches character c for lo <= c <= hi
+  ///
+  /// Typical return codes:
+  ///  * OK - no errors
+  ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
+  ///                    implemented
+  /// The default implementation uses a combination of GetChildren, MatchPath
+  /// and IsDirectory.
   virtual Status GetMatchingPaths(const string& pattern,
                                   std::vector<string>* results);
 
+  /// \brief Obtains statistics for the given path.
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
 
+  /// \brief Deletes the named file.
   virtual Status DeleteFile(const string& fname) = 0;
 
+  /// \brief Creates the specified directory.
+  /// Typical return codes:
+  ///  * OK - successfully created the directory.
+  ///  * ALREADY_EXISTS - directory with name dirname already exists.
+  ///  * PERMISSION_DENIED - dirname is not writable.
   virtual Status CreateDir(const string& dirname) = 0;
 
-  // \brief Creates the specified directory and all the necessary
-  // subdirectories. Typical return codes.
-  //  * OK - successfully created the directory and sub directories, even if
-  //         they were already created.
-  //  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
+  /// \brief Creates the specified directory and all the necessary
+  /// subdirectories.
+  /// Typical return codes:
+  ///  * OK - successfully created the directory and sub directories, even if
+  ///         they were already created.
+  ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
   virtual Status RecursivelyCreateDir(const string& dirname);
 
+  /// \brief Deletes the specified directory.
   virtual Status DeleteDir(const string& dirname) = 0;
 
-  // \brief Deletes the specified directory and all subdirectories and files
-  // underneath it. undeleted_files and undeleted_dirs stores the number of
-  // files and directories that weren't deleted (unspecified if the return
-  // status is not OK).
-  // REQUIRES: undeleted_files, undeleted_dirs to be not null.
-  // Typical return codes
-  //  * OK - dirname exists and we were able to delete everything underneath.
-  //  * NOT_FOUND - dirname doesn't exist
-  //  * PERMISSION_DENIED - dirname or some descendant is not writable
-  //  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
-  //                    implemented
+  /// \brief Deletes the specified directory and all subdirectories and files
+  /// underneath it. undeleted_files and undeleted_dirs stores the number of
+  /// files and directories that weren't deleted (unspecified if the return
+  /// status is not OK).
+  /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
+  /// Typical return codes:
+  ///  * OK - dirname exists and we were able to delete everything underneath.
+  ///  * NOT_FOUND - dirname doesn't exist
+  ///  * PERMISSION_DENIED - dirname or some descendant is not writable
+  ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
+  ///                    implemented
   virtual Status DeleteRecursively(const string& dirname,
                                    int64* undeleted_files,
                                    int64* undeleted_dirs);
 
+  /// \brief Stores the size of `fname` in `*file_size`.
   virtual Status GetFileSize(const string& fname, uint64* file_size) = 0;
 
-  // Overwrites the target if it exists.
+  /// \brief Overwrites the target if it exists.
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
-  // Translate an URI to a filename usable by the FileSystem implementation. The
-  // implementation in this class cleans up the path, removing duplicate /'s,
-  // resolving .. and . (more details in tensorflow::lib::io::CleanPath).
+  /// \brief Translate an URI to a filename for the FileSystem implementation.
+  ///
+  /// The implementation in this class cleans up the path, removing
+  /// duplicate /'s, resolving .. and . (more details in
+  /// tensorflow::lib::io::CleanPath).
   virtual string TranslateName(const string& name) const;
 
-  // Returns whether the given path is a directory or not.
-  // Typical return codes (not guaranteed exhaustive):
-  //  * OK - The path exists and is a directory.
-  //  * FAILED_PRECONDITION - The path exists and is not a directory.
-  //  * NOT_FOUND - The path entry does not exist.
-  //  * PERMISSION_DENIED - Insufficient permissions.
-  //  * UNIMPLEMENTED - The file factory doesn't support directories.
+  /// \brief Returns whether the given path is a directory or not.
+  ///
+  /// Typical return codes (not guaranteed exhaustive):
+  ///  * OK - The path exists and is a directory.
+  ///  * FAILED_PRECONDITION - The path exists and is not a directory.
+  ///  * NOT_FOUND - The path entry does not exist.
+  ///  * PERMISSION_DENIED - Insufficient permissions.
+  ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual Status IsDirectory(const string& fname);
+
+  FileSystem() {}
+
+  virtual ~FileSystem();
+};
+
+/// A file abstraction for randomly reading the contents of a file.
+class RandomAccessFile {
+ public:
+  RandomAccessFile() {}
+  virtual ~RandomAccessFile();
+
+  /// \brief Reads up to `n` bytes from the file starting at `offset`.
+  ///
+  /// `scratch[0..n-1]` may be written by this routine.  Sets `*result`
+  /// to the data that was read (including if fewer than `n` bytes were
+  /// successfully read).  May set `*result` to point at data in
+  /// `scratch[0..n-1]`, so `scratch[0..n-1]` must be live when
+  /// `*result` is used.
+  ///
+  /// On OK returned status: `n` bytes have been stored in `*result`.
+  /// On non-OK returned status: `[0..n]` bytes have been stored in `*result`.
+  ///
+  /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in `*result`
+  /// because of EOF.
+  ///
+  /// Safe for concurrent use by multiple threads.
+  virtual Status Read(uint64 offset, size_t n, StringPiece* result,
+                      char* scratch) const = 0;
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
+};
+
+/// \brief A file abstraction for sequential writing.
+///
+/// The implementation must provide buffering since callers may append
+/// small fragments at a time to the file.
+class WritableFile {
+ public:
+  WritableFile() {}
+  virtual ~WritableFile();
+
+  /// \brief Append 'data' to the file.
+  virtual Status Append(const StringPiece& data) = 0;
+
+  /// \brief Close the file.
+  ///
+  /// Flush() and de-allocate resources associated with this file
+  ///
+  /// Typical return codes (not guaranteed to be exhaustive):
+  ///  * OK
+  ///  * Other codes, as returned from Flush()
+  virtual Status Close() = 0;
+
+  /// \brief Flushes the file and optionally syncs contents to filesystem.
+  ///
+  /// This should flush any local buffers whose contents have not been
+  /// delivered to the filesystem.
+  ///
+  /// If the process terminates after a successful flush, the contents
+  /// may still be persisted, since the underlying filesystem may
+  /// eventually flush the contents.  If the OS or machine crashes
+  /// after a successful flush, the contents may or may not be
+  /// persisted, depending on the implementation.
+  virtual Status Flush() = 0;
+
+  /// \brief Syncs contents of file to filesystem.
+  ///
+  /// This waits for confirmation from the filesystem that the contents
+  /// of the file have been persisted to the filesystem; if the OS
+  /// or machine crashes after a successful Sync, the contents should
+  /// be properly saved.
+  virtual Status Sync() = 0;
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
+};
+
+/// \brief A readonly memmapped file abstraction.
+///
+/// The implementation must guarantee that all memory is accessible when the
+/// object exists, independently from the Env that created it.
+class ReadOnlyMemoryRegion {
+ public:
+  ReadOnlyMemoryRegion() {}
+  virtual ~ReadOnlyMemoryRegion() = default;
+
+  /// \brief Returns a pointer to the memory region.
+  virtual const void* data() = 0;
+
+  /// \brief Returns the length of the memory region in bytes.
+  virtual uint64 length() = 0;
 };
 
 // START_SKIP_DOXYGEN
@@ -213,64 +361,6 @@ class NullFileSystem : public FileSystem {
 #endif
 
 // END_SKIP_DOXYGEN
-
-/// A file abstraction for randomly reading the contents of a file.
-class RandomAccessFile {
- public:
-  RandomAccessFile() {}
-  virtual ~RandomAccessFile();
-
-  /// \brief Reads up to `n` bytes from the file starting at `offset`.
-  ///
-  /// `scratch[0..n-1]` may be written by this routine.  Sets `*result`
-  /// to the data that was read (including if fewer than `n` bytes were
-  /// successfully read).  May set `*result` to point at data in
-  /// `scratch[0..n-1]`, so `scratch[0..n-1]` must be live when
-  /// `*result` is used.
-  ///
-  /// On OK returned status: `n` bytes have been stored in `*result`.
-  /// On non-OK returned status: `[0..n]` bytes have been stored in `*result`.
-  ///
-  /// Returns `OUT_OF_RANGE` if fewer than n bytes were stored in `*result`
-  /// because of EOF.
-  ///
-  /// Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64 offset, size_t n, StringPiece* result,
-                      char* scratch) const = 0;
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
-};
-
-/// \brief A file abstraction for sequential writing.
-///
-/// The implementation must provide buffering since callers may append
-/// small fragments at a time to the file.
-class WritableFile {
- public:
-  WritableFile() {}
-  virtual ~WritableFile();
-
-  virtual Status Append(const StringPiece& data) = 0;
-  virtual Status Close() = 0;
-  virtual Status Flush() = 0;
-  virtual Status Sync() = 0;
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
-};
-
-/// \brief A readonly memmapped file abstraction.
-///
-/// The implementation must guarantee that all memory is accessable when the
-/// object exists, independently from the Env that created it.
-class ReadOnlyMemoryRegion {
- public:
-  ReadOnlyMemoryRegion() {}
-  virtual ~ReadOnlyMemoryRegion() = default;
-  virtual const void* data() = 0;
-  virtual uint64 length() = 0;
-};
 
 /// \brief A registry for file system implementations.
 ///

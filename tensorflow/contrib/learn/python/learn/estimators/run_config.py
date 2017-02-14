@@ -21,7 +21,6 @@ from __future__ import print_function
 import json
 import os
 
-from tensorflow.contrib.framework import deprecated
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.training import server_lib
 
@@ -256,78 +255,29 @@ class RunConfig(ClusterConfig):
   def tf_config(self):
     return self._tf_config
 
-  @tf_config.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def tf_config(self, value):
-    self._tf_config = value
-
   @property
   def tf_random_seed(self):
     return self._tf_random_seed
-
-  @tf_random_seed.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def tf_random_seed(self, value):
-    self._tf_random_seed = value
 
   @property
   def save_summary_steps(self):
     return self._save_summary_steps
 
-  @save_summary_steps.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def save_summary_steps(self, value):
-    self._save_summary_steps = value
-
   @property
   def save_checkpoints_secs(self):
     return self._save_checkpoints_secs
-
-  @save_checkpoints_secs.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def save_checkpoints_secs(self, value):
-    self._save_checkpoints_secs = value
 
   @property
   def save_checkpoints_steps(self):
     return self._save_checkpoints_steps
 
-  @save_checkpoints_steps.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def save_checkpoints_steps(self, value):
-    self._save_checkpoints_steps = value
-
   @property
   def keep_checkpoint_max(self):
     return self._keep_checkpoint_max
 
-  @keep_checkpoint_max.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def keep_checkpoint_max(self, value):
-    self._keep_checkpoint_max = value
-
   @property
   def keep_checkpoint_every_n_hours(self):
     return self._keep_checkpoint_every_n_hours
-
-  @keep_checkpoint_every_n_hours.setter
-  @deprecated(
-      '2017-01-08',
-      'RunConfig will be made immutable, please pass all args to constructor.')
-  def keep_checkpoint_every_n_hours(self, value):
-    self._keep_checkpoint_every_n_hours = value
 
 
 def _count_ps(cluster_spec):

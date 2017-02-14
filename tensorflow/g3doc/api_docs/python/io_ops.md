@@ -7,11 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Placeholders
-
-TensorFlow provides a placeholder operation that must be fed with data
-on execution.  For more info, see the section on [Feeding
-data](../../how_tos/reading_data/index.md#feeding).
+Inputs and Readers. See the @{$python/io_ops} guide.
 
 - - -
 
@@ -70,10 +66,6 @@ A placeholder op that passes through `input` when its output is not fed.
   A placeholder tensor that defaults to `input` if it is not fed.
 
 
-
-For feeding `SparseTensor`s which are composite type,
-there is a convenience function:
-
 - - -
 
 ### `tf.sparse_placeholder(dtype, shape=None, name=None)` {#sparse_placeholder}
@@ -119,13 +111,6 @@ with tf.Session() as sess:
   A `SparseTensor` that may be used as a handle for feeding a value, but not
   evaluated directly.
 
-
-
-## Readers
-
-TensorFlow provides a set of Reader classes for reading data formats.
-For more information on inputs and readers, see [Reading
-data](../../how_tos/reading_data/index.md).
 
 - - -
 
@@ -1213,12 +1198,6 @@ Whether the Reader implementation can serialize its state.
 
 
 
-
-## Converting
-
-TensorFlow provides several operations that you can use to convert various data
-formats into tensors.
-
 - - -
 
 ### `tf.decode_csv(records, record_defaults, field_delim=None, name=None)` {#decode_csv}
@@ -1273,18 +1252,6 @@ Reinterpret the bytes of a string as a vector of numbers.
   added dimension will have size equal to the length of the elements
   of `bytes` divided by the number of bytes to represent `out_type`.
 
-
-
-- - -
-
-### Example protocol buffer
-
-TensorFlow's [recommended format for training
-examples](../../how_tos/reading_data/index.md#standard-tensorflow-format)
-is serialized `Example` protocol buffers, [described
-here](https://www.tensorflow.org/code/tensorflow/core/example/example.proto).
-They contain `Features`, [described
-here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 
 - - -
 
@@ -1831,15 +1798,6 @@ Example-parsing ops.
   to the respective element of `json_examples`.
 
 
-
-## Queues
-
-TensorFlow provides several implementations of 'Queues', which are
-structures within the TensorFlow computation graph to stage pipelines
-of tensors together. The following describe the basic Queue interface
-and some implementations.  To see an example use, see [Threading and
-Queues](../../how_tos/threading_and_queues/index.md).
-
 - - -
 
 ### `class tf.QueueBase` {#QueueBase}
@@ -2373,9 +2331,6 @@ an int64 scalar (for `enqueue`) or an int64 vector (for `enqueue_many`).
 
 
 
-
-## Conditional Accumulators
-
 - - -
 
 ### `class tf.ConditionalAccumulatorBase` {#ConditionalAccumulatorBase}
@@ -2815,14 +2770,11 @@ Once successful, the following actions are also triggered:
 
 
 
-
-## Dealing with the filesystem
-
 - - -
 
 ### `tf.matching_files(pattern, name=None)` {#matching_files}
 
-Returns the set of files matching a pattern.
+Returns the set of files matching one or more glob patterns.
 
 Note that this routine only supports wildcard characters in the
 basename portion of the pattern, not in the directory portion.
@@ -2830,7 +2782,8 @@ basename portion of the pattern, not in the directory portion.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A `Tensor` of type `string`. A (scalar) shell wildcard pattern.
+*  <b>`pattern`</b>: A `Tensor` of type `string`.
+    Shell wildcard pattern(s). Scalar or vector of type string.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2875,18 +2828,6 @@ Writes contents to the file at input filename. Creates file if not existing.
   The created Operation.
 
 
-
-## Input pipeline
-
-TensorFlow functions for setting up an input-prefetching pipeline.
-Please see the [reading data how-to](../../how_tos/reading_data/index.md)
-for context.
-
-### Beginning of an input pipeline
-
-The "producer" functions add a queue to the graph and a corresponding
-`QueueRunner` for running the subgraph that fills that queue.
-
 - - -
 
 ### `tf.train.match_filenames_once(pattern, name=None)` {#match_filenames_once}
@@ -2896,12 +2837,12 @@ Save the list of files matching pattern, so it is only computed once.
 ##### Args:
 
 
-*  <b>`pattern`</b>: A file pattern (glob).
+*  <b>`pattern`</b>: A file pattern (glob), or 1D tensor of file patterns.
 *  <b>`name`</b>: A name for the operations (optional).
 
 ##### Returns:
 
-  A variable that is initialized to the list of files matching pattern.
+  A variable that is initialized to the list of files matching the pattern(s).
 
 
 - - -
@@ -2910,7 +2851,7 @@ Save the list of files matching pattern, so it is only computed once.
 
 Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
-Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+Note: creates local counter `epochs`. Use `local_variables_initializer()` to
 initialize local variables.
 
 ##### Args:
@@ -2938,7 +2879,7 @@ initialize local variables.
 Output the rows of `input_tensor` to a queue for an input pipeline.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2983,7 +2924,7 @@ Note: if `num_epochs` is not `None`, this function creates local counter
 Produces the integers from 0 to limit-1 in a queue.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3052,7 +2993,7 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 Output strings (e.g. filenames) to a queue for an input pipeline.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3083,27 +3024,6 @@ Note: if `num_epochs` is not `None`, this function creates local counter
 *  <b>`ValueError`</b>: If the string_tensor is a null Python list.  At runtime,
   will fail with an assertion if string_tensor becomes a null tensor.
 
-
-
-### Batching at the end of an input pipeline
-
-These functions add a queue to the graph to assemble a batch of
-examples, with possible shuffling.  They also add a `QueueRunner` for
-running the subgraph that fills that queue.
-
-Use [`batch`](#batch) or [`batch_join`](#batch_join) for batching
-examples that have already been well shuffled.  Use
-[`shuffle_batch`](#shuffle_batch) or
-[`shuffle_batch_join`](#shuffle_batch_join) for examples that would
-benefit from additional shuffling.
-
-Use [`batch`](#batch) or [`shuffle_batch`](#shuffle_batch) if you want a
-single thread producing examples to batch, or if you have a
-single subgraph producing examples but you want to run it in *N* threads
-(where you increase *N* until it can keep the queue full).  Use
-[`batch_join`](#batch_join) or [`shuffle_batch_join`](#shuffle_batch_join)
-if you have *N* different subgraphs producing examples to batch and you
-want them run by *N* threads. Use `maybe_*` to enqueue conditionally.
 
 - - -
 
@@ -3156,7 +3076,7 @@ In addition, all output tensors' static shapes, as accessed via the
 operations that depend on fixed batch_size would fail.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3201,10 +3121,12 @@ See docstring in `batch` for more details.
 
 
 *  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
@@ -3334,10 +3256,12 @@ See docstring in `batch_join` for more details.
 
 
 *  <b>`tensors_list`</b>: A list of tuples or dictionaries of tensors to enqueue.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`batch_size`</b>: An integer. The new batch size pulled from the queue.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
@@ -3422,7 +3346,7 @@ In addition, all output tensors' static shapes, as accessed via the
 operations that depend on fixed batch_size would fail.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -3470,10 +3394,12 @@ See docstring in `shuffle_batch` for more details.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
     dequeue, used to ensure a level of mixing of elements.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensor_list`.
 *  <b>`seed`</b>: Seed for the random shuffling within the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
@@ -3592,10 +3518,12 @@ See docstring in `shuffle_batch_join` for more details.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
 *  <b>`min_after_dequeue`</b>: Minimum number elements in the queue after a
     dequeue, used to ensure a level of mixing of elements.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  If provided, this tensor controls
-    whether the input is added to the queue or not.  If it evaluates `True`,
-    then `tensors_list` are added to the queue; otherwise they are dropped.
-    This tensor essentially acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`seed`</b>: Seed for the random shuffling within the queue.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list_list` is a single
     example.

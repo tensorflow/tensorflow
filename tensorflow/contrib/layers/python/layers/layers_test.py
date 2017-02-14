@@ -1342,8 +1342,8 @@ class FlattenTest(test.TestCase):
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
       inputs.set_shape(tensor_shape.TensorShape((5, None)))
-      with self.assertRaisesRegexp(ValueError, '2nd dimension must be defined'):
-        _layers.flatten(inputs)
+      output = _layers.flatten(inputs)
+      self.assertEqual(output.get_shape().as_list(), [5, None])
 
   def testCollectOutputs(self):
     height, width = 3, 3
@@ -1382,6 +1382,17 @@ class FlattenTest(test.TestCase):
       inputs = array_ops.placeholder(dtypes.int32, (None, height, width, 3))
       output = _layers.flatten(inputs)
       self.assertEqual(output.get_shape().as_list(), [None, height * width * 3])
+      output = sess.run(output, {inputs: images.eval()})
+      self.assertEqual(output.size, images.get_shape().num_elements())
+      self.assertEqual(output.shape[0], images.get_shape()[0])
+
+  def testUnknownDims(self):
+    height = width = depth = 3
+    with self.test_session() as sess:
+      images = random_ops.random_uniform(
+          (5, height, width, depth), seed=1, name='images')
+      inputs = array_ops.placeholder(dtypes.int32, (None, None, None, None))
+      output = _layers.flatten(inputs)
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.size, images.get_shape().num_elements())
       self.assertEqual(output.shape[0], images.get_shape()[0])
@@ -1563,7 +1574,7 @@ class FCTest(test.TestCase):
       _layers.fully_connected(inputs, 32, weights_regularizer=weight_decay)
       wd = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                       'fully_connected/weights/Regularizer/l2_regularizer')
+                       'fully_connected/kernel/Regularizer/l2_regularizer')
       sess.run(variables_lib.global_variables_initializer())
       self.assertLess(sess.run(wd), 0.4)
 
@@ -2356,7 +2367,7 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape) + 2
+      image_values = np.random.rand(*image_shape) + 256
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2393,9 +2404,9 @@ class BatchNormTest(test.TestCase):
         # The outputs should be close to 0.0 mean and 1.0 variance
         self.assertAllClose(
             np.mean(
-                np_output, axis=axis), [0] * channels, rtol=0.1, atol=0.1)
+                np_output, axis=axis), [0] * channels, rtol=0.001, atol=0.001)
         self.assertAllClose(
-            np.var(np_output, axis=axis), [1] * channels, rtol=0.1, atol=0.1)
+            np.var(np_output, axis=axis), [1] * channels, rtol=0.01, atol=0.01)
         # The gradients should change slowly while updating moving_mean.
         max_diff = np.max(np.abs(images_gradients_value - new_images_gradients))
         self.assertGreaterEqual(max_diff, 0.0)
@@ -2558,31 +2569,41 @@ class LayerNormTest(test.TestCase):
       # output_train and output_eval should be the same.
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
-  def doOutputTest(self, input_shape):
-    with self.test_session() as sess:
-      input_values = np.random.rand(*input_shape)
-      inputs = constant_op.constant(
-          input_values, shape=input_shape, dtype=dtypes.float32)
-      output_op = _layers.layer_norm(inputs, scope='LN')
-      # Initialize all variables
-      sess.run(variables_lib.global_variables_initializer())
-      # The mean and variance of the output should be close to 0 and 1
-      # respectively.
-      moments_axis = tuple([i for i in range(1, len(input_shape))])
-      outputs = sess.run(output_op)
-      expected_mean = np.zeros(input_shape[0])
-      expected_var = np.ones(input_shape[0])
-      mean = np.mean(outputs, axis=moments_axis)
-      var = np.var(outputs, axis=moments_axis)
-      tol = 1e-5
-      self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
-      self.assertAllClose(var, expected_var, rtol=tol, atol=tol)
+  def doOutputTest(self, input_shape, tol=1e-3):
+    for mu in [0.0, 1e2]:
+      for sigma in [1.0, 0.1]:
+        input_values = np.random.rand(*input_shape) * sigma + mu
+        expected_mean = np.zeros(input_shape[0])
+        expected_var = np.ones(input_shape[0])
+        with ops.Graph().as_default() as g:
+          with self.test_session(graph=g) as sess:
+            inputs = constant_op.constant(input_values, shape=input_shape,
+                                          dtype=dtypes.float32)
+            output_op = _layers.layer_norm(inputs, scope='LN')
+            # Initialize all variables
+            sess.run(variables_lib.global_variables_initializer())
+            # The mean and variance of the output should be close to 0 and 1
+            # respectively.
+            moments_axis = tuple([i for i in range(1, len(input_shape))])
+            outputs = sess.run(output_op)
+            # Make sure that there are no NaNs
+            self.assertFalse(np.isnan(outputs).any())
+            mean = np.mean(outputs, axis=moments_axis)
+            var = np.var(outputs, axis=moments_axis)
+            self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
+            self.assertAllClose(var, expected_var, rtol=tol, atol=tol)
 
   def testOutput2DInput(self):
     self.doOutputTest((10, 300))
 
   def testOutput4DInput(self):
     self.doOutputTest((100, 10, 10, 3))
+
+  def testOutputSmallInput(self):
+    self.doOutputTest((10, 10, 10, 30))
+
+  def testOutputBigInput(self):
+    self.doOutputTest((1, 100, 100, 1))
 
 
 class MaxPool2DTest(test.TestCase):

@@ -20,12 +20,14 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 typedef std::unordered_map<StringPiece, int32, StringPiece::Hasher>
@@ -128,6 +130,23 @@ class CostModel {
   // Returns the size in bytes of temporary memory consumed by "node".
   Bytes TempMemorySize(const Node* node) const;
 
+  // Returns the size in bytes of host memory consumed by "node".
+  Bytes HostPeakMemorySize(const Node* node) const;
+
+  // Returns the size in bytes of device memory consumed by "node".
+  Bytes DevicePeakMemorySize(const Node* node) const;
+
+  // Returns the size in bytes of persisted memory consumed by "node".
+  Bytes PersistedMemorySize(const Node* node) const;
+
+  // Returns the size in bytes of auxiliary memory consumed by "node".
+  Bytes AuxiliaryMemorySize(const Node* node) const;
+
+  // Records the memory allocated by allocators for a node.
+  void RecordAllocatorMemory(
+      const Node* node,
+      const protobuf::RepeatedPtrField<AllocatorMemoryUsed>& memory);
+
   // Records the maximum execution time (in microseconds) of "node".
   void RecordMaxExecutionTime(const Node* node, Microseconds time);
 
@@ -158,6 +177,12 @@ class CostModel {
   // Write the contents of the CostModel to the INFO log.
   void WriteSummaryToLog() const;
 
+  // Increment the times that the cost model is updated.
+  void IncrementUpdateTimes();
+
+  // Get the times that the cost model is updated.
+  int32 GetUpdateTimes() const;
+
  private:
   static Bytes MinTensorMemoryUsage(const TensorShapeProto& tensor_shape,
                                     const DataType& dtype);
@@ -171,6 +196,9 @@ class CostModel {
   // get type/byte estimates of 0.
   int32 min_count_ = 0;
 
+  // The number of times the cost model is updated.
+  int32 update_times_ = 0;
+
   // Number of times each Node has been executed.
   std::vector<int32> count_;
   // Cumulative execution time.
@@ -183,7 +211,26 @@ class CostModel {
 
   // Maximum memory usage
   struct MemUsage {
+    // TODO(yuefengz): temp_memory_size is not being used, remove it.
     Bytes temp_memory_size;
+
+    // Peak memory includes temporary tensors, output tensors and persistent
+    // tensors. Some kernels may allocate temporary tensors on host even they
+    // are running on devices.
+    Bytes host_peak_memory_size;
+    Bytes device_peak_memory_size;
+
+    // Persisted memory includes the output memory, persistent tensors.
+    // The current set of kernels only allocate persistent tensors on their own
+    // devices.
+    Bytes persisted_memory_size;
+
+    // Auxiliary memory is the momery used by resources (i.e. those in
+    // ResourceMgr, e.g. lookup tables) excluding their underlying persistent
+    // tensors (e.g. in variable containers). The auxiliary memory is usually
+    // allocated on host.
+    Bytes auxiliary_memory_size;
+
     gtl::InlinedVector<Bytes, 2> output_port_mem;
     gtl::InlinedVector<TensorShapeProto, 2> output_port_shape;
     gtl::InlinedVector<DataType, 2> output_port_type;

@@ -7,12 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-Functional operations.
-
-## Higher Order Operators
-
-TensorFlow provides several higher order operators to simplify the common
-map-reduce programming patterns.
+Functional operations. See the @{$python/functional_ops} guide.
 
 - - -
 

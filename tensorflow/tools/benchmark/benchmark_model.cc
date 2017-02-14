@@ -370,8 +370,7 @@ int Main(int argc, char** argv) {
   stats_options.memory_limit = memory_limit;
   stats_options.show_type = show_type;
   stats_options.show_summary = show_summary;
-  stats.reset(
-      new tensorflow::StatSummarizer(*(graph_def.get()), stats_options));
+  stats.reset(new tensorflow::StatSummarizer(stats_options));
 
   const double sleep_seconds = std::strtod(run_delay.c_str(), nullptr);
 
@@ -455,9 +454,9 @@ int Main(int argc, char** argv) {
 
     // Report the stats.
     TestReporter reporter(output_prefix, benchmark_name);
-    reporter.Initialize();
-    reporter.Benchmark(num_runs, -1.0, wall_time, throughput);
-    reporter.Close();
+    TF_QCHECK_OK(reporter.Initialize());
+    TF_QCHECK_OK(reporter.Benchmark(num_runs, -1.0, wall_time, throughput));
+    TF_QCHECK_OK(reporter.Close());
   }
 
   return 0;

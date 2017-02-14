@@ -131,24 +131,28 @@ class StatSummarizerOptions {
   bool show_summary;
 };
 
-// A class intended to make performance analysis easier by collecting StepStats
-// and showing in an easily understandable format where CPU time is being spent.
-// See tensorflow/examples/android/jni/tensorflow_jni.cc for an example usage.
+// A StatSummarizer assists in performance analysis of Graph executions.
+//
+// It summarizes time spent executing (on GPU/CPU), memory used etc. across
+// multiple executions of a single Graph from the StepStats collected during
+// graph execution.
+//
+// See tensorflow/tools/benchmark/benchmark_model.cc for an example usage.
 class StatSummarizer {
  public:
   enum SortingMetric {
     BY_NAME,
-    BY_DEFINITION_ORDER,
     BY_RUN_ORDER,
     BY_TIME,
     BY_MEMORY,
     BY_TYPE,
   };
 
-  explicit StatSummarizer(const tensorflow::GraphDef& tensorflow_graph);
+  explicit StatSummarizer(const StatSummarizerOptions& options);
 
-  StatSummarizer(const tensorflow::GraphDef& tensorflow_graph,
-                 const StatSummarizerOptions& options);
+  // Deprecated: Use StatSummarizer(const StatSummarizerOptions&) instead. The
+  // GraphDef is not needed by the StatSummarizer.
+  explicit StatSummarizer(const tensorflow::GraphDef& tensorflow_graph);
 
   // Adds another run's StepStats output to the aggregate counts.
   void ProcessStepStats(const StepStats& step_stats);
@@ -207,9 +211,7 @@ class StatSummarizer {
   Stat<int64> run_total_us_;
   Stat<int64> memory_;
 
-  std::vector<string> nodes_in_def_order_;
   std::map<std::string, Detail> details_;
-  std::map<string, string> node_types_;
   StatSummarizerOptions options_;
 };
 

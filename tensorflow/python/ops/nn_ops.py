@@ -1439,15 +1439,17 @@ def _softmax(logits, compute_op, dim=-1, name=None):
                                ], 0))
 
   logits = ops.convert_to_tensor(logits)
-  if logits.get_shape().ndims is 2 and dim is -1:
-    return compute_op(logits, name=name)
 
   # We need its original shape for shape inference.
   shape = logits.get_shape()
+  is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
+
+  if shape.ndims is 2 and is_last_dim:
+    return compute_op(logits, name=name)
 
   # If dim is the last dimension, simply reshape the logits to a matrix and
   # apply the internal softmax.
-  if dim is -1:
+  if is_last_dim:
     input_shape = array_ops.shape(logits)
     logits = _flatten_outer_dims(logits)
     output = compute_op(logits, name=name)
@@ -1663,13 +1665,13 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
 
   Args:
     _sentinel: Used to prevent positional parameters. Internal, do not use.
-    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
-      `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-      Other values will raise an exception when this op is run on CPU, and
-      return `NaN` for corresponding corresponding loss and gradient rows
-      on GPU.
-    logits: Unscaled log probabilities of rank `r` and shape
-      `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
+    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+      `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
+      must be an index in `[0, num_classes)`. Other values will raise an
+      exception when this op is run on CPU, and return `NaN` for corresponding
+      loss and gradient rows on GPU.
+    logits: Unscaled log probabilities of shape
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
     name: A name for the operation (optional).
 
   Returns:

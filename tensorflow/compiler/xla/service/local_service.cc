@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -206,44 +207,50 @@ tensorflow::Status LocalService::ExecuteLocally(
   return tensorflow::Status::OK();
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>>
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 LocalService::CompileAheadOfTime(
-    const ComputationHandle& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const Shape& result_layout, const AotCompilationOptions& options) {
-  TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
-                      computation_tracker_.Resolve(computation));
-  VersionedComputationHandle versioned_handle =
-      user_computation->GetVersionedHandle();
+    const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
+        computations,
+    const AotCompilationOptions& options) {
+  std::vector<std::unique_ptr<HloModule>> hlo_modules;
+  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
+  for (const AheadOfTimeComputationInstance& instance : computations) {
+    TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
+                        computation_tracker_.Resolve(instance.computation));
+    VersionedComputationHandle versioned_handle =
+        user_computation->GetVersionedHandle();
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      computation_tracker_.BuildHloModule(versioned_handle,
-                                          /*include_unused_parameters=*/true));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                        computation_tracker_.BuildHloModule(
+                            versioned_handle,
+                            /*include_unused_parameters=*/true));
+    hlo_modules.push_back(std::move(hlo_module));
 
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const ProgramShape> program_shape,
-      user_computation->ComputeProgramShape(versioned_handle.version));
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<const ProgramShape> program_shape,
+        user_computation->ComputeProgramShape(versioned_handle.version));
 
-  auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
-  auto* computation_layout = module_config->mutable_entry_computation_layout();
-  for (int i = 0; i < argument_layouts.size(); ++i) {
-    const Shape& argument_layout = *argument_layouts[i];
-    if (ShapeUtil::IsTuple(argument_layout)) {
-      return Unimplemented("tuple arguments not supported yet");
+    module_configs.push_back(MakeUnique<HloModuleConfig>(*program_shape));
+    HloModuleConfig* module_config = module_configs.back().get();
+    auto* computation_layout =
+        module_config->mutable_entry_computation_layout();
+    for (int i = 0; i < instance.argument_layouts.size(); ++i) {
+      const Shape& argument_layout = *instance.argument_layouts[i];
+      if (ShapeUtil::IsTuple(argument_layout)) {
+        return Unimplemented("tuple arguments not supported yet");
+      }
+      TF_RETURN_IF_ERROR(
+          computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
+              argument_layout));
     }
     TF_RETURN_IF_ERROR(
-        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            argument_layout));
+        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+            *instance.result_layout));
   }
-  TF_RETURN_IF_ERROR(
-      computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-          result_layout));
 
-  return execute_backend_->compiler()
-      ->CompileAheadOfTime(std::move(hlo_module), std::move(module_config),
-                           MakeHloDumper(), options)
-      .ConsumeValueOrDie();
+  return execute_backend_->compiler()->CompileAheadOfTime(
+      std::move(hlo_modules), std::move(module_configs), MakeHloDumper(),
+      options);
 }
 
 tensorflow::Status LocalService::ValidateExecuteOptions(
@@ -426,8 +433,9 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
   } else {
     se::StreamExecutor* stream_executor;
     if (options.device_ordinal() >= 0) {
-      TF_ASSIGN_OR_RETURN(stream_executor, execute_backend_->stream_executor(
-                                               options.device_ordinal()));
+      TF_ASSIGN_OR_RETURN(
+          stream_executor,
+          execute_backend_->stream_executor(options.device_ordinal()));
     } else {
       stream_executor = execute_backend_->default_stream_executor();
     }
@@ -512,6 +520,10 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
   module_config->set_has_hybrid_result(has_hybrid_result);
   module_config->set_replica_count(execute_backend_->Replicas().size());
+  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
+  if (flags->xla_hlo_profile) {
+    module_config->enable_hlo_profiling(true);
+  }
   auto* computation_layout = module_config->mutable_entry_computation_layout();
   for (int i = 0; i < argument_layouts.size(); ++i) {
     const Shape& shape = *argument_layouts[i];

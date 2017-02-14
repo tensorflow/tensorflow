@@ -43,10 +43,20 @@ CXXFLAGS += -DTENSORFLOW_DISABLE_META
 # Declare __ANDROID_TYPES_FULL__ to enable required types for hvx
 CXXFLAGS += -D__ANDROID_TYPES_FULL__
 
-GRAPH_EXECUTION_SRCS := \
+GRAPH_TRANSFER_SRCS := \
+tensorflow/cc/framework/scope.cc \
+tensorflow/cc/framework/ops.cc \
+tensorflow/cc/ops/const_op.cc \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
 tensorflow/core/kernels/hexagon/graph_transferer.cc \
 tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
 tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/remote_fused_graph_execute_op.cc \
+tensorflow/core/ops/remote_fused_graph_ops.cc \
+tensorflow/core/platform/posix/test.cc
+
+GRAPH_EXECUTION_SRCS := \
+$(GRAPH_TRANSFER_SRCS) \
 tensorflow/core/kernels/hexagon/hexagon_graph_execution_test.cc \
 tensorflow/contrib/makefile/test/test_main.cc
 

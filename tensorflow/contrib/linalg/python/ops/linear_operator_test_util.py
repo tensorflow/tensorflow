@@ -22,9 +22,10 @@ import abc
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import tensor_util as contrib_tensor_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -133,16 +134,27 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     # To skip "test_foo", add "foo" to this list.
     return []
 
-  def _maybe_skip(self, test_name):
+  def _skip_if_tests_to_skip_contains(self, test_name):
+    """If self._tests_to_skip contains test_name, raise SkipTest exception.
+
+    See tests below for usage.
+
+    Args:
+      test_name:  String name corresponding to a test.
+
+    Raises:
+      SkipTest Exception, if test_name is in self._tests_to_skip.
+    """
     if test_name in self._tests_to_skip:
       self.skipTest("%s skipped because it was added to self._tests_to_skip.")
 
   def test_to_dense(self):
-    self._maybe_skip("to_dense")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
+    self._skip_if_tests_to_skip_contains("to_dense")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_dense = operator.to_dense()
@@ -152,15 +164,16 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             self.assertAC(op_dense_v, mat_v)
 
   def test_det(self):
-    self._maybe_skip("det")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
-            if dtype.is_complex:
-              self.skipTest(
-                  "tf.matrix_determinant does not work with complex, so this "
-                  "test is being skipped.")
+    self._skip_if_tests_to_skip_contains("det")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          if dtype.is_complex:
+            self.skipTest(
+                "tf.matrix_determinant does not work with complex, so this "
+                "test is being skipped.")
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_det = operator.determinant()
@@ -171,13 +184,37 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 feed_dict=feed_dict)
             self.assertAC(op_det_v, mat_det_v)
 
+  def test_log_abs_det(self):
+    self._skip_if_tests_to_skip_contains("log_abs_det")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          if dtype.is_complex:
+            self.skipTest(
+                "tf.matrix_determinant does not work with complex, so this "
+                "test is being skipped.")
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_log_abs_det = operator.log_abs_determinant()
+            mat_log_abs_det = math_ops.log(
+                math_ops.abs(linalg_ops.matrix_determinant(mat)))
+            if not use_placeholder:
+              self.assertAllEqual(shape[:-2], op_log_abs_det.get_shape())
+            op_log_abs_det_v, mat_log_abs_det_v = sess.run(
+                [op_log_abs_det, mat_log_abs_det],
+                feed_dict=feed_dict)
+            self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
+
   def test_apply(self):
-    self._maybe_skip("apply")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
-            for adjoint in False, True:
+    self._skip_if_tests_to_skip_contains("apply")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          for adjoint in False, True:
+            with self.test_session(graph=ops.Graph()) as sess:
+              sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
               operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                   shape, dtype, use_placeholder=use_placeholder)
               x = self._make_x(operator, adjoint=adjoint)
@@ -190,12 +227,13 @@ class LinearOperatorDerivedClassTest(test.TestCase):
               self.assertAC(op_apply_v, mat_apply_v)
 
   def test_solve(self):
-    self._maybe_skip("solve")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
-            for adjoint in False, True:
+    self._skip_if_tests_to_skip_contains("solve")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          for adjoint in False, True:
+            with self.test_session(graph=ops.Graph()) as sess:
+              sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
               operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                   shape, dtype, use_placeholder=use_placeholder)
               rhs = self._make_rhs(operator, adjoint=adjoint)
@@ -208,11 +246,12 @@ class LinearOperatorDerivedClassTest(test.TestCase):
               self.assertAC(op_solve_v, mat_solve_v)
 
   def test_add_to_tensor(self):
-    self._maybe_skip("add_to_tensor")
-    with self.test_session() as sess:
-      for use_placeholder in False, True:
-        for shape in self._shapes_to_test:
-          for dtype in self._dtypes_to_test:
+    self._skip_if_tests_to_skip_contains("add_to_tensor")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_plus_2mat = operator.add_to_tensor(2 * mat)
@@ -224,6 +263,27 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                                              feed_dict=feed_dict)
 
             self.assertAC(op_plus_2mat_v, 3 * mat_v)
+
+  def test_diag_part(self):
+    self._skip_if_tests_to_skip_contains("diag_part")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_diag_part = operator.diag_part()
+            mat_diag_part = array_ops.matrix_diag_part(mat)
+
+            if not use_placeholder:
+              self.assertAllEqual(
+                  mat_diag_part.get_shape(), op_diag_part.get_shape())
+
+            op_diag_part_, mat_diag_part_ = sess.run(
+                [op_diag_part, mat_diag_part], feed_dict=feed_dict)
+
+            self.assertAC(op_diag_part_, mat_diag_part_)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -256,8 +316,8 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
       n = operator.domain_dimension.value
       x_shape = batch_shape + [n, r]
     else:
-      batch_shape = operator.batch_shape_dynamic()
-      n = operator.domain_dimension_dynamic()
+      batch_shape = operator.batch_shape_tensor()
+      n = operator.domain_dimension_tensor()
       x_shape = array_ops.concat((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
@@ -285,7 +345,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   @property
   def _tests_to_skip(self):
     """List of test names to skip."""
-    return ["solve", "det"]
+    return ["solve", "det", "log_abs_det"]
 
   @property
   def _shapes_to_test(self):
@@ -310,11 +370,11 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         n = operator.domain_dimension.value
       x_shape = batch_shape + [n, r]
     else:
-      batch_shape = operator.batch_shape_dynamic()
+      batch_shape = operator.batch_shape_tensor()
       if adjoint:
-        n = operator.range_dimension_dynamic()
+        n = operator.range_dimension_tensor()
       else:
-        n = operator.domain_dimension_dynamic()
+        n = operator.domain_dimension_tensor()
       x_shape = array_ops.concat((batch_shape, [n, r]), 0)
 
     return random_normal(x_shape, dtype=operator.dtype)
@@ -500,3 +560,86 @@ def random_sign_uniform(shape,
         random_ops.random_uniform(
             shape, minval=-1., maxval=1., seed=seed))
     return unsigned_samples * math_ops.cast(signs, unsigned_samples.dtype)
+
+
+def random_normal_correlated_columns(
+    shape, mean=0.0, stddev=1.0, dtype=dtypes.float32, eps=1e-4, seed=None):
+  """Batch matrix with (possibly complex) Gaussian entries and correlated cols.
+
+  Returns random batch matrix `A` with specified element-wise `mean`, `stddev`,
+  living close to an embedded hyperplane.
+
+  Suppose `shape[-2:] = (M, N)`.
+
+  If `M < N`, `A` is a random `M x N` [batch] matrix with iid Gaussian entries.
+
+  If `M >= N`, then the colums of `A` will be made almost dependent as follows:
+
+  ```
+  L = random normal N x N-1 matrix, mean = 0, stddev = 1 / sqrt(N - 1)
+  B = random normal M x N-1 matrix, mean = 0, stddev = stddev.
+
+  G = (L B^H)^H, a random normal M x N matrix, living on N-1 dim hyperplane
+  E = a random normal M x N matrix, mean = 0, stddev = eps
+  mu = a constant M x N matrix, equal to the argument "mean"
+
+  A = G + E + mu
+  ```
+
+  Args:
+    shape:  Python list of integers.
+      Shape of the returned tensor.  Must be at least length two.
+    mean:  `Tensor` giving mean of normal to sample from.
+    stddev:  `Tensor` giving stdev of normal to sample from.
+    dtype:  `TensorFlow` `dtype` or numpy dtype
+    eps:  Distance each column is perturbed from the low-dimensional subspace.
+    seed:  Python integer seed for the RNG.
+
+  Returns:
+    `Tensor` with desired shape and dtype.
+
+  Raises:
+    ValueError:  If `shape` is not at least length 2.
+  """
+  dtype = dtypes.as_dtype(dtype)
+
+  if len(shape) < 2:
+    raise ValueError(
+        "Argument shape must be at least length 2.  Found: %s" % shape)
+
+  # Shape is the final shape, e.g. [..., M, N]
+  shape = list(shape)
+  batch_shape = shape[:-2]
+  m, n = shape[-2:]
+
+  # If there is only one column, "they" are by definition correlated.
+  if n < 2 or n < m:
+    return random_normal(
+        shape, mean=mean, stddev=stddev, dtype=dtype, seed=seed)
+
+  # Shape of the matrix with only n - 1 columns that we will embed in higher
+  # dimensional space.
+  smaller_shape = batch_shape + [m, n - 1]
+
+  # Shape of the embedding matrix, mapping batch matrices
+  # from [..., N-1, M] to [..., N, M]
+  embedding_mat_shape = batch_shape + [n, n - 1]
+
+  # This stddev for the embedding_mat ensures final result has correct stddev.
+  stddev_mat = 1 / np.sqrt(n - 1)
+
+  with ops.name_scope("random_normal_correlated_columns"):
+    smaller_mat = random_normal(
+        smaller_shape, mean=0.0, stddev=stddev_mat, dtype=dtype, seed=seed)
+
+    if seed is not None:
+      seed += 1287
+
+    embedding_mat = random_normal(embedding_mat_shape, dtype=dtype, seed=seed)
+
+    embedded_t = math_ops.matmul(embedding_mat, smaller_mat, transpose_b=True)
+    embedded = array_ops.matrix_transpose(embedded_t)
+
+    mean_mat = array_ops.ones_like(embedded) * mean
+
+    return embedded + random_normal(shape, stddev=eps, dtype=dtype) + mean_mat

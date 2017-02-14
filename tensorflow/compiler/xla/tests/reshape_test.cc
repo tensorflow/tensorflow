@@ -243,8 +243,8 @@ XLA_TEST_F(ReshapeTest, ReshapeSplitAndShuffle) {
 
 // The following tests use the same input 3D array; they test the examples we
 // show for the Reshape operation in the operation_semantics document.
-// TODO(eliben): find a way to show this code in the documentation without
-// duplication.
+// TODO(b/34503277): find a way to show this code in the documentation without
+// duplication on the TF documentation server.
 Array3D<int> v_array_for_doc_R3_tests({{{10, 11, 12}, {15, 16, 17}},
                                        {{20, 21, 22}, {25, 26, 27}},
                                        {{30, 31, 32}, {35, 36, 37}},
@@ -433,12 +433,12 @@ XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   });
 
   Computation computation = builder.Build().ConsumeValueOrDie();
-  const Shape shape_with_output_layout =
+  ExecutionOptions execution_options;
+  *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {2, 8}, {1, 0});
   std::unique_ptr<Literal> actual =
       client_
-          ->ExecuteAndTransfer(computation, {input.get()},
-                               &shape_with_output_layout)
+          ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> expected =
       LiteralUtil::CreateR2FromArray2D<float>(expected_array);
@@ -592,12 +592,13 @@ XLA_TEST_F(ReshapeTest, NoopReshape) {
                   /*new_sizes=*/{7, 2, 3, 5});
   Computation computation = builder.Build().ConsumeValueOrDie();
 
-  const Shape output_shape_with_layout =
+  ExecutionOptions execution_options;
+  *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {7, 2, 3, 5}, {2, 3, 0, 1});
   std::unique_ptr<Literal> output_literal =
       client_
           ->ExecuteAndTransfer(computation, {input_data.get()},
-                               &output_shape_with_layout)
+                               &execution_options)
           .ConsumeValueOrDie();
 
   // Since the reshape is a no-op, verify that it does not change the underlying

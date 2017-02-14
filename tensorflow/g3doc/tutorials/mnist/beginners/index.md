@@ -54,8 +54,8 @@ What we will accomplish in this tutorial:
 - Create a function that is a model for recognizing digits, based on looking at
   every pixel in the image
 
-- Use Tensorflow to train the model to recognize digits by having it "look" at
-  thousands of examples (and run our first Tensorflow session to do so)
+- Use TensorFlow to train the model to recognize digits by having it "look" at
+  thousands of examples (and run our first TensorFlow session to do so)
 
 - Check the model's accuracy with our test data
 
@@ -223,7 +223,7 @@ More compactly, we can just write:
 
 $$y = \text{softmax}(Wx + b)$$
 
-Now let's turn that into something that Tensorflow can use.
+Now let's turn that into something that TensorFlow can use.
 
 ## Implementing the Regression
 
@@ -393,7 +393,7 @@ tf.global_variables_initializer().run()
 Let's train -- we'll run the training step 1000 times!
 
 ```python
-for i in range(1000):
+for _ in range(1000):
   batch_xs, batch_ys = mnist.train.next_batch(100)
   sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 ```

@@ -6,22 +6,21 @@ symmetric, positive definite scale matrix.
 Evaluation of the pdf, determinant, and sampling are all `O(k^3)` operations
 where `(k, k)` is the event space shape.
 
-#### Mathematical details.
+#### Mathematical Details
 
-The PDF of this distribution is,
+The probability density function (pdf) is,
 
-```
-f(X) = det(X)^(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / B(scale, df)
-```
-
-where `df >= k` denotes the degrees of freedom, `scale` is a symmetric, pd,
-`k x k` matrix, and the normalizing constant `B(scale, df)` is given by:
-
-```
-B(scale, df) = 2^(0.5 df k) |det(scale)|^(0.5 df) Gamma_k(0.5 df)
+```none
+pdf(X; df, scale) = det(X)**(0.5 (df-k-1)) exp(-0.5 tr[inv(scale) X]) / Z
+Z = 2**(0.5 df k) |det(scale)|**(0.5 df) Gamma_k(0.5 df)
 ```
 
-where `Gamma_k` is the multivariate Gamma function.
+where:
+* `df >= k` denotes the degrees of freedom,
+* `scale` is a symmetric, positive definite, `k x k` matrix,
+* `Z` is the normalizing constant, and,
+* `Gamma_k` is the [multivariate Gamma function](
+  https://en.wikipedia.org/wiki/Multivariate_gamma_function).
 
 #### Examples
 
@@ -33,13 +32,13 @@ scale = ...  # Shape is [3, 3]; positive definite.
 dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
 
 # Evaluate this on an observation in R^3, returning a scalar.
-x = ... # A 3x3 positive definite matrix.
-dist.pdf(x)  # Shape is [], a scalar.
+x = ...  # A 3x3 positive definite matrix.
+dist.prob(x)  # Shape is [], a scalar.
 
 # Evaluate this on a two observations, each in R^{3x3}, returning a length two
 # Tensor.
 x = [x0, x1]  # Shape is [2, 3, 3].
-dist.pdf(x)  # Shape is [2].
+dist.prob(x)  # Shape is [2].
 
 # Initialize two 3x3 Wisharts with Full factored scale matrices.
 df = [5, 4]
@@ -48,7 +47,7 @@ dist = tf.contrib.distributions.WishartFull(df=df, scale=scale)
 
 # Evaluate this on four observations.
 x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3]; xi is positive definite.
-dist.pdf(x)  # Shape is [2, 2].
+dist.prob(x)  # Shape is [2, 2].
 
 # (*) - To efficiently create a trainable covariance matrix, see the example
 #   in tf.contrib.distributions.matrix_diag_transform.
@@ -66,50 +65,67 @@ Construct Wishart distributions.
     or equal to dimension of the scale matrix.
 *  <b>`scale`</b>: `float` or `double` `Tensor`. The symmetric positive definite
     scale matrix of the distribution.
-*  <b>`cholesky_input_output_matrices`</b>: `Boolean`. Any function which whose input
-    or output is a matrix assumes the input is Cholesky and returns a
-    Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
+*  <b>`cholesky_input_output_matrices`</b>: Python `bool`. Any function which whose
+    input or output is a matrix assumes the input is Cholesky and returns a
+    Cholesky factored matrix. Example `log_prob` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
-    exception if a statistic (e.g., mean, mode) is undefined for any batch
-    member. If True, batch members with valid parameters leading to
-    undefined statistics will return `NaN` for this statistic.
-*  <b>`name`</b>: The name scope to give class member ops.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined. When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.allow_nan_stats` {#WishartFull.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.batch_shape(name='batch_shape')` {#WishartFull.batch_shape}
+#### `tf.contrib.distributions.WishartFull.batch_shape` {#WishartFull.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.batch_shape_tensor(name='batch_shape_tensor')` {#WishartFull.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -124,7 +140,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.cdf(value, name='cdf', **condition_kwargs)` {#WishartFull.cdf}
+#### `tf.contrib.distributions.WishartFull.cdf(value, name='cdf')` {#WishartFull.cdf}
 
 Cumulative distribution function.
 
@@ -139,7 +155,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -180,6 +195,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.WishartFull.covariance(name='covariance')` {#WishartFull.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartFull.df` {#WishartFull.df}
 
 Wishart distribution degree(s) of freedom.
@@ -208,7 +267,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.event_shape(name='event_shape')` {#WishartFull.event_shape}
+#### `tf.contrib.distributions.WishartFull.event_shape` {#WishartFull.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.event_shape_tensor(name='event_shape_tensor')` {#WishartFull.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -225,42 +298,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.get_batch_shape()` {#WishartFull.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.get_event_shape()` {#WishartFull.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
 #### `tf.contrib.distributions.WishartFull.is_continuous` {#WishartFull.is_continuous}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.is_reparameterized` {#WishartFull.is_reparameterized}
 
 
 
@@ -279,7 +317,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -296,12 +334,12 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_cdf(value, name='log_cdf', **condition_kwargs)` {#WishartFull.log_cdf}
+#### `tf.contrib.distributions.WishartFull.log_cdf(value, name='log_cdf')` {#WishartFull.log_cdf}
 
 Log cumulative distribution function.
 
@@ -320,7 +358,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -331,64 +368,14 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_normalizing_constant(name='log_normalizing_constant')` {#WishartFull.log_normalizing_constant}
+#### `tf.contrib.distributions.WishartFull.log_normalization(name='log_normalization')` {#WishartFull.log_normalization}
 
 Computes the log normalizing constant, log(Z).
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_pdf(value, name='log_pdf', **condition_kwargs)` {#WishartFull.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.log_pmf(value, name='log_pmf', **condition_kwargs)` {#WishartFull.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.log_prob(value, name='log_prob', **condition_kwargs)` {#WishartFull.log_prob}
+#### `tf.contrib.distributions.WishartFull.log_prob(value, name='log_prob')` {#WishartFull.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
@@ -397,7 +384,6 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -408,7 +394,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#WishartFull.log_survival_function}
+#### `tf.contrib.distributions.WishartFull.log_survival_function(value, name='log_survival_function')` {#WishartFull.log_survival_function}
 
 Log survival function.
 
@@ -428,7 +414,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -470,7 +455,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -488,7 +477,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.WishartFull.param_static_shapes(cls, sample_shape)` {#WishartFull.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -515,57 +512,7 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.pdf(value, name='pdf', **condition_kwargs)` {#WishartFull.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.pmf(value, name='pmf', **condition_kwargs)` {#WishartFull.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.prob(value, name='prob', **condition_kwargs)` {#WishartFull.prob}
+#### `tf.contrib.distributions.WishartFull.prob(value, name='prob')` {#WishartFull.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
@@ -574,7 +521,6 @@ Probability density/mass function (depending on `is_continuous`).
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -585,7 +531,22 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#WishartFull.sample}
+#### `tf.contrib.distributions.WishartFull.reparameterization_type` {#WishartFull.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.sample(sample_shape=(), seed=None, name='sample')` {#WishartFull.sample}
 
 Generate samples of the specified shape.
 
@@ -598,7 +559,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -622,14 +582,34 @@ Wishart distribution scale matrix as an OperatorPD.
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.std(name='std')` {#WishartFull.std}
+#### `tf.contrib.distributions.WishartFull.stddev(name='stddev')` {#WishartFull.stddev}
 
 Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.survival_function(value, name='survival_function', **condition_kwargs)` {#WishartFull.survival_function}
+#### `tf.contrib.distributions.WishartFull.survival_function(value, name='survival_function')` {#WishartFull.survival_function}
 
 Survival function.
 
@@ -646,11 +626,10 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
 
 
@@ -658,7 +637,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.WishartFull.validate_args` {#WishartFull.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -666,5 +645,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.WishartFull.variance(name='variance')` {#WishartFull.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

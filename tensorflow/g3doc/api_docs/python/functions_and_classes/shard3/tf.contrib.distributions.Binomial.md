@@ -1,28 +1,40 @@
 Binomial distribution.
 
-This distribution is parameterized by a vector `p` of probabilities and `n`,
-the total counts.
+This distribution is parameterized by `probs`, a (batch of) probabilities for
+drawing a `1` and `total_count`, the number of trials per draw from the
+Binomial.
 
-#### Mathematical details
+#### Mathematical Details
 
-The Binomial is a distribution over the number of successes in `n` independent
-trials, with each trial having the same probability of success `p`.
-The probability mass function (pmf):
+The Binomial is a distribution over the number of `1`'s in `total_count`
+independent trials, with each trial having the same probability of `1`, i.e.,
+`probs`.
 
-```pmf(k) = n! / (k! * (n - k)!) * (p)^k * (1 - p)^(n - k)```
+The probability mass function (pmf) is,
+
+```none
+pmf(k; n, p) = p**k (1 - p)**(n - k) / Z
+Z = k! (n - k)! / n!
+```
+
+where:
+* `total_count = n`,
+* `probs = p`,
+* `Z` is the normalizaing constant, and,
+* `n!` is the factorial of `n`.
 
 #### Examples
 
 Create a single distribution, corresponding to 5 coin flips.
 
 ```python
-dist = Binomial(n=5., p=.5)
+dist = Binomial(total_count=5., probs=.5)
 ```
 
 Create a single distribution (using logits), corresponding to 5 coin flips.
 
 ```python
-dist = Binomial(n=5., logits=0.)
+dist = Binomial(total_count=5., logits=0.)
 ```
 
 Creates 3 distributions with the third distribution most likely to have
@@ -31,7 +43,7 @@ successes.
 ```python
 p = [.2, .3, .8]
 # n will be broadcast to [4., 4., 4.], to match p.
-dist = Binomial(n=4., p=p)
+dist = Binomial(total_count=4., probs=p)
 ```
 
 The distribution functions can be evaluated on counts.
@@ -51,76 +63,82 @@ dist.prob(counts)  # Shape [5, 7, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Binomial.__init__(n, logits=None, p=None, validate_args=False, allow_nan_stats=True, name='Binomial')` {#Binomial.__init__}
+#### `tf.contrib.distributions.Binomial.__init__(total_count, logits=None, probs=None, validate_args=False, allow_nan_stats=True, name='Binomial')` {#Binomial.__init__}
 
 Initialize a batch of Binomial distributions.
 
 ##### Args:
 
 
-*  <b>`n`</b>: Non-negative floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` with `m >= 0` and the same dtype as `p` or `logits`.
-    Defines this as a batch of `N1 x ... x Nm` different Binomial
+*  <b>`total_count`</b>: Non-negative floating point tensor with shape broadcastable
+    to `[N1,..., Nm]` with `m >= 0` and the same dtype as `probs` or
+    `logits`. Defines this as a batch of `N1 x ...  x Nm` different Binomial
     distributions. Its components should be equal to integer values.
 *  <b>`logits`</b>: Floating point tensor representing the log-odds of a
     positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
-    the same dtype as `n`. Each entry represents logits for the probability
-    of success for independent Binomial distributions. Only one of
-    `logits` or `p` should be passed in.
-*  <b>`p`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
+    the same dtype as `total_count`. Each entry represents logits for the
     probability of success for independent Binomial distributions. Only one
-    of `logits` or `p` should be passed in.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid values
-    for parameters `n`, `p`, and `x` in `prob` and `log_prob`.
-    If `False` and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch of a binomial distribution.
-dist = Binomial(n=2., p=.9)
-
-# Define a 2-batch.
-dist = Binomial(n=[4., 5], p=[.1, .3])
-```
+    of `logits` or `probs` should be passed in.
+*  <b>`probs`</b>: Positive floating point tensor with shape broadcastable to
+    `[N1,..., Nm]` `m >= 0`, `probs in [0, 1]`. Each entry represents the
+    probability of success for independent Binomial distributions. Only one
+    of `logits` or `probs` should be passed in.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined. When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Binomial.allow_nan_stats` {#Binomial.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.batch_shape(name='batch_shape')` {#Binomial.batch_shape}
+#### `tf.contrib.distributions.Binomial.batch_shape` {#Binomial.batch_shape}
+
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.batch_shape_tensor(name='batch_shape_tensor')` {#Binomial.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -135,7 +153,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.cdf(value, name='cdf', **condition_kwargs)` {#Binomial.cdf}
+#### `tf.contrib.distributions.Binomial.cdf(value, name='cdf')` {#Binomial.cdf}
 
 Cumulative distribution function.
 
@@ -150,7 +168,6 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -184,6 +201,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.Binomial.covariance(name='covariance')` {#Binomial.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Binomial.dtype` {#Binomial.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -198,7 +259,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.event_shape(name='event_shape')` {#Binomial.event_shape}
+#### `tf.contrib.distributions.Binomial.event_shape` {#Binomial.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.event_shape_tensor(name='event_shape_tensor')` {#Binomial.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -215,42 +290,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.get_batch_shape()` {#Binomial.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.get_event_shape()` {#Binomial.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
 #### `tf.contrib.distributions.Binomial.is_continuous` {#Binomial.is_continuous}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.is_reparameterized` {#Binomial.is_reparameterized}
 
 
 
@@ -269,7 +309,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -286,12 +326,12 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Binomial.log_cdf}
+#### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf')` {#Binomial.log_cdf}
 
 Log cumulative distribution function.
 
@@ -310,7 +350,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -321,79 +360,28 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Binomial.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Binomial.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.log_prob(value, name='log_prob', **condition_kwargs)` {#Binomial.log_prob}
+#### `tf.contrib.distributions.Binomial.log_prob(value, name='log_prob')` {#Binomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
 
 Additional documentation from `Binomial`:
 
-For each batch member of counts `value`, `P[counts]` is the probability that
-after sampling `n` draws from this Binomial distribution, the number of
-successes is `k`.  Note that different sequences of draws can result in the
-same counts, thus the probability includes a combinatorial coefficient.
+For each batch member of counts `value`, `P[value]` is the probability that
+after sampling `self.total_count` draws from this Binomial distribution, the
+number of successes is `value`. Since different sequences of draws can result in
+the same counts, the probability includes a combinatorial coefficient.
 
-`value` must be a non-negative tensor with dtype `dtype` and whose shape
-can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
-less than or equal to `n` and its components are equal to integer
-values.
+Note: `value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.probs` and `self.total_count`. `value` is only legal
+if it is less than or equal to `self.total_count` and its components are equal
+to integer values.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -404,7 +392,7 @@ values.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Binomial.log_survival_function}
+#### `tf.contrib.distributions.Binomial.log_survival_function(value, name='log_survival_function')` {#Binomial.log_survival_function}
 
 Log survival function.
 
@@ -424,7 +412,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -436,7 +423,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 #### `tf.contrib.distributions.Binomial.logits` {#Binomial.logits}
 
-Log-odds of success.
+Log-odds of drawing a `1`.
 
 
 - - -
@@ -454,16 +441,10 @@ Mode.
 
 Additional documentation from `Binomial`:
 
-Note that when `(n + 1) * p` is an integer, there are actually two
-modes.  Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here
-we return only the larger of the two modes.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.n` {#Binomial.n}
-
-Number of trials.
+Note that when `(1 + total_count) * probs` is an integer, there are
+actually two modes. Namely, `(1 + total_count) * probs` and
+`(1 + total_count) * probs - 1` are both modes. Here we return only the
+larger of the two modes.
 
 
 - - -
@@ -475,18 +456,15 @@ Name prepended to all ops created by this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.p` {#Binomial.p}
-
-Probability of success.
-
-
-- - -
-
 #### `tf.contrib.distributions.Binomial.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#Binomial.param_shapes}
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -504,7 +482,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Binomial.param_static_shapes(cls, sample_shape)` {#Binomial.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -531,79 +517,28 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.pdf(value, name='pdf', **condition_kwargs)` {#Binomial.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.pmf(value, name='pmf', **condition_kwargs)` {#Binomial.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Binomial.prob(value, name='prob', **condition_kwargs)` {#Binomial.prob}
+#### `tf.contrib.distributions.Binomial.prob(value, name='prob')` {#Binomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
 
 Additional documentation from `Binomial`:
 
-For each batch member of counts `value`, `P[counts]` is the probability that
-after sampling `n` draws from this Binomial distribution, the number of
-successes is `k`.  Note that different sequences of draws can result in the
-same counts, thus the probability includes a combinatorial coefficient.
+For each batch member of counts `value`, `P[value]` is the probability that
+after sampling `self.total_count` draws from this Binomial distribution, the
+number of successes is `value`. Since different sequences of draws can result in
+the same counts, the probability includes a combinatorial coefficient.
 
-`value` must be a non-negative tensor with dtype `dtype` and whose shape
-can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
-less than or equal to `n` and its components are equal to integer
-values.
+Note: `value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.probs` and `self.total_count`. `value` is only legal
+if it is less than or equal to `self.total_count` and its components are equal
+to integer values.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -614,7 +549,29 @@ values.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Binomial.sample}
+#### `tf.contrib.distributions.Binomial.probs` {#Binomial.probs}
+
+Probability of of drawing a `1`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.reparameterization_type` {#Binomial.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.sample(sample_shape=(), seed=None, name='sample')` {#Binomial.sample}
 
 Generate samples of the specified shape.
 
@@ -627,7 +584,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -637,14 +593,34 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.std(name='std')` {#Binomial.std}
+#### `tf.contrib.distributions.Binomial.stddev(name='stddev')` {#Binomial.stddev}
 
 Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Binomial.survival_function(value, name='survival_function', **condition_kwargs)` {#Binomial.survival_function}
+#### `tf.contrib.distributions.Binomial.survival_function(value, name='survival_function')` {#Binomial.survival_function}
 
 Survival function.
 
@@ -661,19 +637,25 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.total_count` {#Binomial.total_count}
+
+Number of trials.
 
 
 - - -
 
 #### `tf.contrib.distributions.Binomial.validate_args` {#Binomial.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -681,5 +663,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Binomial.variance(name='variance')` {#Binomial.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

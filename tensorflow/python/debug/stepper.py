@@ -18,11 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import os
+import shutil
+import tempfile
+import time
 
 import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug import debug_data
+from tensorflow.python.debug import debug_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
 
@@ -64,9 +69,17 @@ class NodeStepper(object):
   tree of the target. When it reaches an input where one of the following is
   available, it will supply the available value to the feed_dict of the cont()
   call:
-    (1) TensorHandles from previous cont() calls.
-    (2) Overriding (injected) values from the client.
-    (3) Feeds supplied during the construction of the stepper instance.
+    (1) Overriding (injected) values from the client.
+    (2) TensorHandles from previous cont() calls.
+    (3) Dumped intermediate Tensors from previous cont() calls.
+    (4) Feeds supplied during the construction of the stepper instance.
+
+  During the cont() call, intermediate Tensors are dumped to temporary
+  directories. The dumped Tensor values will be used in subsequent cont() calls
+  when they are required as data dependencies.
+
+  The temporary directories are automatically clean when the NodeStepper
+  instance exits as a context mananger.
 
   Once the tracing is complete, it will issue a run() call on the
   underlying session, using the aforementioned feed_dict prepared by the input
@@ -95,10 +108,7 @@ class NodeStepper(object):
   FEED_TYPE_CLIENT = "client"
   FEED_TYPE_HANDLE = "handle"
   FEED_TYPE_OVERRIDE = "override"
-
-  # TODO(cais): The following member constant is currently unused. Use it when
-  # the stepper is capable of using dumped intermediate tensors.
-  FEED_TYPE_INTERMEDIATE = "intermediate"
+  FEED_TYPE_DUMPED_INTERMEDIATE = "dumped_intermediate"
 
   def __init__(self, sess, fetches, feed_dict=None):
     """Constructor for Debugger.
@@ -125,11 +135,15 @@ class NodeStepper(object):
     self._variable_initial_values = {}
 
     # Initialize the map for output recipients (targets).
-    self._non_control_output_targets = {}
+    self._output_targets = {}
 
     # Sorted transitive closure of the fetched node.
-    self._sorted_nodes, self._closure_elements = self._dfs_visit(
-        self._sess.graph, self._fetch_list)
+    # We also collect the list of the names of the reference-type Tensors,
+    # because we later need to avoid using intermediate dumps for such Tensors.
+    (self._sorted_nodes,
+     self._closure_elements,
+     self._ref_tensor_names) = self._dfs_visit(self._sess.graph,
+                                               self._fetch_list)
 
     self._transitive_closure_set = set(self._sorted_nodes)
 
@@ -142,9 +156,17 @@ class NodeStepper(object):
     # Keep track of which variables are in a dirty state.
     self._dirty_variables = set()
 
+    # Variables updated in the last cont() call.
+    self._last_updated = None
+
     # Cached tensor handles: a dict with keys as tensor names and values as
     # tensor handles.
     self._tensor_handles = {}
+
+    # Cached intermediate tensor values: a dict mapping tensor names to
+    # DebugTensorDatum.
+    self._dumped_intermediate_tensors = {}
+    self._dump_session_root = tempfile.mkdtemp(prefix="tfdbg_stepper_")
 
     # Feed dict from the client.
     self._client_feed_dict = {}
@@ -160,6 +182,13 @@ class NodeStepper(object):
 
     # What the feed types were used by the last cont() call.
     self._last_feed_types = {}
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, exc_type, exc_value, exc_traceback):
+    if os.path.isdir(self._dump_session_root):
+      shutil.rmtree(self._dump_session_root)
 
   def _get_fetch_and_name_lists(self, flattened_fetches):
     """Get the lists of fetches and their names.
@@ -220,6 +249,11 @@ class NodeStepper(object):
     # Graph elements in the transitive closure, including the nodes and tensors.
     closure_elements = [elem.name for elem in elem_list]
 
+    ref_tensor_names = set()
+    for element in elem_list:
+      if isinstance(element, ops.Tensor) and element.dtype._is_ref_dtype:  # pylint: disable=protected-access
+        ref_tensor_names.add(element.name)
+
     while elem_stack:
       curr_elem = elem_stack.pop()
       curr_node = self._get_node(curr_elem)
@@ -238,22 +272,21 @@ class NodeStepper(object):
 
       # Iterate through the (non-control) inputs.
       for inp in all_inputs:
-        is_non_control_input = inp in non_control_inputs
-
         # Set up the non-control output map.
-        if is_non_control_input:
-          if inp.name not in self._non_control_output_targets:
-            self._non_control_output_targets[inp.name] = set([curr_elem.name])
-          else:
-            self._non_control_output_targets[inp.name].add(curr_elem.name)
+        # if is_non_control_input:
+        if inp.name not in self._output_targets:
+          self._output_targets[inp.name] = set([curr_elem.name])
+        else:
+          self._output_targets[inp.name].add(curr_elem.name)
 
-          if (inp.op.type in ["Variable", "VariableV2"] and
-              inp.name not in self._variable_initializers):
-            # Obtain the initializer op of the variable, in case the Variable's
-            # value needs to be restored later.
-            initializer = graph.as_graph_element(inp.op.name + "/Assign")
-            self._variable_initializers[inp.name] = initializer
-            self._variable_initial_values[inp.name] = initializer.inputs[1]
+        if (isinstance(inp, ops.Tensor) and
+            inp.op.type in ["Variable", "VariableV2"] and
+            inp.name not in self._variable_initializers):
+          # Obtain the initializer op of the variable, in case the Variable's
+          # value needs to be restored later.
+          initializer = graph.as_graph_element(inp.op.name + "/Assign")
+          self._variable_initializers[inp.name] = initializer
+          self._variable_initial_values[inp.name] = initializer.inputs[1]
 
         inp_node = self._get_node(inp)
         if inp_node.name in done:
@@ -262,6 +295,8 @@ class NodeStepper(object):
 
         elem_stack.append(inp)
         closure_elements.append(inp.name)
+        if isinstance(inp, ops.Tensor) and inp.dtype._is_ref_dtype:  # pylint: disable=protected-access
+          ref_tensor_names.add(inp.name)
 
     # Now that we have traversed the transitive closure and obtained the
     # node-input map, we can topologically sort them.
@@ -291,7 +326,7 @@ class NodeStepper(object):
 
       stack.extend(pushes)
 
-    return sorted_nodes, closure_elements
+    return sorted_nodes, closure_elements, ref_tensor_names
 
   def sorted_nodes(self):
     """Get a topologically-sorted list of node names of the stepper.
@@ -412,7 +447,9 @@ class NodeStepper(object):
   def cont(self,
            target,
            use_tensor_handles=True,
+           use_dumped_intermediates=True,
            use_overrides=True,
+           invalidate_from_updated_variables=False,
            restore_variable_values=False):
     """Continue till the completion of the specified target tensor.
 
@@ -423,8 +460,13 @@ class NodeStepper(object):
         # TODO(cais): Support multiple fetches as in Session.run() interface.
       use_tensor_handles: (bool) Whether this cont() run will use cached tensor
         handles to avoid recomputation. Default: True.
+      use_dumped_intermediates: (bool) Whether this cont() call will use dumped
+        intermediate tensors to avoid recomputation.
       use_overrides: (bool) Whether the overriding tensor values supplied by
         the client are to be used in this cont() call. Default: True.
+      invalidate_from_updated_variables: (bool) Whether to invalidate the
+        tensor handles and intermediate tensor handles affected by the
+        Variable updates that happen in this cont() call.
       restore_variable_values: (bool) Whether the old values of the variables
         (before any cont() calls in this object) are to be restored.
 
@@ -440,9 +482,6 @@ class NodeStepper(object):
     """
 
     self._last_feed_types = {}
-
-    # The feeds to be used in the Session.run() call.
-    feeds = {}
 
     if isinstance(target, six.string_types):
       # Fetch target is a string. Assume it is the name of the Tensor or Op and
@@ -494,6 +533,12 @@ class NodeStepper(object):
       self._last_feed_types[target_name] = self.FEED_TYPE_HANDLE
       return self._tensor_handles[target_name].eval()
 
+    # Check if a dumped intermediate tensor can be used on the fetch directly.
+    if (use_dumped_intermediates and
+        target_name in self._dumped_intermediate_tensors):
+      self._last_feed_types[target_name] = self.FEED_TYPE_DUMPED_INTERMEDIATE
+      return self._dumped_intermediate_tensors[target_name].get_tensor()
+
     # Check if an overriding tensor value can be used directly.
     if use_overrides and target_name in self._override_tensors:
       # Override is available. Return the value right away.
@@ -505,11 +550,12 @@ class NodeStepper(object):
 
     # Keep track of which variables are "touched" (i.e., possibly updated) in
     # this cont() call.
-    touched_variables = set()
+    self._last_updated = set()
 
     # =========================================================================
     # Use a non-recursive method to trace the inputs from the node and set up
     # the feeds.
+    feeds = {}  # The feeds to be used in the Session.run() call.
     fetched = self._sess.graph.as_graph_element(target_name)
     elem_stack = [fetched]
     done = set()
@@ -529,7 +575,7 @@ class NodeStepper(object):
         # Determine whether the input is feedable. Reference-type tensors,
         # e.g., Variables, should not be fed, because they can change.
         if isinstance(inp, ops.Tensor):
-          is_inp_ref = inp.dtype._is_ref_dtype   # pylint: disable=protected-access
+          is_inp_ref = inp.dtype._is_ref_dtype  # pylint: disable=protected-access
           can_feed = self._sess.graph.is_feedable(inp) and not is_inp_ref
         else:
           is_inp_ref = False
@@ -537,7 +583,7 @@ class NodeStepper(object):
 
         if (restore_variable_values and inp.name in self._dirty_variables and
             inp.name not in restored_variables and
-            inp.name not in touched_variables):
+            inp.name not in self._last_updated):
           # Do not restore Variables touched or restored previously in this
           # cont() call.
           initializer_op = self._variable_initializers[inp.name]
@@ -558,7 +604,7 @@ class NodeStepper(object):
         if (is_inp_ref and inp.op.type in ["Variable", "VariableV2"] and
             curr_node.type != "Identity"):
           # Mark the variable as dirty.
-          touched_variables.add(inp.name)
+          self._last_updated.add(inp.name)
 
           # Obtain the old value of the variable and cache it.
           if inp.name not in self._cached_variable_values:
@@ -574,11 +620,17 @@ class NodeStepper(object):
           # Use client-supplied overriding tensor value.
           feeds[inp] = self._override_tensors[inp.name]
           self._last_feed_types[inp.name] = self.FEED_TYPE_OVERRIDE
-        elif (use_tensor_handles and can_feed and
-              inp.name in self._tensor_handles and inp not in feeds):
+        elif (can_feed and inp not in feeds and
+              use_tensor_handles and inp.name in self._tensor_handles):
           # Tensor handle found in cache.
           feeds[inp] = self._tensor_handles[inp.name].eval()
           self._last_feed_types[inp.name] = self.FEED_TYPE_HANDLE
+        elif (can_feed and inp not in feeds and
+              use_dumped_intermediates and
+              inp.name in self._dumped_intermediate_tensors):
+          # Dumped intermediate Tensor found.
+          feeds[inp] = self._dumped_intermediate_tensors[inp.name].get_tensor()
+          self._last_feed_types[inp.name] = self.FEED_TYPE_DUMPED_INTERMEDIATE
         elif inp.name in self._client_feed_dict:
           # This input is available in the client feed_dict.
           feeds[inp] = self._client_feed_dict[inp.name]
@@ -596,20 +648,18 @@ class NodeStepper(object):
 
     # =========================================================================
 
-    if touched_variables:
-      self._dirty_variables.update(touched_variables)
+    if self._last_updated:
+      self._dirty_variables.update(self._last_updated)
 
     for variable in restored_variables:
       self._dirty_variables.remove(variable)
 
-    # Prepare RunOptions for DebugTensorWatches
-    run_options = config_pb2.RunOptions()
-    # TODO(cais): Add fields for watching intermediate tensors.
-
+    (dump_path,
+     run_options) = self._prepare_cont_call_dump_path_and_run_options()
     if isinstance(fetched, ops.Operation):
       # The fetched is an Operation: Will not get tensor handle.
       self._sess.run(fetched, feed_dict=feeds, options=run_options)
-      # No return value for a run of an Operation
+      return_value = None
     else:
       # This is a Tensor: Will get tensor handle and cache it.
       # Will also get the additional requested tensor handles (if any).
@@ -622,17 +672,58 @@ class NodeStepper(object):
       ])
       handle_names.extend(additional_handle_requests)
 
-      for handle_name, tensor in zip(handle_names, tensors_to_get_handles_for):
-        handle = self._sess.run(session_ops.get_session_handle(tensor),
-                                feed_dict=feeds,
-                                options=run_options)
+      handles = self._sess.run(
+          [session_ops.get_session_handle(tensor) for tensor in
+           tensors_to_get_handles_for],
+          feed_dict=feeds,
+          options=run_options)
+      for handle_name, handle in zip(handle_names, handles):
         self._tensor_handles[handle_name] = handle
 
-      return self._tensor_handles[target_name].eval()
+      return_value = self._tensor_handles[target_name].eval()
 
-    # Invalidate caches at the end.
-    for touched_variable in touched_variables:
-      self._invalidate_transitively_outgoing_cache(touched_variable)
+    self._load_dumped_intermediate_tensors(dump_path, target_name)
+
+    if invalidate_from_updated_variables:
+      # Invalidate caches at the end.
+      for last_updated_variable in self._last_updated:
+        self._invalidate_transitively_outgoing_cache(last_updated_variable)
+
+    return return_value
+
+  def _prepare_cont_call_dump_path_and_run_options(self):
+    """Prepare the dump path and RunOptions for next cont() call.
+
+    Returns:
+      dump_path: (str) Directory path to which the intermediate tensor will be
+        dumped.
+      run_options: (config_pb2.RunOptions) The RunOptions containing the tensor
+        watch options for this graph.
+    """
+    run_options = config_pb2.RunOptions()
+    dump_path = self._cont_call_dump_path()
+    for element_name in self._closure_elements:
+      if ":" in element_name:
+        debug_utils.add_debug_tensor_watch(
+            run_options,
+            debug_data.get_node_name(element_name),
+            output_slot=debug_data.get_output_slot(element_name),
+            debug_urls=["file://" + dump_path])
+
+    return dump_path, run_options
+
+  def _cont_call_dump_path(self):
+    return os.path.join(self._dump_session_root,
+                        "cont_%d" % int(time.time() * 1e6))
+
+  def _load_dumped_intermediate_tensors(self, dump_path, target_name):
+    dump_dir = debug_data.DebugDumpDir(dump_path, validate=False)
+    for dump in dump_dir.dumped_tensor_data:
+      if (dump.tensor_name not in self._ref_tensor_names and
+          dump.tensor_name not in self._tensor_handles and
+          dump.tensor_name not in self._override_tensors and
+          dump.tensor_name != target_name):
+        self._dumped_intermediate_tensors[dump.tensor_name] = dump
 
   def _get_node_name(self, graph_element_name):
     return graph_element_name.split(":")[0]
@@ -646,29 +737,33 @@ class NodeStepper(object):
 
     Uses non-recursive implementation to avoid stack overflow on deep networks.
 
-    TODO(cais): Currently, only TensorHandle caches are invalidated. Invalidate
-      cached intermediate tensor values from dumps when dumps are added.
-
     Args:
       source_element: The source graph element (e.g., a Variable output slot)
         to trace the output from.
     """
 
-    if not self._tensor_handles:
+    if not self._tensor_handles and not self._dumped_intermediate_tensors:
       return
 
     # First, use cached invalidation paths to eliminate some cached tensor
-    # handles.
-    to_delete = []
+    # handles and intermediate tensors.
+    to_delete_handles = []
     for handle_name in self._tensor_handles:
       if (handle_name in self._cached_invalidation_path and
           source_element in self._cached_invalidation_path[handle_name]):
-        to_delete.append(handle_name)
-
-    for handle_name in to_delete:
+        to_delete_handles.append(handle_name)
+    for handle_name in to_delete_handles:
       del self._tensor_handles[handle_name]
 
-    if not self._tensor_handles:
+    to_delete_intermediates = []
+    for intm_tensor_name in self._dumped_intermediate_tensors:
+      if (intm_tensor_name in self._cached_invalidation_path and
+          source_element in self._cached_invalidation_path[intm_tensor_name]):
+        to_delete_intermediates.append(intm_tensor_name)
+    for intermediate in to_delete_intermediates:
+      del self._dumped_intermediate_tensors[intermediate]
+
+    if not self._tensor_handles and not self._dumped_intermediate_tensors:
       return
 
     stack = [source_element]
@@ -676,19 +771,22 @@ class NodeStepper(object):
 
     while stack:
       curr_element = stack.pop()
-
       done.add(curr_element)
 
-      if curr_element in self._tensor_handles:
+      if (curr_element in self._tensor_handles or
+          curr_element in self._dumped_intermediate_tensors):
         # Cache the invalidation path for potential future use.
         if curr_element not in self._cached_invalidation_path:
           self._cached_invalidation_path[curr_element] = set([source_element])
         else:
           self._cached_invalidation_path[curr_element].add(source_element)
 
-        del self._tensor_handles[curr_element]
+        if curr_element in self._tensor_handles:
+          del self._tensor_handles[curr_element]
+        else:
+          del self._dumped_intermediate_tensors[curr_element]
 
-      targets = self._non_control_output_targets.get(curr_element, [])
+      targets = self._output_targets.get(curr_element, [])
       for target in targets:
         if target in done:
           continue
@@ -739,6 +837,26 @@ class NodeStepper(object):
     """
 
     return set([self._get_node_name(name) for name in self._tensor_handles])
+
+  def intermediate_tensor_names(self):
+    """Get list of the names of the Tensors for which dumps are available.
+
+    Returns:
+      (list of str) List of the names of the Tensors for which intermediate
+        dumps are available.
+    """
+
+    return self._dumped_intermediate_tensors.keys()
+
+  def last_updated(self):
+    """Get the names of the variables updated in the last cont() call.
+
+    Returns:
+      A set of the variable names updated in the previous cont() call.
+      If no cont() call has occurred before, returns None.
+    """
+
+    return self._last_updated
 
   def dirty_variables(self):
     """Get the set of variables that are currently "dirty".
@@ -817,6 +935,8 @@ class NodeStepper(object):
       return self._override_tensors[tensor_name]
     elif tensor_name in self._tensor_handles:
       return self._tensor_handles[tensor_name].eval()
+    elif tensor_name in self._dumped_intermediate_tensors:
+      return self._dumped_intermediate_tensors[tensor_name].get_tensor()
     else:
       raise ValueError(
           "This stepper instance does not have access to the value of "

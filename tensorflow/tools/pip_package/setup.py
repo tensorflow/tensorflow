@@ -29,12 +29,13 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '0.12.1'
+_VERSION = '1.0.0-rc2'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf >= 3.1.0',
+    'protobuf >= 3.2.0',
+    'werkzeug >= 0.11.10',
 ]
 
 project_name = 'tensorflow'
@@ -150,6 +151,7 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
+matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'

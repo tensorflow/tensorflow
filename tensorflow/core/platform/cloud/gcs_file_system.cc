@@ -307,6 +307,7 @@ class GcsWritableFile : public WritableFile {
         object_(object),
         auth_provider_(auth_provider),
         http_request_factory_(http_request_factory),
+        sync_needed_(true),
         max_upload_attempts_(max_upload_attempts) {
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
       outfile_.open(tmp_content_filename_,
@@ -328,16 +329,18 @@ class GcsWritableFile : public WritableFile {
         object_(object),
         auth_provider_(auth_provider),
         http_request_factory_(http_request_factory),
+        sync_needed_(true),
         max_upload_attempts_(max_upload_attempts) {
     tmp_content_filename_ = tmp_content_filename;
     outfile_.open(tmp_content_filename_,
                   std::ofstream::binary | std::ofstream::app);
   }
 
-  ~GcsWritableFile() { Close(); }
+  ~GcsWritableFile() override { Close().IgnoreError(); }
 
   Status Append(const StringPiece& data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
+    sync_needed_ = true;
     outfile_ << data;
     if (!outfile_.good()) {
       return errors::Internal(
@@ -357,14 +360,26 @@ class GcsWritableFile : public WritableFile {
 
   Status Flush() override { return Sync(); }
 
+  Status Sync() override {
+    TF_RETURN_IF_ERROR(CheckWritable());
+    if (!sync_needed_) {
+      return Status::OK();
+    }
+    Status status = SyncImpl();
+    if (status.ok()) {
+      sync_needed_ = false;
+    }
+    return status;
+  }
+
+ private:
   /// Copies the current version of the file to GCS.
   ///
-  /// This Sync() uploads the object to GCS.
+  /// This SyncImpl() uploads the object to GCS.
   /// In case of a failure, it resumes failed uploads as recommended by the GCS
   /// resumable API documentation. When the whole upload needs to be
   /// restarted, Sync() returns UNAVAILABLE and relies on RetryingFileSystem.
-  Status Sync() override {
-    TF_RETURN_IF_ERROR(CheckWritable());
+  Status SyncImpl() {
     outfile_.flush();
     if (!outfile_.good()) {
       return errors::Internal(
@@ -410,7 +425,6 @@ class GcsWritableFile : public WritableFile {
     return errors::Aborted("Upload gs://", bucket_, "/", object_, " failed.");
   }
 
- private:
   Status CheckWritable() const {
     if (!outfile_.is_open()) {
       return errors::FailedPrecondition(
@@ -556,6 +570,7 @@ class GcsWritableFile : public WritableFile {
   string tmp_content_filename_;
   std::ofstream outfile_;
   HttpRequest::Factory* http_request_factory_;
+  bool sync_needed_;  // whether there is buffered data that needs to be synced
   int32 max_upload_attempts_;
 };
 
@@ -752,8 +767,9 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
-  request->AddAuthBearerHeader(auth_token);
+  TF_RETURN_IF_ERROR(
+      request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket)));
+  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   const Status status = request->Send();
   switch (status.code()) {
     case errors::Code::OK:

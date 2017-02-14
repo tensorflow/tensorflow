@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import sys
 import time
 
 from tensorflow.python.client import session as session_lib
@@ -30,11 +32,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import flags
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
-flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
 
 
 def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
@@ -96,7 +95,11 @@ def build_graph(device, input_shape, axes, num_layers, mode, scale, train):
   with ops.device("/%s:0" % device):
     tensor = variables.Variable(random_ops.truncated_normal(input_shape))
     for _ in range(num_layers):
-      mean, variance = nn_impl.moments(tensor, axes, keep_dims=keep_dims)
+      if train:
+        mean, variance = nn_impl.moments(tensor, axes, keep_dims=keep_dims)
+      else:
+        mean = array_ops.zeros(moment_shape)
+        variance = array_ops.ones(moment_shape)
       beta = variables.Variable(array_ops.zeros(moment_shape))
       gamma = variables.Variable(constant_op.constant(1.0, shape=moment_shape))
       if mode == "py":
@@ -245,4 +248,16 @@ class BatchNormBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  test.main()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--use_gpu",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=True,
+      help="Run GPU benchmarks."
+  )
+  global FLAGS  # pylint:disable=global-at-module-level
+  FLAGS, unparsed = parser.parse_known_args()
+  test.main(argv=[sys.argv[0]] + unparsed)

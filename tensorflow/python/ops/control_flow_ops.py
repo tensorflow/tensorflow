@@ -1370,7 +1370,8 @@ class ControlFlowContext(object):
     g = ops.get_default_graph()
     self._external_values = {}
     for k, v in values_def.external_values.items():
-      self._external_values[k] = g.as_graph_element(v)
+      self._external_values[k] = g.as_graph_element(
+          ops.prepend_name_scope(v, import_scope))
     op_names = set([op.split(":")[0]
                     for op in self._values - set(self._external_values)])
     for op in op_names:
@@ -1702,9 +1703,9 @@ def cond(pred, fn1, fn2, name=None):
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the `tf.add` operation will be executed and tf.square
+  If x < y, the `tf.add` operation will be executed and `tf.square`
   operation will not be executed. Since z is needed for at least one
-  branch of the cond, the tf.mul operation is always executed, unconditionally.
+  branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
   it has occasionally surprised some users who expected a lazier semantics.
 
@@ -1791,6 +1792,15 @@ def cond(pred, fn1, fn2, name=None):
     ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
     return merges[0] if len(merges) == 1 else merges
+
+
+def _resource_safe_shape(t):
+  """Returns the shape of t or the variable it points to."""
+  if t.dtype == dtypes.resource:
+    while t.op.inputs:
+      t = t.op.inputs[0]
+    return tensor_shape.TensorShape(t.op.get_attr("shape"))
+  return array_ops.shape_internal(t, optimize=False)
 
 
 # TODO(yuanbyu): Consider having a unified notion of context for
@@ -2283,7 +2293,7 @@ class WhileContext(ControlFlowContext):
                                         name="b_acc")
       if self.outer_context: self.outer_context.Exit()
     else:
-      values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
+      values_shape = _resource_safe_shape(op.inputs[0])[1:]
       values_shape = array_ops.concat([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)

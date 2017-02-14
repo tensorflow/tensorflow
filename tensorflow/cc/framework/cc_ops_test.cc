@@ -68,7 +68,7 @@ TEST(CCOpTest, Attrs) {
 TEST(CCOpTest, SplitConcat) {
   Scope root = Scope::NewRootScope();
   Split p(root, 0, {{1}, {2}}, 2);
-  auto c = Concat(root, 0, {p[0], p[1]});
+  auto c = Concat(root, {p[0], p[1]}, 0);
   TF_EXPECT_OK(root.status());
   Tensor out;
   test::GetTensor(root, c, &out);

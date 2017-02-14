@@ -9,7 +9,7 @@ Create a trainable covariance defined by a Cholesky factor:
 matrix_values = tf.contrib.layers.fully_connected(activations, 4)
 matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
 
-# Make the diagonal positive.  If the upper triangle was zero, this would be a
+# Make the diagonal positive. If the upper triangle was zero, this would be a
 # valid Cholesky factor.
 chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
@@ -31,9 +31,9 @@ mu = tf.contrib.layers.fully_connected(activations, 2)
 # This is a fully trainable multivariate normal!
 dist = tf.contrib.distributions.MVNCholesky(mu, chol)
 
-# Standard log loss.  Minimizing this will "train" mu and chol, and then dist
+# Standard log loss. Minimizing this will "train" mu and chol, and then dist
 # will be a distribution predicting labels as multivariate Gaussians.
-loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+loss = -1 * tf.reduce_mean(dist.log_prob(labels))
 ```
 
 ##### Args:
@@ -41,9 +41,9 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 
 *  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
     equal.
-*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
-    be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
-    unchanged.  Defaults to `None`.
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`. To
+    be applied to the diagonal of `matrix`. If `None`, `matrix` is returned
+    unchanged. Defaults to `None`.
 *  <b>`name`</b>: A name to give created ops.
     Defaults to "matrix_diag_transform".
 

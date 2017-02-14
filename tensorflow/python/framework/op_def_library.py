@@ -500,8 +500,13 @@ class OpDefLibrary(object):
                    repr(values), type(values).__name__))
           except ValueError:
             # What type does convert_to_tensor think it has?
-            observed = ops.internal_convert_to_tensor(
-                values, as_ref=input_arg.is_ref).dtype.name
+            try:
+              observed = ops.internal_convert_to_tensor(
+                  values, as_ref=input_arg.is_ref).dtype.name
+            except ValueError as err:
+              raise ValueError(
+                  "Tried to convert '%s' to a tensor and failed. Error: %s" %
+                  (input_name, err))
             prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
@@ -613,8 +618,8 @@ class OpDefLibrary(object):
         if input_arg.is_ref:
           if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
-                "Input '%s' of '%s' Op requires l-value input" %
-                (input_name, op_type_name))
+                ("'%s' Op requires that input '%s' be a mutable tensor " +
+                "(e.g.: a tf.Variable)") % (op_type_name, input_name))
           input_types.extend(types)
         else:
           input_types.extend(base_types)

@@ -41,12 +41,12 @@ const char* const kXlaClusterAttr = "_XlaCluster";
 
 namespace {
 
-bool HasXLAKernel(const NodeDef& node_def, DeviceType jit_device_type) {
+bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
-  if (node_def.op() == "SymbolicGradient") return false;
-  return FindKernelDef(jit_device_type, node_def, nullptr, nullptr).ok();
+  if (node.type_string() == "SymbolicGradient") return false;
+  return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
 }
 
 // Make sure we don't recurse infinitely on recursive functions.
@@ -125,7 +125,7 @@ bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
       return IsCompilableWhile(node->def(), jit_device_type, depth + 1,
                                lib_runtime);
     }
-    if (!HasXLAKernel(node->def(), jit_device_type) &&
+    if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, depth + 1,
                           lib_runtime)) {
       VLOG(2) << "Function marking failed: unsupported op " << node->name()
@@ -166,9 +166,10 @@ Status FindCompilationCandidates(
 
     const string* jit_device_name;
     CHECK(XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device_name,
-                                      /*requires_jit=*/nullptr));
+                                      /*requires_jit=*/nullptr,
+                                      /*enable_jit_by_default=*/nullptr));
     DeviceType jit_device_type(*jit_device_name);
-    if (!HasXLAKernel(node->def(), jit_device_type) &&
+    if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
               << ": " << node->def().op();
@@ -254,7 +255,8 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   Device* device = flr->device();
   const string* jit_device_name;
   CHECK(XlaOpRegistry::GetJitDevice(device->device_type(), &jit_device_name,
-                                    /*requires_jit=*/nullptr));
+                                    /*requires_jit=*/nullptr,
+                                    /*enable_jit_by_default=*/nullptr));
   DeviceType jit_device_type(*jit_device_name);
   return IsCompilableCall(ndef, jit_device_type, 0, flr);
 }
@@ -284,9 +286,9 @@ Status MarkForCompilationPass::Run(
   auto is_compilable = [global_jit_level, fld](const Node* node,
                                                const DeviceType& device_type) {
     const string* jit_device;
-    bool requires_jit;
+    bool requires_jit, enable_jit_by_default;
     if (!XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device,
-                                     &requires_jit)) {
+                                     &requires_jit, &enable_jit_by_default)) {
       return false;
     }
     // If this device requires a JIT, we must say yes.
@@ -301,7 +303,7 @@ Status MarkForCompilationPass::Run(
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
-    return global_jit_level > 0;
+    return enable_jit_by_default && global_jit_level > 0;
   };
   return RunImpl(options, is_compilable);
 }
@@ -510,7 +512,8 @@ Status MarkForCompilationPass::RunImpl(
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(n->assigned_device_name(), &device_type));
     XlaOpRegistry::GetJitDevice(device_type.type(),
-                                /*jit_device_name=*/nullptr, &requires_jit);
+                                /*jit_device_name=*/nullptr, &requires_jit,
+                                /*enable_jit_by_default=*/nullptr);
 
     // Or compile if this is a cluster of >= min_cluster_size compilable
     // operators.

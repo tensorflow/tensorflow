@@ -12,32 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Linear algebra libraries for TensorFlow.
-
-## `LinearOperator`
-
-Subclasses of `LinearOperator` provide a access to common methods on a
-(batch) matrix, without the need to materialize the matrix.  This allows:
-
-* Matrix free computations
-* Different operators to take advantage of special strcture, while providing a
-  consistent API to users.
-
-### Base class
+"""Linear algebra libraries. See the @{$python/contrib.linalg} guide.
 
 @@LinearOperator
-
-### Individual operators
-
 @@LinearOperatorDiag
 @@LinearOperatorIdentity
+@@LinearOperatorScaledIdentity
 @@LinearOperatorMatrix
 @@LinearOperatorTriL
-
-### Transformations and Combinations of operators
-
+@@LinearOperatorUDVHUpdate
 @@LinearOperatorComposition
-
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -51,5 +35,9 @@ from tensorflow.contrib.linalg.python.ops.linear_operator_diag import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_identity import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_matrix import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_tril import *
+from tensorflow.contrib.linalg.python.ops.linear_operator_udvh_update import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

@@ -18,9 +18,9 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
-#define TF_MAJOR_VERSION 0
-#define TF_MINOR_VERSION 12
-#define TF_PATCH_VERSION head
+#define TF_MAJOR_VERSION 1
+#define TF_MINOR_VERSION 0
+#define TF_PATCH_VERSION 0-rc2
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
@@ -79,10 +79,12 @@ limitations under the License.
 //     used for tf.split, ReverseV2 is now used by tf.reverse, ConcatV2 is
 //     now used by tf.concat_v2 (and soon tf.concat). Graphs use flooring
 //     division and mod semantics. TensorArrayV3. (12dec2016)
+// 21. Dropped FunctionDef.Node support, switched to node_def introduced
+//     in version 12. (11jan2017)
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 20
+#define TF_GRAPH_DEF_VERSION 21
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

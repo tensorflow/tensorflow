@@ -230,20 +230,6 @@ class Tensor(_TensorLike):
   # Execute the graph and store the value that `e` represents in `result`.
   result = sess.run(e)
   ```
-
-  @@dtype
-  @@name
-  @@value_index
-  @@graph
-  @@op
-  @@consumers
-
-  @@eval
-
-  @@get_shape
-  @@shape
-  @@set_shape
-
   """
 
   # List of Python operators that we allow to override.
@@ -1021,17 +1007,6 @@ class IndexedSlices(_TensorLike):
   Contrast this representation with
   [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
   which uses multi-dimensional indices and scalar values.
-
-  @@__init__
-
-  @@values
-  @@indices
-  @@dense_shape
-
-  @@name
-  @@dtype
-  @@device
-  @@op
   """
 
   def __init__(self, values, indices, dense_shape=None):
@@ -1155,19 +1130,6 @@ class Operation(object):
   be executed by passing it to
   [`Session.run()`](../../api_docs/python/client.md#Session.run).
   `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
-
-  @@name
-  @@type
-  @@inputs
-  @@control_inputs
-  @@outputs
-  @@device
-  @@graph
-
-  @@run
-
-  @@get_attr
-  @@traceback
   """
 
   def __init__(self, node_def, g, inputs=None, output_types=None,
@@ -2299,6 +2261,9 @@ class Graph(object):
     if (function.grad_func_name is not None) and (
         function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
 
   @property
@@ -2367,6 +2332,13 @@ class Graph(object):
     # attributes.
     for key, value in self._attr_scope_map.items():
       if key not in node_def.attr:
+        if callable(value):
+          value = value(node_def)
+          if not isinstance(value, (type(None), attr_value_pb2.AttrValue)):
+            raise TypeError(
+                "Callable for scope map key '%s' must return either None or "
+                "an AttrValue protocol buffer; but it returned: %s" %
+                (key, value))
         node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
@@ -2889,7 +2861,8 @@ class Graph(object):
       A context manager that installs `name` as a new name scope.
 
     Raises:
-      ValueError: If `name` is not a valid scope name. The rules are the
+      ValueError: If `name` is not a valid scope name, according to the rules
+        above.
     """
     if name:
       if self._name_stack:
@@ -3425,10 +3398,12 @@ class Graph(object):
     saved_attrs = {}
     # Install the given attribute
     for name, attr in attr_map.items():
-      if not (isinstance(name, six.string_types)
-              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+      if not (isinstance(name, six.string_types) and
+              (isinstance(attr, (type(None), attr_value_pb2.AttrValue)) or
+               callable(attr))):
         raise TypeError("attr_map must be a dictionary mapping "
-                        "strings to AttrValue protocol buffers")
+                        "strings to AttrValue protocol buffers or "
+                        "callables that emit AttrValue protocol buffers")
       try:
         saved_attrs[name] = self._attr_scope_map[name]
       except KeyError:

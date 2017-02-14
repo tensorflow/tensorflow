@@ -84,9 +84,6 @@ class HloTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
 
-  // Utility function which creates a ProgramShape for a given computation.
-  ProgramShape MakeProgramShape(HloComputation* computation);
-
   string TestName() const;
 
   std::unique_ptr<Backend> backend_;

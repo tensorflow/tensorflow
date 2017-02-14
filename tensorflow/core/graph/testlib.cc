@@ -219,6 +219,16 @@ Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
   return ret;
 }
 
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomPoisson")
+                  .Input(shape)
+                  .Input(lam)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
@@ -253,6 +263,10 @@ Node* Identity(Graph* g, Node* input, int index) {
 }
 
 Node* Add(Graph* g, Node* in0, Node* in1) { return Binary(g, "Add", in0, in1); }
+
+Node* Reverse(Graph* g, Node* tensor, Node* axis) {
+  return Binary(g, "ReverseV2", tensor, axis);
+}
 
 Node* Error(Graph* g, Node* input, const string& errmsg) {
   Node* ret;

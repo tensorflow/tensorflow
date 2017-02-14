@@ -95,13 +95,9 @@ class ShapeUtil {
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size);
-
-  // Returns the number of bytes required for an allocation of shape.
-  // The calculation for tuple shapes assumes that we are utilizing host
-  // pointers.
-  // Precondition: !ShapeUtil::IsOpaque(shape)
-  static int64 ByteSizeOf(const Shape& shape);
+  // Precondition: (!ShapeUtil::IsTuple(shape) || pointer_size > 0) &&
+  //               !ShapeUtil::IsOpaque(shape)
+  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //
@@ -374,13 +370,20 @@ class ShapeUtil {
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
- private:
-  // Recursive helper for comparing the equality of two shapes. Returns true if
-  // the shapes are the same. If compare_layouts is true, then layouts must also
-  // match.
-  static bool CompareShapes(const Shape& lhs, const Shape& rhs,
-                            bool compare_layouts);
+  // Returns a shape with the given dimension deleted.
+  // For example:
+  // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
+  static Shape DeleteDimension(int64 dim_to_delete, Shape shape);
 
+  // Returns a shape with all the dimensions of the input shape for which `p`
+  // returns true.
+  // For examples:
+  // • `FilterDimensions((< 2), T[m, n, k]) = T[m, n]`
+  // • `FilterDimensions(is_even_number, T[m, n, k]) = T[m, k]`
+  static Shape FilterDimensions(const std::function<bool(int64)>& p,
+                                Shape shape);
+
+ private:
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);

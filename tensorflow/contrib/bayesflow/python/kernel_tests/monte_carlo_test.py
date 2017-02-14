@@ -48,8 +48,8 @@ class ExpectationImportanceSampleTest(test.TestCase):
       mu_q = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
       sigma_p = constant_op.constant([0.5, 0.5], dtype=dtypes.float64)
       sigma_q = constant_op.constant([1.0, 1.0], dtype=dtypes.float64)
-      p = distributions.Normal(mu=mu_p, sigma=sigma_p)
-      q = distributions.Normal(mu=mu_q, sigma=sigma_q)
+      p = distributions.Normal(loc=mu_p, scale=sigma_p)
+      q = distributions.Normal(loc=mu_q, scale=sigma_q)
 
       # Compute E_p[X].
       e_x = monte_carlo.expectation_importance_sampler(
@@ -59,15 +59,15 @@ class ExpectationImportanceSampleTest(test.TestCase):
       e_x2 = monte_carlo.expectation_importance_sampler(
           f=math_ops.square, log_p=p.log_prob, sampling_dist_q=q, n=n, seed=42)
 
-      stdev = math_ops.sqrt(e_x2 - math_ops.square(e_x))
+      stddev = math_ops.sqrt(e_x2 - math_ops.square(e_x))
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
       # Convergence of mean is +- 0.003 if n = 100M
-      # Convergence of std is +- 0.00001 if n = 100M
-      self.assertEqual(p.get_batch_shape(), e_x.get_shape())
+      # Convergence of stddev is +- 0.00001 if n = 100M
+      self.assertEqual(p.batch_shape, e_x.get_shape())
       self.assertAllClose(p.mean().eval(), e_x.eval(), rtol=0.01)
-      self.assertAllClose(p.std().eval(), stdev.eval(), rtol=0.02)
+      self.assertAllClose(p.stddev().eval(), stddev.eval(), rtol=0.02)
 
   def test_multivariate_normal_prob_positive_product_of_components(self):
     # Test that importance sampling can correctly estimate the probability that
@@ -75,9 +75,9 @@ class ExpectationImportanceSampleTest(test.TestCase):
     n = 1000
     with self.test_session():
       p = distributions.MultivariateNormalDiag(
-          mu=[0.0, 0.0], diag_stdev=[1.0, 1.0])
+          loc=[0.0, 0.0], scale_diag=[1.0, 1.0])
       q = distributions.MultivariateNormalDiag(
-          mu=[0.5, 0.5], diag_stdev=[3., 3.])
+          loc=[0.5, 0.5], scale_diag=[3., 3.])
 
       # Compute E_p[X_1 * X_2 > 0], with X_i the ith component of X ~ p(x).
       # Should equal 1/2 because p is a spherical Gaussian centered at (0, 0).
@@ -91,7 +91,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
       # Convergence is +- 0.004 if n = 100k.
-      self.assertEqual(p.get_batch_shape(), prob.get_shape())
+      self.assertEqual(p.batch_shape, prob.get_shape())
       self.assertAllClose(0.5, prob.eval(), rtol=0.05)
 
 
@@ -105,8 +105,8 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
       mu_q = constant_op.constant([-1.0, 1.0], dtype=dtypes.float64)
       sigma_p = constant_op.constant([1.0, 2 / 3.], dtype=dtypes.float64)
       sigma_q = constant_op.constant([1.0, 1.0], dtype=dtypes.float64)
-      p = distributions.Normal(mu=mu_p, sigma=sigma_p)
-      q = distributions.Normal(mu=mu_q, sigma=sigma_q)
+      p = distributions.Normal(loc=mu_p, scale=sigma_p)
+      q = distributions.Normal(loc=mu_q, scale=sigma_q)
 
       # Compute E_p[X^2].
       # Should equal [1, (2/3)^2]
@@ -120,7 +120,7 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
-      self.assertEqual(p.get_batch_shape(), e_x2.get_shape())
+      self.assertEqual(p.batch_shape, e_x2.get_shape())
       self.assertAllClose([1., (2 / 3.)**2], e_x2.eval(), rtol=0.02)
 
 
@@ -130,15 +130,15 @@ class ExpectationTest(test.TestCase):
     random_seed.set_random_seed(0)
     n = 20000
     with self.test_session():
-      p = distributions.Normal(mu=[1.0, -1.0], sigma=[0.3, 0.5])
+      p = distributions.Normal(loc=[1.0, -1.0], scale=[0.3, 0.5])
       # Compute E_p[X] and E_p[X^2].
       z = p.sample(n, seed=42)
       e_x = monte_carlo.expectation(lambda x: x, p, z=z, seed=42)
       e_x2 = monte_carlo.expectation(math_ops.square, p, z=z, seed=0)
       var = e_x2 - math_ops.square(e_x)
 
-      self.assertEqual(p.get_batch_shape(), e_x.get_shape())
-      self.assertEqual(p.get_batch_shape(), e_x2.get_shape())
+      self.assertEqual(p.batch_shape, e_x.get_shape())
+      self.assertEqual(p.batch_shape, e_x2.get_shape())
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
@@ -151,7 +151,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_raises_if_both_z_and_n_are_none(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = None
       n = None
       seed = None
@@ -160,7 +160,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_raises_if_both_z_and_n_are_not_none(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = dist.sample(seed=42)
       n = 1
       seed = None
@@ -169,7 +169,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_returns_n_samples_if_n_provided(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = None
       n = 10
       seed = None
@@ -178,7 +178,7 @@ class GetSamplesTest(test.TestCase):
 
   def test_returns_z_if_z_provided(self):
     with self.test_session():
-      dist = distributions.Normal(mu=0., sigma=1.)
+      dist = distributions.Normal(loc=0., scale=1.)
       z = dist.sample(10, seed=42)
       n = None
       seed = None

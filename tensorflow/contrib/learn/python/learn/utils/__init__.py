@@ -20,3 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.utils.export import export_estimator
+from tensorflow.contrib.learn.python.learn.utils.input_fn_utils import build_default_serving_input_fn
+from tensorflow.contrib.learn.python.learn.utils.input_fn_utils import build_parsing_serving_input_fn
+from tensorflow.contrib.learn.python.learn.utils.input_fn_utils import InputFnOps
+from tensorflow.contrib.learn.python.learn.utils.saved_model_export_utils import make_export_strategy
+

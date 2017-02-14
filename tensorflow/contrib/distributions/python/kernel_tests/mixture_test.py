@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -80,8 +81,8 @@ def make_univariate_mixture(batch_shape, num_components):
       list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
   components = [
       distributions_py.Normal(
-          mu=np.float32(np.random.randn(*list(batch_shape))),
-          sigma=np.float32(10 * np.random.rand(*list(batch_shape))))
+          loc=np.float32(np.random.randn(*list(batch_shape))),
+          scale=np.float32(10 * np.random.rand(*list(batch_shape))))
       for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
@@ -93,8 +94,8 @@ def make_multivariate_mixture(batch_shape, num_components, event_shape):
       list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
   components = [
       distributions_py.MultivariateNormalDiag(
-          mu=np.float32(np.random.randn(*list(batch_shape + event_shape))),
-          diag_stdev=np.float32(10 * np.random.rand(
+          loc=np.float32(np.random.randn(*list(batch_shape + event_shape))),
+          scale_diag=np.float32(10 * np.random.rand(
               *list(batch_shape + event_shape)))) for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
@@ -107,26 +108,25 @@ class MixtureTest(test.TestCase):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_univariate_mixture(batch_shape, num_components=10)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape())
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape())
-        self.assertAllEqual([], dist.event_shape().eval())
+        self.assertAllEqual(batch_shape, dist.batch_shape)
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape)
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
 
         for event_shape in ([1], [2]):
           dist = make_multivariate_mixture(
               batch_shape, num_components=10, event_shape=event_shape)
-          self.assertAllEqual(batch_shape, dist.get_batch_shape())
-          self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-          self.assertAllEqual(event_shape, dist.get_event_shape())
-          self.assertAllEqual(event_shape, dist.event_shape().eval())
+          self.assertAllEqual(batch_shape, dist.batch_shape)
+          self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+          self.assertAllEqual(event_shape, dist.event_shape)
+          self.assertAllEqual(event_shape, dist.event_shape_tensor().eval())
 
   def testBrokenShapesStatic(self):
     with self.assertRaisesWithPredicateMatch(ValueError,
                                              r"cat.num_classes != len"):
       distributions_py.Mixture(
           distributions_py.Categorical([0.1, 0.5]),  # 2 classes
-          [distributions_py.Normal(
-              mu=1.0, sigma=2.0)])
+          [distributions_py.Normal(loc=1.0, scale=2.0)])
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"\(\) and \(2,\) are not compatible"):
       # The value error is raised because the batch shapes of the
@@ -136,16 +136,16 @@ class MixtureTest(test.TestCase):
           distributions_py.Categorical([-0.5, 0.5]),  # scalar batch
           [
               distributions_py.Normal(
-                  mu=1.0, sigma=2.0),  # scalar dist
+                  loc=1.0, scale=2.0),  # scalar dist
               distributions_py.Normal(
-                  mu=[1.0, 1.0], sigma=[2.0, 2.0])
+                  loc=[1.0, 1.0], scale=[2.0, 2.0])
           ])
     with self.assertRaisesWithPredicateMatch(ValueError, r"Could not infer"):
       cat_logits = array_ops.placeholder(shape=[1, None], dtype=dtypes.float32)
       distributions_py.Mixture(
           distributions_py.Categorical(cat_logits),
           [distributions_py.Normal(
-              mu=[1.0], sigma=[2.0])])
+              loc=[1.0], scale=[2.0])])
 
   def testBrokenShapesDynamic(self):
     with self.test_session():
@@ -154,8 +154,8 @@ class MixtureTest(test.TestCase):
       d = distributions_py.Mixture(
           distributions_py.Categorical([0.1, 0.2]), [
               distributions_py.Normal(
-                  mu=d0_param, sigma=d0_param), distributions_py.Normal(
-                      mu=d1_param, sigma=d1_param)
+                  loc=d0_param, scale=d0_param), distributions_py.Normal(
+                      loc=d1_param, scale=d1_param)
           ],
           validate_args=True)
       with self.assertRaisesOpError(r"batch shape must match"):
@@ -174,9 +174,9 @@ class MixtureTest(test.TestCase):
     with self.assertRaisesWithPredicateMatch(TypeError, "same dtype"):
       distributions_py.Mixture(
           cat, [
-              distributions_py.Normal(
-                  mu=[1.0], sigma=[2.0]), distributions_py.Normal(
-                      mu=[np.float16(1.0)], sigma=[np.float16(2.0)])
+              distributions_py.Normal(loc=[1.0], scale=[2.0]),
+              distributions_py.Normal(loc=[np.float16(1.0)],
+                                      scale=[np.float16(2.0)]),
           ])
     with self.assertRaisesWithPredicateMatch(ValueError, "non-empty list"):
       distributions_py.Mixture(distributions_py.Categorical([0.3, 0.2]), None)
@@ -184,9 +184,8 @@ class MixtureTest(test.TestCase):
                                              "either be continuous or not"):
       distributions_py.Mixture(
           cat, [
-              distributions_py.Normal(
-                  mu=[1.0], sigma=[2.0]), distributions_py.Bernoulli(
-                      dtype=dtypes.float32, logits=[1.0])
+              distributions_py.Normal(loc=[1.0], scale=[2.0]),
+              distributions_py.Bernoulli(dtype=dtypes.float32, logits=[1.0]),
           ])
 
   def testMeanUnivariate(self):
@@ -375,7 +374,7 @@ class MixtureTest(test.TestCase):
       random_seed.set_random_seed(654321)
       components = [
           distributions_py.Normal(
-              mu=mu, sigma=sigma) for mu, sigma in zip(mus, sigmas)
+              loc=mu, scale=sigma) for mu, sigma in zip(mus, sigmas)
       ]
       cat = distributions_py.Categorical(
           logits, dtype=dtypes.int32, name="cat1")
@@ -385,7 +384,7 @@ class MixtureTest(test.TestCase):
       random_seed.set_random_seed(654321)
       components2 = [
           distributions_py.Normal(
-              mu=mu, sigma=sigma) for mu, sigma in zip(mus, sigmas)
+              loc=mu, scale=sigma) for mu, sigma in zip(mus, sigmas)
       ]
       cat2 = distributions_py.Categorical(
           logits, dtype=dtypes.int32, name="cat2")
@@ -531,7 +530,7 @@ class MixtureBenchmark(test.Benchmark):
       ]
       components = list(
           distributions_py.MultivariateNormalDiag(
-              mu=mu, diag_stdev=sigma) for (mu, sigma) in zip(mus, sigmas))
+              loc=mu, scale_diag=sigma) for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:
@@ -570,8 +569,9 @@ class MixtureBenchmark(test.Benchmark):
           for _ in range(num_components)
       ]
       components = list(
-          distributions_py.MultivariateNormalFull(
-              mu=mu, sigma=sigma) for (mu, sigma) in zip(mus, sigmas))
+          distributions_py.MultivariateNormalTriL(
+              loc=mu, scale_tril=linalg_ops.cholesky(sigma))
+          for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:

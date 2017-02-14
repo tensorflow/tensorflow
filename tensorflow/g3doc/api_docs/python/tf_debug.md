@@ -12,7 +12,7 @@ be watched when the TensorFlow graph is executed at runtime.
 
 - - -
 
-### `tf_debug.add_debug_tensor_watch(run_options, node_name, output_slot=0, debug_ops='DebugIdentity', debug_urls=None)` {#add_debug_tensor_watch}
+### `tf_debug.add_debug_tensor_watch(run_options, node_name, output_slot=0, debug_ops='DebugIdentity', debug_urls=None, global_step=-1)` {#add_debug_tensor_watch}
 
 Add watch on a `Tensor` to `RunOptions`.
 
@@ -30,11 +30,13 @@ N.B.: Under certain circumstances, the `Tensor` may not be actually watched
     `list` of `str` with only one element.
 *  <b>`debug_urls`</b>: (`str` or `list` of `str`) URL(s) to send debug values to,
     e.g., `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 
 
 - - -
 
-### `tf_debug.watch_graph(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_whitelist=None, op_type_regex_whitelist=None)` {#watch_graph}
+### `tf_debug.watch_graph(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_whitelist=None, op_type_regex_whitelist=None, global_step=-1)` {#watch_graph}
 
 Add debug watches to `RunOptions` for a TensorFlow graph.
 
@@ -63,11 +65,13 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
     are set, the two filtering operations will occur in a logical `AND`
     relation. In other words, a node will be included if and only if it
     hits both whitelists.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 
 
 - - -
 
-### `tf_debug.watch_graph_with_blacklists(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_blacklist=None, op_type_regex_blacklist=None)` {#watch_graph_with_blacklists}
+### `tf_debug.watch_graph_with_blacklists(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_blacklist=None, op_type_regex_blacklist=None, global_step=-1)` {#watch_graph_with_blacklists}
 
 Add debug tensor watches, blacklisting nodes and op types.
 
@@ -95,6 +99,8 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
     relation. In other words, a node will be excluded if it hits either of
     the two blacklists; a node will be included if and only if it hits
     neither of the blacklists.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 
 
 
@@ -282,6 +288,38 @@ in a tfdbg dump root directory.
 
 
 *  <b>`IOError`</b>: If dump_root does not exist as a directory.
+
+
+- - -
+
+#### `tf_debug.DebugDumpDir.core_metadata` {#DebugDumpDir.core_metadata}
+
+Metadata about the `Session.run()` call from the core runtime.
+
+Of the three counters available in the return value, `global_step` is
+supplied by the caller of the debugged `Session.run()`, while
+`session_run_count` and `executor_step_count` are determined by the state
+of the core runtime, automatically. For the same fetch list, feed keys and
+debug tensor watch options, the same executor will be used and
+`executor_step_count` should increase by one at a time. However, runs with
+different fetch lists, feed keys and debug_tensor watch options that all
+share the same `Session` object can lead to gaps in `session_run_count`.
+
+##### Returns:
+
+  If core metadata are loaded, a `namedtuple` with the fields:
+    `global_step`: A global step count supplied by the caller of
+      `Session.run()`. It is optional to the caller. If the caller did not
+      supply this parameter, its value will be -1.
+    `session_run_count`: A counter for Run() calls to the underlying
+      TensorFlow `Session` object.
+    `executor_step_count`: A counter for invocations of a given runtime
+      executor. The same executor is re-used for the same fetched tensors,
+      target nodes, input feed keys and debug tensor watch options.
+    `input_names`: Names of the input (feed) Tensors.
+    `output_names`: Names of the output (fetched) Tensors.
+    `target_nodes`: Names of the target nodes.
+  If the core metadata have not been loaded, `None`.
 
 
 - - -
@@ -668,6 +706,30 @@ Get the partition graphs.
 
 - - -
 
+#### `tf_debug.DebugDumpDir.run_feed_keys_info` {#DebugDumpDir.run_feed_keys_info}
+
+Get a str representation of the feed_dict used in the Session.run() call.
+
+##### Returns:
+
+  If the information is available, a `str` obtained from `repr(feed_dict)`.
+  If the information is not available, `None`.
+
+
+- - -
+
+#### `tf_debug.DebugDumpDir.run_fetches_info` {#DebugDumpDir.run_fetches_info}
+
+Get a str representation of the fetches used in the Session.run() call.
+
+##### Returns:
+
+  If the information is available, a `str` obtained from `repr(fetches)`.
+  If the information is not available, `None`.
+
+
+- - -
+
 #### `tf_debug.DebugDumpDir.set_python_graph(python_graph)` {#DebugDumpDir.set_python_graph}
 
 Provide Python `Graph` object to the wrapper.
@@ -773,7 +835,9 @@ protobuf contains a `Tensor` value.
 ##### Returns:
 
   The tensor value loaded from the event file, as a `numpy.ndarray`. For
-  uninitialized tensors, returns None.
+  uninitialized Tensors, returns `None`. For Tensors of data types that
+  cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
+  `None`.
 
 
 
@@ -812,10 +876,345 @@ The signature of this function follows the requirement of the method
 
 These classes allow you to
 
-* wrap aroundTensorFlow `Session` objects to debug  plain TensorFlow models
-  (see `LocalCLIDebugWrapperSession`), or
+* wrap aroundTensorFlow `Session` objects to debug plain TensorFlow models
+  (see `DumpingDebugWrapperSession` and `LocalCLIDebugWrapperSession`), or
 * generate `SessionRunHook` objects to debug `tf.contrib.learn` models (see
-  `LocalCLIDebugHook`).
+  `DumpingDebugHook` and `LocalCLIDebugHook`).
+
+- - -
+
+### `class tf_debug.DumpingDebugHook` {#DumpingDebugHook}
+
+A debugger hook that dumps debug data to filesystem.
+
+Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
+`tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+- - -
+
+#### `tf_debug.DumpingDebugHook.__enter__()` {#DumpingDebugHook.__enter__}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.__exit__(exec_type, exec_value, exec_tb)` {#DumpingDebugHook.__exit__}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.__init__(session_root, watch_fn=None, log_usage=True)` {#DumpingDebugHook.__init__}
+
+Create a local debugger command-line interface (CLI) hook.
+
+##### Args:
+
+
+*  <b>`session_root`</b>: See doc of
+    `dumping_wrapper.DumpingDebugWrapperSession.__init__`.
+*  <b>`watch_fn`</b>: See doc of
+    `dumping_wrapper.DumpingDebugWrapperSession.__init__`.
+*  <b>`log_usage`</b>: (bool) Whether usage is to be logged.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.after_create_session(session, coord)` {#DumpingDebugHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.after_run(run_context, run_values)` {#DumpingDebugHook.after_run}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.before_run(run_context)` {#DumpingDebugHook.before_run}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.begin()` {#DumpingDebugHook.begin}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.close()` {#DumpingDebugHook.close}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.end(session)` {#DumpingDebugHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.graph` {#DumpingDebugHook.graph}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.invoke_node_stepper(node_stepper, restore_variable_values_on_exit=True)` {#DumpingDebugHook.invoke_node_stepper}
+
+See doc of BaseDebugWrapperSession.invoke_node_stepper.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.on_run_end(request)` {#DumpingDebugHook.on_run_end}
+
+See doc of BaseDebugWrapperSession.on_run_end.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.on_run_start(request)` {#DumpingDebugHook.on_run_start}
+
+See doc of BaseDebugWrapperSession.on_run_start.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.on_session_init(request)` {#DumpingDebugHook.on_session_init}
+
+See doc of BaseDebugWrapperSession.on_run_start.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.partial_run(handle, fetches, feed_dict=None)` {#DumpingDebugHook.partial_run}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.partial_run_setup(fetches, feeds=None)` {#DumpingDebugHook.partial_run_setup}
+
+Sets up the feeds and fetches for partial runs in the session.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#DumpingDebugHook.run}
+
+Wrapper around Session.run() that inserts tensor watch options.
+
+##### Args:
+
+
+*  <b>`fetches`</b>: Same as the `fetches` arg to regular `Session.run()`.
+*  <b>`feed_dict`</b>: Same as the `feed_dict` arg to regular `Session.run()`.
+*  <b>`options`</b>: Same as the `options` arg to regular `Session.run()`.
+*  <b>`run_metadata`</b>: Same as the `run_metadata` arg to regular `Session.run()`.
+
+##### Returns:
+
+  Simply forwards the output of the wrapped `Session.run()` call.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: On invalid `OnRunStartAction` value.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.sess_str` {#DumpingDebugHook.sess_str}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugHook.session` {#DumpingDebugHook.session}
+
+
+
+
+
+- - -
+
+### `class tf_debug.DumpingDebugWrapperSession` {#DumpingDebugWrapperSession}
+
+Debug Session wrapper that dumps debug data to filesystem.
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.__enter__()` {#DumpingDebugWrapperSession.__enter__}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.__exit__(exec_type, exec_value, exec_tb)` {#DumpingDebugWrapperSession.__exit__}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.__init__(sess, session_root, watch_fn=None, log_usage=True)` {#DumpingDebugWrapperSession.__init__}
+
+Constructor of DumpingDebugWrapperSession.
+
+##### Args:
+
+
+*  <b>`sess`</b>: The TensorFlow `Session` object being wrapped.
+*  <b>`session_root`</b>: (`str`) Path to the session root directory. Must be a
+    directory that does not exist or an empty directory. If the directory
+    does not exist, it will be created by the debugger core during debug
+    [`Session.run()`](../../../g3doc/api_docs/python/client.md#session.run)
+    calls.
+    As the `run()` calls occur, subdirectories will be added to
+    `session_root`. The subdirectories' names has the following pattern:
+      run_<epoch_time_stamp>_<uuid>
+    E.g., run_1480734393835964_ad4c953a85444900ae79fc1b652fb324
+*  <b>`watch_fn`</b>: (`Callable`) A Callable that can be used to define per-run
+    debug ops and watched tensors. See the doc of
+    `NonInteractiveDebugWrapperSession.__init__()` for details.
+*  <b>`log_usage`</b>: (`bool`) whether the usage of this class is to be logged.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `session_root` is an existing and non-empty directory or
+   if `session_root` is a file.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.close()` {#DumpingDebugWrapperSession.close}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.graph` {#DumpingDebugWrapperSession.graph}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.invoke_node_stepper(node_stepper, restore_variable_values_on_exit=True)` {#DumpingDebugWrapperSession.invoke_node_stepper}
+
+See doc of BaseDebugWrapperSession.invoke_node_stepper.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.on_run_end(request)` {#DumpingDebugWrapperSession.on_run_end}
+
+See doc of BaseDebugWrapperSession.on_run_end.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.on_run_start(request)` {#DumpingDebugWrapperSession.on_run_start}
+
+See doc of BaseDebugWrapperSession.on_run_start.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.on_session_init(request)` {#DumpingDebugWrapperSession.on_session_init}
+
+See doc of BaseDebugWrapperSession.on_run_start.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.partial_run(handle, fetches, feed_dict=None)` {#DumpingDebugWrapperSession.partial_run}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.partial_run_setup(fetches, feeds=None)` {#DumpingDebugWrapperSession.partial_run_setup}
+
+Sets up the feeds and fetches for partial runs in the session.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#DumpingDebugWrapperSession.run}
+
+Wrapper around Session.run() that inserts tensor watch options.
+
+##### Args:
+
+
+*  <b>`fetches`</b>: Same as the `fetches` arg to regular `Session.run()`.
+*  <b>`feed_dict`</b>: Same as the `feed_dict` arg to regular `Session.run()`.
+*  <b>`options`</b>: Same as the `options` arg to regular `Session.run()`.
+*  <b>`run_metadata`</b>: Same as the `run_metadata` arg to regular `Session.run()`.
+
+##### Returns:
+
+  Simply forwards the output of the wrapped `Session.run()` call.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: On invalid `OnRunStartAction` value.
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.sess_str` {#DumpingDebugWrapperSession.sess_str}
+
+
+
+
+- - -
+
+#### `tf_debug.DumpingDebugWrapperSession.session` {#DumpingDebugWrapperSession.session}
+
+
+
+
 
 - - -
 
@@ -823,7 +1222,8 @@ These classes allow you to
 
 Command-line-interface debugger hook.
 
-Can be used as a monitor/hook for tf.train.MonitoredSession.
+Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
+`tf.contrib.learn`'s `Estimator`s and `Experiment`s.
 - - -
 
 #### `tf_debug.LocalCLIDebugHook.__enter__()` {#LocalCLIDebugHook.__enter__}
@@ -856,17 +1256,23 @@ Create a local debugger command-line interface (CLI) hook.
 
 Add a tensor filter.
 
+See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+Override default behavior to accomodate the possibility of this method being
+called prior to the initialization of the underlying
+`LocalCLIDebugWrapperSession` object.
+
 ##### Args:
 
 
-*  <b>`filter_name`</b>: (`str`) name of the filter.
-*  <b>`tensor_filter`</b>: (`callable`) the filter callable. See the doc string of
-    `DebugDumpDir.find()` for more details about its signature.
+*  <b>`filter_name`</b>: See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()`
+    for details.
+*  <b>`tensor_filter`</b>: See doc of
+    `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
 
 
 - - -
 
-#### `tf_debug.LocalCLIDebugHook.after_create_session(session)` {#LocalCLIDebugHook.after_create_session}
+#### `tf_debug.LocalCLIDebugHook.after_create_session(session, coord)` {#LocalCLIDebugHook.after_create_session}
 
 Called when new TensorFlow session is created.
 
@@ -882,6 +1288,7 @@ has two essential differences with the situation in which `begin` is called:
 
 
 *  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
 
 
 - - -
@@ -1014,7 +1421,7 @@ Overrides on-session-init callback.
 
 ##### Returns:
 
-  An instance of OnSessionInitResponse.
+  An instance of `OnSessionInitResponse`.
 
 
 - - -
@@ -1226,7 +1633,7 @@ Overrides on-session-init callback.
 
 ##### Returns:
 
-  An instance of OnSessionInitResponse.
+  An instance of `OnSessionInitResponse`.
 
 
 - - -

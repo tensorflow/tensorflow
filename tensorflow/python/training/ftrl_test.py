@@ -23,6 +23,9 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -32,11 +35,15 @@ from tensorflow.python.training import gradient_descent
 
 class FtrlOptimizerTest(test.TestCase):
 
-  def testFtrlwithoutRegularization(self):
+  def doTestFtrlwithoutRegularization(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32]:
       with self.test_session() as sess:
-        var0 = variables.Variable([0.0, 0.0], dtype=dtype)
-        var1 = variables.Variable([0.0, 0.0], dtype=dtype)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([0.0, 0.0], dtype=dtype)
+          var1 = variables.Variable([0.0, 0.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
         opt = ftrl.FtrlOptimizer(
@@ -60,6 +67,12 @@ class FtrlOptimizerTest(test.TestCase):
             np.array([-2.60260963, -4.29698515]), v0_val)
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]), v1_val)
+
+  def testFtrlWithoutRegularization(self):
+    self.doTestFtrlwithoutRegularization(use_resource=False)
+
+  def testResourceFtrlWithoutRegularization(self):
+    self.doTestFtrlwithoutRegularization(use_resource=True)
 
   def testFtrlwithoutRegularization2(self):
     for dtype in [dtypes.half, dtypes.float32]:
@@ -89,6 +102,23 @@ class FtrlOptimizerTest(test.TestCase):
             np.array([-2.55607247, -3.98729396]), v0_val)
         self.assertAllCloseAccordingToType(
             np.array([-0.28232238, -0.56096673]), v1_val)
+
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = ftrl.FtrlOptimizer(1.0).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[0, 1]], var0.eval(), atol=0.01)
 
   def testFtrlWithL1(self):
     for dtype in [dtypes.half, dtypes.float32]:

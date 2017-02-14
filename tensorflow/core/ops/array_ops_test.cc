@@ -331,6 +331,7 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
     INFER_OK(op, "?;[3,2]", "[?,?,?]");
+    INFER_OK(op, "?;?", "[?,?,?]");
   }
 }
 
@@ -557,7 +558,7 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;?;[1,2,3,4];[4,3,2,1]", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;?;[];[]");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;?;[1,2];[1,2,3]");
 
@@ -630,7 +631,7 @@ TEST(ArrayOpsTest, ConcatV2_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;[1,2,3,4];[4,3,2,1];?", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;[];[];?");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;[1,2];[1,2,3];?");
 

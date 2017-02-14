@@ -228,6 +228,7 @@ cc_library(
     srcs = ["gradients/array_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":gradients",
     ],
@@ -239,6 +240,7 @@ tf_cc_test(
     deps = [
         ":array_grad",
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":grad_testutil",
         ":gradient_checker",
@@ -283,6 +285,7 @@ cc_library(
     srcs = ["gradients/nn_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":ops",
         ":scope",
@@ -334,6 +337,7 @@ tf_gen_op_wrappers_cc(
         "ops/const_op.h",
         "ops/standard_ops.h",
     ],
+    override_file = "ops/op_gen_overrides.pbtxt",
     pkg = "//tensorflow/core",
 )
 
@@ -355,6 +359,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "sendrecv_ops",
+    include_internal_ops = 1,
     op_lib_names = [
         "sendrecv_ops",
     ],
@@ -363,11 +368,20 @@ tf_gen_op_wrappers_cc(
 
 tf_gen_op_wrappers_cc(
     name = "function_ops",
+    include_internal_ops = 1,
     op_lib_names = [
         "function_ops",
     ],
     pkg = "//tensorflow/core",
     visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
+    name = "remote_fused_graph_ops",
+    op_lib_names = [
+        "remote_fused_graph_ops",
+    ],
+    pkg = "//tensorflow/core",
 )
 
 cc_library_with_android_deps(
@@ -385,6 +399,7 @@ cc_library_with_android_deps(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
