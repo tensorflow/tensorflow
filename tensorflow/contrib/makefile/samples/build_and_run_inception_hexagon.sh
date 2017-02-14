@@ -62,10 +62,6 @@ fi
 cp -af "${GEN_DIR}/nnlib" "${GENERATED_NNLIB_DIRECTORY}"
 cd "${GENERATED_NNLIB_DIRECTORY}"
 
-echo "HACK! Copy glue directory"
-cp -af "${QUALCOMM_SDK}/examples/common/median3x3_v60/glue" \
-"${GENERATED_NNLIB_DIRECTORY}/"
-
 make clean V=hexagon_Release_dynamic_toolv72_v60
 rm -rf hexagon_Release_dynamic_toolv72_v60
 make tree VERBOSE=1 V=hexagon_Release_dynamic_toolv72_v60
@@ -85,8 +81,8 @@ echo "Copy interface directory"
 cp -afv "${GENERATED_NNLIB_DIRECTORY}/interface" \
 "${GENERATED_HEXAGON_CONTROLLER_DIRECTORY}/"
 
-echo "HACK! Copy glue directory"
-cp -af "${QUALCOMM_SDK}/examples/common/median3x3_v60/glue" \
+echo "Copy glue directory"
+cp -afv "${GENERATED_NNLIB_DIRECTORY}/glue" \
 "${GENERATED_HEXAGON_CONTROLLER_DIRECTORY}/"
 
 cd "${GENERATED_HEXAGON_CONTROLLER_DIRECTORY}"
@@ -131,6 +127,17 @@ download_and_push \
 download_and_push "${URL_BASE}/models/imagenet_comp_graph_label_strings.txt" \
 "${GEN_DOWNLOAD_DIR}/imagenet_comp_graph_label_strings.txt" "/data/local/tmp"
 
+# Uncomment this block if you want to fuse and run the model
+#gtest_args+=("--gtest_filter=GraphTransferer.RunInceptionV3OnHexagonExampleWithTfRuntime")
+# Uncomment this block if you want to run the fused model
+#gtest_args+=("--gtest_filter=GraphTransferer.RunInceptionV3OnHexagonExampleWithFusedGraph")
+# Uncomment this block if you want to run the model with hexagon wrapper
+#gtest_args+=(
+#    "--gtest_also_run_disabled_tests"
+#    "--gtest_filter=GraphTransferer.DISABLED_RunInceptionV3OnHexagonExampleWithHexagonWrapper")
+# Uncomment this block if you want to get the list of tests
+#gtest_args+=("--gtest_list_tests")
+
 ANDROID_EXEC_FILE_MODE=755
 echo "Run hexagon_graph_execution"
 adb push -p \
@@ -141,4 +148,4 @@ adb shell chmod "${ANDROID_EXEC_FILE_MODE}" \
 "/data/local/tmp/hexagon_graph_execution"
 adb wait-for-device
 adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
-"/data/local/tmp/hexagon_graph_execution"
+"/data/local/tmp/hexagon_graph_execution" ${gtest_args[@]}
