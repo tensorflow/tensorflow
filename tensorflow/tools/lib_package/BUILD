@@ -128,7 +128,7 @@ genrule(
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ],
