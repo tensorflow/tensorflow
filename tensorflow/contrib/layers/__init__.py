@@ -24,6 +24,7 @@ See the @{$python/contrib.layers} guide.
 @@conv2d_transpose
 @@convolution2d_transpose
 @@dropout
+@@embedding_lookup_unique
 @@flatten
 @@fully_connected
 @@layer_norm
