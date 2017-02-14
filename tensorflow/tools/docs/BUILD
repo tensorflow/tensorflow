@@ -9,6 +9,8 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_binary(
     name = "gen_cc_md",
     srcs = ["gen_cc_md.py"],
