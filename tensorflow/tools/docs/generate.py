@@ -154,6 +154,7 @@ def extract():
           'stochastic_variables', 'variational_inference'
       ],
       'contrib.distributions': ['bijector'],
+      'contrib.ffmpeg': ['ffmpeg_ops'],
       'contrib.graph_editor': [
           'edit',
           'match',
