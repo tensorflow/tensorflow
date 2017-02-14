@@ -23,7 +23,7 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
