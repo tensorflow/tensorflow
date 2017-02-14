@@ -190,19 +190,6 @@ class Supervisor(object):
   initialization needs, see how to specify a `local_init_op` when creating the
   supervisor.  You can also use the `SessionManager` directly to create a
   session and check if it could be initialized automatically.
-
-  @@__init__
-  @@managed_session
-  @@prepare_or_wait_for_session
-  @@start_standard_services
-  @@start_queue_runners
-  @@summary_computed
-
-  @@stop
-  @@request_stop
-  @@should_stop
-  @@stop_on_exception
-  @@wait_for_stop
   """
 
   # Value to pass for the 'ready_op', 'init_op', 'summary_op', 'saver',

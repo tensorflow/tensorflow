@@ -123,12 +123,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     while not mon_sess.should_stop():
       mon_sess.run(training_op)
   ```
-
-  @@__init__
-  @@compute_gradients
-  @@apply_gradients
-  @@get_chief_queue_runner
-  @@get_init_tokens_op
   """
 
   def __init__(self,
