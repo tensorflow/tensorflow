@@ -459,10 +459,10 @@ class Variable(object):
 
     This is not a graph construction method, it does not add ops to the graph.
 
-    This convenience method requires a session where the graph containing this
-    variable has been launched. If no session is passed, the default session is
-    used.  See the @{tf.Session} for
-    more information on launching a graph and on sessions.
+    This convenience method requires a session where the graph
+    containing this variable has been launched. If no session is
+    passed, the default session is used.  See @{tf.Session} for more
+    information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
@@ -632,10 +632,10 @@ class Variable(object):
 
     Writes new value to variable's memory. Doesn't add ops to the graph.
 
-    This convenience method requires a session where the graph containing this
-    variable has been launched. If no session is passed, the default session is
-    used.  See the @{tf.Session} for
-    more information on launching a graph and on sessions.
+    This convenience method requires a session where the graph
+    containing this variable has been launched. If no session is
+    passed, the default session is used.  See @{tf.Session} for more
+    information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
