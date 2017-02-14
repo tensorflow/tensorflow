@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Casting
-
-TensorFlow provides several operations that you can use to cast tensor data
-types in your graph.
+"""Support for manipulating tensors.  See the @{$python/array_ops} guide.
 
 @@string_to_number
 @@to_double
@@ -27,12 +24,6 @@ types in your graph.
 @@cast
 @@bitcast
 @@saturate_cast
-
-## Shapes and Shaping
-
-TensorFlow provides several operations that you can use to determine the shape
-of a tensor and change the shape of a tensor.
-
 @@broadcast_dynamic_shape
 @@broadcast_static_shape
 @@shape
@@ -43,12 +34,6 @@ of a tensor and change the shape of a tensor.
 @@squeeze
 @@expand_dims
 @@meshgrid
-
-## Slicing and Joining
-
-TensorFlow provides several operations to slice or extract parts of a tensor,
-or join multiple tensors together.
-
 @@slice
 @@strided_slice
 @@split
@@ -83,10 +68,6 @@ or join multiple tensors together.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
-
-## Fake quantization
-Operations used to help train for better quantization accuracy.
-
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
@@ -94,6 +75,7 @@ Operations used to help train for better quantization accuracy.
 @@fake_quant_with_min_max_vars_per_channel
 @@fake_quant_with_min_max_vars_per_channel_gradient
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
