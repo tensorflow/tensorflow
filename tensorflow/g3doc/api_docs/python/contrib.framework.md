@@ -3,7 +3,7 @@
 # Framework (contrib)
 [TOC]
 
-Framework utilities.
+Framework utilities. See the @{$python/contrib.framework} guide.
 
 - - -
 
@@ -298,7 +298,6 @@ Assert tensors are the same shape, from the same graph.
 
 
 
-## Deprecation
 - - -
 
 ### `tf.contrib.framework.deprecated(date, instructions)` {#deprecated}
@@ -419,7 +418,6 @@ prepended to the rest of the docstring.
 
 
 
-## Arg_Scope
 - - -
 
 ### `tf.contrib.framework.arg_scope(list_ops_or_scope, **kwargs)` {#arg_scope}
@@ -498,7 +496,6 @@ Returns the list kwargs that arg_scope can set for a func.
 
 
 
-## Variables
 - - -
 
 ### `tf.contrib.framework.add_model_variable(var)` {#add_model_variable}
@@ -1076,8 +1073,6 @@ save memory during initialization.
 *  <b>`ValueError`</b>: If ref tensor is initialized.
 
 
-
-## Checkpoint utilities
 
 - - -
 

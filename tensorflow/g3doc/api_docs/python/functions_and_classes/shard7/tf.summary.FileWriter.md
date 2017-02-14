@@ -5,7 +5,6 @@ given directory and add summaries and events to it. The class updates the
 file contents asynchronously. This allows a training program to call methods
 to add data to the file directly from the training loop, without slowing down
 training.
-
 - - -
 
 #### `tf.summary.FileWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#FileWriter.__init__}
@@ -51,48 +50,6 @@ the event file:
 *  <b>`graph_def`</b>: DEPRECATED: Use the `graph` argument instead.
 
 
-
-- - -
-
-#### `tf.summary.FileWriter.add_summary(summary, global_step=None)` {#FileWriter.add_summary}
-
-Adds a `Summary` protocol buffer to the event file.
-
-This method wraps the provided summary in an `Event` protocol buffer
-and adds it to the event file.
-
-You can pass the result of evaluating any summary op, using
-[`Session.run()`](client.md#Session.run) or
-[`Tensor.eval()`](framework.md#Tensor.eval), to this
-function. Alternatively, you can pass a `tf.Summary` protocol
-buffer that you populate with your own data. The latter is
-commonly done to report evaluation results in event files.
-
-##### Args:
-
-
-*  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
-*  <b>`global_step`</b>: Number. Optional global step value to record with the
-    summary.
-
-
-- - -
-
-#### `tf.summary.FileWriter.add_session_log(session_log, global_step=None)` {#FileWriter.add_session_log}
-
-Adds a `SessionLog` protocol buffer to the event file.
-
-This method wraps the provided session in an `Event` protocol buffer
-and adds it to the event file.
-
-##### Args:
-
-
-*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
-*  <b>`global_step`</b>: Number. Optional global step value to record with the
-    summary.
-
-
 - - -
 
 #### `tf.summary.FileWriter.add_event(event)` {#FileWriter.add_event}
@@ -130,6 +87,29 @@ TensorBoard. Most users pass a graph in the constructor instead.
 
 - - -
 
+#### `tf.summary.FileWriter.add_meta_graph(meta_graph_def, global_step=None)` {#FileWriter.add_meta_graph}
+
+Adds a `MetaGraphDef` to the event file.
+
+The `MetaGraphDef` allows running the given graph via
+`saver.import_meta_graph()`.
+
+##### Args:
+
+
+*  <b>`meta_graph_def`</b>: A `MetaGraphDef` object, often as retured by
+    `saver.export_meta_graph()`.
+*  <b>`global_step`</b>: Number. Optional global step counter to record with the
+    graph.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
+
+
+- - -
+
 #### `tf.summary.FileWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#FileWriter.add_run_metadata}
 
 Adds a metadata information for a single session.run() call.
@@ -150,10 +130,52 @@ Adds a metadata information for a single session.run() call.
 
 - - -
 
-#### `tf.summary.FileWriter.get_logdir()` {#FileWriter.get_logdir}
+#### `tf.summary.FileWriter.add_session_log(session_log, global_step=None)` {#FileWriter.add_session_log}
 
-Returns the directory where event file will be written.
+Adds a `SessionLog` protocol buffer to the event file.
 
+This method wraps the provided session in an `Event` protocol buffer
+and adds it to the event file.
+
+##### Args:
+
+
+*  <b>`session_log`</b>: A `SessionLog` protocol buffer.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.summary.FileWriter.add_summary(summary, global_step=None)` {#FileWriter.add_summary}
+
+Adds a `Summary` protocol buffer to the event file.
+
+This method wraps the provided summary in an `Event` protocol buffer
+and adds it to the event file.
+
+You can pass the result of evaluating any summary op, using
+[`Session.run()`](client.md#Session.run) or
+[`Tensor.eval()`](framework.md#Tensor.eval), to this
+function. Alternatively, you can pass a `tf.Summary` protocol
+buffer that you populate with your own data. The latter is
+commonly done to report evaluation results in event files.
+
+##### Args:
+
+
+*  <b>`summary`</b>: A `Summary` protocol buffer, optionally serialized as a string.
+*  <b>`global_step`</b>: Number. Optional global step value to record with the
+    summary.
+
+
+- - -
+
+#### `tf.summary.FileWriter.close()` {#FileWriter.close}
+
+Flushes the event file to disk and close the file.
+
+Call this method when you do not need the summary writer anymore.
 
 
 - - -
@@ -168,15 +190,11 @@ disk.
 
 - - -
 
-#### `tf.summary.FileWriter.close()` {#FileWriter.close}
+#### `tf.summary.FileWriter.get_logdir()` {#FileWriter.get_logdir}
 
-Flushes the event file to disk and close the file.
-
-Call this method when you do not need the summary writer anymore.
+Returns the directory where event file will be written.
 
 
-
-#### Other Methods
 - - -
 
 #### `tf.summary.FileWriter.reopen()` {#FileWriter.reopen}

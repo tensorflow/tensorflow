@@ -8,6 +8,7 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 filegroup(

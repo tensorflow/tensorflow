@@ -48,6 +48,26 @@ create a session as follows:
 sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                         log_device_placement=True))
 ```
+- - -
+
+#### `tf.Session.__del__()` {#Session.__del__}
+
+
+
+
+- - -
+
+#### `tf.Session.__enter__()` {#Session.__enter__}
+
+
+
+
+- - -
+
+#### `tf.Session.__exit__(exec_type, exec_value, exec_tb)` {#Session.__exit__}
+
+
+
 
 - - -
 
@@ -73,6 +93,207 @@ the session constructor.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).
 *  <b>`config`</b>: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
     protocol buffer with configuration options for the session.
+
+
+- - -
+
+#### `tf.Session.as_default()` {#Session.as_default}
+
+Returns a context manager that makes this object the default session.
+
+Use with the `with` keyword to specify that calls to
+[`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
+[`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
+executed in this session.
+
+```python
+c = tf.constant(..)
+sess = tf.Session()
+
+with sess.as_default():
+  assert tf.get_default_session() is sess
+  print(c.eval())
+```
+
+To get the current default session, use
+[`tf.get_default_session()`](#get_default_session).
+
+
+*N.B.* The `as_default` context manager *does not* close the
+session when you exit the context, and you must close the session
+explicitly.
+
+```python
+c = tf.constant(...)
+sess = tf.Session()
+with sess.as_default():
+  print(c.eval())
+# ...
+with sess.as_default():
+  print(c.eval())
+
+sess.close()
+```
+
+Alternatively, you can use `with tf.Session():` to create a
+session that is automatically closed on exiting the context,
+including when an uncaught exception is raised.
+
+*N.B.* The default graph is a property of the current thread. If you
+create a new thread, and wish to use the default session in that
+thread, you must explicitly add a `with sess.as_default():` in that
+thread's function.
+
+##### Returns:
+
+  A context manager using this session as the default session.
+
+
+- - -
+
+#### `tf.Session.close()` {#Session.close}
+
+Closes this session.
+
+Calling this method frees all resources associated with the session.
+
+##### Raises:
+
+  tf.errors.OpError: Or one of its subclasses if an error occurs while
+    closing the TensorFlow session.
+
+
+- - -
+
+#### `tf.Session.graph` {#Session.graph}
+
+The graph that was launched in this session.
+
+
+- - -
+
+#### `tf.Session.graph_def` {#Session.graph_def}
+
+A serializable version of the underlying TensorFlow graph.
+
+##### Returns:
+
+  A graph_pb2.GraphDef proto containing nodes for all of the Operations in
+  the underlying TensorFlow graph.
+
+
+- - -
+
+#### `tf.Session.partial_run(handle, fetches, feed_dict=None)` {#Session.partial_run}
+
+Continues the execution with more feeds and fetches.
+
+This is EXPERIMENTAL and subject to change.
+
+To use partial execution, a user first calls `partial_run_setup()` and
+then a sequence of `partial_run()`. `partial_run_setup` specifies the
+list of feeds and fetches that will be used in the subsequent
+`partial_run` calls.
+
+The optional `feed_dict` argument allows the caller to override
+the value of tensors in the graph. See run() for more information.
+
+Below is a simple example:
+
+```python
+a = array_ops.placeholder(dtypes.float32, shape=[])
+b = array_ops.placeholder(dtypes.float32, shape=[])
+c = array_ops.placeholder(dtypes.float32, shape=[])
+r1 = math_ops.add(a, b)
+r2 = math_ops.multiply(r1, c)
+
+h = sess.partial_run_setup([r1, r2], [a, b, c])
+res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+res = sess.partial_run(h, r2, feed_dict={c: res})
+```
+
+##### Args:
+
+
+*  <b>`handle`</b>: A handle for a sequence of partial runs.
+*  <b>`fetches`</b>: A single graph element, a list of graph elements,
+    or a dictionary whose values are graph elements or lists of graph
+    elements (see documentation for `run`).
+*  <b>`feed_dict`</b>: A dictionary that maps graph elements to values
+    (described above).
+
+##### Returns:
+
+  Either a single value if `fetches` is a single graph element, or
+  a list of values if `fetches` is a list, or a dictionary with the
+  same keys as `fetches` if that is a dictionary
+  (see documentation for `run`).
+
+##### Raises:
+
+  tf.errors.OpError: Or one of its subclasses on error.
+
+
+- - -
+
+#### `tf.Session.partial_run_setup(fetches, feeds=None)` {#Session.partial_run_setup}
+
+Sets up a graph with feeds and fetches for partial run.
+
+This is EXPERIMENTAL and subject to change.
+
+Note that contrary to `run`, `feeds` only specifies the graph elements.
+The tensors will be supplied by the subsequent `partial_run` calls.
+
+##### Args:
+
+
+*  <b>`fetches`</b>: A single graph element, or a list of graph elements.
+*  <b>`feeds`</b>: A single graph element, or a list of graph elements.
+
+##### Returns:
+
+  A handle for partial run.
+
+##### Raises:
+
+
+*  <b>`RuntimeError`</b>: If this `Session` is in an invalid state (e.g. has been
+    closed).
+*  <b>`TypeError`</b>: If `fetches` or `feed_dict` keys are of an inappropriate type.
+  tf.errors.OpError: Or one of its subclasses if a TensorFlow error happens.
+
+
+- - -
+
+#### `tf.Session.reset(target, containers=None, config=None)` {#Session.reset}
+
+Resets resource containers on `target`, and close all connected sessions.
+
+A resource container is distributed across all workers in the
+same cluster as `target`.  When a resource container on `target`
+is reset, resources associated with that container will be cleared.
+In particular, all Variables in the container will become undefined:
+they lose their values and shapes.
+
+NOTE:
+(i) reset() is currently only implemented for distributed sessions.
+(ii) Any sessions on the master named by `target` will be closed.
+
+If no resource containers are provided, all containers are reset.
+
+##### Args:
+
+
+*  <b>`target`</b>: The execution engine to connect to.
+*  <b>`containers`</b>: A list of resource container name strings, or `None` if all of
+    all the containers are to be reset.
+*  <b>`config`</b>: (Optional.) Protocol buffer with configuration options.
+
+##### Raises:
+
+  tf.errors.OpError: Or one of its subclasses if an error occurs while
+    resetting containers.
 
 
 - - -
@@ -188,126 +409,7 @@ collected into this argument and passed back.
 
 - - -
 
-#### `tf.Session.close()` {#Session.close}
-
-Closes this session.
-
-Calling this method frees all resources associated with the session.
-
-##### Raises:
-
-  tf.errors.OpError: Or one of its subclasses if an error occurs while
-    closing the TensorFlow session.
-
-
-
-- - -
-
-#### `tf.Session.graph` {#Session.graph}
-
-The graph that was launched in this session.
-
-
-
-- - -
-
-#### `tf.Session.as_default()` {#Session.as_default}
-
-Returns a context manager that makes this object the default session.
-
-Use with the `with` keyword to specify that calls to
-[`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
-[`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
-executed in this session.
-
-```python
-c = tf.constant(..)
-sess = tf.Session()
-
-with sess.as_default():
-  assert tf.get_default_session() is sess
-  print(c.eval())
-```
-
-To get the current default session, use
-[`tf.get_default_session()`](#get_default_session).
-
-
-*N.B.* The `as_default` context manager *does not* close the
-session when you exit the context, and you must close the session
-explicitly.
-
-```python
-c = tf.constant(...)
-sess = tf.Session()
-with sess.as_default():
-  print(c.eval())
-# ...
-with sess.as_default():
-  print(c.eval())
-
-sess.close()
-```
-
-Alternatively, you can use `with tf.Session():` to create a
-session that is automatically closed on exiting the context,
-including when an uncaught exception is raised.
-
-*N.B.* The default graph is a property of the current thread. If you
-create a new thread, and wish to use the default session in that
-thread, you must explicitly add a `with sess.as_default():` in that
-thread's function.
-
-##### Returns:
-
-  A context manager using this session as the default session.
-
-
-
-- - -
-
-#### `tf.Session.reset(target, containers=None, config=None)` {#Session.reset}
-
-Resets resource containers on `target`, and close all connected sessions.
-
-A resource container is distributed across all workers in the
-same cluster as `target`.  When a resource container on `target`
-is reset, resources associated with that container will be cleared.
-In particular, all Variables in the container will become undefined:
-they lose their values and shapes.
-
-NOTE:
-(i) reset() is currently only implemented for distributed sessions.
-(ii) Any sessions on the master named by `target` will be closed.
-
-If no resource containers are provided, all containers are reset.
-
-##### Args:
-
-
-*  <b>`target`</b>: The execution engine to connect to.
-*  <b>`containers`</b>: A list of resource container name strings, or `None` if all of
-    all the containers are to be reset.
-*  <b>`config`</b>: (Optional.) Protocol buffer with configuration options.
-
-##### Raises:
-
-  tf.errors.OpError: Or one of its subclasses if an error occurs while
-    resetting containers.
-
-
-
-#### Other Methods
-- - -
-
-#### `tf.Session.__enter__()` {#Session.__enter__}
-
-
-
-
-- - -
-
-#### `tf.Session.__exit__(exec_type, exec_value, exec_tb)` {#Session.__exit__}
+#### `tf.Session.sess_str` {#Session.sess_str}
 
 
 

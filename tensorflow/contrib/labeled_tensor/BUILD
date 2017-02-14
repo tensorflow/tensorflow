@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "labeled_tensor",
     srcs = ["__init__.py"],

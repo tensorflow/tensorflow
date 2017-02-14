@@ -282,12 +282,6 @@ class ExponentialMovingAverage(object):
   saver.restore(...checkpoint filename...)
   # var0 and var1 now hold the moving average values
   ```
-
-  @@__init__
-  @@apply
-  @@average_name
-  @@average
-  @@variables_to_restore
   """
 
   def __init__(self, decay, num_updates=None, zero_debias=False,

@@ -79,7 +79,7 @@ Returns:
 
 - - -
 
-#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None)` {#MonitoredSession.__init__}
+#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None, stop_grace_period_secs=120)` {#MonitoredSession.__init__}
 
 
 

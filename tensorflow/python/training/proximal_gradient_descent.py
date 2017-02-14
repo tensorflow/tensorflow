@@ -31,8 +31,6 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
   """Optimizer that implements the proximal gradient descent algorithm.
 
   See this [paper](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting.pdf).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, l1_regularization_strength=0.0,

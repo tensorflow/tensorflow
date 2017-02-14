@@ -27,8 +27,6 @@ from tensorflow.python.training import training_ops
 
 class GradientDescentOptimizer(optimizer.Optimizer):
   """Optimizer that implements the gradient descent algorithm.
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
