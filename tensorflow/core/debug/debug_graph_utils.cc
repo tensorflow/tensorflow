@@ -231,10 +231,12 @@ Status DebugNodeInserter::InsertNodes(
 
         // Add control edges from the debug nodes to the destination node
         // to ensure that the debug nodes are executed before the destination
-        // node.
+        // node. Skip Enter and NextIteration ops to avoid hanging.
         for (Node* debug_node : debug_nodes) {
-          graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
-                         Graph::kControlSlot);
+          if (!src_node->IsEnter() && !src_node->IsNextIteration()) {
+            graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
+                           Graph::kControlSlot);
+          }
         }
       }
     }
