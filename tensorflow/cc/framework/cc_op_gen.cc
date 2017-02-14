@@ -530,8 +530,6 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
 string OpInfo::GetOpAttrStruct() const {
   string struct_fields;
   string setters;
-  string attrs_comment =
-      strings::StrCat("Optional attribute setters for ", op_name, " :\n\n");
 
   for (int i = 0; i < op_def.attr_size(); ++i) {
     const auto& attr(op_def.attr(i));
@@ -552,13 +550,15 @@ string OpInfo::GetOpAttrStruct() const {
         strings::StrCat(camel_case_name, suffix, "(", use_const ? "const " : "",
                         attr_type_name, use_const ? "&" : "");
 
-    strings::StrAppend(&attrs_comment, attr_func_def, "): Defaults to ",
-                       SummarizeAttrValue(attr.default_value()), "\n");
+    string attr_comment;
     if (!attr.description().empty()) {
-      // TODO(keveman): Word wrap and indent this to handle multi-line
-      // description.
-      strings::StrAppend(&attrs_comment, "    ", attr.description(), "\n");
+      strings::StrAppend(&attr_comment, attr.description(), "\n\n");
     }
+    strings::StrAppend(&attr_comment, "Defaults to ",
+                       SummarizeAttrValue(attr.default_value()), "\n");
+    attr_comment = MakeComment(attr_comment, "    ");
+
+    strings::StrAppend(&setters, attr_comment);
     strings::StrAppend(&setters, "    Attrs ", attr_func_def, " x) {\n");
     strings::StrAppend(&setters, "      Attrs ret = *this;\n");
     strings::StrAppend(&setters, "      ret.", attr.name(), "_ = x;\n");
@@ -573,6 +573,8 @@ string OpInfo::GetOpAttrStruct() const {
     return "";
   }
 
+  string attrs_comment =
+      strings::StrCat("Optional attribute setters for ", op_name, "\n");
   string struct_decl = MakeComment(attrs_comment, "  ");
   strings::StrAppend(&struct_decl, "  struct Attrs {\n");
   strings::StrAppend(&struct_decl, setters, struct_fields);
