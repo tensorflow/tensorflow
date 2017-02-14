@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorArray operations.
-
-## Classes containing dynamically sized arrays of Tensors.
+"""TensorArray: a dynamically sized array of Tensors.
 
 @@TensorArray
 """
