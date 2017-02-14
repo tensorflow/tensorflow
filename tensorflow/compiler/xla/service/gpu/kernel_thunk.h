@@ -78,6 +78,11 @@ class KernelThunk : public Thunk {
   mutable tensorflow::mutex mutex_;
   std::unique_ptr<perftools::gputools::MultiKernelLoaderSpec> loader_spec_
       GUARDED_BY(mutex_);
+
+  // Loaded kernels for each `StreamExecutor`
+  std::unordered_map<perftools::gputools::StreamExecutor*,
+                     perftools::gputools::KernelBase>
+      kernel_cache_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu
