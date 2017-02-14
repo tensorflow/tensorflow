@@ -145,7 +145,6 @@ def extract():
           'tensorboard',
           'testing',
           'tfprof',
-          'training',
       ],
       'contrib.bayesflow': [
           'entropy', 'monte_carlo',
