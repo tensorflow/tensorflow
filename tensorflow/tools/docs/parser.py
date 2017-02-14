@@ -619,7 +619,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
   if properties:
     docs += '## Properties\n\n'
     for property_name, prop in sorted(properties, key=lambda x: x[0]):
-      docs += '### `%s`<a id="%s"/>\n\n%s\n\n' % (
+      docs += '<h3 id="%s"><code>%s</code></h3>\n\n%s\n\n' % (
           property_name, property_name,
           _md_docstring(prop, relative_path, duplicate_of, doc_index, index))
     docs += '\n\n'
@@ -629,8 +629,8 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
     for method_name, method in sorted(methods, key=lambda x: x[0]):
       method_signature = method_name + _generate_signature(method,
                                                            reverse_index)
-      docs += '### `%s`<a id="%s"/>\n\n%s\n\n' % (
-          method_signature, method_name, _md_docstring(
+      docs += '<h3 id="%s"><code>%s</code></h3>\n\n%s\n\n' % (
+          method_name, method_signature, _md_docstring(
               method, relative_path, duplicate_of, doc_index, index))
     docs += '\n\n'
 
@@ -638,7 +638,9 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
     docs += '## Class Members\n\n'
     # TODO(wicke): Document the value of the members, at least for basic types.
     docs += '\n\n'.join(
-        ['%s<a id="%s"/>' % (field, field) for field in sorted(field_names)])
+        ['<h3 id="%s"><code>%s</code></h3>' % (field, field)
+         for field in sorted(field_names)])
+
     docs += '\n\n'
 
   return docs

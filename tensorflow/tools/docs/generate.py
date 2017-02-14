@@ -308,7 +308,7 @@ class UpdateTags(py_guide_parser.PyGuideParser):
   """Rewrites a Python guide so that each section has an explicit tag."""
 
   def process_section(self, line_number, section_title, tag):
-    self.replace_line(line_number, '## %s<a id="%s"/>' % (section_title, tag))
+    self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
 
 
 def other_docs(src_dir, output_dir, visitor, doc_index):
