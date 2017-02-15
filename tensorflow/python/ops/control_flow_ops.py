@@ -2566,35 +2566,35 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
 
   Example:
 
-    ```python
-    i = tf.constant(0)
-    c = lambda i: tf.less(i, 10)
-    b = lambda i: tf.add(i, 1)
-    r = tf.while_loop(c, b, [i])
-    ```
+  ```python
+  i = tf.constant(0)
+  c = lambda i: tf.less(i, 10)
+  b = lambda i: tf.add(i, 1)
+  r = tf.while_loop(c, b, [i])
+  ```
 
   Example with nesting and a namedtuple:
 
-    ```python
-    import collections
-    Pair = collections.namedtuple('Pair', 'j, k')
-    ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
-    c = lambda i, p: i < 10
-    b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
-    ijk_final = tf.while_loop(c, b, ijk_0)
-    ```
+  ```python
+  import collections
+  Pair = collections.namedtuple('Pair', 'j, k')
+  ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+  c = lambda i, p: i < 10
+  b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
+  ijk_final = tf.while_loop(c, b, ijk_0)
+  ```
 
   Example using shape_invariants:
 
-    ```python
-    i0 = tf.constant(0)
-    m0 = tf.ones([2, 2])
-    c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
-    tf.while_loop(
-        c, b, loop_vars=[i0, m0],
-        shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
-    ```
+  ```python
+  i0 = tf.constant(0)
+  m0 = tf.ones([2, 2])
+  c = lambda i, m: i < 10
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+  tf.while_loop(
+      c, b, loop_vars=[i0, m0],
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+  ```
 
   """
   with ops.name_scope(name, "while", loop_vars) as name:
