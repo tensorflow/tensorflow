@@ -31,9 +31,10 @@ def generator_input_fn(x,
                        shuffle=True,
                        queue_capacity=1000,
                        num_threads=1):
-  """Returns input function that would feed a generator that yields dictionary
-  of numpy arrays into the model. It is assumed that every dict yielded from
-  the dictionary represents a single sample for every feature
+  """Returns input function that would dicts of numpy arrays yielded from a generator.
+  
+  It is assumed that every dict yielded from the dictionary represents
+  a single sample. The generator should consume a single epoch of the data.
 
   This returns a function outputting `features` and `target` based on the dict
   of numpy arrays. The dict `features` has the same keys as an element yielded
@@ -43,8 +44,8 @@ def generator_input_fn(x,
     ```python
     def generator():
       for index in range(10):
-        yield collections.OrderedDict({height: np.random.randint(32,36), 'age':np.random.randint(18,80),
-              "label":np.ones(1)})
+        yield collections.OrderedDict({height: np.random.randint(32,36), 'age': np.random.randint(18, 80),
+              "label": np.ones(1)})
 
     with tf.Session() as session:
       input_fn = generator_io.generator_input_fn(
@@ -53,7 +54,7 @@ def generator_input_fn(x,
     ```
 
   Args:
-    x: Generator Function, returns a generator  that will yield the data
+    x: Generator Function, returns a generator that will yield the data
     target_key: String, the key of the numpy array in x dictionaries to use as
       target.
     batch_size: Integer, size of batches to return.
@@ -75,7 +76,7 @@ def generator_input_fn(x,
     KeyError:  `target_key` not a key in next(`x()`)
   """
   
-  def input_fn():
+  def _generator_input_fn():
     """generator input function."""
     if not isinstance(x, FunctionType):
       raise TypeError('x must be generator function ; got {}'.format(type(x).__name__))
@@ -103,7 +104,6 @@ def generator_input_fn(x,
     features = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
     
-
     # Remove the first `Tensor` in `features`, which is the row number.
     if len(features) > 0:
       features.pop(0)
@@ -113,5 +113,4 @@ def generator_input_fn(x,
       target = features.pop(target_key)
       return features, target
     return features
-  
-  return input_fn
+  return _generator_input_fn
