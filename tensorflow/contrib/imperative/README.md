@@ -4,9 +4,9 @@ In the standard TensorFlow library, the specification of the computation is done
 statically in terms of a computation graph, and is separate from the execution
 of the graph. This model of programming is referred to as *lazy*, *deferred*,
 *dynamic*, or, *asynchronous*. This library brings imperative style programming (à
-la [NumPy](http://www.numpy.org)) to TensorFlow. Using this library, you can
+la [NumPy](http://www.numpy.org)) to TensorFlow. Using this library, you can:
 
-* Write code in an imperative style: the results of the computation is available
+* Write code in an imperative style: the results of the computation are available
   right after the execution of a line of code.
 * Use TensorFlow operations on tensors, and get all the benefits of GPU
   acceleration.
@@ -22,9 +22,8 @@ This library is a thin wrapper over the standard TensorFlow Python library. The
 source code is
 available
 [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/imperative). You
-can get started on Linux by installing the nightly PIP package
-available
-[here](https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-1.0.0rc2-cp27-none-linux_x86_64.whl). Please
+can get started on Linux by installing the nightly PIP package linked off 
+[the main page](https://github.com/tensorflow/tensorflow). Please
 consult [this](https://github.com/tensorflow/tensorflow#installation) document for other platforms and the PIP package including GPU
 support.
 
