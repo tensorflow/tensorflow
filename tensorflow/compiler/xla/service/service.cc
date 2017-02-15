@@ -498,24 +498,17 @@ Service::ExecuteParallelAndRegisterResult(
   TF_RET_CHECK(backend->Replicas().size() == 1);
 
   // Set up streams.
-  std::vector<std::unique_ptr<se::Stream>> streams;
-
-  auto stream_releaser = ::tensorflow::gtl::MakeCleanup([backend, &streams]() {
-    for (std::unique_ptr<se::Stream>& stream : streams) {
-      backend->ReleaseStream(std::move(stream));
-    }
-  });
+  std::vector<Pool<se::Stream>::SmartPtr> streams;
 
   for (se::StreamExecutor* executor : executors) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        backend->AcquireStream(executor));
-    // Push back after so that the releaser only sees real streams.
+    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                        backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
   // Set up run options.
   std::vector<ExecutableRunOptions> run_options;
-  for (const std::unique_ptr<se::Stream>& stream : streams) {
+  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     run_options.emplace_back();
     auto& options = run_options.back();
     options.set_stream(stream.get());
@@ -555,24 +548,17 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   TF_RET_CHECK(!backend->Replicas().empty());
 
   // Set up streams.
-  std::vector<std::unique_ptr<se::Stream>> streams;
-
-  auto stream_releaser = ::tensorflow::gtl::MakeCleanup([backend, &streams]() {
-    for (std::unique_ptr<se::Stream>& stream : streams) {
-      backend->ReleaseStream(std::move(stream));
-    }
-  });
+  std::vector<Pool<se::Stream>::SmartPtr> streams;
 
   for (se::StreamExecutor* executor : backend->Replicas()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        backend->AcquireStream(executor));
-    // Push back after so that the releaser only sees real streams.
+    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                        backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
   // Set up run options.
   std::vector<ExecutableRunOptions> run_options;
-  for (const std::unique_ptr<se::Stream>& stream : streams) {
+  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     run_options.emplace_back();
     auto& options = run_options.back();
     options.set_stream(stream.get());
@@ -851,23 +837,16 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
 
   TF_RET_CHECK(!execute_backend_->Replicas().empty());
   // Set up streams.
-  std::vector<std::unique_ptr<se::Stream>> streams;
-
-  auto stream_releaser = ::tensorflow::gtl::MakeCleanup([this, &streams]() {
-    for (std::unique_ptr<se::Stream>& stream : streams) {
-      execute_backend_->ReleaseStream(std::move(stream));
-    }
-  });
+  std::vector<Pool<se::Stream>::SmartPtr> streams;
 
   for (se::StreamExecutor* executor : execute_backend_->Replicas()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        execute_backend_->AcquireStream(executor));
-    // Push back after so that the releaser only sees real streams.
+    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                        execute_backend_->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
   perftools::gputools::DeviceMemoryBase result_data;
-  for (const std::unique_ptr<se::Stream>& stream : streams) {
+  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(execute_backend_->memory_allocator());

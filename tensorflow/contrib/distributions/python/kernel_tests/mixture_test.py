@@ -33,6 +33,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 distributions_py = distributions
 
@@ -510,12 +511,13 @@ class MixtureBenchmark(test.Benchmark):
             name=("%s_%s_components_%d_batch_%d_features_%d_sample_%d" %
                   (name, use_gpu, num_components, batch_size, num_features,
                    sample_size)))
-        print("\t".join(["%s", "%d", "%d", "%d", "%d", "%g"]) %
-              (use_gpu, num_components, batch_size, num_features, sample_size,
-               reported["wall_time"]))
+        logging.vlog(2, "\t".join(["%s", "%d", "%d", "%d", "%d", "%g"]) % (
+            use_gpu, num_components, batch_size, num_features, sample_size,
+            reported["wall_time"]))
 
   def benchmarkSamplingMVNDiag(self):
-    print("mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+    logging.vlog(
+        2, "mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def create_distribution(batch_size, num_components, num_features):
       cat = distributions_py.Categorical(
@@ -550,7 +552,8 @@ class MixtureBenchmark(test.Benchmark):
                   sample_size=sample_size)
 
   def benchmarkSamplingMVNFull(self):
-    print("mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+    logging.vlog(
+        2, "mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def psd(x):
       """Construct batch-wise PSD matrices."""

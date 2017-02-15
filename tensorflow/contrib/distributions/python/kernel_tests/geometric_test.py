@@ -217,6 +217,8 @@ class GeometricTest(test.TestCase):
 
       x = np.array([0., 2., 3., 4., 5., 6., 7.], dtype=np.float32)
       expected_log_prob = stats.geom.logpmf(x, [1.], loc=-1)
+      # Scipy incorrectly returns nan.
+      expected_log_prob[np.isnan(expected_log_prob)] = 0.
 
       log_prob = geom.log_prob(x)
       self.assertEqual([7,], log_prob.get_shape())

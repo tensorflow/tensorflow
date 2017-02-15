@@ -362,21 +362,19 @@ class BufferAssignment {
 class BufferAssigner {
  public:
   // Build and return a BufferAssignment for the given module. The given
-  // HloOrdering is used to determine buffer liveness. buffer_size and alignment
-  // are functions which return the size and alignment of a LogicalBuffer. If
-  // hlos_to_allocate is not null then only instructions in this vector are
-  // considered for buffer assignment. If hlos_to_allocate is null then all
-  // instructions are considered. If 'colocate_related_buffers' is true, related
-  // LogicalBuffers will be colocated in the same allocation (i.e buffers for
-  // while result will share an allocation with buffers related to that same
-  // while instruction: init operand, condition/body parameter and body result).
-  // If 'combine_temp_allocations' is true, all temp buffers will be combined
-  // into a single allocation.
+  // HloOrdering is used to determine buffer liveness. buffer_size is a function
+  // which returns the size of a LogicalBuffer. Alignment is the the minimum
+  // alignment of any buffer. If hlos_to_allocate is not null then only
+  // instructions in this vector are considered for buffer assignment. If
+  // hlos_to_allocate is null then all instructions are considered. If
+  // 'colocate_related_buffers' is true, related LogicalBuffers will be
+  // colocated in the same allocation (i.e buffers for while result will share
+  // an allocation with buffers related to that same while instruction: init
+  // operand, condition/body parameter and body result).
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size,
-      LogicalBuffer::AlignmentFunction alignment, bool colocate_related_buffers,
-      bool combine_temp_allocations,
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+      bool colocate_related_buffers,
       const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
 
   // Overload of Run which uses ShapeUtil::ByteSizeOf to determine buffer size
@@ -387,13 +385,10 @@ class BufferAssigner {
 
  private:
   explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
-                          LogicalBuffer::AlignmentFunction alignment,
-                          bool colocate_related_buffers,
-                          bool combine_temp_allocations)
+                          int64 alignment, bool colocate_related_buffers)
       : buffer_size_(std::move(buffer_size)),
-        alignment_(std::move(alignment)),
-        colocate_related_buffers_(colocate_related_buffers),
-        combine_temp_allocations_(combine_temp_allocations) {}
+        alignment_(alignment),
+        colocate_related_buffers_(colocate_related_buffers) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -450,16 +445,14 @@ class BufferAssigner {
 
   const HloModule* module_;
 
-  // Functions which return the buffer size and alignment for a given shape.
+  // Function which returns the buffer size for a given logical buffer (shape).
   LogicalBuffer::SizeFunction buffer_size_;
-  LogicalBuffer::AlignmentFunction alignment_;
+
+  // Minimum alignment of any buffer.
+  int64 alignment_;
 
   // Indicates whether related buffers should share the same buffer allocation.
   const bool colocate_related_buffers_;
-
-  // Whether to run a post-processing pass to combine temp allocations into one
-  // big allocation, with different offsets for each logical buffer.
-  const bool combine_temp_allocations_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };
