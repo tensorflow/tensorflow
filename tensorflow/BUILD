@@ -104,6 +104,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
