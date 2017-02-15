@@ -29,7 +29,7 @@ TEST(IsSockAddrValid, ValidSockAddr) {
 
 TEST(IsSockAddrValid, InvalidSockAddr) {
   EXPECT_FALSE(port::IsValidSockAddr(string("100.2.3.0."), string("2223")));
-  EXPECT_FALSE(port::IsValidSockAddr(string("100.2.3"), string("2223")));
+  EXPECT_FALSE(port::IsValidSockAddr(string("100.2.3."), string("2223")));
   EXPECT_FALSE(port::IsValidSockAddr(string("100.2.3.0"), string("-1")));
   EXPECT_FALSE(port::IsValidSockAddr(string("100.2.3.0."), string("-2223")));
 }
