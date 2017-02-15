@@ -81,8 +81,8 @@ if [[ "${DOWNLOAD_AND_USE_HEXAGON}" == "true" ]]; then
     download_and_push "${URL_BASE}/deps/hexagon/libhexagon_nn_skel.so" \
 "${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_nn_skel.so" "/vendor/lib/rfsa/adsp"
 
-    download_and_push "${URL_BASE}/example_images/img_299x299.jpg" \
-"${HEXAGON_DOWNLOAD_PATH}/img_299x299.jpg" "/data/local/tmp"
+    download_and_push "${URL_BASE}/example_images/img_299x299.bmp" \
+"${HEXAGON_DOWNLOAD_PATH}/img_299x299.bmp" "/data/local/tmp"
 
     USE_HEXAGON="true"
     SUB_MAKEFILES="$(pwd)/tensorflow/contrib/makefile/sub_makefiles/hexagon_graph_execution/Makefile.in"

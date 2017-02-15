@@ -1565,6 +1565,11 @@ HloInstruction* HloInstruction::fused_parameter(int64 parameter_number) const {
   return fused_parameters_[parameter_number];
 }
 
+const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
+  return fused_parameters_;
+}
+
 const std::list<std::unique_ptr<HloInstruction>>&
 HloInstruction::fused_instructions() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);

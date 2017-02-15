@@ -254,10 +254,14 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
 
 // CAVEAT: This test only runs when you specify hexagon library using
 // makefile.
-// TODO(satok): Make this generic so that this can run without any
-// additional steps.
+// CAVEAT: This test is disabled by default because hexagon can keep only
+// two inception graphs on memory which are allocated by other two tests.
+// Memory of these graphs are not released until process is killed right now.
+// TODO(satok): Figure out how to release memory on hexagon without process
+// termination.
 #ifdef USE_HEXAGON_LIBS
-TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
+TEST(GraphTransferer,
+     DISABLED_RunInceptionV3OnHexagonExampleWithHexagonWrapper) {
   LOG(INFO) << "Run inception v3 on hexagon with hexagon controller";
   CheckHexagonControllerVersion();
 
