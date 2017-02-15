@@ -100,10 +100,38 @@ namespace {
 // 'operand'. Returns true otherwise.
 // Precondition: 'operand' is an operand of 'user'.
 bool MayUseBufferInOperand(HloInstruction* operand, const ShapeIndex& index,
-                           HloInstruction* user) {
+                           HloInstruction* user,
+                           const TuplePointsToAnalysis& points_to_analysis) {
   if (user->opcode() == HloOpcode::kGetTupleElement && !index.empty()) {
     // GetTupleElement instructions only access the top-level buffer of their
     // operand.
+    return false;
+  } else if (user->opcode() == HloOpcode::kFusion &&
+             user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    // Find fusion parameter associated with 'operand'.
+    auto it = std::find_if(
+        user->fused_parameters().begin(), user->fused_parameters().end(),
+        [=](HloInstruction* fused_param) {
+          return user->operand(fused_param->parameter_number()) == operand;
+        });
+    CHECK(it != user->fused_parameters().end());
+    // Iterate through all users of all buffer aliases of the buffer in the
+    // points-to set of fusion parameter at 'index'.
+    // Return true if any uses are detected at 'index', returns false otherwise.
+    const LogicalBuffer* buffer =
+        points_to_analysis.GetBufferDefinedAt(*it, index).ValueOrDie();
+    for (const BufferAlias& alias :
+         points_to_analysis.GetBufferAliases(*buffer)) {
+      for (HloInstruction* alias_user : alias.instruction()->users()) {
+        if (!MayUseBufferInOperand(alias.instruction(), alias.index(),
+                                   alias_user, points_to_analysis)) {
+          continue;
+        }
+        // Return true: use detected at 'buffer' -> 'alias' -> 'alias_user'.
+        return true;
+      }
+    }
+    // Return false: found no uses of 'operand' at 'index' in 'user'.
     return false;
   }
   return true;
@@ -125,7 +153,7 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
          points_to_analysis.GetBufferAliases(*buffer)) {
       for (HloInstruction* alias_user : alias.instruction()->users()) {
         if (!MayUseBufferInOperand(alias.instruction(), alias.index(),
-                                   alias_user)) {
+                                   alias_user, points_to_analysis)) {
           continue;
         }
         for (int64 op_idx : alias_user->OperandIndices(alias.instruction())) {
@@ -200,7 +228,8 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   // Every user of 'a' must be a predecessor of 'b' or 'b' itself.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     for (auto user : alias.instruction()->users()) {
-      if (!MayUseBufferInOperand(alias.instruction(), alias.index(), user)) {
+      if (!MayUseBufferInOperand(alias.instruction(), alias.index(), user,
+                                 points_to_analysis())) {
         continue;
       }
       if (user != b.instruction() &&
