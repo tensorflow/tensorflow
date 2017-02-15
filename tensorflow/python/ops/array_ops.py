@@ -679,9 +679,7 @@ def _SliceHelperVar(var, slice_spec):
   """Creates a slice helper object given a variable.
 
   This allows creating a sub-tensor from part of the current contents
-  of a variable.
-  See
-  [`Tensor.__getitem__`](../../api_docs/python/framework.md#Tensor.__getitem__)
+  of a variable.  See ${tf.Tensor$`Tensor.__getitem__`}
   for detailed examples of slicing.
 
   This function in addition also allows assignment to a sliced range.

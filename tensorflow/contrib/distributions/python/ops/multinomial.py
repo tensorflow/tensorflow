@@ -282,14 +282,11 @@ class Multinomial(distribution.Distribution):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
+
+    counts = distribution_util.embed_check_nonnegative_discrete(
+        counts, check_integer=True)
     return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            counts,
-            message="counts must be non-negative."),
         check_ops.assert_equal(
             self.total_count, math_ops.reduce_sum(counts, -1),
             message="counts must sum to `self.total_count`"),
-        distribution_util.assert_integer_form(
-            counts,
-            message="counts cannot contain fractional components."),
     ], counts)

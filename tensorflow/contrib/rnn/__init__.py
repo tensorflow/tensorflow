@@ -38,6 +38,9 @@
 @@CoupledInputForgetGateLSTMCell
 @@TimeFreqLSTMCell
 @@GridLSTMCell
+@@NASCell
+
+### RNNCell wrappers
 @@AttentionCellWrapper
 @@CompiledWrapper
 @@static_rnn
@@ -78,3 +81,4 @@ from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__, ['core_rnn_cell'])
+

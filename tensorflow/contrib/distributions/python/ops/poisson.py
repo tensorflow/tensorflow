@@ -26,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
@@ -126,14 +125,20 @@ class Poisson(distribution.Distribution):
 
   @distribution_util.AppendDocstring(_poisson_sample_note)
   def _cdf(self, x):
-    x = self._assert_valid_sample(x, check_integer=False)
+    if self.validate_args:
+      # We set `check_integer=False` since the CDF is defined on whole real
+      # line.
+      x = distribution_util.embed_check_nonnegative_discrete(
+          x, check_integer=False)
     return math_ops.igammac(math_ops.floor(x + 1), self.rate)
 
   def _log_normalization(self):
     return self.rate
 
   def _log_unnormalized_prob(self, x):
-    x = self._assert_valid_sample(x, check_integer=True)
+    if self.validate_args:
+      x = distribution_util.embed_check_nonnegative_discrete(
+          x, check_integer=True)
     return x * math_ops.log(self.rate) - math_ops.lgamma(x + 1)
 
   def _mean(self):
@@ -151,12 +156,3 @@ class Poisson(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     return random_ops.random_poisson(
         self.rate, [n], dtype=self.dtype, seed=seed)
-
-  def _assert_valid_sample(self, x, check_integer=True):
-    if not self.validate_args:
-      return x
-    dependencies = [check_ops.assert_non_negative(x)]
-    if check_integer:
-      dependencies += [distribution_util.assert_integer_form(
-          x, message="x has non-integer components.")]
-    return control_flow_ops.with_dependencies(dependencies, x)
