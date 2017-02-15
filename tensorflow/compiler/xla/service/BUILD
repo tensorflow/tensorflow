@@ -170,6 +170,7 @@ cc_library(
         ":compiler",
         ":device_memory_allocator",
         ":platform_util",
+        ":pool",
         ":transfer_manager",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -379,6 +380,7 @@ cc_library(
     hdrs = ["execution_tracker.h"],
     deps = [
         ":backend",
+        ":pool",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -1282,6 +1284,25 @@ cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "pool",
+    hdrs = ["pool.h"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "pool_test",
+    srcs = ["pool_test.cc"],
+    deps = [
+        ":pool",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/core:test_main",
     ],
 )
