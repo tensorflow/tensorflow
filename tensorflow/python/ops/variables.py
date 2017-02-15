@@ -116,36 +116,7 @@ class Variable(object):
   `trainable_variables()` returns the contents of this collection. The
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
-
-
-  Creating a variable.
-
-  @@__init__
-  @@initialized_value
-
-  Changing a variable value.
-
-  @@assign
-  @@assign_add
-  @@assign_sub
-  @@scatter_sub
-  @@count_up_to
-
-  @@eval
-
-  Properties.
-
-  @@name
-  @@dtype
-  @@get_shape
-  @@device
-  @@initializer
-  @@graph
-  @@op
   """
-
-  # TODO(touts): Add @@value and @@ref in the docstring above once they are
-  # ready for consumption.
 
   def __init__(self,
                initial_value=None,
@@ -460,10 +431,10 @@ class Variable(object):
 
     This is not a graph construction method, it does not add ops to the graph.
 
-    This convenience method requires a session where the graph containing this
-    variable has been launched. If no session is passed, the default session is
-    used.  See the @{tf.Session} for
-    more information on launching a graph and on sessions.
+    This convenience method requires a session where the graph
+    containing this variable has been launched. If no session is
+    passed, the default session is used.  See @{tf.Session} for more
+    information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
@@ -633,10 +604,10 @@ class Variable(object):
 
     Writes new value to variable's memory. Doesn't add ops to the graph.
 
-    This convenience method requires a session where the graph containing this
-    variable has been launched. If no session is passed, the default session is
-    used.  See the @{tf.Session} for
-    more information on launching a graph and on sessions.
+    This convenience method requires a session where the graph
+    containing this variable has been launched. If no session is
+    passed, the default session is used.  See @{tf.Session} for more
+    information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])

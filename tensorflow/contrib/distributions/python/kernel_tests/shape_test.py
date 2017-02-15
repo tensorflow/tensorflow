@@ -50,9 +50,12 @@ class MakeBatchReadyTest(test.TestCase):
     return self._rng.random_sample(sample_shape).astype(dtype)
 
   def _get_expected(self, x, batch_ndims, event_ndims, expand_batch_dim):
-    n = int(x.ndim - batch_ndims - event_ndims)
-    sample_shape = x.shape[0:n]
-    y = np.reshape(x, np.concatenate([[-1], x.shape[n:]], 0))
+    # Cast as int32 array explicitly, since an empty x.shape defaults
+    # to float64, and we can't index as float64 in numpy 1.12+.
+    x_shape = np.array(x.shape, dtype=np.int32)
+    n = x.ndim - batch_ndims - event_ndims
+    sample_shape = x_shape[:n]
+    y = np.reshape(x, np.concatenate([[-1], x_shape[n:]], 0))
     y = np.transpose(y, np.roll(np.arange(y.ndim), -1))
     if event_ndims == 0:
       y = y[..., np.newaxis, :]
@@ -99,15 +102,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 1a: Static scalar input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticScalarNdims00ExpandNo(self):
+  def testStaticScalarNdims00ExpandNo(self):
     self._test_static(x=self._random_sample([]),
                       batch_ndims=0,
                       event_ndims=0,
                       expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticScalarNdims00ExpandYes(self):
+  def testStaticScalarNdims00ExpandYes(self):
     self._test_static(x=self._random_sample([]),
                       batch_ndims=0,
                       event_ndims=0,
@@ -156,15 +157,13 @@ class MakeBatchReadyTest(test.TestCase):
                         expand_batch_dim=True)
 
   # Group 1b: Dynamic scalar input.
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicScalar3Ndims00ExpandNo(self):
+  def testDynamicScalar3Ndims00ExpandNo(self):
     self._test_dynamic(x=self._random_sample([]),
                        batch_ndims=0,
                        event_ndims=0,
                        expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicScalar3Ndims00ExpandYes(self):
+  def testDynamicScalar3Ndims00ExpandYes(self):
     self._test_dynamic(x=self._random_sample([]),
                        batch_ndims=0,
                        event_ndims=0,
@@ -214,15 +213,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 2a: Static vector input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticVectorNdims00ExpandNo(self):
+  def testStaticVectorNdims00ExpandNo(self):
     self._test_static(x=self._random_sample([3]),
                       batch_ndims=0,
                       event_ndims=0,
                       expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticVectorNdims00ExpandYes(self):
+  def testStaticVectorNdims00ExpandYes(self):
     self._test_static(x=self._random_sample([3]),
                       batch_ndims=0,
                       event_ndims=0,
@@ -268,15 +265,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 2b: Dynamic vector input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicVectorNdims00ExpandNo(self):
+  def testDynamicVectorNdims00ExpandNo(self):
     self._test_dynamic(x=self._random_sample([3]),
                        batch_ndims=0,
                        event_ndims=0,
                        expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicVectorNdims00ExpandYes(self):
+  def testDynamicVectorNdims00ExpandYes(self):
     self._test_dynamic(x=self._random_sample([3]),
                        batch_ndims=0,
                        event_ndims=0,
@@ -322,15 +317,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 3a: Static matrix input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticMatrixNdims00ExpandNo(self):
+  def testStaticMatrixNdims00ExpandNo(self):
     self._test_static(x=self._random_sample([2, 3]),
                       batch_ndims=0,
                       event_ndims=0,
                       expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticMatrixNdims00ExpandYes(self):
+  def testStaticMatrixNdims00ExpandYes(self):
     self._test_static(x=self._random_sample([2, 3]),
                       batch_ndims=0,
                       event_ndims=0,
@@ -374,15 +367,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 3b: Dynamic matrix input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicMatrixNdims00ExpandNo(self):
+  def testDynamicMatrixNdims00ExpandNo(self):
     self._test_dynamic(x=self._random_sample([2, 3]),
                        batch_ndims=0,
                        event_ndims=0,
                        expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicMatrixNdims00ExpandYes(self):
+  def testDynamicMatrixNdims00ExpandYes(self):
     self._test_dynamic(x=self._random_sample([2, 3]),
                        batch_ndims=0,
                        event_ndims=0,
@@ -426,15 +417,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 4a: Static tensor input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticTensorNdims00ExpandNo(self):
+  def testStaticTensorNdims00ExpandNo(self):
     self._test_static(x=self._random_sample([4, 1, 2, 3]),
                       batch_ndims=0,
                       event_ndims=0,
                       expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testStaticTensorNdims00ExpandYes(self):
+  def testStaticTensorNdims00ExpandYes(self):
     self._test_static(x=self._random_sample([4, 1, 2, 3]),
                       batch_ndims=0,
                       event_ndims=0,
@@ -478,15 +467,13 @@ class MakeBatchReadyTest(test.TestCase):
 
   # Group 4b: Dynamic tensor input.
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicTensorNdims00ExpandNo(self):
+  def testDynamicTensorNdims00ExpandNo(self):
     self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
                        batch_ndims=0,
                        event_ndims=0,
                        expand_batch_dim=False)
 
-  # TODO(b/35331106): Re-enable when fixed.
-  def _testDynamicTensorNdims00ExpandYes(self):
+  def testDynamicTensorNdims00ExpandYes(self):
     self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
                        batch_ndims=0,
                        event_ndims=0,
