@@ -44,5 +44,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//third_party/tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:__subpackages__"],
 )
