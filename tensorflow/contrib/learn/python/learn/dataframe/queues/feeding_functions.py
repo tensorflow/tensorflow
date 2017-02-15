@@ -33,10 +33,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
-# pylint: disable=g-import-not-at-top
 try:
+  # pylint: disable=g-import-not-at-top
   import pandas as pd
   HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
 except ImportError:
   HAS_PANDAS = False
 
