@@ -179,6 +179,7 @@ def extract():
 
   # Exclude some libaries in contrib from the documentation altogether.
   # TODO(wicke): Shrink this list.
+  api_visitor.do_not_descend_map[''] += ['cli', 'lib', 'wrappers']
   api_visitor.do_not_descend_map.update({
       'contrib': [
           'compiler',
@@ -194,6 +195,7 @@ def extract():
           'tensor_forest',
           'tensorboard',
           'testing',
+          'training',
           'tfprof',
       ],
       'contrib.bayesflow': [
