@@ -652,6 +652,8 @@ func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
 
 // Quantizes then dequantizes a tensor.
 //
+// DEPRECATED at GraphDef version 21: Replaced by QuantizeAndDequantizeV2
+//
 // This op simulates the precision loss from the quantized forward pass by:
 // 1. Quantizing the tensor to fixed point numbers, which should match the target
 //    quantization method when it is used in inference.
@@ -1267,6 +1269,116 @@ func SpaceToBatch(scope *Scope, input tf.Output, paddings tf.Output, block_size 
 		Type: "SpaceToBatch",
 		Input: []tf.Input{
 			input, paddings,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QuantizeAndDequantizeV2Attr is an optional argument to QuantizeAndDequantizeV2.
+type QuantizeAndDequantizeV2Attr func(optionalAttr)
+
+// QuantizeAndDequantizeV2SignedInput sets the optional signed_input attribute to value.
+//
+// value: If the quantization is signed or unsigned.
+// If not specified, defaults to b:true
+func QuantizeAndDequantizeV2SignedInput(value bool) QuantizeAndDequantizeV2Attr {
+	return func(m optionalAttr) {
+		m["signed_input"] = value
+	}
+}
+
+// QuantizeAndDequantizeV2NumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization.
+// If not specified, defaults to i:8
+func QuantizeAndDequantizeV2NumBits(value int64) QuantizeAndDequantizeV2Attr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// QuantizeAndDequantizeV2RangeGiven sets the optional range_given attribute to value.
+//
+// value: If the range is given or should be computed from the tensor.
+// If not specified, defaults to b:false
+func QuantizeAndDequantizeV2RangeGiven(value bool) QuantizeAndDequantizeV2Attr {
+	return func(m optionalAttr) {
+		m["range_given"] = value
+	}
+}
+
+// Quantizes then dequantizes a tensor.
+//
+// This op simulates the precision loss from the quantized forward pass by:
+// 1. Quantizing the tensor to fixed point numbers, which should match the target
+//    quantization method when it is used in inference.
+// 2. Dequantizing it back to floating point numbers for the following ops, most
+//    likely matmul.
+//
+// There are different ways to quantize. This version does not use the full range
+// of the output type, choosing to elide the lowest possible value for symmetry
+// (e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit
+// quantization), so that 0.0 maps to 0.
+//
+// To perform this op, we first find the range of values in our tensor. The range
+// we use is always centered on 0, so we find m such that
+//
+// 1. m = max(abs(input_min), abs(input_max)) if range_given is true,
+// 2. m = max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
+//
+// Our input tensor range is then [-m, m].
+//
+// Next, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].
+// If signed_input is true, this is
+//
+//   [min_fixed, max_fixed ] =
+//       [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].
+//
+// Otherwise, if signed_input is false, the fixed-point range is
+//
+//   [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].
+//
+// From this we compute our scaling factor, s:
+//
+//   s = (max_fixed - min_fixed) / (2 * m).
+//
+// Now we can quantize and dequantize the elements of our tensor.  An element e
+// is transformed into e':
+//
+//   e' = (e * s).round_to_nearest() / s.
+//
+// Note that we have a different number of buckets in the signed vs. unsigned
+// cases.  For example, if num_bits == 8, we get 254 buckets in the signed case
+// vs. 255 in the unsigned case.
+//
+// For example, suppose num_bits = 8 and m = 1.  Then
+//
+//   [min_fixed, max_fixed] = [-127, 127], and
+//   s = (127 + 127) / 2 = 127.
+//
+// Given the vector {-1, -0.5, 0, 0.3}, this is quantized to
+// {-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}.
+//
+// Arguments:
+//	input: Tensor to quantize and then dequantize.
+//	input_min: If range_given, this is the min of the range, otherwise this input
+// will be ignored.
+//	input_max: If range_given, this is the max of the range, otherwise this input
+// will be ignored.
+func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantizeV2",
+		Input: []tf.Input{
+			input, input_min, input_max,
 		},
 		Attrs: attrs,
 	}
