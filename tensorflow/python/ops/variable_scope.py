@@ -739,9 +739,9 @@ def no_regularizer(_):
 
 
 class VariableScope(object):
-  """Variable scope object to carry defaults to provide to get_variable.
+  """Variable scope object to carry defaults to provide to `get_variable`.
 
-  Many of the arguments we need for get_variable in a variable store are most
+  Many of the arguments we need for `get_variable` in a variable store are most
   easily handled with a context. This object is used for the defaults.
 
   Attributes:
@@ -991,7 +991,7 @@ get_variable_or_local_docstring = (
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-[Variable Scope How To](../../how_tos/variable_scope/index.md)
+@{$variable_scope$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1025,7 +1025,7 @@ Args:
   initializer: Initializer for the variable if one is created.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the
@@ -1325,7 +1325,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
+  see the @{$variable_scope$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:

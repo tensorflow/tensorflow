@@ -2503,7 +2503,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
+  @{tf.Tensor.set_shape}
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
