@@ -1,0 +1,7 @@
+bazel build tensorflow/python/tools:strip_unused && \
+bazel-bin/tensorflow/python/tools/strip_unused \
+--input_graph=/home/alejandro/Documents/School/tensorflow/tensorflow/examples/android/assets/new/tensorflow_inception_graph.pb \
+--output_graph=/home/alejandro/Documents/School/tensorflow/tensorflow/examples/android/assets/new/stripped_graph.pb \
+--input_node_names=Mul \
+--output_node_names=final_result \
+--input_binary=true
