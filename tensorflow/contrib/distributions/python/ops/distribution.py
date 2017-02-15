@@ -231,7 +231,7 @@ class Distribution(_BaseDistribution):
   `Distribution` is a base class for constructing and organizing properties
   (e.g., mean, variance) of random variables (e.g, Bernoulli, Gaussian).
 
-  ### Subclassing
+  #### Subclassing
 
   Subclasses are expected to implement a leading-underscore version of the
   same-named function. The argument signature should be identical except for
@@ -252,7 +252,7 @@ class Distribution(_BaseDistribution):
   linter complaining about missing Args/Returns/Raises sections in the
   partial docstrings.
 
-  ### Broadcasting, batching, and shapes
+  #### Broadcasting, batching, and shapes
 
   All distributions support batches of independent distributions of that type.
   The batch shape is determined by broadcasting together the parameters.
@@ -308,7 +308,7 @@ class Distribution(_BaseDistribution):
   cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
   ```
 
-  ### Parameter values leading to undefined statistics or distributions.
+  #### Parameter values leading to undefined statistics or distributions.
 
   Some distributions do not have well-defined statistics for all initialization
   parameter values. For example, the beta distribution is parameterized by
@@ -739,7 +739,7 @@ class Distribution(_BaseDistribution):
 
     Given random variable `X`, the cumulative distribution function `cdf` is:
 
-    ```
+    ```none
     log_cdf(x) := Log[ P[X <= x] ]
     ```
 
@@ -776,7 +776,7 @@ class Distribution(_BaseDistribution):
 
     Given random variable `X`, the cumulative distribution function `cdf` is:
 
-    ```
+    ```none
     cdf(x) := P[X <= x]
     ```
 
@@ -809,7 +809,7 @@ class Distribution(_BaseDistribution):
 
     Given random variable `X`, the survival function is defined:
 
-    ```
+    ```none
     log_survival_function(x) = Log[ P[X > x] ]
                              = Log[ 1 - P[X <= x] ]
                              = Log[ 1 - cdf(x) ]
@@ -847,7 +847,7 @@ class Distribution(_BaseDistribution):
 
     Given random variable `X`, the survival function is defined:
 
-    ```
+    ```none
     survival_function(x) = P[X > x]
                          = 1 - P[X <= x]
                          = 1 - cdf(x).
@@ -966,7 +966,7 @@ class Distribution(_BaseDistribution):
 
     ```none
     Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
-    ````
+    ```
 
     where `Cov` is a (batch of) `k' x k'` matrices,
     `0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function

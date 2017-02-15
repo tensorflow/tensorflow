@@ -35,7 +35,7 @@ from tensorflow.python.ops import random_ops
 class Uniform(distribution.Distribution):
   """Uniform distribution with `low` and `high` parameters.
 
-  ### Mathematical Details
+  #### Mathematical Details
 
   The probability density function (pdf) is,
 
@@ -54,7 +54,7 @@ class Uniform(distribution.Distribution):
   The parameters `low` and `high` must be shaped in a way that supports
   broadcasting (e.g., `high - low` is a valid operation).
 
-  ### Examples
+  #### Examples
 
   ```python
   # Without broadcasting:

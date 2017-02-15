@@ -72,10 +72,17 @@ class ShapeIndex {
     return indices_ == other.indices_;
   }
   bool operator!=(const ShapeIndex& other) const { return !(*this == other); }
+  bool operator<(const ShapeIndex& other) const {
+    return indices_ < other.indices_;
+  }
+
+  string ToString() const;
 
  private:
   std::vector<int64> indices_;
 };
+
+std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 
 // Namespaced collection of (static) shape utilities.
 //

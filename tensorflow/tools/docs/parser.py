@@ -583,7 +583,7 @@ def _generate_markdown_for_function(full_name, duplicate_names,
   else:
     aliases = ''
 
-  return '# `%s%s`\n\n%s%s%s' % (
+  return '# %s%s\n\n%s%s%s' % (
       full_name, signature, aliases, guides, docstring)
 
 
@@ -628,7 +628,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
   else:
     aliases = ''
 
-  docs = '# `%s`\n\n%s%s%s\n\n' % (full_name, aliases, guides, docstring)
+  docs = '# %s\n\n%s%s%s\n\n' % (full_name, aliases, guides, docstring)
 
   field_names = []
   properties = []
@@ -750,7 +750,7 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
 
   # TODO(deannarubin): Make this list into a table.
 
-  return '# Module `%s`\n\n%s%s\n\n## Members\n\n%s' % (
+  return '# Module: %s\n\n%s%s\n\n## Members\n\n%s' % (
       full_name, aliases, docstring, '\n\n'.join(member_links))
 
 
