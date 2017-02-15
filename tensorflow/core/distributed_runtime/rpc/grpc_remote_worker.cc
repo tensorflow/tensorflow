@@ -309,6 +309,7 @@ WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
 class RDMARemoteWorker : public GrpcRemoteWorker {
 
 private:
+
   
   //Returns the name of the desitnation specified in a rendezvous key
   //For idx=0 it is the source, for idx=2 it is the destination
@@ -348,13 +349,14 @@ private:
     return (tensorKeyHash % maxMessageTag);
   }
 
+
   void MPISendTensor(const int dst,      const int hash, 
                      const bool is_dead, const Tensor &val)
   {
 #if 1
     //Send a header using the 'hash', followed by a message identified by
-    //the followUpTag, which is unique to this process
-    const int followUpTag = std::abs(static_cast<int>(pthread_self()));
+    //the followUpTag, which is unique to this thread
+    const int followUpTag = (std::abs(static_cast<int>(pthread_self()))) % maxMessageTag;
 
     //Encode the properties of the tensor and send this to the destination
     RecvTensorResponse response;
@@ -431,6 +433,9 @@ private:
 
   //Max size of the data chuncks, 512MB
   const size_t maxSize = 1024*1024*512;
+  
+  //If the MPI_PATH_DISABLED variable is set then disable this code path
+  bool disabledAtRuntime = false;
 
 
  public:
@@ -443,6 +448,10 @@ private:
        int flag;
        MPICheck(MPI_Comm_get_attr(MPI_COMM_WORLD, MPI_TAG_UB, &v, &flag));
        maxMessageTag =  *(int*)v;
+
+       //Test if this path is disabled at launch
+       const char* env = getenv("MPI_PATH_DISABLED");
+       if(env && env[0] == '1') disabledAtRuntime = true;
   }
 
 
@@ -457,31 +466,31 @@ private:
     const int hash = tensorHash(key.FullKey().ToString());
     //fprintf(stderr, "JBDBG Going to send data to: %s  : %d  || %d  devContext: %d\n", key.FullKey().ToString().c_str(), dst, hash, args.device_context); 
     MPISendTensor(dst, hash, is_dead, val);
-
     s = Status::OK();
-
   }
 
 
 
   void RecvTensorAsync(WorkerEnv* env, CallOptions* call_opts, const RecvTensorRequest* request,
                        TensorResponse* response, StatusCallback done) override {
-    #if 0
+    if(disabledAtRuntime)
+    {
                   GrpcRemoteWorker::RecvTensorAsync(env, call_opts, request, response, done);
-    #else
-    //TODO: Figure out how to get the size of the requested Tensor
-    //Is this known by looking up the key/request?
-    //TODO is it possible that a tensor has been pre-allocated?
-    //so we can reuse the same (mapped) pointer?
-    //fprintf(stderr, "JBDBG TensorResponse numElem: %ld ", response->tensor().NumElements());
+    }
+    else
+    {
+        //TODO: Figure out how to get the size of the requested Tensor
+        //Is this known by looking up the key/request?
+        //TODO is it possible that a tensor has been pre-allocated?
+        //so we can reuse the same (mapped) pointer?
+        //fprintf(stderr, "JBDBG TensorResponse numElem: %ld ", response->tensor().NumElements());
 
-    const int src  = getMPIPartnerID(true, request->rendezvous_key(), env);
-    //fprintf(stderr, "JBDBG Going to receive data from: %s  : %d \n", request->rendezvous_key().c_str(), src);
-    MPIRecvTensor(src, tensorHash(request->rendezvous_key()), response);
-
-    //   response->ClearTensor();  //Reset the receive tensor, invalidates all the above received data :)
-    done(Status::OK());
-#endif
+        const int src  = getMPIPartnerID(true, request->rendezvous_key(), env);
+        //fprintf(stderr, "JBDBG Going to receive data from: %s  : %d \n", request->rendezvous_key().c_str(), src);
+        MPIRecvTensor(src, tensorHash(request->rendezvous_key()), response);
+        //   response->ClearTensor();  //Reset the receive tensor, invalidates all the above received data :)
+        done(Status::OK());
+    }
  } //RecvTensorAsync
 
 
@@ -493,8 +502,6 @@ WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
   //return new GrpcRemoteWorker(channel, completion_queue, logger);
   return new RDMARemoteWorker(channel, completion_queue, logger);
 }
-
-
 
 
 

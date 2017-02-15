@@ -159,31 +159,31 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
   }
     
 
+
+  //Only test the first time we enter this function on this thread
+  static int mpiDisabled = -1;
+  if(mpiDisabled < 0) {
+       const char* env = getenv("MPI_PATH_DISABLED");
+       if(env && env[0] == '1') mpiDisabled = 1;
+  }
+
+
   //If the src_device and dst_device are different then use the 
   //SendToRemote function. Otherwise use the original code path
   bool isSrc = IsLocalDevice(*env_, parsed.src_device);
   bool isDst = IsLocalDevice(*env_, parsed.dst_device);
-  //Quick hack to see if send and recv process are equal for MPI testing
-  //bool same = (memcmp(parsed.src_device.data(), parsed.dst_device.data(), 7) == 0);
-  bool same = isSrc && isDst;
-  bool useMPI = true;
-  if(!same && useMPI)
-  //if(0)
+  bool same  = isSrc && isDst;
+  if(!same && mpiDisabled != 1)
   {
       Status s;
       SendToRemote(parsed, args, val, is_dead, s);
       return s;
-      //return Status::OK();
   }
   else
   {
       // Buffers "val" and "device_context" in local_.
       return local_->Send(parsed, args, val, is_dead);
   }
-
-
-  // Buffers "val" and "device_context" in local_.
-  //return local_->Send(parsed, args, val, is_dead);
 }
 
 Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
