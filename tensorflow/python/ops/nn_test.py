@@ -788,11 +788,31 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
 class CReluTest(test_lib.TestCase):
 
   def test(self):
-    x = np.random.rand(3, 4).astype(np.float32)
+    np.random.seed(1)  # Make it reproducible.
+    x = np.random.randn(3, 4).astype(np.float32)
     y = np.concatenate([x * (x > 0), -x * (x < 0)], axis=1)
     with self.test_session():
       z = nn_ops.crelu(constant_op.constant(x)).eval()
       self.assertAllClose(y, z, 1e-4)
+
+
+class ReluTest(test_lib.TestCase):
+
+  def test(self):
+    np.random.seed(1)  # Make it reproducible.
+    x = np.random.randn(3, 4).astype(np.float32)
+    y = np.maximum(x, 0.0)
+    with self.test_session():
+      z = nn_ops.relu(constant_op.constant(x)).eval()
+      self.assertAllEqual(y, z)
+
+  def testNaNs(self):
+    # Test that relu(nan) = nan for various sizes.
+    for i in range(18):
+      x = np.zeros(i) + np.nan
+      with self.test_session():
+        z = nn_ops.relu(constant_op.constant(x)).eval()
+        self.assertTrue(np.isnan(z).all())
 
 
 class MomentsTest(test_lib.TestCase):

@@ -105,6 +105,16 @@ def assert_symmetric(matrix):
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
 
 
+def embed_check_nonnegative_discrete(x, check_integer=True):
+  """Assert x is a non-negative tensor, and optionally of integers."""
+  assertions = [check_ops.assert_non_negative(
+      x, message="x must be non-negative.")]
+  if check_integer:
+    assertions += [assert_integer_form(
+        x, message="x cannot contain fractional components.")]
+  return control_flow_ops.with_dependencies(assertions, x)
+
+
 def same_dynamic_shape(a, b):
   """Returns whether a and b have the same dynamic shape.
 

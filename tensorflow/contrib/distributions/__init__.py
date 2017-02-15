@@ -31,6 +31,7 @@ See the @{$python/contrib.distributions} guide.
 @@ExponentialWithSoftplusRate
 @@Gamma
 @@GammaWithSoftplusConcentrationRate
+@@Geometric
 @@InverseGamma
 @@InverseGammaWithSoftplusConcentrationRate
 @@Laplace
@@ -96,6 +97,7 @@ from tensorflow.contrib.distributions.python.ops.distribution_util import matrix
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
+from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.laplace import *
