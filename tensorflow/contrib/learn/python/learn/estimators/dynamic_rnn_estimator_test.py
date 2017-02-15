@@ -285,7 +285,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
          {prediction_key.PredictionKey.CLASSES: True,
           prediction_key.PredictionKey.PROBABILITIES: True,
           dynamic_rnn_estimator._get_state_name(0): True},
-         {'classification':
+         {'dynamic_rnn_output':
           (constants.ProblemType.CLASSIFICATION,
            {prediction_key.PredictionKey.CLASSES: True,
             prediction_key.PredictionKey.PROBABILITIES: True})}),
@@ -295,7 +295,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
          {prediction_key.PredictionKey.SCORES: True,
           dynamic_rnn_estimator._get_state_name(0): True,
           dynamic_rnn_estimator._get_state_name(1): True},
-         {'regression':
+         {'dynamic_rnn_output':
           (constants.ProblemType.LINEAR_REGRESSION,
            {prediction_key.PredictionKey.SCORES: True})}),
 
