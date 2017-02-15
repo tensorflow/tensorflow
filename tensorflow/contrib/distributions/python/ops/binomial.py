@@ -239,18 +239,15 @@ class Binomial(distribution.Distribution):
             message="total_count cannot contain fractional componentes."),
     ], total_count)
 
-  def _maybe_assert_valid_sample(self, counts):
+  def _maybe_assert_valid_sample(self, counts, check_integer=True):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
+
+    counts = distribution_util.embed_check_nonnegative_discrete(
+        counts, check_integer=check_integer)
     return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            counts,
-            message="counts must be non-negative."),
         check_ops.assert_less_equal(
-            counts, self._total_count,
+            counts, self.total_count,
             message="counts are not less than or equal to n."),
-        distribution_util.assert_integer_form(
-            counts,
-            message="counts cannot contain fractional components."),
     ], counts)

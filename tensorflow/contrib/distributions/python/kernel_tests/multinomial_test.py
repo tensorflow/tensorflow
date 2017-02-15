@@ -83,7 +83,7 @@ class MultinomialTest(test.TestCase):
       dist = ds.Multinomial(total_count=n, probs=p, validate_args=True)
       dist.prob([2., 3, 0]).eval()
       dist.prob([3., 0, 2]).eval()
-      with self.assertRaisesOpError("counts must be non-negative"):
+      with self.assertRaisesOpError("must be non-negative"):
         dist.prob([-1., 4, 2]).eval()
       with self.assertRaisesOpError("counts must sum to `self.total_count`"):
         dist.prob([3., 3, 0]).eval()
@@ -101,7 +101,7 @@ class MultinomialTest(test.TestCase):
         multinom.prob([2., 3, 2]).eval()
       # Counts are non-integers.
       with self.assertRaisesOpError(
-          "counts cannot contain fractional components."):
+          "cannot contain fractional components."):
         multinom.prob([1.0, 2.5, 1.5]).eval()
 
       multinom = ds.Multinomial(total_count=n, probs=p, validate_args=False)

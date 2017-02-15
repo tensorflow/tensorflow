@@ -455,13 +455,10 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
     VLOG(3) << "max memory usage = " << max_usage;
   }
 
-  if (max_usage > memory_limit_bytes_) {
-    return ResourceExhausted(
-        "Can't reduce memory use below %s by rematerialization (only "
-        "reduced to %s)",
-        HumanReadableNumBytes(memory_limit_bytes_).c_str(),
-        HumanReadableNumBytes(max_usage).c_str());
-  }
+  LOG(WARNING) << "Can't reduce memory use below "
+               << HumanReadableNumBytes(memory_limit_bytes_)
+               << " by rematerialization (only reduced to "
+               << HumanReadableNumBytes(max_usage) << ")";
 
   // Verify that there are no more remaining uses.
   for (auto instruction_uses : remaining_uses) {
