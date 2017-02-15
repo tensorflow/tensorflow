@@ -37,6 +37,7 @@ See the @{$python/contrib.distributions} guide.
 @@Laplace
 @@LaplaceWithSoftplusScale
 @@Logistic
+@@NegativeBinomial
 @@Normal
 @@NormalWithSoftplusScale
 @@Poisson
@@ -107,6 +108,7 @@ from tensorflow.contrib.distributions.python.ops.multinomial import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
 from tensorflow.contrib.distributions.python.ops.mvn_tril import *
+from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
