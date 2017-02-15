@@ -523,6 +523,33 @@ def _single_value_loss(
     return target_column.loss(last_activations, labels, features)
 
 
+def _get_output_alternatives(prediction_type,
+                             problem_type,
+                             prediction_dict):
+  """Constructs output alternatives dict for `ModelFnOps`.
+
+  Args:
+    prediction_type: either `MULTIPLE_VALUE` or `SINGLE_VALUE`.
+    problem_type: either `CLASSIFICATION` or `LINEAR_REGRESSION`.
+    prediction_dict: a dictionary mapping strings to `Tensor`s containing
+      predictions.
+
+  Returns:
+    `None` or a dictionary mapping a string to an output alternative.
+
+  Raises:
+    ValueError: `prediction_type` is not one of `SINGLE_VALUE` or
+    `MULTIPLE_VALUE`.
+  """
+  if prediction_type == PredictionType.MULTIPLE_VALUE:
+    return None
+  if prediction_type == PredictionType.SINGLE_VALUE:
+    prediction_dict_no_state = {k: v for k, v in prediction_dict.items()
+                                if RNNKeys.STATE_PREFIX not in k}
+    return {'dynamic_rnn_output': (problem_type, prediction_dict_no_state)}
+  raise ValueError('Unrecognized prediction_type: {}'.format(prediction_type))
+
+
 def _get_dynamic_rnn_model_fn(cell_type,
                               num_units,
                               target_column,
@@ -541,6 +568,14 @@ def _get_dynamic_rnn_model_fn(cell_type,
                               swap_memory=True,
                               name='DynamicRNNModel'):
   """Creates an RNN model function for an `Estimator`.
+
+  The model function returns an instance of `ModelFnOps`. When
+  `problem_type == ProblemType.CLASSIFICATION` and
+  `predict_probabilities == True`, the returned `ModelFnOps` includes an output
+  alternative containing the classes and their associated probabilities. When
+  `predict_probabilities == False`, only the classes are included. When
+  `problem_type == ProblemType.LINEAR_REGRESSION`, the output alternative
+  contains only the predicted values.
 
   Args:
     cell_type: A string, a subclass of `RNNCell` or an instance of an `RNNCell`.
@@ -663,11 +698,16 @@ def _get_dynamic_rnn_model_fn(cell_type,
             clip_gradients=gradient_clipping_norm,
             summaries=optimizers.OPTIMIZER_SUMMARIES)
 
+    output_alternatives = _get_output_alternatives(prediction_type,
+                                                   problem_type,
+                                                   prediction_dict)
+
     return model_fn.ModelFnOps(mode=mode,
                                predictions=prediction_dict,
                                loss=loss,
                                train_op=train_op,
-                               eval_metric_ops=eval_metric_ops)
+                               eval_metric_ops=eval_metric_ops,
+                               output_alternatives=output_alternatives)
   return _dynamic_rnn_model_fn
 
 

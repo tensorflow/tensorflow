@@ -278,6 +278,39 @@ class DynamicRnnEstimatorTest(test.TestCase):
           '  Expected {}; got {}.'.format(i, expected_activations,
                                           actual_activations))
 
+  def testGetOutputAlternatives(self):
+    test_cases = (
+        (dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+         constants.ProblemType.CLASSIFICATION,
+         {prediction_key.PredictionKey.CLASSES: True,
+          prediction_key.PredictionKey.PROBABILITIES: True,
+          dynamic_rnn_estimator._get_state_name(0): True},
+         {'classification':
+          (constants.ProblemType.CLASSIFICATION,
+           {prediction_key.PredictionKey.CLASSES: True,
+            prediction_key.PredictionKey.PROBABILITIES: True})}),
+
+        (dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+         constants.ProblemType.LINEAR_REGRESSION,
+         {prediction_key.PredictionKey.SCORES: True,
+          dynamic_rnn_estimator._get_state_name(0): True,
+          dynamic_rnn_estimator._get_state_name(1): True},
+         {'regression':
+          (constants.ProblemType.LINEAR_REGRESSION,
+           {prediction_key.PredictionKey.SCORES: True})}),
+
+        (dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+         constants.ProblemType.CLASSIFICATION,
+         {prediction_key.PredictionKey.CLASSES: True,
+          prediction_key.PredictionKey.PROBABILITIES: True,
+          dynamic_rnn_estimator._get_state_name(0): True},
+         None))
+
+    for pred_type, prob_type, pred_dict, expected_alternatives in test_cases:
+      actual_alternatives = dynamic_rnn_estimator._get_output_alternatives(
+          pred_type, prob_type, pred_dict)
+      self.assertEqual(expected_alternatives, actual_alternatives)
+
   # testGetDynamicRnnModelFn{Train,Eval,Infer}() test which fields
   # of ModelFnOps are set depending on mode.
   def testGetDynamicRnnModelFnTrain(self):
