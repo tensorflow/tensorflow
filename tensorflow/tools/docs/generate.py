@@ -73,6 +73,13 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
     print('Creating output dir "%s" failed: %s' % (output_dir, e))
     raise
 
+  # These dictionaries are used for table-of-contents generation below
+  # They will contain, after the for-loop below::
+  #  - module name(string):classes and functions the module contains(list)
+  module_children = {}
+  #  - symbol name(string):pathname (string)
+  symbol_to_file = {}
+
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(index):
 
@@ -84,6 +91,28 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
             inspect.isclass(py_object) or
             inspect.isfunction(py_object)):
       continue
+
+    sitepath = os.path.join('api_docs/python',
+                            parser.documentation_path(full_name)[:-3])
+
+    # For TOC, we need to store a mapping from full_name to the file
+    # we're generating
+    symbol_to_file[full_name] = sitepath
+
+    # For a module, remember the module for the table-of-contents
+    if inspect.ismodule(py_object):
+      if full_name in tree:
+        module_children.setdefault(full_name, [])
+
+    # For something else that's documented,
+    # figure out what module it lives in
+    else:
+      subname = str(full_name)
+      while True:
+        subname = subname[:subname.rindex('.')]
+        if inspect.ismodule(index[subname]):
+          module_children.setdefault(subname, []).append(full_name)
+          break
 
     print('Writing docs for %s (%r).' % (full_name, py_object))
 
@@ -98,8 +127,6 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
                                         guide_index=guide_index,
                                         base_dir=base_dir)
 
-    # TODO(deannarubin): use _tree to generate sidebar information.
-
     path = os.path.join(output_dir, parser.documentation_path(full_name))
     directory = os.path.dirname(path)
     try:
@@ -111,7 +138,30 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
       print('Cannot write documentation for %s to %s: %s' % (full_name,
                                                              directory, e))
       raise
-    # TODO(deannarubin): write sidebar file?
+
+  # Generate table of contents
+
+  # Put modules in alphabetical order, case-insensitive
+  modules = sorted(module_children.keys(), key=lambda a: a.upper())
+
+  leftnav_path = os.path.join(output_dir, '_toc.yaml')
+  with open(leftnav_path, 'w') as f:
+
+    # Generate header
+    f.write('# Automatically generated file; please do not edit\ntoc:\n')
+    for module in modules:
+      f.write('  - title: ' + module + '\n'
+              '    section:\n' +
+              '    - title: Overview\n' +
+              '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
+
+      symbols_in_module = module_children.get(module, [])
+      symbols_in_module.sort(key=lambda a: a.upper())
+
+      for full_name in symbols_in_module:
+        f.write('    - title: ' + full_name[len(module)+1:] + '\n'
+                '      path: /TARGET_DOC_ROOT/' +
+                symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
