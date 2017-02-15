@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from sklearn import cross_validation
+from sklearn import datasets
 from sklearn import metrics
 from sklearn import preprocessing
 import tensorflow as tf
@@ -24,7 +25,7 @@ import tensorflow as tf
 
 def main(unused_argv):
   # Load dataset
-  boston = tf.contrib.learn.datasets.load_dataset('boston')
+  boston = datasets.load_boston()
   x, y = boston.data, boston.target
 
   # Split dataset into train / test
