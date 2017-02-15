@@ -24,6 +24,8 @@ namespace port {
 // Return the hostname of the machine on which this process is running
 string Hostname();
 
+bool IsValidSockAddr(const string& hostname, const string& port);
+
 }  // namespace port
 }  // namespace tensorflow
 

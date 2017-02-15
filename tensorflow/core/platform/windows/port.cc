@@ -21,6 +21,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <winsock2.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -44,6 +45,21 @@ string Hostname() {
     name[name_size] = 0;
   }
   return name;
+}
+
+bool IsValidSockAddr(const string& hostname, const string& port) {
+  struct addrinfo* result;
+  struct addrinfo hints = {};
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+  int ret = getaddrinfo(hostname.c_str(), port.c_str(), &hints, &result);
+  if (result != nullptr && ret == 0) {
+    freeaddrinfo(result);
+    return true;
+  } else {
+    return false;
+  }
 }
 
 int NumSchedulableCPUs() {

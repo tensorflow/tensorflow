@@ -28,6 +28,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #ifdef SNAPPY
 #include <snappy.h>
 #endif
@@ -45,6 +47,21 @@ string Hostname() {
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
   return string(hostname);
+}
+
+bool IsValidSockAddr(const string& hostname, const string& port) {
+  struct addrinfo* result;
+  struct addrinfo hints = {};
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+  int ret = getaddrinfo(hostname.c_str(), port.c_str(), &hints, &result);
+  if (result != nullptr && ret == 0) {
+    freeaddrinfo(result);
+    return true;
+  } else {
+    return false;
+  }
 }
 
 int NumSchedulableCPUs() {
