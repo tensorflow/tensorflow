@@ -13,53 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=g-short-docstring-punctuation
-"""## Unit tests
-
-TensorFlow provides a convenience class inheriting from `unittest.TestCase`
-which adds methods relevant to TensorFlow tests.  Here is an example:
-
-```python
-    import tensorflow as tf
-
-
-    class SquareTest(tf.test.TestCase):
-
-      def testSquare(self):
-        with self.test_session():
-          x = tf.square([2, 3])
-          self.assertAllEqual(x.eval(), [4, 9])
-
-
-    if __name__ == '__main__':
-      tf.test.main()
-```
-
-`tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
-methods.  We will document these methods soon.
+"""Testing. See the @{$python/test} guide.
 
 @@main
 @@TestCase
 @@test_src_dir_path
-
-## Utilities
-
 @@assert_equal_graph_def
 @@get_temp_dir
 @@is_built_with_cuda
 @@is_gpu_available
 @@gpu_device_name
-
-## Gradient checking
-
-[`compute_gradient`](#compute_gradient) and
-[`compute_gradient_error`](#compute_gradient_error) perform numerical
-differentiation of graphs for comparison against registered analytic gradients.
-
 @@compute_gradient
 @@compute_gradient_error
-
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
