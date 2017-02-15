@@ -44,10 +44,9 @@ class HloRematerialization {
   //     rematerialization. This is the order in which HLO instructions should
   //     be emitted to minimize memory use.
   //
-  // Returns whether any instructions were rematerialized. If memory use cannot
-  // be reduced to the given limit then a ResourceExhausted error is
-  // returned. If memory use is already below the given limit then no
-  // instructions are rematerialized and false is returned.
+  // Returns whether any instructions were rematerialized. If memory use is
+  // already below the given limit then no instructions are rematerialized and
+  // false is returned.
   //
   // CSE will undo the effects of this optimization and should not be run after
   // this pass. In general, this pass should be run very late immediately before
