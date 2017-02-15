@@ -364,7 +364,7 @@ PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
 }
 
 bool TuplePointsToAnalysis::InstructionDefinesBufferAtIndex(
-    HloInstruction* instruction, const ShapeIndex& index) const {
+    const HloInstruction* instruction, const ShapeIndex& index) const {
   const std::vector<const LogicalBuffer*>& buffers =
       GetPointsToSet(instruction).element(index);
   return (buffers.size() == 1 && buffers[0]->instruction() == instruction);

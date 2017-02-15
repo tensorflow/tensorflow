@@ -189,7 +189,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
       const HloInstruction* instruction) const;
 
   // Returns true if the given instruction defines a buffer at the given index.
-  bool InstructionDefinesBufferAtIndex(HloInstruction* instruction,
+  bool InstructionDefinesBufferAtIndex(const HloInstruction* instruction,
                                        const ShapeIndex& index) const;
 
   // Returns an OK status if the given buffer is defined by instruction

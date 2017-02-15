@@ -14,7 +14,7 @@
 # ==============================================================================
 """Monte Carlo integration and helpers.
 
-See the ${@python/contrib.bayesflow.monte_carlo} guide.
+See the @{$python/contrib.bayesflow.monte_carlo} guide.
 
 @@expectation
 @@expectation_importance_sampler

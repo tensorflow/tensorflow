@@ -162,7 +162,14 @@ class Geometric(distribution.Distribution):
     if self.validate_args:
       counts = distribution_util.embed_check_nonnegative_discrete(
           counts, check_integer=True)
-    return counts * math_ops.log1p(-self.probs) + math_ops.log(self.probs)
+    counts *= array_ops.ones_like(self.probs)
+    probs = self.probs * array_ops.ones_like(counts)
+
+    safe_domain = array_ops.where(
+        math_ops.equal(counts, 0.),
+        array_ops.zeros_like(probs),
+        probs)
+    return counts * math_ops.log1p(-safe_domain) + math_ops.log(probs)
 
   def _entropy(self):
     probs = self._probs
