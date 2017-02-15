@@ -1697,7 +1697,6 @@ tf_cc_tests(
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
-        "platform/setround_test.cc",
         "platform/subprocess_test.cc",
     ],
     deps = [
@@ -1723,6 +1722,24 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "platform_setround_test",
+    size = "small",
+    srcs = ["platform/setround_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
     ],
 )
 
