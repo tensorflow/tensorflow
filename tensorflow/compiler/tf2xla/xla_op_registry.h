@@ -58,13 +58,25 @@ class XlaOpRegistry {
  public:
   typedef OpKernel* (*Factory)(OpKernelConstruction*);
 
-  // Registers 'jit_device_name' as the JIT device corresponding to
-  // 'device_name'. If 'requires_jit' is true, then operators placed on this
-  // device must be JIT-compiled. Dies if a conflicting registration already
-  // exists.
-  static void RegisterJitDevice(const string& device_name,
-                                const string& jit_device_name,
-                                bool requires_jit, bool enable_jit_by_default);
+  // Describes how to compile operators assigned to a device.
+  struct DeviceRegistration {
+    // The name of the an XLA compilation device to use to compile code.
+    string compilation_device_name;
+
+    // Do operators assigned to this device require compilation?
+    bool requires_compilation;
+
+    // If !requires_compilation, should we try to JIT operators on this device
+    // when XLA JIT compilation is enabled globally via the SessionOptions?
+    // (It is still possible to explicitly mark operators to JIT compile, even
+    // if enable_jit_by_default is false.)
+    bool enable_jit_by_default;
+  };
+
+  // Registers `device_name` for XLA compilation, using information from
+  // `registration`.
+  static void RegisterCompilationDevice(const string& device_name,
+                                        const DeviceRegistration& registration);
 
   // Returns the JIT device name associated with 'device_name', setting
   // 'jit_device_name', 'requires_jit', and 'enabled_jit_by_default', if they
@@ -72,13 +84,12 @@ class XlaOpRegistry {
   // JIT device is registered.
   // '*enable_jit_by_default' is set to true if we should try to JIT using this
   // device when the JIT is enabled via the Session OptimizerOptions.
-  static bool GetJitDevice(const string& device_name,
-                           const string** jit_device_name, bool* requires_jit,
-                           bool* enable_jit_by_default);
+  static bool GetCompilationDevice(const string& device_name,
+                                   const DeviceRegistration** registration);
 
   // Registers all JIT kernels on JIT devices, if not already registered.
   // Does nothing otherwise.
-  static void RegisterJitKernels();
+  static void RegisterCompilationKernels();
 
   // Returns KernelDefs for JIT ops registered on 'jit_device_type'.
   // Does not include kernels registered using REGISTER_XLA_JIT_ONLY_KERNEL.
@@ -97,12 +108,8 @@ class XlaOpRegistry {
   mutex mutex_;
 
   // Map from Tensorflow device names to the corresponding JIT device metadata.
-  struct JitDevice {
-    string jit_device_name;
-    bool requires_jit;
-    bool enable_jit_by_default;
-  };
-  std::unordered_map<string, JitDevice> jit_devices_ GUARDED_BY(mutex_);
+  std::unordered_map<string, DeviceRegistration> compilation_devices_
+      GUARDED_BY(mutex_);
 
   // Map from operator name to OpKernel factory, populated by REGISTER_XLA_OP.
   std::unordered_map<string, Factory> ops_ GUARDED_BY(mutex_);
@@ -124,7 +131,8 @@ class XlaOpRegistry {
       GUARDED_BY(mutex_);
 
   // Holds ownership of OpKernelRegistrars that represent the Tensorflow kernel
-  // registrations created by RegisterJitKernels() and RegisterDeviceKernels().
+  // registrations created by RegisterCompilationKernels() and
+  // RegisterDeviceKernels().
   std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
       kernel_registrars_ GUARDED_BY(mutex_);
 };

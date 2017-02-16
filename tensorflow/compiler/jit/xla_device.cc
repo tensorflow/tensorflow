@@ -56,11 +56,13 @@ namespace tensorflow {
           << device_ordinal;
 
   // These are no-ops if they have already been done previously for
-  // this device_name/jit_device_name pair.
-  XlaOpRegistry::RegisterJitKernels();
-  XlaOpRegistry::RegisterJitDevice(device_name, jit_device_name,
-                                   /*requires_jit=*/true,
-                                   /*enable_jit_by_default=*/false);
+  // this device_name/compilation_device_name pair.
+  XlaOpRegistry::RegisterCompilationKernels();
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = jit_device_name;
+  registration.requires_compilation = true;
+  registration.enable_jit_by_default = false;
+  XlaOpRegistry::RegisterCompilationDevice(device_name, registration);
 
   auto platform = perftools::gputools::MultiPlatformManager::PlatformWithName(
       platform_name);
