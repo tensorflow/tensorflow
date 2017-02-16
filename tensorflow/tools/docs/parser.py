@@ -836,12 +836,21 @@ def generate_markdown(full_name, py_object, duplicate_of, duplicates, index,
   try:
     path = os.path.relpath(path=inspect.getfile(py_object), start=base_dir)
 
-    # TODO(wicke): If this is a generated file, point to the source instead.
+    # In case this is compiled, point to the original
+    if path.endswith('.pyc'):
+      path = path[:-1]
 
+    # TODO(wicke): If this is a generated file, link to the source instead.
+    # TODO(wicke): Move all generated files to a generated/ directory.
+    # TODO(wicke): And make their source file predictable from the file name.
     # Never include links outside this code base.
     if not path.startswith('..'):
-      markdown += '\n\nDefined in [`tensorflow/%s`](%s%s).\n\n' % (
-          path, _CODE_URL_PREFIX, path)
+      if re.match('.*/gen_[^/]*.py$', path):
+        # Generated file, don't incude a futile link.
+        markdown += '\n\nDefined in `tensorflow/%s`.\n\n' % path
+      else:
+        markdown += '\n\nDefined in [`tensorflow/%s`](%s%s).\n\n' % (
+            path, _CODE_URL_PREFIX, path)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
     markdown += '\n\nThis is an alias for a Python built-in.'
 
