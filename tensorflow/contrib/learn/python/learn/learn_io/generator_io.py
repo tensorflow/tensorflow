@@ -75,7 +75,7 @@ def generator_input_fn(x,
     TypeError: `x()` is not `GeneratorType`.
     TypeError: `next(x())` is not `dict`.
     TypeError: `target_key` is not `str` or `target_key` is not `list` of `str`.
-    KeyError:  `target_key` not a key in next(`x()`) or `target_key is not .
+    KeyError:  `target_key` not a key or `target_key[index]` not in next(`x()`).
   """
   
   def _generator_input_fn():
@@ -96,9 +96,10 @@ def generator_input_fn(x,
       if isinstance(target_key, list):
         for item in target_key:
           if not isinstance(item, str):
-            raise TypeError('target_key list items must be string ; got {}'.format(type(item).__name__))
+            raise TypeError(
+              'target_key must be str or list of str ; got {}'.format(type(item).__name__))
           if item not in input_keys:
-            raise KeyError('target_key must be present in the yielded dictionary ; got {}'.format(item))
+            raise KeyError('target_key or target_key[i] not in yielded dict ; got {}'.format(item))
 
     queue = feeding_functions.enqueue_data(
       x,

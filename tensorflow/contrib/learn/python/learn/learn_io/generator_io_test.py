@@ -139,7 +139,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       yield np.arange(32, 36)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, "x\(\) must yield OrderedDict"):
+      with self.assertRaisesRegexp(TypeError, "x\(\) must yield dict"):
         failing_input_fn = generator_io.generator_input_fn(
           generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
@@ -153,11 +153,40 @@ class GeneratorIoTest(test.TestCase):
     
     y = np.arange(32, 36)
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, 'target_key must be string'):
+      with self.assertRaisesRegexp(TypeError, 'target_key must be str or list of str'):
         failing_input_fn = generator_io.generator_input_fn(
           generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
+
+  def testGeneratorInputFNWithTargetLabelListNotString(self):
+    def generator():
+      for index in range(2):
+        yield {'a': np.ones((10, 10)) * index,
+               'b': np.ones((5, 5)) * index + 32,
+               'label': np.ones((3, 3)) * index - 32}
   
+    y = ["label", np.arange(10)]
+    with self.test_session():
+      with self.assertRaisesRegexp(TypeError, 'target_key must be str or list of str'):
+        failing_input_fn = generator_io.generator_input_fn(
+          generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
+        failing_input_fn()
+
+  def testGeneratorInputFNWithTargetLabelNotInDict(self):
+    def generator():
+      for index in range(2):
+        yield {'a': np.ones((10, 10)) * index,
+               'b': np.ones((5, 5)) * index + 32,
+               'label': np.ones((3, 3)) * index - 32}
+  
+    y = ["label", "target"]
+    with self.test_session():
+      with self.assertRaisesRegexp(TypeError,
+                                   'target_key or target_key[i] not in yielded dict'):
+        failing_input_fn = generator_io.generator_input_fn(
+          generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
+        failing_input_fn()
+        
   def testGeneratorInputFnWithNoTargetKey(self):
     def generator():
       for index in range(2):
