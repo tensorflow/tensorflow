@@ -31,7 +31,9 @@
 @@depthwise_conv2d
 @@depthwise_conv2d_native
 @@separable_conv2d
+@@atrous_conv1d
 @@atrous_conv2d
+@@atrous_conv3d
 @@atrous_conv2d_transpose
 @@conv2d_transpose
 @@conv1d
