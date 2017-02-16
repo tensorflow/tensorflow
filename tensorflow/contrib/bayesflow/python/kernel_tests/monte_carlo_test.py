@@ -27,7 +27,8 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
 
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib import layers as layers_lib
-from tensorflow.contrib.bayesflow.python.ops import monte_carlo as monte_carlo_lib
+from tensorflow.contrib.bayesflow.python.ops import monte_carlo_impl as monte_carlo_lib
+from tensorflow.contrib.bayesflow.python.ops.monte_carlo_impl import _get_samples
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
@@ -156,7 +157,7 @@ class GetSamplesTest(test.TestCase):
       n = None
       seed = None
       with self.assertRaisesRegexp(ValueError, 'exactly one'):
-        monte_carlo._get_samples(dist, z, n, seed)
+        _get_samples(dist, z, n, seed)
 
   def test_raises_if_both_z_and_n_are_not_none(self):
     with self.test_session():
@@ -165,7 +166,7 @@ class GetSamplesTest(test.TestCase):
       n = 1
       seed = None
       with self.assertRaisesRegexp(ValueError, 'exactly one'):
-        monte_carlo._get_samples(dist, z, n, seed)
+        _get_samples(dist, z, n, seed)
 
   def test_returns_n_samples_if_n_provided(self):
     with self.test_session():
@@ -173,7 +174,7 @@ class GetSamplesTest(test.TestCase):
       z = None
       n = 10
       seed = None
-      z = monte_carlo._get_samples(dist, z, n, seed)
+      z = _get_samples(dist, z, n, seed)
       self.assertEqual((10,), z.get_shape())
 
   def test_returns_z_if_z_provided(self):
@@ -182,7 +183,7 @@ class GetSamplesTest(test.TestCase):
       z = dist.sample(10, seed=42)
       n = None
       seed = None
-      z = monte_carlo._get_samples(dist, z, n, seed)
+      z = _get_samples(dist, z, n, seed)
       self.assertEqual((10,), z.get_shape())
 
 
