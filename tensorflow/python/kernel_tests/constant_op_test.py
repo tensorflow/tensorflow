@@ -768,6 +768,12 @@ class PlaceholderWithDefaultTest(test.TestCase):
       self.assertAllEqual(
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
+  def testGradient(self):
+    with self.test_session():
+      x = array_ops.placeholder(dtypes_lib.float32, [5, 7])
+      y = array_ops.placeholder_with_default(x, None)
+      err = gradient_checker.compute_gradient_error(x, [5, 7], y, [5, 7])
+      self.assertLess(err, 1e-3)
 
 if __name__ == "__main__":
   test.main()
