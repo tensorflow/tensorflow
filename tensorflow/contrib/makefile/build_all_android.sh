@@ -45,7 +45,7 @@ done
 shift $((OPTIND - 1))
 
 # Make sure we're in the correct directory, at the root of the source tree.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 cd "${SCRIPT_DIR}"/../../../
 
 source "${SCRIPT_DIR}/build_helper.subr"
@@ -102,9 +102,9 @@ if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
 fi
 
 if [[ "${USE_HEXAGON}" == "true" ]]; then
-    HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" && pwd)
+    HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" >/dev/null && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" && pwd)
+    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" >/dev/null && pwd)
 fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then

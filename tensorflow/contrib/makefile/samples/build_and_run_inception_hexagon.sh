@@ -34,7 +34,7 @@ if [[ -z "${QUALCOMM_SDK}" ]]; then
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 TF_ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 BUILD_ALL_ANDROID_PATH="${SCRIPT_DIR}/../build_all_android.sh"
 GEN_DIR="${SCRIPT_DIR}/gen"

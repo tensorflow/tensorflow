@@ -488,7 +488,8 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
   // Runs BufferLiveness on this computation.
   // Returns whether buffer interference is detected between tuple-shaped
   // parameter and root instructions at tuple element 1.
-  bool Run(const bool update_uses_tuple_element1) {
+  bool Run(const bool update_uses_tuple_element1,
+           const bool fuse_gte0 = false) {
     auto builder = HloComputation::Builder(TestName());
     // Create param0 Tuple.
     Shape data_shape = ShapeUtil::MakeShape(F32, {8});
@@ -534,6 +535,12 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
           {dynamic_update_slice, starts, update, gte1},
           HloInstruction::FusionKind::kLoop);
     }
+    // Create fusion instruction for tuple element 0 (if requested).
+    if (fuse_gte0) {
+      computation->CreateFusionInstruction({gte0},
+                                           HloInstruction::FusionKind::kLoop);
+    }
+
     // Run BufferLiveness on 'module'.
     auto liveness =
         BufferLiveness::Run(module.get(),
@@ -560,6 +567,25 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
 //
 TEST_F(FusedDynamicUpdateSliceLivenessTest, NoInterference) {
   EXPECT_FALSE(Run(/*update_uses_tuple_element1=*/false));
+}
+
+// Tests that live ranges of buffers Param0[1] and Tuple[1] (which aliases
+// 'fusion1') do not overlap in the presence of another fusion instruction
+// (which is a user of 'param0' at a different tuple index).
+// BufferLiveness should detect no uses of Param0 at index {1} in Fusion0
+// (because Fusion0 only uses Param0 at index {0}).
+//
+//                               Param0
+//                               /    \
+//      FusionParam  <----- Fusion0  Fusion1 ------>  FusionParam
+//         |                    |      |                 |
+//        GTE(0)                |      |               GTE(1) Const Const
+//                              |      |                  \      |    /
+//                               \    /                DynamicUpdateSlice
+//                               Tuple
+//
+TEST_F(FusedDynamicUpdateSliceLivenessTest, NoInterferenceWithUnrelatedFusion) {
+  EXPECT_FALSE(Run(/*update_uses_tuple_element1=*/false, /*fuse_gte0=*/true));
 }
 
 // Tests that live ranges of buffers Param0[1] and Tuple[1] (which alias fusion)

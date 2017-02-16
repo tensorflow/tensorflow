@@ -88,6 +88,7 @@ Status QuantizeAndDequantizeGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantize", QuantizeAndDequantizeGrad);
+REGISTER_GRADIENT_OP("QuantizeAndDequantizeV2", QuantizeAndDequantizeGrad);
 
 Status SplitGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
