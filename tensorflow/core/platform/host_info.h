@@ -24,6 +24,9 @@ namespace port {
 // Return the hostname of the machine on which this process is running
 string Hostname();
 
+// Check whether the current hostname and port is valid.
+bool IsValidIpAddr(const string& ip);
+
 }  // namespace port
 }  // namespace tensorflow
 

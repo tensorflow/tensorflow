@@ -21,6 +21,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <Ws2tcpip.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -30,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
+
+#pragma comment(lib, "ws2_32.lib")
 
 namespace tensorflow {
 namespace port {
@@ -44,6 +47,11 @@ string Hostname() {
     name[name_size] = 0;
   }
   return name;
+}
+
+bool IsValidIpAddr(const string& ip) {
+  struct sockaddr_in sa;
+  return inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr))!=0;
 }
 
 int NumSchedulableCPUs() {

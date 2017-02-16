@@ -16,12 +16,24 @@ limitations under the License.
 #include <condition_variable>
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace port {
+
+TEST(IsValidIpAddr, Ip) {
+  EXPECT_TRUE(IsValidIpAddr("192.168.0.1"))
+  EXPECT_TRUE(IsValidIpAddr("255.255.255.255"))
+  EXPECT_TRUE(IsValidIpAddr("0.0.0.0"))
+
+  EXPECT_FALSE(IsValidIpAddr("192.168.0.1."))
+  EXPECT_FALSE(IsValidIpAddr("255.255.255."))
+  EXPECT_FALSE(IsValidIpAddr("255.255.255.256"))
+  EXPECT_FALSE(IsValidIpAddr("."))
+}
 
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
