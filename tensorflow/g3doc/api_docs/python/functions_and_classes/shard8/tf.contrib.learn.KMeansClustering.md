@@ -1,7 +1,7 @@
-An Estimator fo rK-Means clustering.
+An Estimator for K-Means clustering.
 - - -
 
-#### `tf.contrib.learn.KMeansClustering.__init__(num_clusters, model_dir=None, initial_clusters='random', distance_metric='squared_euclidean', random_seed=0, use_mini_batch=True, kmeans_plus_plus_num_retries=2, relative_tolerance=None, config=None)` {#KMeansClustering.__init__}
+#### `tf.contrib.learn.KMeansClustering.__init__(num_clusters, model_dir=None, initial_clusters='random', distance_metric='squared_euclidean', random_seed=0, use_mini_batch=True, mini_batch_steps_per_iteration=1, kmeans_plus_plus_num_retries=2, relative_tolerance=None, config=None)` {#KMeansClustering.__init__}
 
 Creates a model for running KMeans training and inference.
 
@@ -17,6 +17,9 @@ Creates a model for running KMeans training and inference.
 *  <b>`random_seed`</b>: Python integer. Seed for PRNG used to initialize centers.
 *  <b>`use_mini_batch`</b>: If true, use the mini-batch k-means algorithm. Else assume
     full batch.
+*  <b>`mini_batch_steps_per_iteration`</b>: number of steps after which the updated
+    cluster centers are synced back to a master copy. See clustering_ops.py
+    for more details.
 *  <b>`kmeans_plus_plus_num_retries`</b>: For each point that is sampled during
     kmeans++ initialization, this parameter specifies the number of
     additional points to draw from the current distribution before selecting

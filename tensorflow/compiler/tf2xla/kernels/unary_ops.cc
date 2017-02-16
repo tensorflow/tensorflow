@@ -16,8 +16,8 @@ limitations under the License.
 // Native XLA implementations of simple unary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -33,7 +33,7 @@ namespace {
    public:                                                             \
     explicit Name##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
     void Compile(XlaOpKernelContext* ctx) {                            \
-      xla::ComputationBuilder& b = *ctx->builder();                    \
+      xla::ComputationBuilder* b = ctx->builder();                     \
       xla::ComputationDataHandle x = ctx->Input(0);                    \
       xla::ComputationDataHandle y = COMPUTATION;                      \
       ctx->SetOutput(0, y);                                            \
@@ -42,27 +42,32 @@ namespace {
   REGISTER_XLA_OP(#Name, Name##Op);
 
 // Return x if x>0, otherwise -x.
-XLAJIT_MAKE_UNARY(Abs, b.Abs(x));
-XLAJIT_MAKE_UNARY(Ceil, b.Ceil(x));
-XLAJIT_MAKE_UNARY(Exp, b.Exp(x));
-XLAJIT_MAKE_UNARY(Floor, b.Floor(x));
+XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
+XLAJIT_MAKE_UNARY(Ceil, b->Ceil(x));
+XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
+XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
 // Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, b.Sign(x));
+XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
 // Return 1/x
-XLAJIT_MAKE_UNARY(Inv, b.Div(XlaHelpers::One(&b, input_type(0)), x));
-XLAJIT_MAKE_UNARY(Reciprocal, b.Div(XlaHelpers::One(&b, input_type(0)), x));
-XLAJIT_MAKE_UNARY(Log, b.Log(x));
-XLAJIT_MAKE_UNARY(LogicalNot, b.LogicalNot(x));
-XLAJIT_MAKE_UNARY(Neg, b.Neg(x));
+XLAJIT_MAKE_UNARY(Inv, b->Div(XlaHelpers::One(b, input_type(0)), x));
+XLAJIT_MAKE_UNARY(Reciprocal, b->Div(XlaHelpers::One(b, input_type(0)), x));
+XLAJIT_MAKE_UNARY(Log, b->Log(x));
+
+// TODO(b/34703906): use a more accurate implementation of log1p.
+XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
+
+XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
+XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
 XLAJIT_MAKE_UNARY(Rsqrt,
-                  b.Pow(x, XlaHelpers::FloatLiteral(&b, input_type(0), -0.5)));
-XLAJIT_MAKE_UNARY(Sigmoid, b.Map({x}, *ctx->GetOrCreateSigmoid(input_type(0))));
+                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
+XLAJIT_MAKE_UNARY(Sigmoid,
+                  b->Map({x}, *ctx->GetOrCreateSigmoid(input_type(0))));
 XLAJIT_MAKE_UNARY(Softplus,
-                  b.Log(b.Add(b.Exp(x), XlaHelpers::One(&b, input_type(0)))));
+                  b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
 XLAJIT_MAKE_UNARY(Sqrt,
-                  b.Pow(x, XlaHelpers::FloatLiteral(&b, input_type(0), 0.5)));
-XLAJIT_MAKE_UNARY(Square, b.Mul(x, x));
-XLAJIT_MAKE_UNARY(Tanh, b.Tanh(x));
+                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
+XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
+XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
 
 #undef XLAJIT_MAKE_UNARY
 

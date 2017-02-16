@@ -64,6 +64,7 @@ paper-button {
           selected-node="[[selectedNode]]"
           color-by="[[colorBy]]"
           progress="[[progress]]"
+          node-names-to-health-pill="[[nodeNamesToHealthPill]]"
     ></tf-graph-scene>
   </div>
 </div>
@@ -118,6 +119,8 @@ Polymer({
       type: Boolean,
       value: true
     },
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPill: Object,
   },
   observers: [
     '_statsChanged(stats, devicesForStats)',

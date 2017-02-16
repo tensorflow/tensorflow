@@ -336,7 +336,7 @@ class GcsWritableFile : public WritableFile {
                   std::ofstream::binary | std::ofstream::app);
   }
 
-  ~GcsWritableFile() { Close(); }
+  ~GcsWritableFile() override { Close().IgnoreError(); }
 
   Status Append(const StringPiece& data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
@@ -767,8 +767,9 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
-  request->AddAuthBearerHeader(auth_token);
+  TF_RETURN_IF_ERROR(
+      request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket)));
+  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   const Status status = request->Send();
   switch (status.code()) {
     case errors::Code::OK:

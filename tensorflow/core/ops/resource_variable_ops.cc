@@ -34,10 +34,10 @@ REGISTER_OP("VarHandleOp")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType t;
-      c->GetAttr("dtype", &t);
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
       c->set_output_handle_dtype(0, t);
       TensorShapeProto p;
-      c->GetAttr("shape", &p);
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &p));
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(p, &s));
       c->set_output_handle_shape(0, s);
@@ -60,7 +60,7 @@ REGISTER_OP("ReadVariableOp")
     .SetShapeFn([](InferenceContext* c) {
       DataType handle_dtype = c->input_handle_dtype(0);
       DataType value_dtype;
-      c->GetAttr("dtype", &value_dtype);
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
       if (handle_dtype != value_dtype) {
         return errors::InvalidArgument(
             "Trying to read variable with wrong dtype. "
@@ -86,6 +86,7 @@ dtype: the dtype of the value.
 
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
+    .Attr("ignore_lookup_error: bool = true")
     .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"(
@@ -93,12 +94,16 @@ Deletes the resource specified by the handle.
 
 All subsequent operations using the resource will result in a NotFound
 error status.
+
+resource: handle to the resource to delete.
+ignore_lookup_error: whether to ignore the error when the resource
+  doesn't exist.
 )");
 
 Status CreateAssignShapeFn(InferenceContext* c) {
   DataType handle_dtype = c->input_handle_dtype(0);
   DataType value_dtype;
-  c->GetAttr("dtype", &value_dtype);
+  TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
   if (handle_dtype != value_dtype) {
     return errors::InvalidArgument(
         "Trying to initialize handle for variable with wrong dtype. "

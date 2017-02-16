@@ -59,11 +59,22 @@ class ReadVariableOp : public OpKernel {
 
 class DestroyResourceOp : public OpKernel {
  public:
-  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
+  }
 
   void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES_OK(ctx, DeleteResource(ctx, HandleFromInput(ctx, 0)));
+    const ResourceHandle& p = HandleFromInput(ctx, 0);
+    Status status = DeleteResource(ctx, p);
+    if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+      return;
+    }
+    OP_REQUIRES_OK(ctx, status);
   }
+
+ private:
+  bool ignore_lookup_error_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
@@ -104,6 +115,10 @@ class AssignVariableOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
+                errors::InvalidArgument(
+                    "Variable and value dtypes don't match; respectively, ",
+                    dtype_, " and ", context->input(1).dtype()));
     Var* variable = nullptr;
     OP_REQUIRES_OK(
         context,
@@ -130,6 +145,18 @@ class AssignVariableOp : public OpKernel {
     // ownership.
     mutex_lock ml(*variable->mu());
     const Tensor& value = context->input(1);
+    // TODO(apassos): should check that the declared shapes are compatible
+    // somewhere, probably.
+    if (!variable->tensor()->shape().IsSameSize(value.shape())) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      OP_REQUIRES_OK(context, context->allocate_persistent(
+                                  dtype_, value.shape(), &unused, &tmp, attr));
+      *variable->tensor() = *tmp;
+    }
     functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
     copy_functor(context->eigen_device<Device>(), variable->tensor()->flat<T>(),
                  value.flat<T>());

@@ -1512,7 +1512,7 @@ precise description.
     The output tensor has shape `[4, 2, 2, 1]` and value:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]
@@ -1627,7 +1627,7 @@ block size.
     The output tensor has shape `[4, 2, 2, 1]` and value:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]
@@ -1796,7 +1796,7 @@ reverse of SpaceToBatch.  See below for a precise description.
         `crops = [[0, 0], [0, 0]]`:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]
@@ -1908,7 +1908,7 @@ followed by cropping along the `height` and `width` dimensions.
   (3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
 
   ```prettyprint
-  x = [[[[1], [3]], [[5], [7]]],
+  x = [[[[1], [3]], [[9], [11]]],
        [[[2], [4]], [[10], [12]]],
        [[[5], [7]], [[13], [15]]],
        [[[6], [8]], [[14], [16]]]]
@@ -3016,10 +3016,9 @@ Compute gradients for a FakeQuantWithMinMaxArgs operation.
 
 ### `tf.fake_quant_with_min_max_vars(inputs, min, max, name=None)` {#fake_quant_with_min_max_vars}
 
-Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
 
-global float scalars `min` and `max` to 'outputs' tensor of same shape as
-`inputs`.
+and `max` to 'outputs' tensor of same shape as `inputs`.
 
 [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 into 255 steps (total of 256 values), then replaces each 'inputs' value with the
@@ -3133,13 +3132,6 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 
 
 ## Other Functions and Classes
-- - -
-
-### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
-
-
-
-
 - - -
 
 ### `tf.contrib.graph_editor.copy(sgv, dst_graph=None, dst_scope='', src_scope='', reuse_dst_scope=False)` {#copy}

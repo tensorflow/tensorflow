@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -59,7 +59,8 @@ namespace tensorflow {
   // this device_name/jit_device_name pair.
   XlaOpRegistry::RegisterJitKernels();
   XlaOpRegistry::RegisterJitDevice(device_name, jit_device_name,
-                                   /*requires_jit=*/true);
+                                   /*requires_jit=*/true,
+                                   /*enable_jit_by_default=*/false);
 
   auto platform = perftools::gputools::MultiPlatformManager::PlatformWithName(
       platform_name);
@@ -154,6 +155,7 @@ Status XlaDevice::FillContextMap(const Graph* graph,
     ctx->Ref();
     (*device_context_map)[n->id()] = ctx;
   }
+  ctx->Unref();
   return Status::OK();
 }
 

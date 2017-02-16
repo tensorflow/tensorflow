@@ -282,8 +282,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const Shape* shape_with_output_layout,
-    const CompilationOptions& compilation_options, uint64 seed) {
+    const ExecutionOptions& execution_options) {
   auto module_config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = module_config->mutable_entry_computation_layout();
 
@@ -306,14 +305,16 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
         computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
             arguments[i]->shape()));
   }
-  if (shape_with_output_layout == nullptr) {
+  if (!execution_options.has_shape_with_output_layout()) {
     computation_layout->mutable_result_layout()->Clear();
   } else {
-    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(*shape_with_output_layout,
+    const auto& shape_with_output_layout =
+        execution_options.shape_with_output_layout();
+    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
                                                      program_shape.result()));
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            *shape_with_output_layout));
+            shape_with_output_layout));
   }
 
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
@@ -321,9 +322,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     module_config->enable_hlo_profiling(true);
   }
 
-  module_config->set_seed(seed);
   module_config->set_replica_count(execute_backend_->Replicas().size());
-  module_config->set_compilation_options(compilation_options);
+  module_config->set_fast_math_disabled(execution_options.disable_fast_math());
+  module_config->set_seed(execution_options.seed());
 
   return std::move(module_config);
 }
@@ -497,24 +498,17 @@ Service::ExecuteParallelAndRegisterResult(
   TF_RET_CHECK(backend->Replicas().size() == 1);
 
   // Set up streams.
-  std::vector<std::unique_ptr<se::Stream>> streams;
-
-  auto stream_releaser = ::tensorflow::gtl::MakeCleanup([backend, &streams]() {
-    for (std::unique_ptr<se::Stream>& stream : streams) {
-      backend->ReleaseStream(std::move(stream));
-    }
-  });
+  std::vector<Pool<se::Stream>::SmartPtr> streams;
 
   for (se::StreamExecutor* executor : executors) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        backend->AcquireStream(executor));
-    // Push back after so that the releaser only sees real streams.
+    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                        backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
   // Set up run options.
   std::vector<ExecutableRunOptions> run_options;
-  for (const std::unique_ptr<se::Stream>& stream : streams) {
+  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     run_options.emplace_back();
     auto& options = run_options.back();
     options.set_stream(stream.get());
@@ -554,24 +548,17 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   TF_RET_CHECK(!backend->Replicas().empty());
 
   // Set up streams.
-  std::vector<std::unique_ptr<se::Stream>> streams;
-
-  auto stream_releaser = ::tensorflow::gtl::MakeCleanup([backend, &streams]() {
-    for (std::unique_ptr<se::Stream>& stream : streams) {
-      backend->ReleaseStream(std::move(stream));
-    }
-  });
+  std::vector<Pool<se::Stream>::SmartPtr> streams;
 
   for (se::StreamExecutor* executor : backend->Replicas()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        backend->AcquireStream(executor));
-    // Push back after so that the releaser only sees real streams.
+    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                        backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
   // Set up run options.
   std::vector<ExecutableRunOptions> run_options;
-  for (const std::unique_ptr<se::Stream>& stream : streams) {
+  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     run_options.emplace_back();
     auto& options = run_options.back();
     options.set_stream(stream.get());
@@ -659,10 +646,6 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<const ProgramShape> program_shape,
         user_computation->ComputeProgramShape(versioned_handle.version));
-    const Shape* shape_with_output_layout =
-        request.has_shape_with_output_layout()
-            ? &request.shape_with_output_layout()
-            : nullptr;
 
     // Resolve the allocations for the arguments of the computation, and create
     // a vector of device memory offsets for the arguments from the allocations.
@@ -677,11 +660,9 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
     // Create an HloModuleConfig object for the computation, given the shape of
     // the program and the argument allocations.
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(*program_shape, arg_allocations,
-                           shape_with_output_layout,
-                           request.compilation_options(), request.seed()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                        CreateModuleConfig(*program_shape, arg_allocations,
+                                           request.execution_options()));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -766,15 +747,9 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  const Shape* shape_with_output_layout = arg->has_shape_with_output_layout()
-                                              ? &arg->shape_with_output_layout()
-                                              : nullptr;
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         shape_with_output_layout, arg->compilation_options(),
-                         arg->seed()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, arg_allocations,
+                                         arg->execution_options()));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -839,15 +814,9 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  const Shape* shape_with_output_layout = arg->has_shape_with_output_layout()
-                                              ? &arg->shape_with_output_layout()
-                                              : nullptr;
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         shape_with_output_layout, arg->compilation_options(),
-                         arg->seed()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, arg_allocations,
+                                         arg->execution_options()));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -868,23 +837,16 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
 
   TF_RET_CHECK(!execute_backend_->Replicas().empty());
   // Set up streams.
-  std::vector<std::unique_ptr<se::Stream>> streams;
-
-  auto stream_releaser = ::tensorflow::gtl::MakeCleanup([this, &streams]() {
-    for (std::unique_ptr<se::Stream>& stream : streams) {
-      execute_backend_->ReleaseStream(std::move(stream));
-    }
-  });
+  std::vector<Pool<se::Stream>::SmartPtr> streams;
 
   for (se::StreamExecutor* executor : execute_backend_->Replicas()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        execute_backend_->AcquireStream(executor));
-    // Push back after so that the releaser only sees real streams.
+    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+                        execute_backend_->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
 
   perftools::gputools::DeviceMemoryBase result_data;
-  for (const std::unique_ptr<se::Stream>& stream : streams) {
+  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(execute_backend_->memory_allocator());
@@ -1139,24 +1101,21 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
 
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
+  ExecutionOptions execution_options;
+  execution_options.set_disable_fast_math(true);
+  *execution_options.mutable_shape_with_output_layout() =
+      program_shape.result();
+
   Shape shape_with_output_layout(program_shape.result());
   if (arg->has_output_layout()) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
-        arg->output_layout(), shape_with_output_layout));
-    *shape_with_output_layout.mutable_layout() = arg->output_layout();
+        arg->output_layout(), execution_options.shape_with_output_layout()));
+    *execution_options.mutable_shape_with_output_layout()->mutable_layout() =
+        arg->output_layout();
   }
 
-  // We use fixed compilation options for computing constants.
-  CompilationOptions compilation_options;
-  compilation_options.set_disable_fast_math(true);
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(
-          program_shape, {},
-          arg->has_output_layout() ? &shape_with_output_layout : nullptr,
-          compilation_options,
-          /*seed=*/0));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(program_shape, {}, execution_options));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
@@ -1223,7 +1182,9 @@ tensorflow::Status Service::GetComputationStats(
   MakeHloDumper()(*module, "computation statistics subject");
 
   // Run HLO analysis to get the computation statistics.
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis([this](const Shape& shape) {
+    return execute_backend_->compiler()->ShapeSizeBytes(shape);
+  });
 
   TF_RETURN_IF_ERROR(
       module->entry_computation()->root_instruction()->Accept(&analysis));

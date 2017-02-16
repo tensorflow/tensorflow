@@ -24,6 +24,17 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
 
 
+_XLA_SCOPE_KEY = ("__xla_scope",)
+
+
+class _XlaScope(object):
+  """Keeps track of previous XLA scope calls, and depth of current call."""
+
+  def __init__(self, count, depth):
+    self.count = count
+    self.depth = depth
+
+
 @contextlib.contextmanager
 def experimental_jit_scope(compile_ops=True):
   """Enable or disable JIT compilation of operators within the scope.
@@ -54,18 +65,32 @@ def experimental_jit_scope(compile_ops=True):
       return attr_value_pb2.AttrValue(b=compile_ops(node_def))
   else:
     xla_compile = attr_value_pb2.AttrValue(b=compile_ops)
+
   attrs = {"_XlaCompile": xla_compile}
 
-  # TODO(ebrevdo): Keep a global XlaScope counter and here create a
-  # special scope that checks if already within a xla scope or creates
-  # a new one with a new scope string.  Add a new attr _XlaScope
-  # taking this string.  Modify the xla fusion to respect scope
-  # boundaries.  Modify gradients_impl to either create a new gradient
-  # scope with a suffix from the fw scope or to try to fuse with
-  # the fw scope of the given op.  Should be backwards compatible to
-  # avoid having to modify Defun compilation attributes.
+  # Find the singleton counter for the current scoped graph.  If it
+  # doesn't exist, create one.
+  xla_scope_counter = ops.get_collection(_XLA_SCOPE_KEY)
+  if not xla_scope_counter:
+    xla_scope_counter = _XlaScope(0, 0)
+    ops.add_to_collection(_XLA_SCOPE_KEY, xla_scope_counter)
+  else:
+    xla_scope_counter = xla_scope_counter[0]
+
+  if xla_scope_counter.depth == 0:
+    # If we're at the root xla scope, we can increase the counter so
+    # future calls to jit_scope use a different scope value.
+    # If we're already within a scope, we'll be fusing using the scope
+    # controlled by the parent.
+    attrs["_XlaScope"] = attr_value_pb2.AttrValue(
+        s=("jit_scope_%d" % xla_scope_counter.count).encode())
+    xla_scope_counter.count += 1
+
+  xla_scope_counter.depth += 1
 
   # pylint: disable=protected-access
   with ops.get_default_graph()._attr_scope(attrs):
     yield
   # pylint: enable=protected-access
+
+  xla_scope_counter.depth -= 1

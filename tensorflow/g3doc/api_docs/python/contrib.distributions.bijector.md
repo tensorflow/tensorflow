@@ -3,31 +3,17 @@
 # Random variable transformations (contrib)
 [TOC]
 
-Bijector Ops.
-
-An API for invertible, differentiable transformations of random variables.
-
-## Background
-
-Differentiable, bijective transformations of continuous random variables alter
-the calculations made in the cumulative/probability distribution functions and
-sample function.  This module provides a standard interface for making these
-manipulations.
-
-For more details and examples, see the `Bijector` docstring.
-
-To apply a `Bijector`, use `distributions.TransformedDistribution`.
-
-## Bijectors
+Bijector Ops. See the @{$python/contrib.distributions.bijector} guide.
 
 - - -
 
 ### `class tf.contrib.distributions.bijector.Affine` {#Affine}
 
-Bijector which computes `Y = g(X; shift, scale) = matmul(scale, X) + shift` where `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
-Write `A @ X` for `matmul(A, X)`. In TF parlance, the `scale` term is
-logically equivalent to:
+Here `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
+
+In TF parlance, the `scale` term is logically equivalent to:
 
 ```python
 scale = (
@@ -108,34 +94,34 @@ specified then `scale += IdentityMatrix`. Otherwise specifying a
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
+*  <b>`shift`</b>: Floating-point `Tensor`. If this is set to `None`, no shift is
+    applied.
 *  <b>`scale_identity_multiplier`</b>: floating point rank 0 `Tensor` representing a
     scaling done to the identity matrix.
-    When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+    When `scale_identity_multiplier = scale_diag = scale_tril = None` then
     `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
     to `scale`.
-*  <b>`scale_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
-    `scale_diag` has shape [N1, N2, ... k], which represents a k x k
+*  <b>`scale_diag`</b>: Floating-point `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ...  k], which represents a k x k
     diagonal matrix.
     When `None` no diagonal term is added to `scale`.
-*  <b>`scale_tril`</b>: Numeric `Tensor` representing the diagonal matrix.
-    `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
+*  <b>`scale_tril`</b>: Floating-point `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ...  k, k], which represents a k x k
     lower triangular matrix.
     When `None` no `scale_tril` term is added to `scale`.
     The upper triangular elements above the diagonal are ignored.
-*  <b>`scale_perturb_factor`</b>: Numeric `Tensor` representing factor matrix with
-    last two dimensions of shape `(k, r)`.
-    When `None`, no rank-r update is added to `scale`.
-*  <b>`scale_perturb_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
-    `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
-    r x r Diagonal matrix.
-    When `None` low rank updates will take the form `scale_perturb_factor *
-    scale_perturb_factor.T`.
+*  <b>`scale_perturb_factor`</b>: Floating-point `Tensor` representing factor matrix
+    with last two dimensions of shape `(k, r)`. When `None`, no rank-r
+    update is added to `scale`.
+*  <b>`scale_perturb_diag`</b>: Floating-point `Tensor` representing the diagonal
+    matrix. `scale_perturb_diag` has shape [N1, N2, ...  r], which
+    represents an `r x r` diagonal matrix. When `None` low rank updates will
+    take the form `scale_perturb_factor * scale_perturb_factor.T`.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -149,6 +135,13 @@ specified then `scale += IdentityMatrix`. Otherwise specifying a
 #### `tf.contrib.distributions.bijector.Affine.dtype` {#Affine.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.event_ndims` {#Affine.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -383,7 +376,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -397,21 +391,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.Affine.scale` {#Affine.scale}
 
-
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Affine.shaper` {#Affine.shaper}
-
-Returns shape object used to manage shape constraints.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.Affine.shift` {#Affine.shift}
 
-
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -
@@ -426,7 +413,7 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.AffineLinearOperator` {#AffineLinearOperator}
 
-Bijector which computes `Y = g(X; shift, scale) = scale @ X.T + shift`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
 `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
@@ -434,7 +421,7 @@ If `X` is a scalar then the forward transformation is: `scale * X + shift`
 where `*` denotes the scalar product.
 
 Note: we don't always simply transpose `X` (but write it this way for
-brevity).  Actually the input `X` undergoes the following transformation
+brevity). Actually the input `X` undergoes the following transformation
 before being premultiplied by `scale`:
 
 1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
@@ -449,8 +436,8 @@ before being premultiplied by `scale`:
 (For more details see `shape.make_batch_of_event_sample_matrices`.)
 
 The result of the above transformation is that `X` can be regarded as a batch
-of matrices where each column is a draw from the distribution.  After
-premultiplying by `scale`, we take the inverse of this procedure.  The input
+of matrices where each column is a draw from the distribution. After
+premultiplying by `scale`, we take the inverse of this procedure. The input
 `Y` also undergoes the same transformation before/after premultiplying by
 `inv(scale)`.
 
@@ -466,7 +453,7 @@ diag = [1., 2, 3]
 scale = linalg.LinearOperatorDiag(diag)
 affine = AffineLinearOperator(shift, scale)
 # In this case, `forward` is equivalent to:
-# diag * scale + shift
+# y = scale @ x + shift
 y = affine.forward(x)  # [0., 4, 10]
 
 shift = [2., 3, 1]
@@ -488,14 +475,14 @@ Instantiates the `AffineLinearOperator` bijector.
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.
-*  <b>`scale`</b>: Subclass of `LinearOperator`.  Represents the (batch) positive
+*  <b>`shift`</b>: Floating-point `Tensor`.
+*  <b>`scale`</b>: Subclass of `LinearOperator`. Represents the (batch) positive
     definite matrix `M` in `R^{k x k}`.
 *  <b>`event_ndims`</b>: Scalar `integer` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -511,6 +498,13 @@ Instantiates the `AffineLinearOperator` bijector.
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.dtype` {#AffineLinearOperator.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.event_ndims` {#AffineLinearOperator.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -745,7 +739,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -759,21 +754,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
 
-The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.shaper` {#AffineLinearOperator.shaper}
-
-Returns shape object used to manage shape constraints.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
 
-The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -
@@ -794,7 +782,7 @@ A `Bijector` implements a
 [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
 bijective, differentiable function. A `Bijector` is used by
 `TransformedDistribution` but can be generally used for transforming a
-`Distribution` generated `Tensor`.  A `Bijector` is characterized by three
+`Distribution` generated `Tensor`. A `Bijector` is characterized by three
 operations:
 
 1. Forward Evaluation
@@ -812,7 +800,7 @@ operations:
    "The log of the determinant of the matrix of all first-order partial
    derivatives of the inverse function."
    Useful for inverting a transformation to compute one probability in terms
-   of another.  Geometrically, the det(Jacobian) is the volume of the
+   of another. Geometrically, the det(Jacobian) is the volume of the
    transformation and is used to scale the probability.
 
 By convention, transformations of random variables are named in terms of the
@@ -824,7 +812,7 @@ Example Use:
   - Basic properties:
 
   ```python
-  x = ... # A tensor.
+  x = ...  # A tensor.
   # Evaluate forward transformation.
   fwd_x = my_bijector.forward(x)
   x == my_bijector.inverse(fwd_x)
@@ -870,7 +858,7 @@ Example transformations:
     ```
       class Exp(Bijector):
         def __init__(self, event_ndims=0, validate_args=False, name="exp"):
-          super(Exp, self).__init__(batch_ndims=0, event_ndims=event_ndims,
+          super(Exp, self).__init__(event_ndims=event_ndims,
                                     validate_args=validate_args, name=name)
         def _forward(self, x):
           return math_ops.exp(x)
@@ -878,10 +866,10 @@ Example transformations:
           x = math_ops.log(y)
           return x, -self._forward_log_det_jacobian(x)
         def _forward_log_det_jacobian(self, x):
-          if self.shaper is None:
+          if self.event_ndims is None:
             raise ValueError("Jacobian requires known event_ndims.")
-          _, _, event_dims = self.shaper.get_dims(x)
-          return math_ops.reduce_sum(x, reduction_indices=event_dims)
+          event_dims = array_ops.shape(x)[-self.event_ndims:]
+          return math_ops.reduce_sum(x, axis=event_dims)
       ```
 
   - "Affine"
@@ -906,8 +894,8 @@ Example of why a `Bijector` needs to understand sample, batch, event
 partitioning:
 
 - Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
-  and event (S, B, E) shape semantics.  Suppose
-  the `Tensor`'s partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
+  and event (S, B, E) shape semantics. Suppose the `Tensor`'s
+  partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
 
   For `Exp`, the shape of the `Tensor` returned by `forward` and `inverse` is
   unchanged, i.e., `[4, 2, 3, 3]`. However the shape returned by
@@ -922,7 +910,7 @@ Subclass Requirements:
 
 - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
   like `QuantizedDistribution`) then depending on your use, you may not need
-  to implement all of `_forward` and `_inverse` functions.  Examples:
+  to implement all of `_forward` and `_inverse` functions. Examples:
     1. Sampling (e.g., `sample`) only requires `_forward`.
     2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
        `_inverse` (and related).
@@ -930,7 +918,7 @@ Subclass Requirements:
       `_inverse` can be implemented as a cache lookup.
 
   See `Example Use` [above] which shows how these functions are used to
-  transform a distribution.  (Note: `_forward` could theoretically be
+  transform a distribution. (Note: `_forward` could theoretically be
   implemented as a cache lookup but this would require controlling the
   underlying sample generation mechanism.)
 
@@ -948,7 +936,7 @@ Subclass Requirements:
 
 - Subclasses should implement `_forward_event_shape`,
   `_forward_event_shape_tensor` (and `inverse` counterparts) if the
-  transformation is shape-changing.  By default the event-shape is assumed
+  transformation is shape-changing. By default the event-shape is assumed
   unchanged from input.
 
 Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
@@ -957,14 +945,14 @@ Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
   can be implemented as a cache lookup.
 
 - The inverse `log o det o Jacobian` can be implemented as the negative of the
-  forward `log o det o Jacobian`.  This is useful if the `inverse` is
+  forward `log o det o Jacobian`. This is useful if the `inverse` is
   implemented as a cache or the inverse Jacobian is computationally more
   expensive (e.g., `CholeskyOuterProduct` `Bijector`). The following
   demonstrates the suggested implementation.
 
   ```python
   def _inverse_and_log_det_jacobian(self, y):
-     x = # ... implement inverse, possibly via cache.
+     x = ...  # implement inverse, possibly via cache.
      return x, -self._forward_log_det_jac(x)  # Note negation.
   ```
 
@@ -1000,7 +988,7 @@ https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
   the `_inverse` implementation.
 - - -
 
-#### `tf.contrib.distributions.bijector.Bijector.__init__(batch_ndims=None, event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
+#### `tf.contrib.distributions.bijector.Bijector.__init__(event_ndims=None, graph_parents=None, is_constant_jacobian=False, validate_args=False, dtype=None, name=None)` {#Bijector.__init__}
 
 Constructs Bijector.
 
@@ -1009,11 +997,11 @@ A `Bijector` transforms random variables into new random variables.
 Examples:
 
 ```python
-# Create the Y = g(X) = X transform which operates on 4-Tensors of vectors.
-identity = Identity(batch_ndims=4, event_ndims=1)
+# Create the Y = g(X) = X transform which operates on vector events.
+identity = Identity(event_ndims=1)
 
 # Create the Y = g(X) = exp(X) transform which operates on matrices.
-exp = Exp(batch_ndims=0, event_ndims=2)
+exp = Exp(event_ndims=2)
 ```
 
 See `Bijector` subclass docstring for more details and specific examples.
@@ -1021,13 +1009,12 @@ See `Bijector` subclass docstring for more details and specific examples.
 ##### Args:
 
 
-*  <b>`batch_ndims`</b>: number of dimensions associated with batch coordinates.
 *  <b>`event_ndims`</b>: number of dimensions associated with event coordinates.
 *  <b>`graph_parents`</b>: Python list of graph prerequisites of this `Bijector`.
-*  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is not a
+*  <b>`is_constant_jacobian`</b>: Python `bool` indicating that the Jacobian is not a
     function of the input.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
-    asserts. If `validate_args` is `False`, and the inputs are invalid,
+*  <b>`validate_args`</b>: Python `bool`, default `False`. Whether to validate input
+    with asserts. If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
 *  <b>`dtype`</b>: `tf.dtype` supported by this `Bijector`. `None` means dtype is not
     enforced.
@@ -1039,6 +1026,13 @@ See `Bijector` subclass docstring for more details and specific examples.
 #### `tf.contrib.distributions.bijector.Bijector.dtype` {#Bijector.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Bijector.event_ndims` {#Bijector.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -1273,7 +1267,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -1281,13 +1276,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Bijector.name` {#Bijector.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Bijector.shaper` {#Bijector.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -1344,10 +1332,10 @@ Instantiates `Chain` bijector.
 
 *  <b>`bijectors`</b>: Python list of bijector instances. An empty list makes this
     bijector equivalent to the `Identity` bijector.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object. Default: E.g.,
-    `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object. Default:
+    E.g., `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
 
 ##### Raises:
 
@@ -1367,6 +1355,13 @@ Instantiates `Chain` bijector.
 #### `tf.contrib.distributions.bijector.Chain.dtype` {#Chain.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Chain.event_ndims` {#Chain.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -1601,7 +1596,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -1609,13 +1605,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Chain.name` {#Chain.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Chain.shaper` {#Chain.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -1630,7 +1619,7 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.CholeskyOuterProduct` {#CholeskyOuterProduct}
 
-Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
+Compute `g(X) = X @ X.T`; X is lower-triangular, positive-diagonal matrix.
 
 `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -1640,10 +1629,10 @@ Examples:
 
 ```python
 bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x.T
+# Result: [[1., 2], [2, 5]], i.e., x @ x.T
 
-bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
-# Result: [[1, 0], [2, 1]], i.e., chol(y).
+bijector.CholeskyOuterProduct(event_ndims=2).inverse(y=[[1., 2], [2, 5]])
+# Result: [[1., 0], [2, 1]], i.e., cholesky(y).
 ```
 - - -
 
@@ -1657,9 +1646,9 @@ Instantiates the `CholeskyOuterProduct` bijector.
 *  <b>`event_ndims`</b>: `constant` `int32` scalar `Tensor` indicating the number of
     dimensions associated with a particular draw from the distribution. Must
     be 0 or 2.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -1672,6 +1661,13 @@ Instantiates the `CholeskyOuterProduct` bijector.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.dtype` {#CholeskyOuterProduct.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.event_ndims` {#CholeskyOuterProduct.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -1906,7 +1902,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -1914,13 +1911,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.shaper` {#CholeskyOuterProduct.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -1935,14 +1925,14 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.Exp` {#Exp}
 
-Bijector which computes Y = g(X) = exp(X).
+Compute `Y = g(X) = exp(X)`.
 
 Example Use:
 
 ```python
 # Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
 # batch ndim and 2 event ndims (i.e., vector of matrices).
-exp = Exp(batch_ndims=1, event_ndims=2)
+exp = Exp(event_ndims=2)
 x = [[[1., 2],
        [3, 4]],
       [[5, 6],
@@ -1964,9 +1954,9 @@ Instantiates the `Exp` bijector.
 
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 
 - - -
@@ -1974,6 +1964,13 @@ Instantiates the `Exp` bijector.
 #### `tf.contrib.distributions.bijector.Exp.dtype` {#Exp.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.event_ndims` {#Exp.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -2208,7 +2205,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -2227,13 +2225,6 @@ The `c` in: `Y = g(X) = (1 + X * c)**(1 / c)`.
 
 - - -
 
-#### `tf.contrib.distributions.bijector.Exp.shaper` {#Exp.shaper}
-
-Returns shape object used to manage shape constraints.
-
-
-- - -
-
 #### `tf.contrib.distributions.bijector.Exp.validate_args` {#Exp.validate_args}
 
 Returns True if Tensor arguments will be validated.
@@ -2244,21 +2235,21 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.Identity` {#Identity}
 
-Bijector which computes Y = g(X) = X.
+Compute Y = g(X) = X.
 
 Example Use:
 
 ```python
 # Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
 # ndim and 1 event ndim (i.e., vector of vectors).
-identity = Identity(batch_ndims=1, event_ndims=1)
+identity = Identity(event_ndims=1)
 x = [[1., 2],
      [3, 4]]
 x == identity.forward(x) == identity.inverse(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.bijector.Identity.__init__(validate_args=False, name='identity')` {#Identity.__init__}
+#### `tf.contrib.distributions.bijector.Identity.__init__(validate_args=False, event_ndims=0, name='identity')` {#Identity.__init__}
 
 
 
@@ -2268,6 +2259,13 @@ x == identity.forward(x) == identity.inverse(x)
 #### `tf.contrib.distributions.bijector.Identity.dtype` {#Identity.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Identity.event_ndims` {#Identity.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -2502,7 +2500,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -2510,13 +2509,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Identity.name` {#Identity.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Identity.shaper` {#Identity.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -2531,7 +2523,7 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.Inline` {#Inline}
 
-Bijector constructed from callables implementing forward, inverse, and inverse_log_det_jacobian.
+Bijector constructed from custom callables.
 
 Example Use:
 
@@ -2540,7 +2532,7 @@ exp = Inline(
   forward_fn=tf.exp,
   inverse_fn=tf.log,
   inverse_log_det_jacobian_fn=(
-    lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+    lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
   name="exp")
 ```
 
@@ -2568,11 +2560,11 @@ Creates a `Bijector` from callables.
     static event shape changes. Default: shape is assumed unchanged.
 *  <b>`inverse_event_shape_tensor_fn`</b>: Python callable implementing non-identical
     event shape changes. Default: shape is assumed unchanged.
-*  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is constant
-    for all input arguments.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object.
+*  <b>`is_constant_jacobian`</b>: Python `bool` indicating that the Jacobian is
+    constant for all input arguments.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object.
 
 
 - - -
@@ -2580,6 +2572,13 @@ Creates a `Bijector` from callables.
 #### `tf.contrib.distributions.bijector.Inline.dtype` {#Inline.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Inline.event_ndims` {#Inline.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -2814,7 +2813,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -2822,13 +2822,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Inline.name` {#Inline.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Inline.shaper` {#Inline.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -2851,8 +2844,8 @@ models `Y=log(X)` where `X ~ Gamma`.
 
 ```python
 exp_gamma_distribution = TransformedDistribution(
-  Gamma(alpha=1., beta=2.),
-  bijector.Invert(bijector.Exp())
+  distribution=Gamma(concentration=1., rate=2.),
+  bijector=bijector.Invert(bijector.Exp())
 ```
 - - -
 
@@ -2874,9 +2867,9 @@ return -self.inverse_log_det_jacobian(y, **kwargs)
 
 
 *  <b>`bijector`</b>: Bijector instance.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object.
 
 
 - - -
@@ -2891,6 +2884,13 @@ return -self.inverse_log_det_jacobian(y, **kwargs)
 #### `tf.contrib.distributions.bijector.Invert.dtype` {#Invert.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Invert.event_ndims` {#Invert.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -3125,7 +3125,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -3133,13 +3134,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Invert.name` {#Invert.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Invert.shaper` {#Invert.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -3154,7 +3148,7 @@ Returns True if Tensor arguments will be validated.
 
 ### `class tf.contrib.distributions.bijector.PowerTransform` {#PowerTransform}
 
-Bijector which computes `Y = g(X) = (1 + X * c)**(1 / c), X >= -1 / c`.
+Compute `Y = g(X) = (1 + X * c)**(1 / c), X >= -1 / c`.
 
 The [power transform](https://en.wikipedia.org/wiki/Power_transform) maps
 inputs from `[0, inf]` to `[-1/c, inf]`; this is equivalent to the `inverse`
@@ -3174,9 +3168,9 @@ Instantiates the `PowerTransform` bijector.
     `Y = g(X) = (1 + X * c)**(1 / c)` where `c` is the `power`.
 *  <b>`event_ndims`</b>: Python scalar indicating the number of dimensions associated
     with a particular draw from the distribution.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -3189,6 +3183,13 @@ Instantiates the `PowerTransform` bijector.
 #### `tf.contrib.distributions.bijector.PowerTransform.dtype` {#PowerTransform.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.PowerTransform.event_ndims` {#PowerTransform.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -3423,7 +3424,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -3438,13 +3440,6 @@ Returns the string name of this `Bijector`.
 #### `tf.contrib.distributions.bijector.PowerTransform.power` {#PowerTransform.power}
 
 The `c` in: `Y = g(X) = (1 + X * c)**(1 / c)`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.PowerTransform.shaper` {#PowerTransform.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -3476,6 +3471,13 @@ See `bijector.SoftmaxCentered` for more details.
 #### `tf.contrib.distributions.bijector.SigmoidCentered.dtype` {#SigmoidCentered.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.SigmoidCentered.event_ndims` {#SigmoidCentered.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -3710,7 +3712,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -3718,13 +3721,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SigmoidCentered.name` {#SigmoidCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SigmoidCentered.shaper` {#SigmoidCentered.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -3743,7 +3739,7 @@ Bijector which computes `Y = g(X) = exp([X 0]) / sum(exp([X 0]))`.
 
 To implement [softmax](https://en.wikipedia.org/wiki/Softmax_function) as a
 bijection, the forward transformation appends a value to the input and the
-inverse removes this coordinate.  The appended coordinate represents a pivot,
+inverse removes this coordinate. The appended coordinate represents a pivot,
 e.g., `softmax(x) = exp(x-c) / sum(exp(x-c))` where `c` is the implicit last
 coordinate.
 
@@ -3764,7 +3760,7 @@ bijector.SoftmaxCentered(event_ndims=1).inverse([0.2, 0.3, 0.4, 0.1])
 
 At first blush it may seem like the [Invariance of domain](
 https://en.wikipedia.org/wiki/Invariance_of_domain) theorem implies this
-implementation is not a bijection.  However, the appended dimension
+implementation is not a bijection. However, the appended dimension
 makes the (forward) image non-open and the theorem does not directly apply.
 - - -
 
@@ -3778,6 +3774,13 @@ makes the (forward) image non-open and the theorem does not directly apply.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.dtype` {#SoftmaxCentered.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.SoftmaxCentered.event_ndims` {#SoftmaxCentered.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -4012,7 +4015,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -4020,13 +4024,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.name` {#SoftmaxCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SoftmaxCentered.shaper` {#SoftmaxCentered.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
@@ -4054,7 +4051,7 @@ The softplus `Bijector` has the following two useful properties:
   ```python
   # Create the Y=g(X)=softplus(X) transform which works only on Tensors with 1
   # batch ndim and 2 event ndims (i.e., vector of matrices).
-  softplus = Softplus(batch_ndims=1, event_ndims=2)
+  softplus = Softplus(event_ndims=2)
   x = [[[1., 2],
          [3, 4]],
         [[5, 6],
@@ -4077,6 +4074,13 @@ The softplus `Bijector` has the following two useful properties:
 #### `tf.contrib.distributions.bijector.Softplus.dtype` {#Softplus.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Softplus.event_ndims` {#Softplus.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -4311,7 +4315,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -4319,13 +4324,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Softplus.name` {#Softplus.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Softplus.shaper` {#Softplus.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

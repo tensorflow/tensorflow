@@ -15,7 +15,7 @@ limitations under the License.
 
 // Kernel registrations for XLA JIT devices.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -117,6 +117,8 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("LinSpace").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Log").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("Log1p").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("LogicalAnd"));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("LogicalNot"));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("LogicalOr"));
@@ -358,6 +360,8 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("LinSpace").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Log").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("Log1p").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("LogicalAnd"));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("LogicalNot"));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("LogicalOr"));

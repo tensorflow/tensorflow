@@ -265,11 +265,13 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
@@ -746,7 +748,7 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
-    timeout = "long",
+    timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:array2d",

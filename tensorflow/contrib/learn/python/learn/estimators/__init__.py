@@ -206,6 +206,19 @@ estimator = SVM(
     l2_regularization=10.0)
 ```
 
+#### DynamicRnnEstimator
+
+An `Estimator` that uses a recurrent neural network with dynamic unrolling.
+
+```python
+problem_type = ProblemType.CLASSIFICATION  # or REGRESSION
+prediction_type = PredictionType.SINGLE_VALUE  # or MULTIPLE_VALUE
+
+estimator = DynamicRnnEstimator(problem_type,
+                                prediction_type,
+                                my_feature_columns)
+```
+
 #### TensorForestEstimator
 
 Supports regression and binary classification.
@@ -311,6 +324,7 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
+from tensorflow.contrib.learn.python.learn.estimators.dynamic_rnn_estimator import DynamicRnnEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input

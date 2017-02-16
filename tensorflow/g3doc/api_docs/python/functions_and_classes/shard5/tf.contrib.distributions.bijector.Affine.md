@@ -1,7 +1,8 @@
-Bijector which computes `Y = g(X; shift, scale) = matmul(scale, X) + shift` where `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
-Write `A @ X` for `matmul(A, X)`. In TF parlance, the `scale` term is
-logically equivalent to:
+Here `scale = c * I + diag(D1) + tril(L) + V @ diag(D2) @ V.T`.
+
+In TF parlance, the `scale` term is logically equivalent to:
 
 ```python
 scale = (
@@ -82,34 +83,34 @@ specified then `scale += IdentityMatrix`. Otherwise specifying a
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.  If this is set to `None`, no shift is applied.
+*  <b>`shift`</b>: Floating-point `Tensor`. If this is set to `None`, no shift is
+    applied.
 *  <b>`scale_identity_multiplier`</b>: floating point rank 0 `Tensor` representing a
     scaling done to the identity matrix.
-    When `scale_identity_multiplier = scale_diag=scale_tril = None` then
+    When `scale_identity_multiplier = scale_diag = scale_tril = None` then
     `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
     to `scale`.
-*  <b>`scale_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
-    `scale_diag` has shape [N1, N2, ... k], which represents a k x k
+*  <b>`scale_diag`</b>: Floating-point `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ...  k], which represents a k x k
     diagonal matrix.
     When `None` no diagonal term is added to `scale`.
-*  <b>`scale_tril`</b>: Numeric `Tensor` representing the diagonal matrix.
-    `scale_diag` has shape [N1, N2, ... k, k], which represents a k x k
+*  <b>`scale_tril`</b>: Floating-point `Tensor` representing the diagonal matrix.
+    `scale_diag` has shape [N1, N2, ...  k, k], which represents a k x k
     lower triangular matrix.
     When `None` no `scale_tril` term is added to `scale`.
     The upper triangular elements above the diagonal are ignored.
-*  <b>`scale_perturb_factor`</b>: Numeric `Tensor` representing factor matrix with
-    last two dimensions of shape `(k, r)`.
-    When `None`, no rank-r update is added to `scale`.
-*  <b>`scale_perturb_diag`</b>: Numeric `Tensor` representing the diagonal matrix.
-    `scale_perturb_diag` has shape [N1, N2, ... r], which represents an
-    r x r Diagonal matrix.
-    When `None` low rank updates will take the form `scale_perturb_factor *
-    scale_perturb_factor.T`.
+*  <b>`scale_perturb_factor`</b>: Floating-point `Tensor` representing factor matrix
+    with last two dimensions of shape `(k, r)`. When `None`, no rank-r
+    update is added to `scale`.
+*  <b>`scale_perturb_diag`</b>: Floating-point `Tensor` representing the diagonal
+    matrix. `scale_perturb_diag` has shape [N1, N2, ...  r], which
+    represents an `r x r` diagonal matrix. When `None` low rank updates will
+    take the form `scale_perturb_factor * scale_perturb_factor.T`.
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -123,6 +124,13 @@ specified then `scale += IdentityMatrix`. Otherwise specifying a
 #### `tf.contrib.distributions.bijector.Affine.dtype` {#Affine.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Affine.event_ndims` {#Affine.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -357,7 +365,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -371,21 +380,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.Affine.scale` {#Affine.scale}
 
-
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Affine.shaper` {#Affine.shaper}
-
-Returns shape object used to manage shape constraints.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.Affine.shift` {#Affine.shift}
 
-
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -

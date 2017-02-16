@@ -6,8 +6,8 @@ models `Y=log(X)` where `X ~ Gamma`.
 
 ```python
 exp_gamma_distribution = TransformedDistribution(
-  Gamma(alpha=1., beta=2.),
-  bijector.Invert(bijector.Exp())
+  distribution=Gamma(concentration=1., rate=2.),
+  bijector=bijector.Invert(bijector.Exp())
 ```
 - - -
 
@@ -29,9 +29,9 @@ return -self.inverse_log_det_jacobian(y, **kwargs)
 
 
 *  <b>`bijector`</b>: Bijector instance.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object.
 
 
 - - -
@@ -46,6 +46,13 @@ return -self.inverse_log_det_jacobian(y, **kwargs)
 #### `tf.contrib.distributions.bijector.Invert.dtype` {#Invert.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Invert.event_ndims` {#Invert.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -280,7 +287,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -288,13 +296,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Invert.name` {#Invert.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Invert.shaper` {#Invert.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

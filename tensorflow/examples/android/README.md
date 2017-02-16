@@ -37,7 +37,8 @@ A device running Android 5.0 (API 21) or higher is required.
 ## Running the Demo
 
 Once the app is installed it can be started via the "TF Classify" and
-"TF Detect" and icons, which have the orange TensorFlow logo as their icon.
+"TF Detect" and icons, which have the orange TensorFlow logo 
+(<img src="res/drawable-mdpi/ic_launcher.png" width="20">) as their icon.
 
 While running the activities, pressing the volume keys on your device will
 toggle debug visualizations on/off, rendering additional info to the screen

@@ -142,7 +142,8 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
 
   Tensor mutable_example_state_data_t(*example_state_data_t);
   auto example_state_data = mutable_example_state_data_t.matrix<float>();
-  context->set_output("out_example_state_data", mutable_example_state_data_t);
+  OP_REQUIRES_OK(context, context->set_output("out_example_state_data",
+                                              mutable_example_state_data_t));
 
   if (options.adaptative) {
     OP_REQUIRES_OK(context,

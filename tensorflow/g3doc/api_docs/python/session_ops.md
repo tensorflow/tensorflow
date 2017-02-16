@@ -7,10 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Tensor Handle Operations.
-
-TensorFlow provides several operators that allows the user to keep tensors
-"in-place" across run calls.
+Tensor Handle Operations. See the @{python/session_ops} guide.
 
 - - -
 

@@ -111,6 +111,7 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python:framework_ops_test + \
     //$1/tensorflow/python:framework_tensor_util_test + \
     //$1/tensorflow/python:framework_test_util_test + \
+    //$1/tensorflow/python:gradients_test + \
     //$1/tensorflow/python:image_ops_test + \
     //$1/tensorflow/python:localhost_cluster_performance_test + \
     //$1/tensorflow/python:monitored_session_test + \

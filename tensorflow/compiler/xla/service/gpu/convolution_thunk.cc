@@ -29,7 +29,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
-using Index = BufferAllocation::Index;
 using se::dnn::BatchDescriptor;
 using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
@@ -95,9 +94,11 @@ string ConvolutionKindToString(
 }
 
 ConvolutionThunk::ConvolutionThunk(
-    ConvolutionKind convolution_kind, Index input_buffer, Index filter_buffer,
-    Index output_buffer, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, const Window& window,
+    ConvolutionKind convolution_kind,
+    const BufferAllocation::Slice& input_buffer,
+    const BufferAllocation::Slice& filter_buffer,
+    const BufferAllocation::Slice& output_buffer, const Shape& input_shape,
+    const Shape& filter_shape, const Shape& output_shape, const Window& window,
     const ConvolutionDimensionNumbers& dim_nums, const HloInstruction* hlo)
     : Thunk(Kind::kConvolution, hlo),
       convolution_kind_(convolution_kind),

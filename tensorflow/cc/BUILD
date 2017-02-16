@@ -285,6 +285,7 @@ cc_library(
     srcs = ["gradients/nn_grad.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":ops",
         ":scope",
@@ -373,6 +374,14 @@ tf_gen_op_wrappers_cc(
     ],
     pkg = "//tensorflow/core",
     visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
+    name = "remote_fused_graph_ops",
+    op_lib_names = [
+        "remote_fused_graph_ops",
+    ],
+    pkg = "//tensorflow/core",
 )
 
 cc_library_with_android_deps(

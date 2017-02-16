@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -39,12 +40,44 @@ limitations under the License.
 
 namespace xla {
 
-void BufferAllocation::AddAssignment(const LogicalBuffer& buffer) {
-  DCHECK(std::find(assigned_buffers_.begin(), assigned_buffers_.end(),
-                   &buffer) == assigned_buffers_.end())
+size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
+  uint64 h = std::hash<int64>()(s.index());
+  h = tensorflow::Hash64Combine(h, std::hash<int64>()(s.offset()));
+  h = tensorflow::Hash64Combine(h, std::hash<int64>()(s.size()));
+  return h;
+}
+
+string BufferAllocation::Slice::ToString() const {
+  return tensorflow::strings::StrCat("{index:", index(), ", offset:", offset_,
+                                     ", size:", size_, "}");
+}
+
+BufferAllocation::Slice BufferAllocation::GetSlice(
+    const LogicalBuffer& buffer) const {
+  const OffsetSize os = FindOrDie(assigned_buffers_, &buffer);
+  return Slice(this, os.offset, os.size);
+}
+
+void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
+                                     int64 size, int64 alignment) {
+  DCHECK(assigned_buffers_.count(&buffer) == 0)
       << "LogicalBuffer " << buffer.ToString()
-      << " already assigned to allocation " << index();
-  assigned_buffers_.push_back(&buffer);
+      << " already assigned to allocation " << index_;
+  DCHECK_LE(offset, size_) << "LogicalBuffer " << buffer.ToString()
+                           << " offset out of range";
+  DCHECK_LE(offset + size, size_)
+      << "LogicalBuffer " << buffer.ToString() << " size out of range";
+  // We assume that recording the max alignment of all assigned buffers is
+  // sufficient for offset-placement, which is only true if the alignments are
+  // all powers of 2.
+  DCHECK(alignment > 0 && IsPowerOfTwo(static_cast<size_t>(alignment)))
+      << "LogicalBuffer " << buffer.ToString() << " alignment " << alignment
+      << " isn't a power of 2";
+  OffsetSize offset_size;
+  offset_size.offset = offset;
+  offset_size.size = size;
+  assigned_buffers_.emplace(&buffer, offset_size);
+  max_alignment_ = std::max(max_alignment_, alignment);
 }
 
 string BufferAllocation::ToString() const {
@@ -59,19 +92,26 @@ string BufferAllocation::ToString() const {
     tensorflow::strings::StrAppend(&output, ", thread-local");
   }
   tensorflow::strings::StrAppend(&output, ":\n");
-  for (const auto& buffer : assigned_buffers()) {
+  for (const auto& buffer_offset_size : assigned_buffers()) {
+    const LogicalBuffer& buffer = *buffer_offset_size.first;
+    const int64 offset = buffer_offset_size.second.offset;
+    const int64 size = buffer_offset_size.second.size;
     tensorflow::strings::StrAppend(
         &output,
         tensorflow::strings::Printf(
-            "  %s::%s : %s\n", buffer->instruction()->parent()->name().c_str(),
-            buffer->ToString().c_str(),
-            ShapeUtil::HumanStringWithLayout(buffer->shape()).c_str()));
+            "  %s [%lld,%lld]: %s\n", buffer.ToString().c_str(), offset, size,
+            ShapeUtil::HumanStringWithLayout(buffer.shape()).c_str()));
   }
   return output;
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAllocation& buffer) {
   out << buffer.ToString();
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const BufferAllocation::Slice& s) {
+  out << s.ToString();
   return out;
 }
 
@@ -96,22 +136,21 @@ BufferAllocation* BufferAssignment::GetMutableAssignedAllocation(
   return const_cast<BufferAllocation*>(&GetAssignedAllocation(buffer));
 }
 
-std::set<BufferAllocation> BufferAssignment::GetAllocations(
+std::set<BufferAllocation::Slice> BufferAssignment::GetAllSlices(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  std::set<BufferAllocation> allocations;
+  std::set<BufferAllocation::Slice> result;
   for (const LogicalBuffer* buffer : GetSourceBuffers(instruction, index)) {
-    if (allocation_index_for_buffer_.count(buffer) > 0) {
-      allocations.insert(
-          GetAllocation(allocation_index_for_buffer_.at(buffer)));
+    if (HasAllocation(*buffer)) {
+      result.insert(GetAssignedAllocation(*buffer).GetSlice(*buffer));
     }
   }
-  return allocations;
+  return result;
 }
 
 const BufferAllocation& BufferAssignment::GetAllocation(
     BufferAllocation::Index index) const {
-  CHECK(index >= 0 && index < allocations_.size())
-      << "Allocation index " << index << "is out of range.";
+  CHECK_GE(index, 0);
+  CHECK_LT(index, allocations_.size());
   return allocations_[index];
 }
 
@@ -131,69 +170,110 @@ bool BufferAssignment::HasTopLevelAllocation(
   return false;
 }
 
-StatusOr<const BufferAllocation*> BufferAssignment::GetUniqueAllocation(
+StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  const BufferAllocation* allocation = nullptr;
+  BufferAllocation::Slice result;
   for (const LogicalBuffer* buffer :
        GetPointsToSet(instruction).element(index)) {
     if (HasAllocation(*buffer)) {
-      if (allocation != nullptr &&
-          *allocation != GetAssignedAllocation(*buffer)) {
+      const BufferAllocation::Slice slice =
+          GetAssignedAllocation(*buffer).GetSlice(*buffer);
+      if (result.allocation() == nullptr) {
+        result = slice;
+      } else if (result != slice) {
         return FailedPrecondition(
-            "LogicalBuffer allocation for instruction %s at index {%s} cannot "
+            "BufferAllocation::Slice for instruction %s at index %s cannot "
             "be determined at compile-time.",
-            instruction->name().c_str(),
-            tensorflow::str_util::Join(index, ",").c_str());
+            instruction->name().c_str(), index.ToString().c_str());
       }
-      allocation = &GetAssignedAllocation(*buffer);
     }
   }
-  if (allocation == nullptr) {
+  if (result.allocation() == nullptr) {
     return FailedPrecondition(
-        "instruction %s has no buffer allocation at index {%s}",
-        instruction->name().c_str(),
-        tensorflow::str_util::Join(index, ",").c_str());
+        "BufferAllocation::Slice not assigned for instruction %s at index %s",
+        instruction->name().c_str(), index.ToString().c_str());
   }
-  return allocation;
+  return result;
 }
 
-StatusOr<const BufferAllocation*> BufferAssignment::GetUniqueTopLevelAllocation(
+StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueTopLevelSlice(
     const HloInstruction* instruction) const {
-  return GetUniqueAllocation(instruction, /*index=*/{});
+  return GetUniqueSlice(instruction, /*index=*/{});
 }
 
-StatusOr<const BufferAllocation*>
-BufferAssignment::GetUniqueTopLevelOutputAllocation() const {
-  return GetUniqueTopLevelAllocation(
+StatusOr<BufferAllocation::Slice>
+BufferAssignment::GetUniqueTopLevelOutputSlice() const {
+  return GetUniqueTopLevelSlice(
       module_->entry_computation()->root_instruction());
 }
 
 BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
-                                                  int64 size,
+                                                  int64 size, int64 alignment,
                                                   bool is_thread_local,
                                                   bool is_reusable) {
   BufferAllocation::Index index = allocations_.size();
   allocations_.emplace_back(index, size, is_thread_local, is_reusable);
   BufferAllocation* allocation = &allocations_.back();
-  AddAssignment(buffer, allocation, /*colocated_buffer=*/false);
+  AddAssignment(buffer, allocation, size, alignment);
   allocation_index_for_buffer_[&buffer] = index;
   return allocation;
 }
 
 // Adds an instruction to the set assigned to the given buffer.
 void BufferAssignment::AddAssignment(const LogicalBuffer& buffer,
-                                     BufferAllocation* allocation,
-                                     bool colocated_buffer) {
+                                     BufferAllocation* allocation, int64 size,
+                                     int64 alignment) {
   CHECK_EQ(0, allocation_index_for_buffer_.count(&buffer))
       << "LogicalBuffer " << buffer << " already has an allocation.";
-  CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty() ||
-        colocated_buffer)
+  CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty())
       << "Non-reusable allocation already assigned a buffer";
 
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
 
-  allocation->AddAssignment(buffer);
+  allocation->AddAssignment(buffer, /*offset=*/0, size, alignment);
   allocation_index_for_buffer_[&buffer] = allocation->index();
+}
+
+// Combines allocations of temporary buffers into one big BufferAllocation.
+void BufferAssignment::CombineTempAllocations() {
+  // Move all temp allocations into a single run at the end of the allocations
+  // vector, and combine them into the first allocation of the run.
+  const auto first_temp_it =
+      std::partition(allocations_.begin(), allocations_.end(),
+                     [](const BufferAllocation& allocation) {
+                       return !allocation.IsPreallocatedTempBuffer();
+                     });
+  if (first_temp_it != allocations_.end()) {
+    BufferAllocation* combined = &*first_temp_it;
+    const auto second_temp_it = std::next(first_temp_it);
+    for (auto it = second_temp_it; it != allocations_.end(); ++it) {
+      // Each temp allocation is placed end-to-end, accounting for alignment.
+      // The offset of each buffer in the combined allocation is computed from
+      // the base offset of the allocation.
+      const int64 max_alignment = it->max_alignment();
+      const int64 base = RoundUpToNearest(combined->size(), max_alignment);
+      combined->set_size(base + it->size());
+      for (const auto& buffer_offset_size : it->assigned_buffers_) {
+        const LogicalBuffer* buffer = buffer_offset_size.first;
+        const int64 offset = buffer_offset_size.second.offset;
+        const int64 size = buffer_offset_size.second.size;
+        combined->AddAssignment(*buffer, base + offset, size, max_alignment);
+      }
+    }
+    allocations_.erase(second_temp_it, allocations_.end());
+    temp_allocation_ = combined;
+  }
+
+  // Update allocation indices to their new positions.
+  allocation_index_for_buffer_.clear_no_resize();
+  for (size_t index = 0; index < allocations_.size(); ++index) {
+    BufferAllocation* allocation = &allocations_[index];
+    allocation->set_index(index);
+    for (const auto& buffer_offset_size : allocation->assigned_buffers_) {
+      const LogicalBuffer* buffer = buffer_offset_size.first;
+      allocation_index_for_buffer_[buffer] = index;
+    }
+  }
 }
 
 string BufferAssignment::ToString() const {
@@ -225,8 +305,8 @@ tensorflow::Status GatherComputationsByAllocationType(
 
   // Sets for quickly checking membership. Computations are returned in vectors
   // for stable iteration.
-  std::unordered_set<HloComputation*> thread_local_set;
-  std::unordered_set<HloComputation*> global_set;
+  tensorflow::gtl::FlatSet<HloComputation*> thread_local_set;
+  tensorflow::gtl::FlatSet<HloComputation*> global_set;
 
   while (!worklist.empty()) {
     auto worklist_front = worklist.front();
@@ -316,9 +396,11 @@ tensorflow::Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, bool colocate_related_buffers,
+    LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+    bool colocate_related_buffers,
     const std::vector<const HloInstruction*>* hlos_to_allocate) {
-  BufferAssigner assigner(std::move(buffer_size), colocate_related_buffers);
+  BufferAssigner assigner(std::move(buffer_size), alignment,
+                          colocate_related_buffers);
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    hlos_to_allocate);
 }
@@ -326,14 +408,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    int64 pointer_size) {
+    LogicalBuffer::SizeFunction buffer_size, int64 alignment) {
   return BufferAssigner::Run(module, std::move(hlo_ordering),
-                             [pointer_size](const LogicalBuffer& buffer) {
-                               return ShapeUtil::IsOpaque(buffer.shape())
-                                          ? 0
-                                          : ShapeUtil::ByteSizeOf(
-                                                buffer.shape(), pointer_size);
-                             },
+                             std::move(buffer_size), alignment,
                              /*colocate_related_buffers=*/true);
 }
 
@@ -362,9 +439,10 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  for (const LogicalBuffer* assigned_buffer : allocation->assigned_buffers()) {
-    if (assignment->liveness().MayInterfere(*assigned_buffer, buffer)) {
-      VLOG(4) << "Can't assign: assignee " << assigned_buffer->ToString()
+  for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
+    const LogicalBuffer& assigned_buffer = *buffer_offset_size.first;
+    if (assignment->liveness().MayInterfere(assigned_buffer, buffer)) {
+      VLOG(4) << "Can't assign: assignee " << assigned_buffer.ToString()
               << " may interfere with " << buffer.ToString();
       return false;
     }
@@ -380,7 +458,8 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  assignment->AddAssignment(buffer, allocation, /*colocated_buffer=*/false);
+  assignment->AddAssignment(buffer, allocation, buffer_size_(buffer),
+                            alignment_);
   return true;
 }
 
@@ -461,6 +540,8 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
+    const int64 buffer_size = buffer_size_(*buffer);
+
     if (buffer->instruction()->opcode() == HloOpcode::kParameter &&
         computation == computation->parent()->entry_computation()) {
       // If the LogicalBuffer is part of an external parameter, creates a new
@@ -468,7 +549,7 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       // computations do not need special allocations because they live inside
       // callers.
       BufferAllocation* allocation =
-          assignment->NewAllocation(*buffer, buffer_size_(*buffer),
+          assignment->NewAllocation(*buffer, buffer_size, alignment_,
                                     /*is_thread_local=*/false,
                                     /*is_reusable=*/false);
       allocation->set_entry_computation_parameter(
@@ -485,16 +566,16 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
       // Custom call operations never have reusable buffers. Also we do not
       // reuse thread-local buffers for now, because they are dynamically
       // allocated and their lifetimes are hard to compute.
-      assignment->NewAllocation(*buffer, buffer_size_(*buffer), is_thread_local,
-                                /*is_reusable=*/false);
+      assignment->NewAllocation(*buffer, buffer_size, alignment_,
+                                is_thread_local, /*is_reusable=*/false);
       continue;
     }
 
     if (ShapeUtil::IsTuple(buffer->shape())) {
       // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
       // assumes longer buffer liveness than indicated by the analysis.
-      assignment->NewAllocation(*buffer, buffer_size_(*buffer), is_thread_local,
-                                /*is_reusable=*/false);
+      assignment->NewAllocation(*buffer, buffer_size, alignment_,
+                                is_thread_local, /*is_reusable=*/false);
       continue;
     }
 
@@ -505,17 +586,17 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
     if (buffer->IsTopLevel() && !buffer->IsTuple()) {
       for (auto* operand : buffer->instruction()->operands()) {
         bool assigned_operand = false;
-        for (const auto& operand_allocation :
-             assignment->GetAllocations(operand, /*index=*/{})) {
+        for (const auto& operand_slice :
+             assignment->GetAllSlices(operand, /*index=*/{})) {
           BufferAllocation* allocation =
-              assignment->GetMutableAllocation(operand_allocation.index());
+              assignment->GetMutableAllocation(operand_slice.index());
           if (colocated_allocations.count(allocation->index()) == 0) {
             // TODO(b/32491382) Colocated buffers are currently assigned in an
             // earlier pass, and so can break the "increasing allocation size"
             // invariant in this function (causing this CHECK to fail). However,
             // the call to MaybeAssignBuffer is safe as it returns false if
             // allocation.size < buffer.size.
-            CHECK_GE(allocation->size(), buffer_size_(*buffer));
+            CHECK_GE(allocation->size(), buffer_size);
           }
           if (MaybeAssignBuffer(allocation, *buffer, assignment)) {
             VLOG(3) << "Reusing (operand) allocation for: "
@@ -546,7 +627,7 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
           // invariant in this function (causing this CHECK to fail). However,
           // the call to MaybeAssignBuffer is safe as it returns false if
           // allocation.size < buffer.size.
-          CHECK_GE(allocation->size(), buffer_size_(*buffer));
+          CHECK_GE(allocation->size(), buffer_size);
         }
 
         if (MaybeAssignBuffer(allocation, *buffer, assignment)) {
@@ -557,7 +638,7 @@ tensorflow::Status BufferAssigner::AssignBuffersForComputation(
     }
     if (!assignment->HasAllocation(*buffer)) {
       auto* allocation =
-          assignment->NewAllocation(*buffer, buffer_size_(*buffer),
+          assignment->NewAllocation(*buffer, buffer_size, alignment_,
                                     is_thread_local, /*is_reusable=*/true);
       VLOG(3) << "New allocation for: " << buffer->ToString();
       allocation_indices.push_back(allocation->index());
@@ -586,12 +667,14 @@ void BufferAssigner::AddSetToColocatedBufferSets(
   }
 
   // Find existing sets that overlap with at least one buffer from the
-  // colocated_set.
+  // colocated_set. The resulting 'overlap_set_indices' will have at most
+  // colocated_buffer_sets->size() entries, and will be in increasing order.
   std::vector<size_t> overlap_set_indices;
-  for (const LogicalBuffer* buffer : colocated_set) {
-    for (size_t index = 0; index < colocated_buffer_sets->size(); ++index) {
+  for (size_t index = 0; index < colocated_buffer_sets->size(); ++index) {
+    for (const LogicalBuffer* buffer : colocated_set) {
       if ((*colocated_buffer_sets)[index].count(buffer) > 0) {
         overlap_set_indices.push_back(index);
+        break;
       }
     }
   }
@@ -712,13 +795,13 @@ void BufferAssigner::AssignColocatedBufferSets(
         // allocations for each colocated buffer set. When liveness has
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
-        allocation = assignment->NewAllocation(*buffer, buffer_size_(*buffer),
-                                               /*is_thread_local=*/false,
-                                               /*is_reusable=*/true);
+        allocation = assignment->NewAllocation(
+            *buffer, buffer_size_(*buffer), alignment_,
+            /*is_thread_local=*/false, /*is_reusable=*/true);
         colocated_allocations->insert(allocation->index());
       } else {
-        assignment->AddAssignment(*buffer, allocation,
-                                  /*colocated_buffer=*/true);
+        assignment->AddAssignment(*buffer, allocation, buffer_size_(*buffer),
+                                  alignment_);
       }
       colocated_buffers->insert(buffer);
     }
@@ -806,6 +889,12 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
         return tensorflow::Status::OK();
       }));
 
+  // Combines allocations of temporary buffers into one big BufferAllocation.
+  // This can only be performed after all buffers have been assigned, and after
+  // maybe_live_out is marked, since it is used to determine whether an
+  // allocation contains temporary buffers or not.
+  assignment->CombineTempAllocations();
+
   XLA_VLOG_LINES(2, assignment->ToString());
 
   // Compute sizes of various kinds of buffers for logging.
@@ -825,9 +914,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshape(
       root->shape(), [this, &output_size, root, &assignment](
                          const Shape& /*subshape*/, const ShapeIndex& index) {
-        const auto& allocations = assignment->GetAllocations(root, index);
-        if (!allocations.empty()) {
-          output_size += allocations.begin()->size();
+        const auto& slices = assignment->GetAllSlices(root, index);
+        if (!slices.empty()) {
+          output_size += slices.begin()->allocation()->size();
         }
         return tensorflow::Status::OK();
       }));

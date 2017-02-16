@@ -14,25 +14,14 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""## Sparse Tensor Representation
-
-TensorFlow supports a `SparseTensor` representation for data that is sparse
-in multiple dimensions. Contrast this representation with `IndexedSlices`,
-which is efficient for representing tensors that are sparse in their first
-dimension, and dense along all other dimensions.
+"""Sparse Tensor Representation. See the @{python/sparse_ops} guide.
 
 @@SparseTensor
 @@SparseTensorValue
-
-## Conversion
-
 @@sparse_to_dense
 @@sparse_tensor_to_dense
 @@sparse_to_indicator
 @@sparse_merge
-
-## Manipulation
-
 @@sparse_concat
 @@sparse_reorder
 @@sparse_reshape
@@ -41,18 +30,15 @@ dimension, and dense along all other dimensions.
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
 @@sparse_transpose
-
-## Reduction
 @@sparse_reduce_sum
 @@sparse_reduce_sum_sparse
-
-## Math Operations
 @@sparse_add
 @@sparse_softmax
 @@sparse_tensor_dense_matmul
 @@sparse_maximum
 @@sparse_minimum
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

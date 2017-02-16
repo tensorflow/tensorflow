@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Casting
-
-TensorFlow provides several operations that you can use to cast tensor data
-types in your graph.
+"""Support for manipulating tensors.  See the @{$python/array_ops} guide.
 
 @@string_to_number
 @@to_double
@@ -27,12 +24,6 @@ types in your graph.
 @@cast
 @@bitcast
 @@saturate_cast
-
-## Shapes and Shaping
-
-TensorFlow provides several operations that you can use to determine the shape
-of a tensor and change the shape of a tensor.
-
 @@broadcast_dynamic_shape
 @@broadcast_static_shape
 @@shape
@@ -43,12 +34,6 @@ of a tensor and change the shape of a tensor.
 @@squeeze
 @@expand_dims
 @@meshgrid
-
-## Slicing and Joining
-
-TensorFlow provides several operations to slice or extract parts of a tensor,
-or join multiple tensors together.
-
 @@slice
 @@strided_slice
 @@split
@@ -83,10 +68,6 @@ or join multiple tensors together.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
-
-## Fake quantization
-Operations used to help train for better quantization accuracy.
-
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
@@ -94,6 +75,7 @@ Operations used to help train for better quantization accuracy.
 @@fake_quant_with_min_max_vars_per_channel
 @@fake_quant_with_min_max_vars_per_channel_gradient
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -634,8 +616,8 @@ def strided_slice(input_,
   tf.strided_slice(input, [1, 0, 0], [2, 1, 3], [1, 1, 1]) ==> [[[3, 3, 3]]]
   tf.strided_slice(input, [1, 0, 0], [2, 2, 3], [1, 1, 1]) ==> [[[3, 3, 3],
                                                                  [4, 4, 4]]]
-  tf.strided_slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
-                                                                  [3, 3, 3]]]
+  tf.strided_slice(input, [1, -1, 0], [2, -3, 3], [1, -1, 1]) ==>[[[4, 4, 4],
+                                                                   [3, 3, 3]]]
   ```
 
   Args:
@@ -697,9 +679,7 @@ def _SliceHelperVar(var, slice_spec):
   """Creates a slice helper object given a variable.
 
   This allows creating a sub-tensor from part of the current contents
-  of a variable.
-  See
-  [`Tensor.__getitem__`](../../api_docs/python/framework.md#Tensor.__getitem__)
+  of a variable.  See ${tf.Tensor$`Tensor.__getitem__`}
   for detailed examples of slicing.
 
   This function in addition also allows assignment to a sliced range.
@@ -977,12 +957,6 @@ def unstack(value, num=None, axis=0, name="unstack"):
   if num is None:
     raise ValueError("Cannot infer num from shape %s" % value_shape)
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
-
-
-# concat_v2 is an alias for concat. concat_v2 will be deprecated and removed
-# soon, please use concat.
-def concat_v2(values, axis, name="concat_v2"):
-  return concat(values, axis, name)
 
 
 def concat(values, axis, name="concat"):

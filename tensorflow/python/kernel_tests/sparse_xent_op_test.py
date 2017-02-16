@@ -214,7 +214,7 @@ class SparseXentTest(test.TestCase):
     # Taking ths second gradient should fail, since it is not
     # yet supported.
     with self.assertRaisesRegexp(LookupError,
-                                 ".*No gradient defined.*PreventGradient.*"):
+                                 "explicitly disabled"):
       _ = gradients_impl.hessians(loss, [weights])
 
   def _testHighDim(self, features, labels):

@@ -1,4 +1,4 @@
-Bijector which computes Y = g(X) = X X.T where X is a lower-triangular, positive-diagonal matrix.
+Compute `g(X) = X @ X.T`; X is lower-triangular, positive-diagonal matrix.
 
 `event_ndims` must be 0 or 2, i.e., scalar or matrix.
 
@@ -8,10 +8,10 @@ Examples:
 
 ```python
 bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
-# Result: [[1, 1], [1, 5]], i.e., x x.T
+# Result: [[1., 2], [2, 5]], i.e., x @ x.T
 
-bijector.SoftmaxCentered(event_ndims=2).inverse(y=[[1., 1], [1, 5]])
-# Result: [[1, 0], [2, 1]], i.e., chol(y).
+bijector.CholeskyOuterProduct(event_ndims=2).inverse(y=[[1., 2], [2, 5]])
+# Result: [[1., 0], [2, 1]], i.e., cholesky(y).
 ```
 - - -
 
@@ -25,9 +25,9 @@ Instantiates the `CholeskyOuterProduct` bijector.
 *  <b>`event_ndims`</b>: `constant` `int32` scalar `Tensor` indicating the number of
     dimensions associated with a particular draw from the distribution. Must
     be 0 or 2.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -40,6 +40,13 @@ Instantiates the `CholeskyOuterProduct` bijector.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.dtype` {#CholeskyOuterProduct.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.event_ndims` {#CholeskyOuterProduct.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -274,7 +281,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -282,13 +290,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.CholeskyOuterProduct.name` {#CholeskyOuterProduct.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.CholeskyOuterProduct.shaper` {#CholeskyOuterProduct.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

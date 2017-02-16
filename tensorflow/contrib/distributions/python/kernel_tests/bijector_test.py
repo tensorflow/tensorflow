@@ -97,7 +97,7 @@ def assert_scalar_congruency(bijector,
   """
 
   # Checks and defaults.
-  assert bijector.shaper is None or bijector.shaper.event_ndims.eval() == 0
+  assert bijector.event_ndims.eval() == 0
   if sess is None:
     sess = ops.get_default_session()
 
@@ -235,12 +235,50 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
 class BaseBijectorTest(test.TestCase):
   """Tests properties of the Bijector base-class."""
 
-  def testBijector(self):
+  def testIsAbstract(self):
     with self.test_session():
       with self.assertRaisesRegexp(TypeError,
                                    ("Can't instantiate abstract class Bijector "
                                     "with abstract methods __init__")):
         bijectors.Bijector()
+
+  def testDefaults(self):
+    class _BareBonesBijector(bijectors.Bijector):
+      """Minimal specification of a `Bijector`."""
+
+      def __init__(self):
+        super(_BareBonesBijector, self).__init__()
+
+    with self.test_session() as sess:
+      bij = _BareBonesBijector()
+      self.assertEqual(None, bij.event_ndims)
+      self.assertEqual([], bij.graph_parents)
+      self.assertEqual(False, bij.is_constant_jacobian)
+      self.assertEqual(False, bij.validate_args)
+      self.assertEqual(None, bij.dtype)
+      self.assertEqual("bare_bones_bijector", bij.name)
+
+      for shape in [[], [1, 2], [1, 2, 3]]:
+        [
+            forward_event_shape_,
+            inverse_event_shape_,
+        ] = sess.run([
+            bij.inverse_event_shape_tensor(shape),
+            bij.forward_event_shape_tensor(shape),
+        ])
+        self.assertAllEqual(shape, forward_event_shape_)
+        self.assertAllEqual(shape, bij.forward_event_shape(shape))
+        self.assertAllEqual(shape, inverse_event_shape_)
+        self.assertAllEqual(shape, bij.inverse_event_shape(shape))
+
+      for fn in ["forward",
+                 "inverse",
+                 "inverse_log_det_jacobian",
+                 "inverse_and_inverse_log_det_jacobian",
+                 "forward_log_det_jacobian"]:
+        with self.assertRaisesRegexp(
+            NotImplementedError, fn + " not implemented"):
+          getattr(bij, fn)(0)
 
 
 class IntentionallyMissingError(Exception):
@@ -255,7 +293,6 @@ class BrokenBijectorWithInverseAndInverseLogDetJacobian(bijectors.Bijector):
 
   def __init__(self, forward_missing=False, inverse_missing=False):
     super(BrokenBijectorWithInverseAndInverseLogDetJacobian, self).__init__(
-        batch_ndims=0,
         event_ndims=0,
         validate_args=False,
         name="BrokenBijectorDual")
@@ -287,7 +324,7 @@ class BrokenBijectorSeparateInverseAndInverseLogDetJacobian(bijectors.Bijector):
 
   def __init__(self, forward_missing=False, inverse_missing=False):
     super(BrokenBijectorSeparateInverseAndInverseLogDetJacobian, self).__init__(
-        batch_ndims=0, event_ndims=0, validate_args=False, name="broken")
+        event_ndims=0, validate_args=False, name="broken")
     self._forward_missing = forward_missing
     self._inverse_missing = inverse_missing
 
@@ -641,7 +678,7 @@ class AffineBijectorTest(test.TestCase):
         # Corresponds to scale = 2
         bijector = bijectors.Affine(
             shift=mu, scale_identity_multiplier=2., event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
@@ -663,7 +700,7 @@ class AffineBijectorTest(test.TestCase):
         mu = -1.
         # Corresponds to scale = 2
         bijector = bijectors.Affine(shift=mu, scale_diag=[2.], event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
@@ -686,7 +723,7 @@ class AffineBijectorTest(test.TestCase):
         # Corresponds to scale = 2.
         bijector = bijectors.Affine(
             shift=mu, scale_identity_multiplier=2., event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [[1., 2, 3], [4, 5, 6]]  # Weird sample shape.
         self.assertAllClose([[1., 3, 5],
                              [7, 9, 11]],
@@ -713,7 +750,7 @@ class AffineBijectorTest(test.TestCase):
         # One batch, scalar.
         # Corresponds to scale = 1.
         bijector = bijectors.Affine(shift=mu, event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1.]  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
         self.assertAllClose([0.], run(bijector.inverse, x))
@@ -735,7 +772,7 @@ class AffineBijectorTest(test.TestCase):
         # One batch, scalar.
         # Corresponds to scale = 1.
         bijector = bijectors.Affine(shift=mu, scale_diag=[1.], event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1.]  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
         self.assertAllClose([0.], run(bijector.inverse, x))
@@ -757,7 +794,7 @@ class AffineBijectorTest(test.TestCase):
         # Univariate, two batches.
         # Corresponds to scale = 1.
         bijector = bijectors.Affine(shift=mu, event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1., 1]  # One sample from each of two batches.
         self.assertAllClose([2., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
@@ -779,7 +816,7 @@ class AffineBijectorTest(test.TestCase):
         # Univariate, two batches.
         # Corresponds to scale = 1.
         bijector = bijectors.Affine(shift=mu, scale_diag=[1.], event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
         x = [1., 1]  # One sample from each of two batches.
         self.assertAllClose([2., 0], run(bijector.forward, x))
         self.assertAllClose([0., 2], run(bijector.inverse, x))
@@ -801,7 +838,7 @@ class AffineBijectorTest(test.TestCase):
         # Multivariate
         # Corresponds to scale = [[1., 0], [0, 1.]]
         bijector = bijectors.Affine(shift=mu)
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 1]
         # matmul(sigma, x) + shift
         # = [-1, -1] + [1, -1]
@@ -832,7 +869,7 @@ class AffineBijectorTest(test.TestCase):
         # Multivariate
         # Corresponds to scale = [[2., 0], [0, 1.]]
         bijector = bijectors.Affine(shift=mu, scale_diag=[2., 1])
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 1]
         # matmul(sigma, x) + shift
         # = [-1, -1] + [1, -1]
@@ -875,7 +912,7 @@ class AffineBijectorTest(test.TestCase):
 
       bijector = bijectors.Affine(
           shift=mu, scale_diag=scale_diag, event_ndims=event_ndims)
-      self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
+      self.assertEqual(1, sess.run(bijector.event_ndims, feed_dict))
       self.assertAllClose([[3., 1]], sess.run(bijector.forward(x), feed_dict))
       self.assertAllClose([[0., 1]], sess.run(bijector.inverse(x), feed_dict))
       self.assertAllClose(
@@ -898,7 +935,7 @@ class AffineBijectorTest(test.TestCase):
         # Corresponds to 1 2x2 matrix, with twos on the diagonal.
         scale = 2.
         bijector = bijectors.Affine(shift=mu, scale_identity_multiplier=scale)
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [[[1., 1]]]
         self.assertAllClose([[[3., 1]]], run(bijector.forward, x))
         self.assertAllClose([[[0., 1]]], run(bijector.inverse, x))
@@ -921,7 +958,7 @@ class AffineBijectorTest(test.TestCase):
         # Corresponds to 1 2x2 matrix, with twos on the diagonal.
         scale_diag = [[2., 2]]
         bijector = bijectors.Affine(shift=mu, scale_diag=scale_diag)
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [[[1., 1]]]
         self.assertAllClose([[[3., 1]]], run(bijector.forward, x))
         self.assertAllClose([[[0., 1]]], run(bijector.inverse, x))
@@ -949,7 +986,7 @@ class AffineBijectorTest(test.TestCase):
 
       bijector = bijectors.Affine(
           shift=mu, scale_diag=scale_diag, event_ndims=event_ndims)
-      self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
+      self.assertEqual(1, sess.run(bijector.event_ndims, feed_dict))
       self.assertAllClose([[[3., 1]]], sess.run(bijector.forward(x), feed_dict))
       self.assertAllClose([[[0., 1]]], sess.run(bijector.inverse(x), feed_dict))
       self.assertAllClose([-math.log(4)],
@@ -975,7 +1012,7 @@ class AffineBijectorTest(test.TestCase):
             scale_identity_multiplier=1.,
             scale_diag=[1.],
             event_ndims=0)
-        self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Three scalar samples (no batches).
         self.assertAllClose([1., 3, 5], run(bijector.forward, x))
         self.assertAllClose([1., 1.5, 2.], run(bijector.inverse, x))
@@ -1000,7 +1037,7 @@ class AffineBijectorTest(test.TestCase):
             shift=mu,
             scale_identity_multiplier=1.,
             scale_tril=[[1., 0], [2., 1]])
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 5]], run(bijector.forward, x))
         self.assertAllClose([[1., 0.5]], run(bijector.inverse, x))
@@ -1023,7 +1060,7 @@ class AffineBijectorTest(test.TestCase):
         # scale = [[2., 0], [2, 3]]
         bijector = bijectors.Affine(
             shift=mu, scale_diag=[1., 2.], scale_tril=[[1., 0], [2., 1]])
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[1., 7]], run(bijector.forward, x))
         self.assertAllClose([[1., 1 / 3.]], run(bijector.inverse, x))
@@ -1049,7 +1086,7 @@ class AffineBijectorTest(test.TestCase):
             scale_identity_multiplier=1.0,
             scale_diag=[1., 2.],
             scale_tril=[[1., 0], [2., 1]])
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [[1., 2]]  # One multivariate sample.
         self.assertAllClose([[2., 9]], run(bijector.forward, x))
         self.assertAllClose([[2 / 3., 5 / 12.]], run(bijector.inverse, x))
@@ -1079,7 +1116,7 @@ class AffineBijectorTest(test.TestCase):
                                   [0, 1]])
         bijector_ref = bijectors.Affine(shift=mu, scale_diag=[10., 2, 3])
 
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
         self.assertAllClose([9., 3, 8], run(bijector.forward, x))
         self.assertAllClose(
@@ -1117,7 +1154,7 @@ class AffineBijectorTest(test.TestCase):
                                   [0, 1]])
         bijector_ref = bijectors.Affine(shift=mu, scale_diag=[10., 3, 5])
 
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
         self.assertAllClose([9., 5, 14], run(bijector.forward, x))
         self.assertAllClose(
@@ -1159,7 +1196,7 @@ class AffineBijectorTest(test.TestCase):
                                   [1, 3, 0],
                                   [2, 3, 5]])
 
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
         self.assertAllClose([9., 6, 22], run(bijector.forward, x))
         self.assertAllClose(
@@ -1195,7 +1232,7 @@ class AffineBijectorTest(test.TestCase):
         bijector_ref = bijectors.Affine(
             shift=mu, scale_tril=[[6., 0, 0], [1, 3, 0], [2, 3, 5]])
 
-        self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
+        self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.
         self.assertAllClose([5., 6, 22], run(bijector.forward, x))
         self.assertAllClose(
@@ -1602,7 +1639,7 @@ class SigmoidCenteredBijectorTest(test.TestCase):
 
 
 class CholeskyOuterProductBijectorTest(test.TestCase):
-  """Tests the correctness of the Y = X * X^T transformation."""
+  """Tests the correctness of the Y = X @ X.T transformation."""
 
   def testBijectorMatrix(self):
     with self.test_session():
@@ -1660,6 +1697,72 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
       bijector = bijectors.CholeskyOuterProduct(
           event_ndims=0, validate_args=True)
       assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
+
+  def testNoBatchStatic(self):
+    x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
+    y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual])
+    self.assertAllEqual([2, 2], y_actual.get_shape())
+    self.assertAllEqual([2, 2], x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
+
+  def testNoBatchDeferred(self):
+    x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
+    y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      x_pl = array_ops.placeholder(dtypes.float32)
+      y_pl = array_ops.placeholder(dtypes.float32)
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x_pl)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y_pl)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual],
+                                      feed_dict={x_pl: x, y_pl: y})
+    self.assertEqual(None, y_actual.get_shape())
+    self.assertEqual(None, x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
+
+  def testBatchStatic(self):
+    x = np.array([[[1., 0],
+                   [2, 1]],
+                  [[3., 0],
+                   [1, 2]]])  # np.linalg.cholesky(y)
+    y = np.array([[[1., 2],
+                   [2, 5]],
+                  [[9., 3],
+                   [3, 5]]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual])
+    self.assertEqual([2, 2, 2], y_actual.get_shape())
+    self.assertEqual([2, 2, 2], x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
+
+  def testBatchDeferred(self):
+    x = np.array([[[1., 0],
+                   [2, 1]],
+                  [[3., 0],
+                   [1, 2]]])  # np.linalg.cholesky(y)
+    y = np.array([[[1., 2],
+                   [2, 5]],
+                  [[9., 3],
+                   [3, 5]]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      x_pl = array_ops.placeholder(dtypes.float32)
+      y_pl = array_ops.placeholder(dtypes.float32)
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x_pl)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y_pl)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual],
+                                      feed_dict={x_pl: x, y_pl: y})
+    self.assertEqual(None, y_actual.get_shape())
+    self.assertEqual(None, x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
 
 
 class ChainBijectorTest(test.TestCase):
@@ -1761,6 +1864,14 @@ class InvertBijectorTest(test.TestCase):
       self.assertAllEqual(
           x.as_list(),
           bijector.inverse_event_shape_tensor(y.as_list()).eval())
+
+  def testDocstringExample(self):
+    with self.test_session():
+      exp_gamma_distribution = ds.TransformedDistribution(
+          distribution=ds.Gamma(concentration=1., rate=2.),
+          bijector=bijectors.Invert(bijectors.Exp()))
+      self.assertAllEqual(
+          [], array_ops.shape(exp_gamma_distribution.sample()).eval())
 
 
 if __name__ == "__main__":

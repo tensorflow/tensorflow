@@ -60,6 +60,14 @@ TEST(TensorUtil, DeepCopy0d) {
   EXPECT_EQ(DT_FLOAT, z.dtype());
 }
 
+TEST(TensorUtil, DeepCopyZeroElements) {
+  Tensor x;
+  Tensor y = tensor::DeepCopy(x);
+  EXPECT_EQ(TensorShape({0}), y.shape());
+  EXPECT_EQ(DT_FLOAT, y.dtype());
+  EXPECT_EQ(0, y.NumElements());
+}
+
 TEST(TensorUtil, DeepCopy) {
   Tensor x(DT_FLOAT, TensorShape({1}));
   x.flat<float>()(0) = 10.0;

@@ -3,19 +3,11 @@
 # Training (contrib)
 [TOC]
 
-Training and input utilities.
-
-## Splitting sequence inputs into minibatches with state saving
-
-Use [`SequenceQueueingStateSaver`](#SequenceQueueingStateSaver) or
-its wrapper [`batch_sequences_with_states`](#batch_sequences_with_states) if
-you have input data with a dynamic primary time / frame count axis which
-you'd like to convert into fixed size segments during minibatching, and would
-like to store state in the forward direction across segments of an example.
+Training and input utilities. See @{$python/contrib.training} guide.
 
 - - -
 
-### `tf.contrib.training.batch_sequences_with_states(input_key, input_sequences, input_context, input_length, initial_states, num_unroll, batch_size, num_threads=3, capacity=1000, allow_small_batch=True, pad=True, name=None)` {#batch_sequences_with_states}
+### `tf.contrib.training.batch_sequences_with_states(input_key, input_sequences, input_context, input_length, initial_states, num_unroll, batch_size, num_threads=3, capacity=1000, allow_small_batch=True, pad=True, make_keys_unique=False, make_keys_unique_seed=None, name=None)` {#batch_sequences_with_states}
 
 Creates batches of segments of sequential input.
 
@@ -103,7 +95,11 @@ while True:
     input example.  This is used to keep track of the split minibatch elements
     of this input.  Batched keys of the current iteration are made
     accessible via the `key` property.  The shape of `input_key` (scalar) must
-    be fully specified.
+    be fully specified.  Consider setting `make_keys_unique` to True when
+    iterating over the same input multiple times.
+
+    **Note**: if `make_keys_unique=False` then `input_key`s must be unique.
+
 *  <b>`input_sequences`</b>: A dict mapping string names to `Tensor` values.  The values
     must all have matching first dimension, called `value_length`. They may
     vary from input to input. The remainder of the shape (other than the first
@@ -158,6 +154,11 @@ while True:
     `num_unroll`. In that case `input_length` may be `None` and is assumed to
     be the length of first dimension of values in `input_sequences`
     (i.e. `value_length`).
+*  <b>`make_keys_unique`</b>: Whether to append a random integer to the `input_key` in
+    an effort to make it unique. The seed can be set via
+    `make_keys_unique_seed`.
+*  <b>`make_keys_unique_seed`</b>: If `make_keys_unique=True` this fixes the seed with
+    which a random postfix is generated.
 *  <b>`name`</b>: An op name string (optional).
 
 ##### Returns:
@@ -719,25 +720,6 @@ It should be run in a separate thread via e.g. a `QueueRunner`.
 
 
 
-
-
-## Online data resampling
-
-To resample data with replacement on a per-example basis, use
-['rejection_sample'](#rejection_sample) or
-['resample_at_rate'](#resample_at_rate). For `rejection_sample`, provide
-a boolean Tensor describing whether to accept or reject. Resulting batch sizes
-are always the same. For `resample_at_rate`, provide the desired rate for each
-example. Resulting batch sizes may vary. If you wish to specify relative
-rates, rather than absolute ones, use ['weighted_resample'](#weighted_resample)
-(which also returns the actual resampling rate used for each output example).
-
-Use ['stratified_sample'](#stratified_sample) to resample without replacement
-from the data to achieve a desired mix of class proportions that the Tensorflow
-graph sees. For instance, if you have a binary classification dataset that is
-99.9% class 1, a common approach is to resample from the data so that the data
-is more balanced.
-
 - - -
 
 ### `tf.contrib.training.rejection_sample(tensors, accept_prob_fn, batch_size, queue_threads=1, enqueue_many=False, prebatch_capacity=16, prebatch_threads=1, runtime_checks=False, name=None)` {#rejection_sample}
@@ -925,15 +907,6 @@ rate of selection across all inputs (and many invocations!) is
     possibly zero) first dimension.
   A tensor containing the effective resampling rate used for each output.
 
-
-
-## Bucketing
-
-Use ['bucket'](#bucket) or
-['bucket_by_sequence_length'](#bucket_by_sequence_length) to stratify
-minibatches into groups ("buckets").  Use `bucket_by_sequence_length`
-with the argument `dynamic_pad=True` to receive minibatches of similarly
-sized sequences for efficient training via `dynamic_rnn`.
 
 - - -
 

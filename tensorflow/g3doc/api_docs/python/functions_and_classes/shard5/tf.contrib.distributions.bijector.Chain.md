@@ -40,10 +40,10 @@ Instantiates `Chain` bijector.
 
 *  <b>`bijectors`</b>: Python list of bijector instances. An empty list makes this
     bijector equivalent to the `Identity` bijector.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object. Default: E.g.,
-    `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object. Default:
+    E.g., `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
 
 ##### Raises:
 
@@ -63,6 +63,13 @@ Instantiates `Chain` bijector.
 #### `tf.contrib.distributions.bijector.Chain.dtype` {#Chain.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Chain.event_ndims` {#Chain.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -297,7 +304,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -305,13 +313,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Chain.name` {#Chain.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Chain.shaper` {#Chain.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

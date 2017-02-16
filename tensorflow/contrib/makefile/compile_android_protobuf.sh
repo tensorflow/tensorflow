@@ -165,7 +165,7 @@ CXXFLAGS="-frtti -fexceptions ${march_option} \
 -I${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/include \
 -I${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}/include" \
 LDFLAGS="-L${NDK_ROOT}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ARCHITECTURE}" \
-LIBS="-lz -lgnustl_static"
+LIBS="-llog -lz -lgnustl_static"
 
 if [ $? -ne 0 ]
 then

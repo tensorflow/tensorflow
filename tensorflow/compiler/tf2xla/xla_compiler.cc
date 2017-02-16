@@ -256,24 +256,12 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   std::unique_ptr<Executor> exec(exec_ptr);
   // At this point ownership of the graph has been transferred to exec.
 
-  auto runner = [](Executor::Args::Closure c) {
-    // TODO(misard) Temporarily just schedule c eagerly while we
-    // decide what to do about the fact that the ComputationBuilder is
-    // thread-compatible, but we don't really want Op writers to have
-    // to remember to acquire a lock around every call to
-    // ComputationBuilder. One possibility is to add the (generally
-    // useful) ability to run a single-threaded Executor based on an
-    // option in LocalExecutorParams. Another is to automagically
-    // acquire a lock around ComputationBuilder calls using some
-    // wrapper or RAII funny business.
-    c();
-  };
-
   // Run the graph symbolically, turning the graph into an XLA computation.
   Executor::Args exec_args;
   exec_args.step_id = step_id;
   exec_args.step_container = step_container.get();
-  exec_args.runner = runner;
+  // Run all compilation kernels on the main thread.
+  exec_args.runner = [](Executor::Args::Closure c) { c(); };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       exec->Run(exec_args),
       "Conversion from TensorFlow graph to XLA computation failed.");
@@ -281,6 +269,109 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
   return cleanup_status;
+}
+
+// Builds XLA computations for each of the arguments to the computation.
+// `args` are the arguments to the computation. If `use_tuple_arg` is true, a
+// single tuple parameter will be used for all arguments; if false, each
+// argument gets its own parameter.
+Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
+                      bool use_tuple_arg, xla::ComputationBuilder* builder,
+                      std::vector<XlaContext::HandleOrConstant>* context_args) {
+  context_args->resize(args.size());
+
+  // Computes the number of parameters, verifies that they are sequential
+  // starting from 0.
+  int num_parameters = 0;
+  for (int i = 0; i < args.size(); ++i) {
+    (*context_args)[i].is_constant = (args[i].parameter < 0);
+    (*context_args)[i].constant_value = args[i].constant_value;
+
+    if (args[i].parameter < 0) continue;
+    if (num_parameters != args[i].parameter) {
+      return errors::InvalidArgument(
+          "Parameter numbers to XLA compilation are not consecutive starting "
+          "from 0");
+    }
+    ++num_parameters;
+
+    if (args[i].shape.num_elements() == 0) {
+      return errors::InvalidArgument(
+          "Non-constant argument must have a non-zero number of elements.");
+    }
+  }
+  if (num_parameters == 0) return Status::OK();
+
+  std::vector<xla::Shape> parameter_shapes(num_parameters);
+  for (int i = 0; i < args.size(); ++i) {
+    const XlaCompiler::Argument& arg = args[i];
+    if (arg.parameter < 0) continue;
+    // Computes the shapes of non-constant arguments.
+    xla::PrimitiveType type;
+    TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(arg.type, &type));
+    xla::ShapeUtil::PopulateShape(type, arg.shape.dim_sizes(),
+                                  &parameter_shapes[arg.parameter]);
+  }
+
+  if (use_tuple_arg && num_parameters > 0) {
+    xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(parameter_shapes);
+    xla::ComputationDataHandle tuple =
+        builder->Parameter(0, tuple_shape, "arg_tuple");
+    for (int i = 0; i < args.size(); ++i) {
+      const XlaCompiler::Argument& arg = args[i];
+      if (arg.parameter < 0) continue;
+      (*context_args)[i].handle =
+          builder->GetTupleElement(tuple, arg.parameter);
+    }
+  } else {
+    for (int i = 0; i < args.size(); ++i) {
+      const XlaCompiler::Argument& arg = args[i];
+      if (arg.parameter < 0) continue;
+      (*context_args)[i].handle =
+          builder->Parameter(arg.parameter, parameter_shapes[arg.parameter],
+                             strings::StrCat("arg", i));
+    }
+  }
+  return Status::OK();
+}
+
+// Builds the XLA computation. `retvals` is the list of retvals produced by
+// _Retval operators, in index order. `has_side_effects` should be true if the
+// computation has side effects and should be built even if it has no outputs.
+// `num_nonconst_outputs` is set to the number of outputs of the `computation`.
+Status BuildComputation(
+    const std::vector<XlaContext::HandleOrConstant>& retvals,
+    bool has_side_effects, xla::ComputationBuilder* builder,
+    xla::Computation* computation, int* num_nonconst_outputs) {
+  std::vector<xla::ComputationDataHandle> elems;
+  elems.reserve(retvals.size());
+  for (const XlaContext::HandleOrConstant& retval : retvals) {
+    if (!retval.is_constant) {
+      elems.push_back(retval.handle);
+    }
+  }
+
+  if (!elems.empty() || has_side_effects) {
+    // Builds a empty tuple return value for computations that have side effects
+    // but have no return values.
+    xla::ComputationDataHandle handle = builder->Tuple(elems);
+
+    // TODO(b/31775371): to workaround bug, we must build a no-op computation
+    // that is guaranteed to be constructed after all of the formal parameters
+    // to the computation. Once the bug is fixed, we could avoid tupling here.
+    if (elems.size() == 1) {
+      handle = builder->GetTupleElement(handle, 0);
+    }
+
+    // Builds the XLA computation.
+    xla::StatusOr<xla::Computation> computation_status = builder->Build();
+    if (!computation_status.ok()) {
+      return computation_status.status();
+    }
+    *computation = computation_status.ConsumeValueOrDie();
+  }
+  *num_nonconst_outputs = elems.size();
+  return Status::OK();
 }
 
 }  // namespace
@@ -304,41 +395,41 @@ Status XlaCompiler::CompileGraph(string const& name,
         args[i].type, args[i].shape, &result->xla_input_shapes.back().second));
   }
 
-  XlaContext* xla_context =
-      new XlaContext(this, client(), name, allow_cpu_custom_calls_,
-                     resolve_compile_time_constants_);
-  core::ScopedUnref xla_context_unref(xla_context);
+  xla::ComputationBuilder builder(client(), name);
 
-  TF_RETURN_IF_ERROR(xla_context->BuildArguments(args, use_tuple_arg));
+  XlaContext* context = new XlaContext(this, &builder, allow_cpu_custom_calls_,
+                                       resolve_compile_time_constants_);
+  core::ScopedUnref context_unref(context);
+
+  std::vector<XlaContext::HandleOrConstant> context_args;
+  TF_RETURN_IF_ERROR(
+      BuildArguments(args, use_tuple_arg, &builder, &context_args));
+  context->set_args(std::move(context_args));
 
   TF_RETURN_IF_ERROR(
-      ExecuteGraph(xla_context, std::move(graph), device_, flib, NextStepId()));
+      ExecuteGraph(context, std::move(graph), device_, flib, NextStepId()));
 
-  std::vector<XlaContext::ConstRetVal> compile_time_constants;
   int num_nonconst_outputs;
-  TF_RETURN_IF_ERROR(xla_context->CollectResults(
-      &result->computation, &result->requires_runtime_context,
-      &compile_time_constants, &num_nonconst_outputs));
+  TF_RETURN_IF_ERROR(
+      BuildComputation(context->retvals(), context->has_side_effects(),
+                       &builder, &result->computation, &num_nonconst_outputs));
 
-  VLOG(2) << "Outputs: constant: " << compile_time_constants.size()
+  result->requires_runtime_context = context->has_context_parameter();
+
+  // Tuple arguments and runtime context parameters are incompatible.
+  CHECK(!(use_tuple_arg && result->requires_runtime_context));
+
+  VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
-  result->outputs.resize(compile_time_constants.size() + num_nonconst_outputs);
-  for (const auto& c : compile_time_constants) {
-    if (!c.status.ok()) {
-      Status constant_status = c.status;
-      errors::AppendToMessage(&constant_status,
-                              "Failed evaluating constant XLA return "
-                              "value ",
-                              c.index);
-      return constant_status;
+  result->outputs.resize(context->retvals().size());
+  for (int i = 0; i < context->retvals().size(); ++i) {
+    const XlaContext::HandleOrConstant& retval = context->retvals()[i];
+    if (retval.is_constant) {
+      OutputDescription& output = result->outputs[i];
+      output.shape = retval.constant_value.shape();
+      output.is_constant = true;
+      output.constant_value = retval.constant_value;
     }
-    if (c.index >= result->outputs.size()) {
-      return errors::InvalidArgument("Invalid argument index ", c.index);
-    }
-    OutputDescription& output = result->outputs[c.index];
-    output.shape = c.value.shape();
-    output.is_constant = true;
-    output.constant_value = c.value;
   }
 
   if (result->computation.IsNull()) {
@@ -375,16 +466,18 @@ Status XlaCompiler::CompileGraph(string const& name,
 
   // Converts the output shapes to TensorShapes.
   int computation_output = 0;
-  for (int i = 0; i < result->outputs.size(); ++i) {
-    if (!result->outputs[i].is_constant) {
+  for (int i = 0; i < context->retvals().size(); ++i) {
+    const XlaContext::HandleOrConstant& retval = context->retvals()[i];
+    if (!retval.is_constant) {
       CHECK_LT(computation_output, num_non_constant_outputs);
+      OutputDescription& output = result->outputs[i];
+      output.is_constant = false;
       if (num_non_constant_outputs > 1) {
-        result->outputs[i].shape =
+        output.shape =
             XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
                 result->xla_output_shape, computation_output));
       } else {
-        result->outputs[i].shape =
-            XLAShapeToTensorShape(result->xla_output_shape);
+        output.shape = XLAShapeToTensorShape(result->xla_output_shape);
       }
       ++computation_output;
     }

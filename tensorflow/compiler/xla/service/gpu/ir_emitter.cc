@@ -54,12 +54,10 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
     : ir_emitter_context_(ir_emitter_context),
       ir_builder_(ir_emitter_context->llvm_module()->getContext()),
       bindings_(ir_emitter_context->hlo_module(),
-                &ir_emitter_context->buffer_assignment(),
-                &ir_emitter_context->temp_buffer_offsets(), &ir_builder_,
+                &ir_emitter_context->buffer_assignment(), &ir_builder_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  ir_builder_.setFastMathFlags(
-      llvm_ir::GetFastMathFlags(hlo_module_config.compilation_options()));
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
@@ -100,7 +98,7 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   // sometimes, e.g., when it's operand is a constant or a bitcast of a
   // constant.
   if (bindings_.BoundToIrValue(*operand)) {
-    bindings_.BindHloToIrValue(*bitcast, bindings_.GetBasePointer(*operand));
+    bindings_.BindHloToIrValue(*bitcast, GetBasePointer(*operand));
   }
   return Status::OK();
 }

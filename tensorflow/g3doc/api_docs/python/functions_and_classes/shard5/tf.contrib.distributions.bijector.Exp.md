@@ -1,11 +1,11 @@
-Bijector which computes Y = g(X) = exp(X).
+Compute `Y = g(X) = exp(X)`.
 
 Example Use:
 
 ```python
 # Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
 # batch ndim and 2 event ndims (i.e., vector of matrices).
-exp = Exp(batch_ndims=1, event_ndims=2)
+exp = Exp(event_ndims=2)
 x = [[[1., 2],
        [3, 4]],
       [[5, 6],
@@ -27,9 +27,9 @@ Instantiates the `Exp` bijector.
 
 *  <b>`event_ndims`</b>: Scalar `int32` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 
 - - -
@@ -37,6 +37,13 @@ Instantiates the `Exp` bijector.
 #### `tf.contrib.distributions.bijector.Exp.dtype` {#Exp.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Exp.event_ndims` {#Exp.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -271,7 +278,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -286,13 +294,6 @@ Returns the string name of this `Bijector`.
 #### `tf.contrib.distributions.bijector.Exp.power` {#Exp.power}
 
 The `c` in: `Y = g(X) = (1 + X * c)**(1 / c)`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Exp.shaper` {#Exp.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

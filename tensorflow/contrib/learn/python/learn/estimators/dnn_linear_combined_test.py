@@ -241,6 +241,26 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
           dnn_feature_columns=None,
           dnn_hidden_units=[3, 3])
 
+  def testNoDnnHiddenUnits(self):
+    def _input_fn():
+      return {
+          'age':
+              constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[1]])
+
+    language = feature_column.sparse_column_with_hash_bucket('language', 100)
+    age = feature_column.real_valued_column('age')
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'dnn_hidden_units must be defined when dnn_feature_columns is specified'):
+      classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        dnn_feature_columns=[age, language])
+      classifier.fit(input_fn=_input_fn, steps=2)
+
   def testEmbeddingMultiplier(self):
     embedding_language = feature_column.embedding_column(
         feature_column.sparse_column_with_hash_bucket('language', 10),

@@ -588,6 +588,7 @@ REGISTER_OP_GRADIENT("Mean", MeanGrad);
 // REGISTER_OP_GRADIENT("SegmentMin", SegmentMinGrad);
 // REGISTER_OP_GRADIENT("SegmentMax", SegmentMaxGrad);
 // REGISTER_OP_GRADIENT("UnsortedSegmentSum", UnsortedSegmentSumGrad);
+// REGISTER_OP_GRADIENT("UnsortedSegmentMax", UnsortedSegmentMaxGrad);
 
 Status MinMaxGradHelper(const string& op, const AttrSlice& attrs,
                         FunctionDef* g) {

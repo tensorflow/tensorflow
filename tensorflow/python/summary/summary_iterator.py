@@ -44,18 +44,6 @@ class SummaryWriter(object):
   file contents asynchronously. This allows a training program to call methods
   to add data to the file directly from the training loop, without slowing down
   training.
-
-  @@__init__
-
-  @@add_summary
-  @@add_session_log
-  @@add_event
-  @@add_graph
-  @@add_run_metadata
-  @@get_logdir
-
-  @@flush
-  @@close
   """
 
   def __init__(self, logdir, graph=None, max_queue=10, flush_secs=120,
@@ -136,8 +124,8 @@ class SummaryWriter(object):
     and adds it to the event file.
 
     You can pass the result of evaluating any summary op, using
-    [`Session.run()`](client.md#Session.run) or
-    [`Tensor.eval()`](framework.md#Tensor.eval), to this
+    @{tf.Session.run} or
+    @{tf.Tensor.eval}, to this
     function. Alternatively, you can pass a `tf.Summary` protocol
     buffer that you populate with your own data. The latter is
     commonly done to report evaluation results in event files.

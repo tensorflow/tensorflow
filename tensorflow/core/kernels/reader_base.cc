@@ -65,7 +65,7 @@ Status ReaderBase::RestoreState(const string& state) {
   mutex_lock lock(mu_);
   Status status = RestoreStateLocked(state);
   if (!status.ok()) {
-    ResetLocked();
+    ResetLocked().IgnoreError();
   }
   return status;
 }

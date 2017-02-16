@@ -3,16 +3,7 @@
 # Training
 [TOC]
 
-This library provides a set of classes and functions that helps train models.
-
-## Optimizers
-
-The Optimizer base class provides methods to compute gradients for a loss and
-apply gradients to variables.  A collection of subclasses implement classic
-optimization algorithms such as GradientDescent and Adagrad.
-
-You never instantiate the Optimizer class itself, but instead instantiate one
-of the subclasses.
+Support for training models.  See the @{$python/train} guide.
 
 - - -
 
@@ -284,7 +275,6 @@ Use `get_slot_names()` to get the list of slot names created by the
 
 
 
-
 - - -
 
 ### `class tf.train.GradientDescentOptimizer` {#GradientDescentOptimizer}
@@ -316,7 +306,6 @@ Optimizer that implements the Adadelta algorithm.
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
 ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
-
 - - -
 
 #### `tf.train.AdadeltaOptimizer.__init__(learning_rate=0.001, rho=0.95, epsilon=1e-08, use_locking=False, name='Adadelta')` {#AdadeltaOptimizer.__init__}
@@ -335,6 +324,160 @@ Construct a new Adadelta optimizer.
     gradients.  Defaults to "Adadelta".
 
 
+- - -
+
+#### `tf.train.AdadeltaOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdadeltaOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdadeltaOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.get_name()` {#AdadeltaOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.get_slot(var, name)` {#AdadeltaOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.get_slot_names()` {#AdadeltaOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdadeltaOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
+
+
 
 - - -
 
@@ -342,8 +485,9 @@ Construct a new Adadelta optimizer.
 
 Optimizer that implements the Adagrad algorithm.
 
-See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
-
+See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
+or this
+[intro](http://cs.stanford.edu/~ppasupat/a9online/uploads/proximal_notes.pdf).
 - - -
 
 #### `tf.train.AdagradOptimizer.__init__(learning_rate, initial_accumulator_value=0.1, use_locking=False, name='Adagrad')` {#AdagradOptimizer.__init__}
@@ -366,6 +510,160 @@ Construct a new Adagrad optimizer.
 *  <b>`ValueError`</b>: If the `initial_accumulator_value` is invalid.
 
 
+- - -
+
+#### `tf.train.AdagradOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdagradOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdagradOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.get_name()` {#AdagradOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.get_slot(var, name)` {#AdagradOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.get_slot_names()` {#AdagradOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdagradOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
+
+
 
 - - -
 
@@ -383,7 +681,6 @@ AdagradDA is typically used when there is a need for large sparsity in the
 trained model. This optimizer only guarantees sparsity for linear models. Be
 careful when using AdagradDA for deep networks as it will require careful
 initialization of the gradient accumulators for it to train.
-
 - - -
 
 #### `tf.train.AdagradDAOptimizer.__init__(learning_rate, global_step, initial_gradient_squared_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='AdagradDA')` {#AdagradDAOptimizer.__init__}
@@ -410,6 +707,160 @@ Construct a new AdagradDA optimizer.
 
 *  <b>`ValueError`</b>: If the `initial_gradient_squared_accumulator_value` is
   invalid.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdagradDAOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdagradDAOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.get_name()` {#AdagradDAOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.get_slot(var, name)` {#AdagradDAOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.get_slot_names()` {#AdagradDAOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdagradDAOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 
@@ -447,7 +898,6 @@ Optimizer that implements the Adam algorithm.
 
 See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
 ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
-
 - - -
 
 #### `tf.train.AdamOptimizer.__init__(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False, name='Adam')` {#AdamOptimizer.__init__}
@@ -496,6 +946,160 @@ will not update in iterations g is zero.
     Defaults to "Adam".
 
 
+- - -
+
+#### `tf.train.AdamOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdamOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdamOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.get_name()` {#AdamOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.get_slot(var, name)` {#AdamOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.get_slot_names()` {#AdamOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdamOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
+
+
 
 - - -
 
@@ -505,7 +1109,6 @@ Optimizer that implements the FTRL algorithm.
 
 See this [paper](
 https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
 - - -
 
 #### `tf.train.FtrlOptimizer.__init__(learning_rate, learning_rate_power=-0.5, initial_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='Ftrl')` {#FtrlOptimizer.__init__}
@@ -531,6 +1134,160 @@ Construct a new FTRL optimizer.
 
 
 *  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#FtrlOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#FtrlOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.get_name()` {#FtrlOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.get_slot(var, name)` {#FtrlOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.get_slot_names()` {#FtrlOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#FtrlOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 
@@ -633,15 +1390,6 @@ will not update in iterations g is zero.
 
 
 
-
-## Gradient Computation
-
-TensorFlow provides functions to compute the derivatives for a given
-TensorFlow computation graph, adding operations to the graph. The
-optimizer classes automatically compute derivatives on your graph, but
-creators of new Optimizers or expert users can call the lower-level
-functions below.
-
 - - -
 
 ### `tf.gradients(ys, xs, grad_ys=None, name='gradients', colocate_gradients_with_ops=False, gate_gradients=False, aggregation_method=None)` {#gradients}
@@ -708,7 +1456,6 @@ be used to combine gradients in the graph:
    gradients must be ready before any aggregation is performed.
 *  `DEFAULT`: The system-chosen default aggregation method.
 
-
 - - -
 
 ### `tf.stop_gradient(input, name=None)` {#stop_gradient}
@@ -744,7 +1491,6 @@ to pretend that the value was a constant. Some examples include:
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
-
 
 
 - - -
@@ -785,15 +1531,6 @@ tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
 *  <b>`ValueError`</b>: if the arguments are invalid or not supported. Currently,
     this function only supports one-dimensional `x` in `xs`.
 
-
-
-
-## Gradient Clipping
-
-TensorFlow provides several operations that you can use to add clipping
-functions to your graph. You can use these functions to perform general data
-clipping, but they're particularly useful for handling exploding or vanishing
-gradients.
 
 - - -
 
@@ -974,8 +1711,6 @@ Any entries in `t_list` that are of type None are ignored.
 *  <b>`TypeError`</b>: If `t_list` is not a sequence.
 
 
-
-## Decaying the learning rate
 - - -
 
 ### `tf.train.exponential_decay(learning_rate, global_step, decay_steps, decay_rate, staircase=False, name=None)` {#exponential_decay}
@@ -1282,13 +2017,6 @@ learning_step = (
 *  <b>`ValueError`</b>: if `global_step` is not supplied.
 
 
-
-## Moving Averages
-
-Some training algorithms, such as GradientDescent and Momentum often benefit
-from maintaining a moving average of variables during optimization.  Using the
-moving averages for evaluations often improve results significantly.
-
 - - -
 
 ### `class tf.train.ExponentialMovingAverage` {#ExponentialMovingAverage}
@@ -1526,14 +2254,6 @@ Below is an example of such mapping:
 
 
 
-
-## Coordinator and QueueRunner
-
-See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
-for how to use threads and queues.  For documentation on the Queue API,
-see [Queues](../../api_docs/python/io_ops.md#queues).
-
-
 - - -
 
 ### `class tf.train.Coordinator` {#Coordinator}
@@ -1660,7 +2380,7 @@ After this is called, calls to `should_stop()` will return `False`.
 
 - - -
 
-#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120)` {#Coordinator.join}
+#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120, ignore_live_threads=False)` {#Coordinator.join}
 
 Wait for threads to terminate.
 
@@ -1685,6 +2405,8 @@ that `RuntimeError`.
     addition to the registered threads.
 *  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
     `request_stop()` has been called.
+*  <b>`ignore_live_threads`</b>: If `False`, raises an error if any of the threads are
+    still alive after `stop_grace_period_secs`.
 
 ##### Raises:
 
@@ -2257,12 +2979,6 @@ the list of all threads.
 
   A list of threads.
 
-
-
-## Distributed execution
-
-See [Distributed TensorFlow](../../how_tos/distributed/index.md) for
-more information about how to configure a distributed TensorFlow program.
 
 - - -
 
@@ -3759,7 +4475,7 @@ with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
 
 - - -
 
-### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None)` {#MonitoredTrainingSession}
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None, stop_grace_period_secs=120)` {#MonitoredTrainingSession}
 
 Creates a `MonitoredSession` for training.
 
@@ -3796,6 +4512,8 @@ inialize/restore.
     isn't used.
 *  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
     It's the `config` argument of constructor of `tf.Session`.
+*  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
+    `close()` has been called.
 
 ##### Returns:
 
@@ -3887,7 +4605,7 @@ Returns:
 
 - - -
 
-#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None)` {#MonitoredSession.__init__}
+#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None, stop_grace_period_secs=120)` {#MonitoredSession.__init__}
 
 
 
@@ -4003,7 +4721,7 @@ Exit: At the `close()`, the hooked session does following things in order:
 
 - - -
 
-#### `tf.train.SingularMonitoredSession.__init__(hooks=None, scaffold=None, master='', config=None, checkpoint_dir=None)` {#SingularMonitoredSession.__init__}
+#### `tf.train.SingularMonitoredSession.__init__(hooks=None, scaffold=None, master='', config=None, checkpoint_dir=None, stop_grace_period_secs=120)` {#SingularMonitoredSession.__init__}
 
 Creates a SingularMonitoredSession.
 
@@ -4017,6 +4735,8 @@ Creates a SingularMonitoredSession.
 *  <b>`config`</b>: `ConfigProto` proto used to configure the session.
 *  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
     variables.
+*  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
+    `close()` has been called.
 
 
 - - -
@@ -4290,13 +5010,6 @@ Initializes a worker session creator.
 
 
 
-
-## Reading Summaries from Event Files
-
-See [Summaries and
-TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
-overview of summaries, event files, and visualization in TensorBoard.
-
 - - -
 
 ### `tf.train.summary_iterator(path)` {#summary_iterator}
@@ -4341,11 +5054,6 @@ for more information about their attributes.
 
   `Event` protocol buffers.
 
-
-
-## Training Hooks
-
-Hooks are tools that run in the process of training/evaluation of the model.
 
 - - -
 
@@ -4648,7 +5356,6 @@ Alias for field number 0
 #### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
 
 Alias for field number 2
-
 
 
 
@@ -5473,9 +6180,6 @@ such as saving a last checkpoint.
 *  <b>`session`</b>: A TensorFlow Session that will be soon closed.
 
 
-
-
-## Training Utilities
 
 - - -
 

@@ -934,7 +934,7 @@ class BaseEstimator(
       ])
       all_hooks.extend(hooks)
 
-      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
+      scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
       if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
         ops.add_to_collection(
             ops.GraphKeys.SAVERS,
@@ -1156,6 +1156,7 @@ class Estimator(BaseEstimator):
     model_fn_ops = self._call_model_fn(
         features, labels, model_fn_lib.ModeKeys.EVAL)
 
+    features, labels = self._feature_engineering_fn(features, labels)
     # Custom metrics should overwrite defaults.
     if metrics:
       model_fn_ops.eval_metric_ops.update(_make_metrics_ops(

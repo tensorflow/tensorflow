@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class AssertCloseTest(test.TestCase):
@@ -566,7 +567,7 @@ class SoftplusTest(test.TestCase):
           order="F")
       err = gradient_checker.compute_gradient_error(
           x, [2, 5], y, [2, 5], x_init_value=x_init)
-    print("softplus (float) gradient err = ", err)
+    logging.vlog(2, "softplus (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testInverseSoftplusGradientNeverNan(self):

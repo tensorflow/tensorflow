@@ -155,6 +155,35 @@ TEST_F(VecOpsSimpleTest, ReciprocalTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+XLA_TEST_F(VecOpsSimpleTest, SqrtZeroes) {
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.ConstantR1<float>({0.0, -0.0});
+  auto exp = builder.SqrtF32(x);
+
+  ComputeAndCompareR1<float>(&builder, {0, 0}, {}, error_spec_);
+}
+
+XLA_TEST_F(VecOpsSimpleTest, SqrtSixValues) {
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.ConstantR1<float>({16.0, 1.0, 1024.0, 0.16, 0.2, 12345});
+  auto exp = builder.SqrtF32(x);
+
+  std::vector<float> expected = {4, 1, 32, 0.4, 0.4472, 111.1080};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
+  ComputationBuilder builder(client_, TestName());
+  auto x =
+      builder.ConstantR1<float>({16.0, 1.0, 1024.0, 0.16, 0.2, 12345, 1.2345});
+  auto exp = builder.Pow(x, builder.ConstantR0<float>(-.5f));
+
+  std::vector<float> expected = {.25,     1,       .03125, 2.5,
+                                 2.23607, .009000, .900025};
+
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
 TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
   ComputationBuilder builder(client_, TestName());
   auto add = CreateScalarAddComputation(F32, &builder);

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -166,7 +166,8 @@ Status FindCompilationCandidates(
 
     const string* jit_device_name;
     CHECK(XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device_name,
-                                      /*requires_jit=*/nullptr));
+                                      /*requires_jit=*/nullptr,
+                                      /*enable_jit_by_default=*/nullptr));
     DeviceType jit_device_type(*jit_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
@@ -254,7 +255,8 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   Device* device = flr->device();
   const string* jit_device_name;
   CHECK(XlaOpRegistry::GetJitDevice(device->device_type(), &jit_device_name,
-                                    /*requires_jit=*/nullptr));
+                                    /*requires_jit=*/nullptr,
+                                    /*enable_jit_by_default=*/nullptr));
   DeviceType jit_device_type(*jit_device_name);
   return IsCompilableCall(ndef, jit_device_type, 0, flr);
 }
@@ -284,9 +286,9 @@ Status MarkForCompilationPass::Run(
   auto is_compilable = [global_jit_level, fld](const Node* node,
                                                const DeviceType& device_type) {
     const string* jit_device;
-    bool requires_jit;
+    bool requires_jit, enable_jit_by_default;
     if (!XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device,
-                                     &requires_jit)) {
+                                     &requires_jit, &enable_jit_by_default)) {
       return false;
     }
     // If this device requires a JIT, we must say yes.
@@ -301,7 +303,7 @@ Status MarkForCompilationPass::Run(
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
-    return global_jit_level > 0;
+    return enable_jit_by_default && global_jit_level > 0;
   };
   return RunImpl(options, is_compilable);
 }
@@ -510,7 +512,8 @@ Status MarkForCompilationPass::RunImpl(
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(n->assigned_device_name(), &device_type));
     XlaOpRegistry::GetJitDevice(device_type.type(),
-                                /*jit_device_name=*/nullptr, &requires_jit);
+                                /*jit_device_name=*/nullptr, &requires_jit,
+                                /*enable_jit_by_default=*/nullptr);
 
     // Or compile if this is a cluster of >= min_cluster_size compilable
     // operators.

@@ -4,6 +4,7 @@
 package(default_visibility = ["//visibility:private"])
 
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -76,6 +77,7 @@ py_binary(
 filegroup(
     name = "licenses",
     data = [
+        "//:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "@boringssl//:LICENSE",
@@ -92,6 +94,7 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
+        "@nccl_archive//:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
@@ -130,5 +133,5 @@ sh_binary(
             "//tensorflow/python/tools:all_files",
             "//tensorflow/tensorboard",
         ],
-    }),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

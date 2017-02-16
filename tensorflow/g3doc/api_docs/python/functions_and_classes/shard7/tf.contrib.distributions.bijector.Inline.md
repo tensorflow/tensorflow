@@ -1,4 +1,4 @@
-Bijector constructed from callables implementing forward, inverse, and inverse_log_det_jacobian.
+Bijector constructed from custom callables.
 
 Example Use:
 
@@ -7,7 +7,7 @@ exp = Inline(
   forward_fn=tf.exp,
   inverse_fn=tf.log,
   inverse_log_det_jacobian_fn=(
-    lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+    lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
   name="exp")
 ```
 
@@ -35,11 +35,11 @@ Creates a `Bijector` from callables.
     static event shape changes. Default: shape is assumed unchanged.
 *  <b>`inverse_event_shape_tensor_fn`</b>: Python callable implementing non-identical
     event shape changes. Default: shape is assumed unchanged.
-*  <b>`is_constant_jacobian`</b>: `Boolean` indicating that the Jacobian is constant
-    for all input arguments.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object.
+*  <b>`is_constant_jacobian`</b>: Python `bool` indicating that the Jacobian is
+    constant for all input arguments.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object.
 
 
 - - -
@@ -47,6 +47,13 @@ Creates a `Bijector` from callables.
 #### `tf.contrib.distributions.bijector.Inline.dtype` {#Inline.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.Inline.event_ndims` {#Inline.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -281,7 +288,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -289,13 +297,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.Inline.name` {#Inline.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.Inline.shaper` {#Inline.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -

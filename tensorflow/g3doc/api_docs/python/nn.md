@@ -7,16 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Activation Functions.
-
-The activation ops provide different types of nonlinearities for use in neural
-networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
-`softplus`, and `softsign`), continuous but not everywhere differentiable
-functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
-(`dropout`).
-
-All activation ops apply componentwise, and produce a tensor of the same
-shape as the input tensor.
+## Neural network support. See the @{$python/nn} guide.
 
 - - -
 
@@ -241,78 +232,6 @@ Computes hyperbolic tangent of `x` element-wise.
   A Tensor or SparseTensor respectively with the same type as `x` if
   `x.dtype != qint32` otherwise the return type is `quint8`.
 
-
-
-## Convolution
-
-The convolution ops sweep a 2-D filter over a batch of images, applying the
-filter to each window of each image of the appropriate size.  The different
-ops trade off between generic vs. specific filters:
-
-* `conv2d`: Arbitrary filters that can mix channels together.
-* `depthwise_conv2d`: Filters that operate on each channel independently.
-* `separable_conv2d`: A depthwise spatial filter followed by a pointwise filter.
-
-Note that although these ops are called "convolution", they are strictly
-speaking "cross-correlation" since the filter is combined with an input window
-without reversing the filter.  For details, see [the properties of
-cross-correlation](https://en.wikipedia.org/wiki/Cross-correlation#Properties).
-
-The filter is applied to image patches of the same size as the filter and
-strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
-the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
-filter to every other image patch in each dimension, etc.
-
-Ignoring channels for the moment, and assume that the 4-D `input` has shape
-`[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
-`[filter_height, filter_width, ...]`, then the spatial semantics of the
-convolution ops are as follows: first, according to the padding scheme chosen
-as `'SAME'` or `'VALID'`, the output size and the padding pixels are computed.
-For the `'SAME'` padding, the output height and width are computed as:
-
-    out_height = ceil(float(in_height) / float(strides[1]))
-    out_width  = ceil(float(in_width) / float(strides[2]))
-
-and the padding on the top and left are computed as:
-
-    pad_along_height = max((out_height - 1) * strides[1] +
-                        filter_height - in_height, 0)
-    pad_along_width = max((out_width - 1) * strides[2] +
-                       filter_width - in_width, 0)
-    pad_top = pad_along_height // 2
-    pad_bottom = pad_along_height - pad_top
-    pad_left = pad_along_width // 2
-    pad_right = pad_along_width - pad_left
-
-
-Note that the division by 2 means that there might be cases when the padding on
-both sides (top vs bottom, right vs left) are off by one. In this case, the
-bottom and right sides always get the one additional padded pixel. For example,
-when `pad_along_height` is 5, we pad 2 pixels at the top and 3 pixels at the
-bottom. Note that this is different from existing libraries such as cuDNN and
-Caffe, which explicitly specify the number of padded pixels and always pad the
-same number of pixels on both sides.
-
-For the `'VALID`' padding, the output height and width are computed as:
-
-    out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
-    out_width  = ceil(float(in_width - filter_width + 1) / float(strides[2]))
-
-and the padding values are always zero. The output is then computed as
-
-    output[b, i, j, :] =
-        sum_{di, dj} input[b, strides[1] * i + di - pad_top,
-                           strides[2] * j + dj - pad_left, ...] *
-                     filter[di, dj, ...]
-
-where any value outside the original input image region are considered zero (
-i.e. we pad zero values around the border of the image).
-
-Since `input` is 4-D, each `input[b, i, j, :]` is a vector.  For `conv2d`, these
-vectors are multiplied by the `filter[di, dj, :, :]` matrices to produce new
-vectors.  For `depthwise_conv_2d`, each scalar component `input[b, i, j, k]`
-is multiplied by a vector `filter[di, dj, k]`, and all the vectors are
-concatenated.
 
 - - -
 
@@ -1132,22 +1051,6 @@ Computes the gradients of depthwise convolution with respect to the input.
   w.r.t. the input of the convolution.
 
 
-
-## Pooling
-
-The pooling ops sweep a rectangular window over the input tensor, computing a
-reduction operation for each window (average, max, or max with argmax).  Each
-pooling op uses rectangular windows of size `ksize` separated by offset
-`strides`.  For example, if `strides` is all ones every window is used, if
-`strides` is all twos every other window is used in each dimension, etc.
-
-In detail, the output is
-
-    output[i] = reduce(value[strides * i:strides * i + ksize])
-
-where the indices also take into consideration the padding values. Please refer
-to the `Convolution` section for details about the padding calculation.
-
 - - -
 
 ### `tf.nn.avg_pool(value, ksize, strides, padding, data_format='NHWC', name=None)` {#avg_pool}
@@ -1515,44 +1418,6 @@ simply transposed as follows:
 *  <b>`ValueError`</b>: if arguments are invalid.
 
 
-
-## Morphological filtering
-
-Morphological operators are non-linear filters used in image processing.
-
-[Greyscale morphological dilation
-](https://en.wikipedia.org/wiki/Dilation_(morphology))
-is the max-sum counterpart of standard sum-product convolution:
-
-    output[b, y, x, c] =
-        max_{dy, dx} input[b,
-                           strides[1] * y + rates[1] * dy,
-                           strides[2] * x + rates[2] * dx,
-                           c] +
-                     filter[dy, dx, c]
-
-The `filter` is usually called structuring function. Max-pooling is a special
-case of greyscale morphological dilation when the filter assumes all-zero
-values (a.k.a. flat structuring function).
-
-[Greyscale morphological erosion
-](https://en.wikipedia.org/wiki/Erosion_(morphology))
-is the min-sum counterpart of standard sum-product convolution:
-
-    output[b, y, x, c] =
-        min_{dy, dx} input[b,
-                           strides[1] * y - rates[1] * dy,
-                           strides[2] * x - rates[2] * dx,
-                           c] -
-                     filter[dy, dx, c]
-
-Dilation and erosion are dual to each other. The dilation of the input signal
-`f` by the structuring signal `g` is equal to the negation of the erosion of
-`-f` by the reflected `g`, and vice versa.
-
-Striding and padding is carried out in exactly the same way as in standard
-convolution. Please refer to the `Convolution` section for details.
-
 - - -
 
 ### `tf.nn.dilation2d(input, filter, strides, rates, padding, name=None)` {#dilation2d}
@@ -1796,12 +1661,6 @@ can be combined into a single `with_space_to_batch` operation as follows:
 *  <b>`ValueError`</b>: if `padding` is invalid or the arguments are incompatible.
 *  <b>`ValueError`</b>: if `spatial_dims` are invalid.
 
-
-
-## Normalization
-
-Normalization is useful to prevent neurons from saturating when inputs may
-have varying scale, and to aid generalization.
 
 - - -
 
@@ -2101,13 +1960,6 @@ This op is deprecated. See `tf.nn.batch_normalization`.
    A batch-normalized `t`.
 
 
-
-## Losses
-
-The loss ops measure error between two tensors, or between a tensor and zero.
-These can be used for measuring accuracy of a network in a regression task
-or for regularization purposes (weight decay).
-
 - - -
 
 ### `tf.nn.l2_loss(t, name=None)` {#l2_loss}
@@ -2176,11 +2028,6 @@ loss is
 
 *  <b>`ValueError`</b>: If `log_input` and `targets` do not have the same shape.
 
-
-
-## Classification
-
-TensorFlow provides several operations that help you perform classification.
 
 - - -
 
@@ -2446,12 +2293,6 @@ the implementation uses
 *  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
 
 
-
-## Embeddings
-
-TensorFlow provides library support for looking up values in embedding
-tensors.
-
 - - -
 
 ### `tf.nn.embedding_lookup(params, ids, partition_strategy='mod', name=None, validate_indices=True, max_norm=None)` {#embedding_lookup}
@@ -2589,13 +2430,6 @@ is the sum of the size of params along dimension 0.
     None nor SparseTensor.
 *  <b>`ValueError`</b>: If combiner is not one of {"mean", "sqrtn", "sum"}.
 
-
-
-## Recurrent Neural Networks
-
-TensorFlow provides a number of methods for constructing Recurrent
-Neural Networks.  Most accept an `RNNCell`-subclassed object
-(see the documentation for `tf.contrib.rnn`).
 
 - - -
 
@@ -2962,9 +2796,6 @@ outputs = outputs_ta.stack()
     a `callable`.
 
 
-
-## Connectionist Temporal Classification (CTC)
-
 - - -
 
 ### `tf.nn.ctc_loss(labels, inputs, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
@@ -3086,8 +2917,8 @@ This means that if consecutive logits' maximum indices are the same,
 only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
 is the blank label) becomes
 
-  * `A B` if `merge_repeated=True`.
-  * `A B B B B B` if `merge_repeated=False`.
+  * `A B B B` if `merge_repeated=True`.
+  * `A B B B B` if `merge_repeated=False`.
 
 ##### Args:
 
@@ -3159,12 +2990,6 @@ is `A B B B B`, the return value is:
       sequence log-probabilities.
 
 
-
-## Evaluation
-
-The evaluation ops are useful for measuring the performance of a network.
-They are typically used at evaluation time.
-
 - - -
 
 ### `tf.nn.top_k(input, k=1, sorted=True, name=None)` {#top_k}
@@ -3234,24 +3059,6 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 
   A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
 
-
-
-## Candidate Sampling
-
-Do you want to train a multiclass or multilabel model with thousands
-or millions of output classes (for example, a language model with a
-large vocabulary)?  Training with a full Softmax is slow in this case,
-since all of the classes are evaluated for every training example.
-Candidate Sampling training algorithms can speed up your step times by
-only considering a small randomly-chosen subset of contrastive classes
-(called candidates) for each batch of training examples.
-
-See our
-[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
-
-### Sampled Loss Functions
-
-TensorFlow provides the following sampled loss functions for faster training.
 
 - - -
 
@@ -3365,12 +3172,6 @@ Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
 
   A `batch_size` 1-D tensor of per-example sampled softmax losses.
 
-
-
-### Candidate Samplers
-
-TensorFlow provides the following samplers for randomly sampling candidate
-classes when using one of the sampled loss functions above.
 
 - - -
 
@@ -3617,9 +3418,6 @@ compute them approximately.
     of each of `sampled_candidates`.
 
 
-
-### Miscellaneous candidate sampling utilities
-
 - - -
 
 ### `tf.nn.compute_accidental_hits(true_classes, sampled_candidates, num_true, seed=None, name=None)` {#compute_accidental_hits}
@@ -3667,9 +3465,6 @@ target classes as noise classes for the same example.
 *  <b>`weights`</b>: A `Tensor` of type `float` and shape `[num_accidental_hits]`.
     Each value is `-FLOAT_MAX`.
 
-
-
-### Quantization ops
 
 - - -
 

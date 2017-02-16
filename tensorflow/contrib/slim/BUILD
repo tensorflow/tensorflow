@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "evaluation",
     srcs = ["python/slim/evaluation.py"],
@@ -52,6 +54,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",

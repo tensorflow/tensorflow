@@ -331,7 +331,10 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
   # due to the fused implementation's interaction with tf.gradients(),
   # so we make sure we prevent silently incorrect results by raising
   # an error if the second derivative is requested via prevent_gradient.
-  softmax_grad_without_gradient = array_ops.prevent_gradient(op.outputs[1])
+  softmax_grad_without_gradient = array_ops.prevent_gradient(
+      op.outputs[1], message="Currently there is no way to take the second "
+      "derivative of softmax_cross_entropy_with_logits due to the fused "
+      " implementation's interaction with tf.gradients()")
   return _BroadcastMul(grad_0, softmax_grad_without_gradient), None
 
 
@@ -347,7 +350,9 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
   # so we make sure we prevent silently incorrect results by raising
   # an error if the second derivative is requested via prevent_gradient.
   sparse_softmax_grad_without_gradient = array_ops.prevent_gradient(
-      op.outputs[1])
+      op.outputs[1], message="Currently there is no way to take the second "
+      "derivative of sparse_softmax_cross_entropy_with_logits due to the fused "
+      "implementation's interaction with tf.gradients()")
   return _BroadcastMul(grad_0, sparse_softmax_grad_without_gradient), None
 
 

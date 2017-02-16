@@ -31,7 +31,7 @@ from tensorflow.python.util.deprecation import deprecated
 
 
 class Variable(object):
-  """See the [Variables How To](../../how_tos/variables/index.md) for a high
+  """See the @{$variables$Variables How To} for a high
   level overview.
 
   A variable maintains state in the graph across calls to `run()`. You add a
@@ -116,36 +116,7 @@ class Variable(object):
   `trainable_variables()` returns the contents of this collection. The
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
-
-
-  Creating a variable.
-
-  @@__init__
-  @@initialized_value
-
-  Changing a variable value.
-
-  @@assign
-  @@assign_add
-  @@assign_sub
-  @@scatter_sub
-  @@count_up_to
-
-  @@eval
-
-  Properties.
-
-  @@name
-  @@dtype
-  @@get_shape
-  @@device
-  @@initializer
-  @@graph
-  @@op
   """
-
-  # TODO(touts): Add @@value and @@ref in the docstring above once they are
-  # ready for consumption.
 
   def __init__(self,
                initial_value=None,
@@ -225,8 +196,9 @@ class Variable(object):
           dtype=dtype,
           expected_shape=expected_shape)
 
-  def __str__(self):
-    return str(self._snapshot)
+  def __repr__(self):
+    return "<tf.Variable '%s' shape=%s dtype=%s>" % (
+            self.name, self.get_shape(), self.dtype.name)
 
   def _init_from_args(self,
                       initial_value=None,
@@ -380,7 +352,7 @@ class Variable(object):
   def _AsTensor(self):  # pylint: disable=invalid-name
     """Converts this variable to a Tensor.
 
-    See [`value()`](#Variable.value).
+    See @{tf.Variable.value}.
 
     Returns:
       A `Tensor` containing the value of the variable.
@@ -437,7 +409,7 @@ class Variable(object):
 
     Returns is a `Tensor` which holds a reference to the variable.  You can
     assign a new value to the variable by passing the tensor to an assign op.
-    See [`value()`](#Variable.value) if you want to get the value of the
+    See @{tf.Variable.value} if you want to get the value of the
     variable.
 
     Returns:
@@ -459,10 +431,10 @@ class Variable(object):
 
     This is not a graph construction method, it does not add ops to the graph.
 
-    This convenience method requires a session where the graph containing this
-    variable has been launched. If no session is passed, the default session is
-    used.  See the [Session class](../../api_docs/python/client.md#Session) for
-    more information on launching a graph and on sessions.
+    This convenience method requires a session where the graph
+    containing this variable has been launched. If no session is
+    passed, the default session is used.  See @{tf.Session} for more
+    information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
@@ -632,10 +604,10 @@ class Variable(object):
 
     Writes new value to variable's memory. Doesn't add ops to the graph.
 
-    This convenience method requires a session where the graph containing this
-    variable has been launched. If no session is passed, the default session is
-    used.  See the [Session class](../../api_docs/python/client.md#Session) for
-    more information on launching a graph and on sessions.
+    This convenience method requires a session where the graph
+    containing this variable has been launched. If no session is
+    passed, the default session is used.  See @{tf.Session} for more
+    information on launching a graph and on sessions.
 
     ```python
     v = tf.Variable([1, 2])
@@ -1077,7 +1049,7 @@ def global_variables():
   This convenience function returns the contents of that collection.
 
   An alternative to global variables are local variables. See
-  [`tf.local_variables()`](../../api_docs/python/state_ops.md#local_variables)
+  @{tf.local_variables}
 
   Returns:
     A list of `Variable` objects.
@@ -1109,12 +1081,12 @@ def local_variables():
   checkpoint and used for temporary or intermediate values.
   For example, they can be used as counters for metrics computation or
   number of epochs this machine has read data.
-  The `local_variable()` automatically adds new variable to
-  `GraphKeys.LOCAL_VARIABLES`.
+  The `tf.contrib.framework.local_variable()` function automatically adds the
+  new variable to `GraphKeys.LOCAL_VARIABLES`.
   This convenience function returns the contents of that collection.
 
   An alternative to local variables are global variables. See
-  [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
+  @{tf.global_variables}
 
   Returns:
     A list of local `Variable` objects.
@@ -1326,19 +1298,5 @@ ops.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)
 # pylint: enable=protected-access
 
+
 ops.register_dense_tensor_like_type(Variable)
-ops.register_proto_function(
-    ops.GraphKeys.GLOBAL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=Variable.to_proto,
-    from_proto=Variable.from_proto)
-ops.register_proto_function(
-    ops.GraphKeys.TRAINABLE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=Variable.to_proto,
-    from_proto=Variable.from_proto)
-ops.register_proto_function(
-    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=Variable.to_proto,
-    from_proto=Variable.from_proto)

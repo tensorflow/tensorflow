@@ -7,10 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Control Flow Operations
-
-TensorFlow provides several operations and classes that you can use to control
-the execution of operations and add conditional dependencies to your graph.
+Control Flow Operations. See the @{python/control_flow_ops} guide.
 
 - - -
 
@@ -152,9 +149,9 @@ z = tf.multiply(a, b)
 result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
 ```
 
-If x < y, the `tf.add` operation will be executed and tf.square
+If x < y, the `tf.add` operation will be executed and `tf.square`
 operation will not be executed. Since z is needed for at least one
-branch of the cond, the tf.mul operation is always executed, unconditionally.
+branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
 Although this behavior is consistent with the dataflow model of TensorFlow,
 it has occasionally surprised some users who expected a lazier semantics.
 
@@ -390,12 +387,6 @@ Example using shape_invariants:
   ```
 
 
-
-## Logical Operators
-
-TensorFlow provides several operations that you can use to add logical operators
-to your graph.
-
 - - -
 
 ### `tf.logical_and(x, y, name=None)` {#logical_and}
@@ -461,12 +452,6 @@ Returns the truth value of x OR y element-wise.
 
 x ^ y = (x | y) & ~(x & y).
 
-
-
-## Comparison Operators
-
-TensorFlow provides several operations that you can use to add comparison
-operators to your graph.
 
 - - -
 
@@ -643,12 +628,6 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 
 *  <b>`ValueError`</b>: When exactly one of `x` or `y` is non-None.
 
-
-
-## Debugging Operations
-
-TensorFlow provides several operations that you can use to validate values and
-debug your graph.
 
 - - -
 

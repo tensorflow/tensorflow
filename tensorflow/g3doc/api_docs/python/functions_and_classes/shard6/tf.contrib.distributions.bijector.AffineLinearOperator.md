@@ -1,4 +1,4 @@
-Bijector which computes `Y = g(X; shift, scale) = scale @ X.T + shift`.
+Compute `Y = g(X; shift, scale) = scale @ X + shift`.
 
 `shift` is a numeric `Tensor` and `scale` is a `LinearOperator`.
 
@@ -6,7 +6,7 @@ If `X` is a scalar then the forward transformation is: `scale * X + shift`
 where `*` denotes the scalar product.
 
 Note: we don't always simply transpose `X` (but write it this way for
-brevity).  Actually the input `X` undergoes the following transformation
+brevity). Actually the input `X` undergoes the following transformation
 before being premultiplied by `scale`:
 
 1. If there are no sample dims, we call `X = tf.expand_dims(X, 0)`, i.e.,
@@ -21,8 +21,8 @@ before being premultiplied by `scale`:
 (For more details see `shape.make_batch_of_event_sample_matrices`.)
 
 The result of the above transformation is that `X` can be regarded as a batch
-of matrices where each column is a draw from the distribution.  After
-premultiplying by `scale`, we take the inverse of this procedure.  The input
+of matrices where each column is a draw from the distribution. After
+premultiplying by `scale`, we take the inverse of this procedure. The input
 `Y` also undergoes the same transformation before/after premultiplying by
 `inv(scale)`.
 
@@ -38,7 +38,7 @@ diag = [1., 2, 3]
 scale = linalg.LinearOperatorDiag(diag)
 affine = AffineLinearOperator(shift, scale)
 # In this case, `forward` is equivalent to:
-# diag * scale + shift
+# y = scale @ x + shift
 y = affine.forward(x)  # [0., 4, 10]
 
 shift = [2., 3, 1]
@@ -60,14 +60,14 @@ Instantiates the `AffineLinearOperator` bijector.
 ##### Args:
 
 
-*  <b>`shift`</b>: Numeric `Tensor`.
-*  <b>`scale`</b>: Subclass of `LinearOperator`.  Represents the (batch) positive
+*  <b>`shift`</b>: Floating-point `Tensor`.
+*  <b>`scale`</b>: Subclass of `LinearOperator`. Represents the (batch) positive
     definite matrix `M` in `R^{k x k}`.
 *  <b>`event_ndims`</b>: Scalar `integer` `Tensor` indicating the number of dimensions
     associated with a particular draw from the distribution. Must be 0 or 1.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String` name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str` name given to ops managed by this object.
 
 ##### Raises:
 
@@ -83,6 +83,13 @@ Instantiates the `AffineLinearOperator` bijector.
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.dtype` {#AffineLinearOperator.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.AffineLinearOperator.event_ndims` {#AffineLinearOperator.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -317,7 +324,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -331,21 +339,14 @@ Returns the string name of this `Bijector`.
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.scale` {#AffineLinearOperator.scale}
 
-The `scale` `LinearOperator` in `Y = scale @ X.T + shift`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.AffineLinearOperator.shaper` {#AffineLinearOperator.shaper}
-
-Returns shape object used to manage shape constraints.
+The `scale` `LinearOperator` in `Y = scale @ X + shift`.
 
 
 - - -
 
 #### `tf.contrib.distributions.bijector.AffineLinearOperator.shift` {#AffineLinearOperator.shift}
 
-The `shift` `Tensor` in `Y = scale @ X.T + shift`.
+The `shift` `Tensor` in `Y = scale @ X + shift`.
 
 
 - - -

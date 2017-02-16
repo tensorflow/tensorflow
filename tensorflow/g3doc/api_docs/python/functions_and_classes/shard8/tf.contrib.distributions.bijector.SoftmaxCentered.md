@@ -2,7 +2,7 @@ Bijector which computes `Y = g(X) = exp([X 0]) / sum(exp([X 0]))`.
 
 To implement [softmax](https://en.wikipedia.org/wiki/Softmax_function) as a
 bijection, the forward transformation appends a value to the input and the
-inverse removes this coordinate.  The appended coordinate represents a pivot,
+inverse removes this coordinate. The appended coordinate represents a pivot,
 e.g., `softmax(x) = exp(x-c) / sum(exp(x-c))` where `c` is the implicit last
 coordinate.
 
@@ -23,7 +23,7 @@ bijector.SoftmaxCentered(event_ndims=1).inverse([0.2, 0.3, 0.4, 0.1])
 
 At first blush it may seem like the [Invariance of domain](
 https://en.wikipedia.org/wiki/Invariance_of_domain) theorem implies this
-implementation is not a bijection.  However, the appended dimension
+implementation is not a bijection. However, the appended dimension
 makes the (forward) image non-open and the theorem does not directly apply.
 - - -
 
@@ -37,6 +37,13 @@ makes the (forward) image non-open and the theorem does not directly apply.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.dtype` {#SoftmaxCentered.dtype}
 
 dtype of `Tensor`s transformable by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.bijector.SoftmaxCentered.event_ndims` {#SoftmaxCentered.event_ndims}
+
+Returns then number of event dimensions this bijector operates on.
 
 
 - - -
@@ -271,7 +278,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -
@@ -279,13 +287,6 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 #### `tf.contrib.distributions.bijector.SoftmaxCentered.name` {#SoftmaxCentered.name}
 
 Returns the string name of this `Bijector`.
-
-
-- - -
-
-#### `tf.contrib.distributions.bijector.SoftmaxCentered.shaper` {#SoftmaxCentered.shaper}
-
-Returns shape object used to manage shape constraints.
 
 
 - - -
