@@ -102,22 +102,19 @@ class _GeneratorFeedFn(object):
     if len(placeholders) != len(first_sample) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
         len(first_sample), len(placeholders)))
-    self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._generator_function = generator
     self._iterator = generator()
     self._batch_size = batch_size
     self._num_epochs = num_epochs
     self._epoch = 0
-    self._index = 0
     random.seed(seed)
 
   def __call__(self):
     if self._num_epochs and self._epoch >= self._num_epochs:
       raise errors.OutOfRangeError(None, None,
                                    "Already emitted %s epochs." % self._epoch)
-
-    list_dict = collections.OrderedDict({self._index_placeholder: np.arange(self._index, self._index + self._batch_size)})
+    list_dict = {}
     list_dict_size = 0
     while list_dict_size < self._batch_size:
       try:
@@ -125,7 +122,6 @@ class _GeneratorFeedFn(object):
       except StopIteration:
         self._epoch += 1
         self._iterator = self._generator_function()
-        self._index = 0
         data_row = next(self._iterator)
       for index, key in enumerate(data_row.keys()):
         list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])

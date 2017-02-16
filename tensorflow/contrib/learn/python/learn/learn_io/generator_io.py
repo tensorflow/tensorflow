@@ -44,8 +44,8 @@ def generator_input_fn(x,
     ```python
     def generator():
       for index in range(10):
-        yield collections.OrderedDict({height: np.random.randint(32,36), 'age': np.random.randint(18, 80),
-              "label": np.ones(1)})
+        yield {height: np.random.randint(32,36), 'age': np.random.randint(18, 80),
+              "label": np.ones(1)}
 
     with tf.Session() as session:
       input_fn = generator_io.generator_input_fn(
@@ -54,9 +54,10 @@ def generator_input_fn(x,
     ```
 
   Args:
-    x: Generator Function, returns a generator that will yield the data
-    target_key: String, the key of the numpy array in x dictionaries to use as
-      target.
+    x: Generator Function, returns a `Generator` that will yield the data
+      in `dict` of numpy arrays
+    target_key: String or List of Strings, the key or list of keys of
+      the numpy arrays in x dictionaries to use as target.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
       run forever.
@@ -66,14 +67,15 @@ def generator_input_fn(x,
     num_threads: Integer, number of threads used for reading and enqueueing.
 
   Returns:
-    Function, that has signature of ()->(dict of `features`, `target`)
+    Function, that returns a feature `dict` with `Tensors` and
+     an optional label `dict` with `Tensors`
 
   Raises:
     TypeError: `x` is not `FunctionType`.
     TypeError: `x()` is not `GeneratorType`.
     TypeError: `next(x())` is not `dict`.
-    TypeError: `target_key` is not `str`.
-    KeyError:  `target_key` not a key in next(`x()`)
+    TypeError: `target_key` is not `str` or `target_key` is not `list` of `str`.
+    KeyError:  `target_key` not a key in next(`x()`) or `target_key is not .
   """
   
   def _generator_input_fn():
@@ -84,14 +86,19 @@ def generator_input_fn(x,
     if not isinstance(generator, GeneratorType):
       raise TypeError('x() must be generator ; got {}'.format(type(generator).__name__))
     data = next(generator)
-    if not isinstance(data, OrderedDict):
-      raise TypeError('x() must yield OrderedDict ; got {}'.format(type(data).__name__))
-    if target_key is not None and not isinstance(target_key, str):
-      raise TypeError('target_key must be string ; got {}'.format(type(target_key).__name__))
-
+    if not isinstance(data, dict):
+      raise TypeError('x() must yield dict ; got {}'.format(type(data).__name__))
+    
     input_keys = next(x()).keys()
-    if target_key is not None and target_key not in input_keys:
-      raise KeyError('target_key must be present in the yielded dictionary')
+    if target_key is not None:
+      if isinstance(target_key, str):
+        target_key = [target_key]
+      if isinstance(target_key, list):
+        for item in target_key:
+          if not isinstance(item, str):
+            raise TypeError('target_key list items must be string ; got {}'.format(type(item).__name__))
+          if item not in input_keys:
+            raise KeyError('target_key must be present in the yielded dictionary ; got {}'.format(item))
 
     queue = feeding_functions.enqueue_data(
       x,
@@ -104,13 +111,9 @@ def generator_input_fn(x,
     features = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
     
-    # Remove the first `Tensor` in `features`, which is the row number.
-    if len(features) > 0:
-      features.pop(0)
-    
     features = dict(zip(input_keys, features))
     if target_key is not None:
-      target = features.pop(target_key)
+      target = {key: features.pop(key) for key in target_key}
       return features, target
     return features
   return _generator_input_fn
