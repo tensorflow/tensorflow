@@ -156,7 +156,8 @@ class GrpcServerTest(test.TestCase):
     sess.run(dequeue_t)
 
     def blocking_dequeue():
-      with self.assertRaises(errors_impl.CancelledError):
+      with self.assertRaisesRegexp(errors_impl.CancelledError,
+                                   "Session::Close"):
         sess.run(dequeue_t)
 
     blocking_thread = self.checkedThread(blocking_dequeue)

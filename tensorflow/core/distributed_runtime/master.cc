@@ -101,8 +101,7 @@ void Master::GC() {
                        << "Note that if you are starting multiple replicas "
                        << "on a staggered delay, session_gc_seconds may need "
                        << "to be raised.";
-          sess->Close().IgnoreError();
-          sess->Unref();
+          sess->GarbageCollect();
         });
       }
     }
