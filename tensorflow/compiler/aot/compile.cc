@@ -278,7 +278,7 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
                          const FunctionLibraryDefinition* flib_def,
                          xla::Computation* computation, bool* has_context_arg) {
   // Create a device and context to convert the graph into an XLA computation.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
   // Populate the context with args from the graph.
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(DEVICE_CPU_XLA_JIT);

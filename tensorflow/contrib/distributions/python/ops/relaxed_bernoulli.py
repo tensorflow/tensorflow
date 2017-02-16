@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import bijector
+from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
 from tensorflow.contrib.distributions.python.ops import transformed_distribution
@@ -182,7 +182,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
     def inverse_log_det_jacobian_fn(y):
       return -math_ops.log(y) - math_ops.log1p(-y)
 
-    sigmoid_bijector = bijector.Inline(
+    sigmoid_bijector = bijectors.Inline(
         forward_fn=math_ops.sigmoid,
         inverse_fn=(lambda y: math_ops.log(y) - math_ops.log1p(-y)),
         inverse_log_det_jacobian_fn=inverse_log_det_jacobian_fn,
