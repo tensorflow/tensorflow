@@ -300,7 +300,8 @@ ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
-  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def, Env::Default()));
+  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def,
+	  env == nullptr ? Env::Default() : env));
   TF_RETURN_IF_ERROR(ret->Init());
   *out_server = std::move(ret);
   return Status::OK();
