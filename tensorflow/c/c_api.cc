@@ -2297,6 +2297,11 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
   }
 }
 
+void TF_DeletePRunHandle(const char* handle) {
+  delete[] handle;
+  // TODO(suharshs): Free up any resources held by the partial run state.
+}
+
 void TF_SessionPRun(TF_Session* session, const char* handle,
                     const TF_Output* inputs, TF_Tensor* const* input_values,
                     int ninputs, const TF_Output* outputs,

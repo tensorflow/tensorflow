@@ -981,6 +981,74 @@ TEST(CAPI, Session) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, SessionPRun) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Construct the graph: A + 2 + B
+  TF_Operation* a = Placeholder(graph, s, "A");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* b = Placeholder(graph, s, "B");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* two = ScalarConst(2, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* plus2 = Add(a, two, graph, s, "plus2");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* plusB = Add(plus2, b, graph, s, "plusB");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Setup a session and a partial run handle.  The partial run will allow
+  // computation of A + 2 + B in two phases (calls to TF_SessionPRun):
+  // 1. Feed A and get (A+2)
+  // 2. Feed B and get (A+2)+B
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TF_Session* sess = TF_NewSession(graph, opts, s);
+  TF_DeleteSessionOptions(opts);
+
+  TF_Output feeds[] = {TF_Output{a, 0}, TF_Output{b, 0}};
+  TF_Output fetches[] = {TF_Output{plus2, 0}, TF_Output{plusB, 0}};
+
+  const char* handle = nullptr;
+  TF_SessionPRunSetup(sess, feeds, TF_ARRAYSIZE(feeds), fetches,
+                      TF_ARRAYSIZE(fetches), nullptr, 0, &handle, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Feed A and fetch A + 2.
+  TF_Output feeds1[] = {TF_Output{a, 0}};
+  TF_Output fetches1[] = {TF_Output{plus2, 0}};
+  TF_Tensor* feedValues1[] = {Int32Tensor(1)};
+  TF_Tensor* fetchValues1[1];
+  TF_SessionPRun(sess, handle, feeds1, feedValues1, 1, fetches1, fetchValues1,
+                 1, nullptr, 0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(3, *(static_cast<int32*>(TF_TensorData(fetchValues1[0]))));
+  TF_DeleteTensor(feedValues1[0]);
+  TF_DeleteTensor(fetchValues1[0]);
+
+  // Feed B and fetch (A + 2) + B.
+  TF_Output feeds2[] = {TF_Output{b, 0}};
+  TF_Output fetches2[] = {TF_Output{plusB, 0}};
+  TF_Tensor* feedValues2[] = {Int32Tensor(4)};
+  TF_Tensor* fetchValues2[1];
+  TF_SessionPRun(sess, handle, feeds2, feedValues2, 1, fetches2, fetchValues2,
+                 1, nullptr, 0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(7, *(static_cast<int32*>(TF_TensorData(fetchValues2[0]))));
+  TF_DeleteTensor(feedValues2[0]);
+  TF_DeleteTensor(fetchValues2[0]);
+
+  // Clean up.
+  TF_DeletePRunHandle(handle);
+  TF_DeleteSession(sess, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, ColocateWith) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -1850,8 +1918,8 @@ TEST_F(CApiAttributesTest, TensorList) {
     EXPECT_EQ(TF_INT8, TF_TensorType(v)) << i;
     EXPECT_EQ(tensor_ndims[i], TF_NumDims(v)) << i;
     for (int j = 0; j < TF_NumDims(v); ++j) {
-      EXPECT_EQ(tensor_dims[i][j], TF_Dim(v, j)) << "Tensor #" << i
-                                                 << ", dimension #" << j;
+      EXPECT_EQ(tensor_dims[i][j], TF_Dim(v, j))
+          << "Tensor #" << i << ", dimension #" << j;
     }
     EXPECT_EQ(sizeof(char) * tensor_size[i], TF_TensorByteSize(v)) << i;
     EXPECT_EQ(0,
