@@ -38,7 +38,7 @@ class XlaCompilerTest : public ::testing::Test {
   void SetUp() override {
     client_ = xla::ClientLibrary::LocalClientOrDie();
 
-    XlaOpRegistry::RegisterJitKernels();
+    XlaOpRegistry::RegisterCompilationKernels();
 
     FunctionDefLibrary flib;
     flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
