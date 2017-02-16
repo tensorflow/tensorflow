@@ -20,49 +20,16 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/client.h"
+#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
-
-// A XlaExpression wraps an XLA computation. Each Tensor sent
-// along an edge during XLA compilation represents a
-// XlaExpression, and the shape of the Tensor matches the shape of
-// the subcomputation in the ComputationDataHandle. Each
-// expression is either a constant, or a function of previously-compiled
-// expressions.
-class XlaExpression {
- public:
-  XlaExpression();
-
-  // handle() stores the XLA handle of the computation that the
-  // expression represents.
-  void set_handle(const xla::ComputationDataHandle& h);
-  const xla::ComputationDataHandle& handle() const;
-
-  void set_constant_value(Tensor value);
-  bool has_constant_value() const { return has_constant_value_; }
-  const Tensor& constant_value() const { return constant_value_; }
-
- private:
-  // The XLA handle of the expression's computation.
-  xla::ComputationDataHandle handle_;
-
-  // If this expression is a constant with a known value, 'constant_value' is a
-  // host-memory Tensor containing the value. Used to avoid invoking XLA for
-  // expressions that are trivially constant.
-  bool has_constant_value_;
-  Tensor constant_value_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
-};
 
 // The XlaContext is the data structure that holds the state of an XLA
 // compilation, that is accessible from OpKernelContexts when compiling a

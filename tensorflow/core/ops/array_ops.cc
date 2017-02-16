@@ -4289,6 +4289,7 @@ REGISTER_OP("QuantizeAndDequantize")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
+    .Deprecated(21, "Replaced by QuantizeAndDequantizeV2")
     .Doc(R"doc(
 Quantizes then dequantizes a tensor.
 
@@ -4348,6 +4349,85 @@ num_bits: The bitwidth of the quantization.
 range_given: If the range is given or should be computed from the tensor.
 input_min: If range is given, this is the min of the range.
 input_max: If range is given, this is the max of the range.
+)doc");
+
+REGISTER_OP("QuantizeAndDequantizeV2")
+    .Input("input: T")
+    .Input("input_min: T")
+    .Input("input_max: T")
+    .Attr("signed_input: bool = true")
+    .Attr("num_bits: int = 8")
+    .Attr("range_given: bool = false")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Quantizes then dequantizes a tensor.
+
+This op simulates the precision loss from the quantized forward pass by:
+1. Quantizing the tensor to fixed point numbers, which should match the target
+   quantization method when it is used in inference.
+2. Dequantizing it back to floating point numbers for the following ops, most
+   likely matmul.
+
+There are different ways to quantize. This version does not use the full range
+of the output type, choosing to elide the lowest possible value for symmetry
+(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit
+quantization), so that 0.0 maps to 0.
+
+To perform this op, we first find the range of values in our tensor. The range
+we use is always centered on 0, so we find m such that
+
+1. m = max(abs(input_min), abs(input_max)) if range_given is true,
+2. m = max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
+
+Our input tensor range is then [-m, m].
+
+Next, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].
+If signed_input is true, this is
+
+  [min_fixed, max_fixed ] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].
+
+Otherwise, if signed_input is false, the fixed-point range is
+
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].
+
+From this we compute our scaling factor, s:
+
+  s = (max_fixed - min_fixed) / (2 * m).
+
+Now we can quantize and dequantize the elements of our tensor.  An element e
+is transformed into e':
+
+  e' = (e * s).round_to_nearest() / s.
+
+Note that we have a different number of buckets in the signed vs. unsigned
+cases.  For example, if num_bits == 8, we get 254 buckets in the signed case
+vs. 255 in the unsigned case.
+
+For example, suppose num_bits = 8 and m = 1.  Then
+
+  [min_fixed, max_fixed] = [-127, 127], and
+  s = (127 + 127) / 2 = 127.
+
+Given the vector {-1, -0.5, 0, 0.3}, this is quantized to
+{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}.
+
+input: Tensor to quantize and then dequantize.
+signed_input: If the quantization is signed or unsigned.
+num_bits: The bitwidth of the quantization.
+range_given: If the range is given or should be computed from the tensor.
+input_min: If range_given, this is the min of the range, otherwise this input
+           will be ignored.
+input_max: If range_given, this is the max of the range, otherwise this input
+           will be ignored.
 )doc");
 
 // EXPERIMENTAL: tfdbg debugger-inserted ops.
