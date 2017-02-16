@@ -16,4 +16,3 @@
 //go:generate go run ../genop/main.go -outfile wrappers.go
 
 package op
-
