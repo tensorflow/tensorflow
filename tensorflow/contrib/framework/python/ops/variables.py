@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import re
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
@@ -216,7 +217,8 @@ def variable(name, shape=None, dtype=None, initializer=None,
   collections = set(collections)
   getter = variable_scope.get_variable
   if custom_getter is not None:
-    getter = custom_getter
+    getter = functools.partial(custom_getter,
+                               reuse=variable_scope.get_variable_scope().reuse)
   with ops.device(device or ''):
     return getter(name, shape=shape, dtype=dtype,
                   initializer=initializer,

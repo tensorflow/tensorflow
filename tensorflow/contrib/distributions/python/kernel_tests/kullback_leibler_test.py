@@ -43,8 +43,7 @@ class KLTest(test.TestCase):
       return name
 
     a = MyDist(loc=0.0, scale=1.0)
-    # Run kl() with allow_nan=True because strings can't go through is_nan.
-    self.assertEqual("OK", kullback_leibler.kl(a, a, allow_nan=True, name="OK"))
+    self.assertEqual("OK", kullback_leibler.kl(a, a, name="OK"))
 
   def testDomainErrorExceptions(self):
 
@@ -61,11 +60,11 @@ class KLTest(test.TestCase):
 
     with self.test_session():
       a = MyDistException(loc=0.0, scale=1.0)
-      kl = kullback_leibler.kl(a, a)
+      kl = kullback_leibler.kl(a, a, allow_nan_stats=False)
       with self.assertRaisesOpError(
           "KL calculation between .* and .* returned NaN values"):
         kl.eval()
-      kl_ok = kullback_leibler.kl(a, a, allow_nan=True)
+      kl_ok = kullback_leibler.kl(a, a)
       self.assertAllEqual([float("nan")], kl_ok.eval())
 
   def testRegistrationFailures(self):
@@ -117,17 +116,16 @@ class KLTest(test.TestCase):
     sub2 = Sub2(loc=0.0, scale=1.0)
     sub11 = Sub11(loc=0.0, scale=1.0)
 
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub1, allow_nan=True))
-    self.assertEqual("sub1-2", kullback_leibler.kl(sub1, sub2, allow_nan=True))
-    self.assertEqual("sub2-1", kullback_leibler.kl(sub2, sub1, allow_nan=True))
-    self.assertEqual(
-        "sub1-1", kullback_leibler.kl(sub11, sub11, allow_nan=True))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub1, allow_nan=True))
-    self.assertEqual("sub1-2", kullback_leibler.kl(sub11, sub2, allow_nan=True))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub1, allow_nan=True))
-    self.assertEqual("sub1-2", kullback_leibler.kl(sub11, sub2, allow_nan=True))
-    self.assertEqual("sub2-1", kullback_leibler.kl(sub2, sub11, allow_nan=True))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub11, allow_nan=True))
+    self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub1))
+    self.assertEqual("sub1-2", kullback_leibler.kl(sub1, sub2))
+    self.assertEqual("sub2-1", kullback_leibler.kl(sub2, sub1))
+    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub11))
+    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub1))
+    self.assertEqual("sub1-2", kullback_leibler.kl(sub11, sub2))
+    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub1))
+    self.assertEqual("sub1-2", kullback_leibler.kl(sub11, sub2))
+    self.assertEqual("sub2-1", kullback_leibler.kl(sub2, sub11))
+    self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub11))
 
 
 if __name__ == "__main__":
