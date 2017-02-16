@@ -34,20 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-XlaExpression::XlaExpression() : has_constant_value_(false) {}
-
-void XlaExpression::set_handle(const xla::ComputationDataHandle& h) {
-  handle_ = h;
-}
-const xla::ComputationDataHandle& XlaExpression::handle() const {
-  return handle_;
-}
-
-void XlaExpression::set_constant_value(Tensor value) {
-  has_constant_value_ = true;
-  constant_value_ = std::move(value);
-}
-
 const char XlaContext::kXlaContextResourceName[] = "_xla_context";
 
 // Looks up the context associated with the current step. It is stored

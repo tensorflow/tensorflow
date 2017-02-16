@@ -3,7 +3,7 @@
 Java bindings for TensorFlow.
 
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
-> [API stability guarantees](https://www.tensorflow.org/resources/versions).
+> [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
 >
 > For using TensorFlow on Android refer to
 > [contrib/android](https://www.tensorflow.org/code/tensorflow/contrib/android),

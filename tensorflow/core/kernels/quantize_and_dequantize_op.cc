@@ -39,6 +39,47 @@ typedef Eigen::GpuDevice GPUDevice;
 // 2. Dequantize it back to floating point numbers for the following ops, most
 //    likely matmul.
 template <typename Device, typename T>
+class QuantizeAndDequantizeV2Op : public OpKernel {
+ public:
+  explicit QuantizeAndDequantizeV2Op(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
+    OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
+                errors::InvalidArgument("num_bits is out of range: ", num_bits_,
+                                        " with signed_input_ ", signed_input_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& input = ctx->input(0);
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
+
+    Tensor input_min_tensor = ctx->input(1);
+    Tensor input_max_tensor = ctx->input(2);
+    if (range_given_) {
+      auto min_val = input_min_tensor.scalar<T>()();
+      auto max_val = input_max_tensor.scalar<T>()();
+      OP_REQUIRES(ctx, min_val <= max_val,
+                  errors::InvalidArgument("Invalid range: input_min ", min_val,
+                                          " > input_max ", max_val));
+    }
+
+    functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
+    f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_, num_bits_,
+      range_given_, &input_min_tensor, &input_max_tensor, output->flat<T>());
+  }
+
+ private:
+  bool signed_input_;
+  int num_bits_;
+  bool range_given_;
+};
+
+// DEPRECATED: Use QuantizeAndDequantizeV2Op.
+template <typename Device, typename T>
 class QuantizeAndDequantizeOp : public OpKernel {
  public:
   explicit QuantizeAndDequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -65,20 +106,16 @@ class QuantizeAndDequantizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
 
     // One global scale.
-    Tensor input_min_tensor;
-    Tensor input_max_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                           TensorShape(), &input_min_tensor));
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                           TensorShape(), &input_max_tensor));
+    Tensor input_min_tensor(DataTypeToEnum<T>::value, TensorShape());
+    Tensor input_max_tensor(DataTypeToEnum<T>::value, TensorShape());
+    // Initialize the tensors with the values in the Attrs.
+    input_min_tensor.template scalar<T>()() = static_cast<T>(input_min_);
+    input_max_tensor.template scalar<T>()() = static_cast<T>(input_max_);
 
-    auto input_min = input_min_tensor.scalar<T>();
-    auto input_max = input_max_tensor.scalar<T>();
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> functor;
-    functor(ctx->template eigen_device<Device>(), input.template flat<T>(),
-            signed_input_, num_bits_, range_given_, input_min, input_max,
-            static_cast<T>(input_min_), static_cast<T>(input_max_),
-            output->template flat<T>());
+    functor(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_,
+            num_bits_, range_given_, &input_min_tensor, &input_max_tensor,
+            output->flat<T>());
   }
 
  private:
@@ -95,17 +132,20 @@ template <typename T>
 struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::ConstVec input,
                   const bool signed_input, const int num_bits,
-                  const bool range_given, typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max, const T input_min_init,
-                  const T input_max_init, typename TTypes<T>::Vec out) {
+                  const bool range_given, Tensor* input_min_tensor,
+                  Tensor* input_max_tensor, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<CPUDevice, T>::Compute(
-        d, input, signed_input, num_bits, range_given, input_min, input_max,
-        input_min_init, input_max_init, out);
+        d, input, signed_input, num_bits, range_given, input_min_tensor,
+        input_max_tensor, out);
   }
 };
 }  // namespace functor
 
 #define REGISTER_CPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantizeV2")                      \
+                              .Device(DEVICE_CPU)                              \
+                              .TypeConstraint<T>("T"),                         \
+                          QuantizeAndDequantizeV2Op<CPUDevice, T>);            \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("QuantizeAndDequantize").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       QuantizeAndDequantizeOp<CPUDevice, T>);
@@ -114,13 +154,16 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("QuantizeAndDequantize").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    QuantizeAndDequantizeOp<GPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantize")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<double>("T"),
-                        QuantizeAndDequantizeOp<GPUDevice, double>);
+#define REGISTER_GPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantizeV2")                      \
+                              .Device(DEVICE_GPU)                              \
+                              .TypeConstraint<T>("T"),                         \
+                          QuantizeAndDequantizeV2Op<GPUDevice, T>);            \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QuantizeAndDequantize").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      QuantizeAndDequantizeOp<GPUDevice, T>);
+TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
+#undef REGISTER_GPU_KERNEL
 #endif
 }  // namespace tensorflow

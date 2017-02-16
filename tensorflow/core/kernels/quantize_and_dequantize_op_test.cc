@@ -40,16 +40,18 @@ class QuantizeAndDequantizeTest : public OpsTestBase {};
 // Convert a simple scalar tensor.
 TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
           .Attr("range_given", false)
-          .Attr("input_min", 0.0)
-          .Attr("input_max", 0.0)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({1}), {-3.5});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1}));
@@ -60,16 +62,18 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
 // Convert a 1D tensor with signed 8 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
           .Attr("range_given", false)
-          .Attr("input_min", 0.0)
-          .Attr("input_max", 0.0)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
   // With int8, the tensor is quantized to {-127, -63, 0, 38, 102, 70}.
   // Scale is: 1/127
@@ -84,16 +88,18 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
 // Convert a 1D tensor with signed 4 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 4)
           .Attr("range_given", false)
-          .Attr("input_min", 0.0)
-          .Attr("input_max", 0.0)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
   // With int4, the tensor is quantized to {-7, -3, 0, 2, 6, 4}.
   // Scale is: 1/7
@@ -107,18 +113,20 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
 // Convert a 2D tensor with signed 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
           .Attr("range_given", true)
-          .Attr("input_min", -1.0)
-          .Attr("input_max", 1.0)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   // Note that the last two values are saturated.
   AddInputFromArray<float>(TensorShape({2, 4}),
                            {-0.8, -0.5, 0, 0.3, 0.8, 0.555, -2, 33});
+  AddInputFromArray<float>(TensorShape({}), {-1.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {1.0});   // Max
 
   // Note that the range is given as [-1, 1].
   // With int8, the tensor is quantized to {-102, -63, 0, 38, 102, 70, -127,
@@ -134,16 +142,18 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
 // Convert a 4D tensor with unsigned 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", false)
           .Attr("num_bits", 8)
           .Attr("range_given", true)
-          .Attr("input_min", 0.0)
-          .Attr("input_max", 1.0)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {1.0});  // Max
 
   // Note that the range is given as [0, 1].
   // With int8, the tensor is quantized to {0, 0, 77, 204}
@@ -157,16 +167,18 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
 // Convert a tensor with all 0.
 TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", false)
           .Attr("num_bits", 8)
           .Attr("range_given", false)
-          .Attr("input_min", 0.0)
-          .Attr("input_max", 1.0)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {0, 0, 0, 0});
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
@@ -177,29 +189,33 @@ TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
 // Range is invalid
 TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
           .Input(FakeInput(DT_FLOAT))
           .Attr("num_bits", 8)
           .Attr("range_given", true)
-          .Attr("input_min", 2.0)
-          .Attr("input_max", 1.0)
           .Finalize(node_def()));
-  Status s = InitOp();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid range: input_min 2 > input_max 1"))
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
+  Status s = RunOpKernel();
+  EXPECT_TRUE(StringPiece(s.ToString())
+                  .contains("Invalid range: input_min 1 > input_max 0"))
       << s;
 }
 
-#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                     \
-  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) { \
-    auto root = Scope::NewRootScope().ExitOnError();      \
-    ops::QuantizeAndDequantize(root, {-3.5} /* input */); \
-    TF_CHECK_OK(root.status());                           \
-    Graph* g = new Graph(OpRegistry::Global());           \
-    TF_CHECK_OK(root.ToGraph(g));                         \
-    test::Benchmark(#DEVICE, g).Run(iters);               \
-  }                                                       \
+#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                           \
+  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) {       \
+    auto root = Scope::NewRootScope().ExitOnError();            \
+    ops::QuantizeAndDequantizeV2(root, {-3.5}, {-3.5}, {-3.5}); \
+    TF_CHECK_OK(root.status());                                 \
+    Graph* g = new Graph(OpRegistry::Global());                 \
+    TF_CHECK_OK(root.ToGraph(g));                               \
+    test::Benchmark(#DEVICE, g).Run(iters);                     \
+  }                                                             \
   BENCHMARK(BM_SIMPLE_QUAN_DEQUAN_##DEVICE);
 
 BM_SIMPLE_QUAN_DEQUAN(cpu);
