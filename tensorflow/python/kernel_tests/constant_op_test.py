@@ -170,8 +170,9 @@ class ConstantTest(test.TestCase):
         constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   # pylint: enable=g-long-lambda
-
-  def testTooLargeConstant(self):
+  # TODO(b/35396543): Temporarily disable: suspicion that
+  # this is causing test timeouts.
+  def _testTooLargeConstant(self):
     with ops.Graph().as_default():
       large_array = np.zeros((512, 1024, 1024), dtype=np.float32)
       with self.assertRaisesRegexp(
@@ -179,7 +180,9 @@ class ConstantTest(test.TestCase):
           "Cannot create a tensor proto whose content is larger than 2GB."):
         c = constant_op.constant(large_array)
 
-  def testTooLargeGraph(self):
+  # TODO(b/35396543): Temporarily disable: suspicion that
+  # this is causing test timeouts.
+  def _testTooLargeGraph(self):
     with ops.Graph().as_default() as g:
       large_array = np.zeros((256, 1024, 1024), dtype=np.float32)
       c = constant_op.constant(large_array)
